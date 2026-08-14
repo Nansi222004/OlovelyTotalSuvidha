@@ -8,6 +8,7 @@ import {
   Category as ApiCategory,
 } from "../../services/api/customerProductService";
 import { useLocation as useLocationContext } from "../../hooks/useLocation";
+import PageLoader from "../../components/PageLoader";
 
 export default function CategoryPage() {
   const { id } = useParams<{ id: string }>();
@@ -249,7 +250,7 @@ export default function CategoryPage() {
   }, [products, appliedFilters, sortBy, commonTypes, appliedPriceRange]);
 
   if ((categoryLoading || loading) && !products.length && !category) {
-    return null; // Let global IconLoader handle it
+    return <PageLoader />;
   }
 
   if (error && !products.length && !category) {

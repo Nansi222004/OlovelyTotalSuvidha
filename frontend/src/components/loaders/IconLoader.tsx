@@ -10,6 +10,17 @@ interface IconLoaderProps {
 
 const IconLoader: React.FC<IconLoaderProps> = ({ forceShow = false }) => {
   const { isRouteLoading } = useLoading();
+  
+  // Completely disable loadify / icon loader from user side
+  const isUserSide = typeof window !== 'undefined' && 
+    !window.location.pathname.startsWith('/admin') && 
+    !window.location.pathname.startsWith('/seller') && 
+    !window.location.pathname.startsWith('/delivery');
+
+  if (isUserSide) {
+    return null;
+  }
+
   const show = isRouteLoading || forceShow;
   const [animationData, setAnimationData] = useState<any>(null);
 

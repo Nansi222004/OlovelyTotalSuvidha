@@ -13,6 +13,7 @@ import { LoadingProvider } from "./context/LoadingContext";
 import { AxiosLoadingInterceptor } from "./context/AxiosLoadingInterceptor";
 import IconLoader from "./components/loaders/IconLoader";
 import RouteLoaderTrigger from "./components/loaders/RouteLoaderTrigger";
+import PageLoader from "./components/PageLoader";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
@@ -395,7 +396,7 @@ function App() {
                             path="/login"
                             element={
                               <PublicRoute userType="Customer">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={<PageLoader />}>
                                   <Login />
                                 </Suspense>
                               </PublicRoute>
@@ -851,7 +852,7 @@ function App() {
                             path="/*"
                             element={
                               <AppLayout>
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={<PageLoader />}>
                                   <Routes>
                                     <Route
                                       path="/"

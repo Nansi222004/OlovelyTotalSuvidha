@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getHeaderCategoriesPublic, HeaderCategory } from "../../services/api/headerCategoryService";
 import { getCategories, Category as ApiCategory } from "../../services/api/customerProductService";
 import { getIconByName } from "../../utils/iconLibrary";
-import IconLoader from "../../components/loaders/IconLoader";
+import PageLoader from "../../components/PageLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import "./styles/Categories.css";
 
@@ -68,7 +68,7 @@ export default function Categories() {
       .filter(group => group.categories.length > 0);
   }, [headerCategories, allCategories]);
 
-  if (loading) return <IconLoader forceShow />;
+  if (loading) return <PageLoader />;
 
   if (error && !groupedCategories.length) {
     return (

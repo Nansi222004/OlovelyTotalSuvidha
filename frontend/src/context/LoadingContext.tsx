@@ -13,12 +13,12 @@ const LoadingContext = createContext<LoadingContextType | undefined>(undefined);
 
 export const LoadingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [isRouteLoading, setIsRouteLoading] = useState(true); // Default to true for full page reload
+  const [isRouteLoading, setIsRouteLoading] = useState(false); // Disabled full-page blocking loader
   const loadingStartTime = useRef<number | null>(null);
-  const routeLoadingStartTime = useRef<number | null>(Date.now()); // Start timing immediately
+  const routeLoadingStartTime = useRef<number | null>(null);
   const activeRequests = useRef(0);
-  const activeRouteRequests = useRef(1); // Start with 1 to represent initial page load
-  const MINIMUM_LOADING_TIME = 1000; // 1 second
+  const activeRouteRequests = useRef(0);
+  const MINIMUM_LOADING_TIME = 0; // No artificial delay
 
   const safetyTimer = useRef<NodeJS.Timeout | null>(null);
   const routeSafetyTimer = useRef<NodeJS.Timeout | null>(null);

@@ -21,6 +21,7 @@ import {
   Review,
   ReviewStats,
 } from '../../services/api/customerReviewService';
+import PageLoader from '../../components/PageLoader';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
 
@@ -263,7 +264,7 @@ export default function ProductDetail() {
   const inCartQty = cartItem?.quantity || 0;
 
   if (loading && !product) {
-    return null; // Let the global IconLoader handle this
+    return <PageLoader />;
   }
 
   if (error && !product) {

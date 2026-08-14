@@ -7,16 +7,13 @@ import FeaturedThisWeek from "./components/FeaturedThisWeek";
 import ProductCard from "./components/ProductCard";
 import { getHomeContent } from "../../services/api/customerHomeService";
 import { useLocation } from "../../hooks/useLocation";
-import { useLoading } from "../../context/LoadingContext";
 import PageLoader from "../../components/PageLoader";
-
 import { useThemeContext } from "../../context/ThemeContext";
 
 export default function Home() {
   const navigate = useNavigate();
   const { location } = useLocation();
   const { activeCategory, setActiveCategory } = useThemeContext();
-  const { startRouteLoading, stopRouteLoading } = useLoading();
   const activeTab = activeCategory; // mapping for existing code compatibility
   const setActiveTab = setActiveCategory;
   const contentRef = useRef<HTMLDivElement>(null);
@@ -53,7 +50,6 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        startRouteLoading();
         setLoading(true);
         setError(null);
         // Pass the activeTab as slug (if it's not "all")
@@ -77,7 +73,6 @@ export default function Home() {
         setError("Network error. Please check your connection.");
       } finally {
         setLoading(false);
-        stopRouteLoading();
       }
     };
 
