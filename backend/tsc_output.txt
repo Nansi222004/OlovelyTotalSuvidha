@@ -1,0 +1,6 @@
+﻿src/modules/admin/controllers/adminWalletController.ts(28,11): error TS2451: Cannot redeclare block-scoped variable 'sellerBalanceResult'.
+src/modules/admin/controllers/adminWalletController.ts(34,11): error TS2451: Cannot redeclare block-scoped variable 'deliveryBalanceResult'.
+src/modules/admin/controllers/adminWalletController.ts(170,11): error TS2451: Cannot redeclare block-scoped variable 'sellerBalanceResult'.
+src/modules/admin/controllers/adminWalletController.ts(178,11): error TS2451: Cannot redeclare block-scoped variable 'deliveryBalanceResult'.
+src/services/commissionService.ts(285,31): error TS2552: Cannot find name 'product'. Did you mean 'Product'?
+src/services/commissionService.ts(285,82): error TS2304: Cannot find name 'rateSource'.

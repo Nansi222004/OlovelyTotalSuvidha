@@ -1,0 +1,6 @@
+﻿Connected to MongoDB
+
+≡ƒÅ¬ Seller: Appzeto E-commerce
+≡ƒôì Location: [75.898695, 22.750075]
+≡ƒôÅ Service Radius: 10 km (10000m)
+

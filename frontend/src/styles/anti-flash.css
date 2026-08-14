@@ -1,0 +1,33 @@
+/**
+ * Anti-flash styles to prevent white screen flash on page load
+ */
+
+/* Prevent flash of unstyled content */
+html {
+  background-color: #ffffff;
+}
+
+body {
+  background-color: #ffffff;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Ensure root element has background */
+#root {
+  background-color: #ffffff;
+  min-height: 100vh;
+}
+
+/* Prevent flash during React hydration */
+#root:empty {
+  background-color: #ffffff;
+}
+
+/* Smooth transitions */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+

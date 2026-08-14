@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs and temporary files
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+seed_error.txt
+verification_results.txt
+test-report.json
+product_mappings.json
+
+# Test coverage
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local scripts and debug files (root only)
+/debug_db.cjs
+/test-auth.js
+/test_customer_flow.js
+/fix-orders-index.js
+/check_sellers.ts
+/verify_location_fix.ts
+
+# Firebase credentials (development only - do not commit)
+config/firebase-service-account.json
+
+# Local uploads directory
+uploads/*
+!uploads/.gitkeep
+
+# Cloudinary raw downloaded folder
+cloudinary/
+../cloudinary/
