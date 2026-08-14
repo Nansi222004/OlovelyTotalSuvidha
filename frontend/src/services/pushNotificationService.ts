@@ -1,6 +1,6 @@
 import { getAuthToken } from './api/config';
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BD503Op0wSHlNLuKL8yBeWXJPTelLwcos84inWOOOcioNuzOg6eKssFVXewPi0fEohHHj_9s0krkBNEYaZljoRk';
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
 const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 type FirebaseMessagingModule = typeof import('./firebase');
@@ -21,7 +21,16 @@ async function loadFirebaseMessagingModule(): Promise<FirebaseMessagingModule> {
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
     if ('serviceWorker' in navigator) {
         try {
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            const params = new URLSearchParams({
+                apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+                authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+                projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+                storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+                messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+                appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+                measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || '',
+            });
+            const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?${params.toString()}`);
             console.log('Service Worker registered:', registration);
             return registration;
         } catch (error) {
