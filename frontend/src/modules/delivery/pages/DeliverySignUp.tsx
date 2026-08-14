@@ -297,9 +297,9 @@ export default function DeliverySignUp() {
         <div className="px-6 py-4 text-center border-b border-green-700 bg-white">
           <div className="mb-2">
             <img
-              src="/assets/olovelylogo.jpeg"
+              src="/assets/olovelylogo_transparent.png"
               alt="Olovely Total Suvidha"
-              className="h-28 w-auto max-w-xs mx-auto object-contain"
+              className="h-24 w-auto max-w-xs mx-auto object-contain"
             />
           </div>
           <h1 className="text-2xl font-bold text-neutral-900 mb-1">

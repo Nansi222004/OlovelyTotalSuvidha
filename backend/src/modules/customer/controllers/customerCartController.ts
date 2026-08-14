@@ -68,10 +68,10 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
     let minimumOrderValue = 0;
 
     try {
-        const settings = await AppSettings.getSettings();
-        platformFee = settings.platformFee ?? 2;
-        freeDeliveryThreshold = settings.freeDeliveryThreshold ?? 199;
-        minimumOrderValue = settings.minimumOrderValue ?? 0;
+        const settings = await AppSettings.findOne();
+        platformFee = settings?.platformFee ?? 2;
+        freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
+        minimumOrderValue = settings?.minimumOrderValue ?? 0;
 
         // Check free delivery threshold
         if (freeDeliveryThreshold > 0 && total >= freeDeliveryThreshold) {
@@ -79,10 +79,10 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
         }
         // Standard Delivery: Always Fixed Price
         else if (deliveryOption === 'Standard') {
-            estimatedDeliveryFee = settings.deliveryCharges ?? 40;
+            estimatedDeliveryFee = settings?.deliveryCharges ?? 0;
         }
         // Instant Delivery: Distance Based (if config exists)
-        else if (deliveryOption === 'Instant' && settings.deliveryConfig) {
+        else if (deliveryOption === 'Instant' && settings?.deliveryConfig) {
             const config = settings.deliveryConfig;
             // Default to base charge
             estimatedDeliveryFee = config.baseCharge || 0;
@@ -130,7 +130,7 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
             }
         } else {
             // Fallback for unknown options
-            estimatedDeliveryFee = settings.deliveryCharges ?? 40;
+            estimatedDeliveryFee = settings?.deliveryCharges ?? 40;
         }
     } catch (err) {
         console.error("Error calculating delivery stuff:", err);

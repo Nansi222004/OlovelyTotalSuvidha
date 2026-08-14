@@ -305,10 +305,16 @@ export const getHomeContent = async (req: Request, res: Response) => {
     const bestsellers = await Promise.all(
       bestsellerCards.map(async (card: any) => {
         const categoryId = card.category?._id || card.category;
+        // Get category and any child subcategories
+        const childCats = await Category.find({ parentId: categoryId }).select("_id").lean();
+        const allCategoryIds = [categoryId, ...childCats.map((c: any) => c._id)];
 
-        // Build product query for images (ignore location to show category preview)
+        // Build product query for images
         const productQuery: any = {
-          category: categoryId,
+          $or: [
+            { category: { $in: allCategoryIds } },
+            { subcategory: { $in: allCategoryIds } }
+          ],
           status: "Active",
           publish: true,
         };

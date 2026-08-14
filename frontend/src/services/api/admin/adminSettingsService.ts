@@ -60,6 +60,7 @@ export interface AppSettings {
   appName: string;
   appLogo?: string;
   appFavicon?: string;
+  estimatedDeliveryTime?: string;
   contactEmail: string;
   contactPhone: string;
   supportEmail?: string;

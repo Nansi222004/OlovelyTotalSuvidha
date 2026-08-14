@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from '../../context/CartContext';
 import { useLocation } from '../../hooks/useLocation';
 import { useLoading } from '../../context/LoadingContext';
+import { useAppSettings } from '../../context/AppSettingsContext';
 import Button from '../../components/ui/button';
 import Badge from '../../components/ui/badge';
 import { getProductById } from '../../services/api/customerProductService';
@@ -30,6 +31,7 @@ export default function ProductDetail() {
   const { cart, addToCart, updateQuantity } = useCart();
   const { location } = useLocation();
   const { startLoading, stopLoading } = useLoading();
+  const { settings: appSettings } = useAppSettings();
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isProductDetailsExpanded, setIsProductDetailsExpanded] =
     useState(false);
@@ -965,8 +967,7 @@ export default function ProductDetail() {
                         Customer Care Details:
                       </span>
                       <span className="text-xs text-neutral-600">
-                        {/* TODO: Replace with official Olovely support email once configured */}
-                        Email: help@olovely.com
+                        Email: {appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'} | Phone: +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
                       </span>
                     </div>
                     <div className="flex items-start">

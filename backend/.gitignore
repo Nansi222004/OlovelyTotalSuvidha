@@ -44,8 +44,20 @@ Thumbs.db
 /check_sellers.ts
 /verify_location_fix.ts
 
-# Firebase credentials (development only - do not commit)
+# Firebase credentials and secret keys (do not commit)
 config/firebase-service-account.json
+*firebase-adminsdk*.json
+*service-account*.json
+*credentials*.json
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*token*.txt
+token.txt
+*.txt
 
 # Local uploads directory
 uploads/*

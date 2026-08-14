@@ -153,9 +153,16 @@ export const getSubcategories = asyncHandler(
     // Verify parent category exists (supports both ObjectId and slug/name)
     const parentCategory = await findCategoryByIdOrSlug(id);
     if (!parentCategory) {
-      return res.status(404).json({
-        success: false,
-        message: "Parent category not found",
+      return res.status(200).json({
+        success: true,
+        message: "No subcategories found",
+        data: [],
+        pagination: {
+          page: parseInt(page as string) || 1,
+          limit: parseInt(limit as string) || 10,
+          total: 0,
+          pages: 0,
+        },
       });
     }
 

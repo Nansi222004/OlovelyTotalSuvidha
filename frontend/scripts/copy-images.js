@@ -210,15 +210,28 @@ function copyShopByStoreImages() {
   });
 }
 
-// Copy olovely logo
+// Copy olovely logo & background & manifest icons
 function copyOlovelyLogo() {
-  const olovelyPath = path.join(assetsDir, 'olovelylogo.jpeg');
-  if (fs.existsSync(olovelyPath)) {
-    const destPath = path.join(publicAssetsDir, 'olovelylogo.jpeg');
-    if (!fs.existsSync(destPath)) {
-      fs.copyFileSync(olovelyPath, destPath);
-      console.log('Copied olovely logo: olovelylogo.jpeg');
+  const files = ['olovelylogo.jpeg', 'olovelylogo.png', 'olovelylogo_transparent.png', 'login_background_mobile.jfif'];
+  files.forEach((file) => {
+    const srcPath = path.join(assetsDir, file);
+    if (fs.existsSync(srcPath)) {
+      const destPath = path.join(publicAssetsDir, file);
+      fs.copyFileSync(srcPath, destPath);
+      console.log(`Copied asset: ${file}`);
     }
+  });
+
+  // Ensure public/logo192.png, public/logo512.png, public/favicon.ico exist for manifest
+  const sourceLogo = path.join(assetsDir, 'olovelylogo_transparent.png');
+  if (fs.existsSync(sourceLogo)) {
+    const publicDir = path.join(__dirname, '../public');
+    const manifestIcons = ['logo192.png', 'logo512.png', 'favicon.ico'];
+    manifestIcons.forEach((iconName) => {
+      const target = path.join(publicDir, iconName);
+      fs.copyFileSync(sourceLogo, target);
+      console.log(`Created manifest icon: ${iconName}`);
+    });
   }
 }
 

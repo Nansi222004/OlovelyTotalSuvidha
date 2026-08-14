@@ -29,6 +29,21 @@ lerna-debug.log*
 *service-account*.json
 *credentials*.json
 backend/config/firebase-service-account.json
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*token*.txt
+token.txt
+
+# Temporary, analysis & debug dumps
+*.txt
+!*.md
+lint_results.json
+*.timestamp-*.mjs
+*.mjs.timestamp*
 
 # IDE / Editor
 .vscode/

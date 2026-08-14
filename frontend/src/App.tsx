@@ -7,6 +7,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { LocationProvider } from "./context/LocationContext";
 import { ToastProvider } from "./context/ToastContext";
 import { WishlistProvider } from "./context/WishlistContext";
+import { AppSettingsProvider } from "./context/AppSettingsContext";
 
 import { LoadingProvider } from "./context/LoadingContext";
 import { AxiosLoadingInterceptor } from "./context/AxiosLoadingInterceptor";
@@ -294,6 +295,9 @@ const AdminWallet = lazyWithRetry(() => import("./modules/admin/pages/AdminWalle
 const AdminBillingSettings = lazyWithRetry(
   () => import("./modules/admin/pages/AdminBillingSettings"), "AdminBillingSettings"
 );
+const AdminAppSettings = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminAppSettings"), "AdminAppSettings"
+);
 
 function App() {
   useEffect(() => {
@@ -372,19 +376,20 @@ function App() {
         <AxiosLoadingInterceptor>
           <IconLoader />
           <AuthProvider>
-            <ThemeProvider>
-              <LocationProvider>
-                <ToastProvider>
-                  <WishlistProvider>
-                    <CartProvider>
-                      <OrdersProvider>
-                        <BrowserRouter
-                          future={{
-                            v7_startTransition: true,
-                            v7_relativeSplatPath: true,
-                          }}>
-                          <RouteLoaderTrigger />
-                          <Routes>
+            <AppSettingsProvider>
+              <ThemeProvider>
+                <LocationProvider>
+                  <ToastProvider>
+                    <WishlistProvider>
+                      <CartProvider>
+                        <OrdersProvider>
+                          <BrowserRouter
+                            future={{
+                              v7_startTransition: true,
+                              v7_relativeSplatPath: true,
+                            }}>
+                            <RouteLoaderTrigger />
+                            <Routes>
                           {/* Public Routes */}
                           <Route
                             path="/login"
@@ -826,6 +831,14 @@ function App() {
                                         path="billing-settings"
                                         element={<AdminBillingSettings />}
                                       />
+                                      <Route
+                                        path="app-settings"
+                                        element={<AdminAppSettings />}
+                                      />
+                                      <Route
+                                        path="settings"
+                                        element={<AdminAppSettings />}
+                                      />
                                     </Routes>
                                   </AdminLayout>
                                 </Suspense>
@@ -969,7 +982,8 @@ function App() {
                 </ToastProvider>
               </LocationProvider>
             </ThemeProvider>
-          </AuthProvider>
+          </AppSettingsProvider>
+        </AuthProvider>
         </AxiosLoadingInterceptor>
       </LoadingProvider>
     </ErrorBoundary>

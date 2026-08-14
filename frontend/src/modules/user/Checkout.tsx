@@ -6,6 +6,7 @@ import { useOrders } from "../../hooks/useOrders";
 import { useLocation as useLocationContext } from "../../hooks/useLocation";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
+import { useAppSettings } from "../../context/AppSettingsContext";
 
 // import { products } from '../../data/products'; // Removed
 import { OrderAddress, Order } from "../../types/order";
@@ -54,6 +55,7 @@ export default function Checkout() {
   const { location: userLocation } = useLocationContext();
   const { showToast: showGlobalToast } = useToast();
   const { user, updateUser } = useAuth();
+  const { settings: appSettings } = useAppSettings();
   const navigate = useNavigate();
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [customTipAmount, setCustomTipAmount] = useState<number>(0);
@@ -2367,8 +2369,8 @@ export default function Checkout() {
                 </h3>
                 <p>
                   For any cancellation requests or queries, please contact our
-                  customer support team at support@olovely.com or call
-                  +91-XXXXX-XXXXX
+                  customer support team at {appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'} or call
+                  +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
                 </p>
               </div>
             </div>

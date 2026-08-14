@@ -5,6 +5,7 @@ export interface IAppSettings extends Document {
   appName: string;
   appLogo?: string;
   appFavicon?: string;
+  estimatedDeliveryTime?: string;
 
   // Contact Info
   contactEmail: string;
@@ -140,10 +141,21 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     // App Info
     appName: {
       type: String,
+      default: "Olovely Total Suvidha",
+      trim: true,
+    },
+    appLogo: {
+      type: String,
+      default: "/assets/olovelylogo_transparent.png",
       trim: true,
     },
     appFavicon: {
       type: String,
+      trim: true,
+    },
+    estimatedDeliveryTime: {
+      type: String,
+      default: "12-15 mins",
       trim: true,
     },
 
@@ -414,9 +426,11 @@ AppSettingsSchema.statics.getSettings = async function () {
   let settings = await this.findOne();
   if (!settings) {
     settings = await this.create({
-      appName: "Dhakad Snazzy",
-      contactEmail: "contact@dhakadsnazzy.com",
-      contactPhone: "1234567890",
+      appName: "Olovely Total Suvidha",
+      appLogo: "/assets/olovelylogo_transparent.png",
+      estimatedDeliveryTime: "12-15 mins",
+      contactEmail: "contact@olovely.com",
+      contactPhone: "9876543210",
     });
   }
   return settings;

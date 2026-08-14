@@ -9,6 +9,7 @@ import { getCategories } from '../../../services/api/customerProductService';
 import { Category } from '../../../types/domain';
 import { getHeaderCategoriesPublic } from '../../../services/api/headerCategoryService';
 import { getIconByName } from '../../../utils/iconLibrary';
+import { useAppSettings } from '../../../context/AppSettingsContext';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -35,6 +36,7 @@ const ALL_TAB: Tab = {
 };
 
 export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroProps) {
+  const { settings: appSettings } = useAppSettings();
   const [tabs, setTabs] = useState<Tab[]>([ALL_TAB]);
 
   useEffect(() => {
@@ -273,21 +275,57 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
         marginBottom: 0,
       }}
     >
-      {/* Top section with delivery info and buttons - NOT sticky */}
+      {/* Top section with logo on left, delivery info and name on right - NOT sticky */}
       <div>
-        <div ref={topSectionRef} className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-0">
-          <div className="flex items-start justify-between mb-2 md:mb-2">
-            {/* Left: Text content */}
-            <div className="flex-1 pr-2">
-              {/* Service name - small, dark */}
-              <div className="text-neutral-800 font-medium text-[10px] md:text-xs mb-0 leading-tight">Olovely Total Suvidha</div>
-              {/* Delivery time - large, bold, dark grey/black */}
-              <div className="text-neutral-900 font-extrabold text-2xl md:text-xl mb-0 md:mb-0.5 leading-tight">{appConfig.estimatedDeliveryTime}</div>
+        <div ref={topSectionRef} className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-1">
+          <div className="flex items-center gap-3 mb-1.5">
+            {/* Left: App Logo - Solid white background with fixed compact size */}
+            <div
+              className="bg-white rounded-2xl p-1.5 shadow-sm border border-white/90 flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{
+                width: '50px',
+                height: '50px',
+                minWidth: '50px',
+                maxWidth: '50px',
+                minHeight: '50px',
+                maxHeight: '50px',
+              }}
+            >
+              <img
+                src={appSettings?.appLogo || '/assets/olovelylogo.png'}
+                alt={appSettings?.appName || 'Olovely'}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/assets/olovelylogo.png';
+                }}
+              />
+            </div>
+
+            {/* Right: Text content (App Name, Delivery Time, Location) */}
+            <div className="flex-1 min-w-0 pr-1">
+              {/* Service name - dynamic */}
+              <div className="text-neutral-800 font-bold text-[11px] md:text-xs tracking-tight truncate leading-tight">
+                {appSettings?.appName || 'Olovely Total Suvidha'}
+              </div>
+              {/* Delivery time - large, bold */}
+              <div className="text-neutral-950 font-black text-2xl md:text-xl leading-tight my-0.5">
+                {appSettings?.estimatedDeliveryTime || appConfig.estimatedDeliveryTime || '12-15 mins'}
+              </div>
               {/* Location with dropdown indicator - only show if location is provided */}
               {locationDisplayText && (
-                <div className="text-neutral-700 text-[10px] md:text-xs flex items-center gap-0.5 leading-tight">
-                  <span className="line-clamp-1" title={locationDisplayText}>{locationDisplayText}</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+                <div
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('openLocationChangeModal'));
+                  }}
+                  className="text-neutral-800 hover:text-neutral-950 cursor-pointer text-[10px] md:text-xs inline-flex items-center gap-1 leading-tight transition-colors py-0.5 select-none"
+                  title="Click to change location"
+                >
+                  <span className="line-clamp-1 font-medium" title={locationDisplayText}>{locationDisplayText}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
                     <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>

@@ -82,22 +82,11 @@ router.use(
   deliveryTrackingRoutes
 );
 
-// Seller notifications (protected)
-router.use(
-  "/seller",
-  authenticate,
-  requireUserType("Seller"),
-  sellerNotificationRoutes
-);
+// Seller notifications
+router.use("/seller", sellerNotificationRoutes);
 
-// Customer notifications (protected)
-// Must be registered before general /customer routes.
-router.use(
-  "/customer",
-  authenticate,
-  requireUserType("Customer"),
-  customerNotificationRoutes
-);
+// Customer notifications
+router.use("/customer", customerNotificationRoutes);
 
 // Customer routes - Specific routes MUST be registered before general /customer route
 // to prevent Express from matching the broader route first

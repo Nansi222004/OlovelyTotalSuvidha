@@ -62,27 +62,47 @@ export default function Login() {
     <div
       className="min-h-screen flex flex-col justify-between relative overflow-hidden px-4 py-5 sm:px-6 sm:py-8"
       style={{
-        background: 'linear-gradient(160deg, #123B8E 0%, #1976D2 48%, #16A34A 100%)',
         minHeight: '100vh',
         width: '100%',
         boxSizing: 'border-box',
       }}
     >
-      {/* Subtle Background Glow Elements */}
+      {/* Background Image Layer (Grocery Products Pattern) */}
       <div
-        className="absolute -top-24 -right-24 w-80 h-80 rounded-full pointer-events-none opacity-30 blur-3xl"
-        style={{ background: '#F4B400' }}
+        className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-20 transform scale-105"
+        style={{
+          backgroundImage: 'url(/assets/login_background_mobile.jfif)',
+          filter: 'saturate(1.2)',
+        }}
+      />
+
+      {/* Vibrant Gradient & Ambient Color Overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(165deg, rgba(14, 46, 114, 0.92) 0%, rgba(25, 118, 210, 0.85) 45%, rgba(16, 149, 67, 0.92) 100%)',
+        }}
+      />
+
+      {/* Subtle Glowing Background Orbs */}
+      <div
+        className="absolute -top-20 -right-20 w-80 h-80 rounded-full pointer-events-none opacity-40 blur-3xl"
+        style={{ background: '#F59E0B' }}
       />
       <div
-        className="absolute top-1/2 -left-20 w-72 h-72 rounded-full pointer-events-none opacity-20 blur-3xl"
-        style={{ background: '#ffffff' }}
+        className="absolute top-1/3 -left-20 w-72 h-72 rounded-full pointer-events-none opacity-30 blur-3xl"
+        style={{ background: '#38BDF8' }}
+      />
+      <div
+        className="absolute bottom-10 right-0 w-64 h-64 rounded-full pointer-events-none opacity-25 blur-3xl"
+        style={{ background: '#22C55E' }}
       />
 
       {/* Top Bar / Back Button */}
       <div className="w-full max-w-md mx-auto flex items-center justify-between relative z-10">
         <button
           onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-white/15 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/25 active:scale-95 transition-all shadow-sm"
+          className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/40 text-white flex items-center justify-center hover:bg-white/30 active:scale-95 transition-all shadow-md"
           aria-label="Back"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -93,23 +113,38 @@ export default function Login() {
 
       {/* Center Branding Section */}
       <div className="flex flex-col items-center justify-center text-center my-auto py-4 relative z-10">
-        {/* Logo Card with White Surface */}
-        <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xl shadow-black/15 border border-white/80 inline-flex items-center justify-center mb-3 sm:mb-4 transition-transform duration-300 hover:scale-[1.02]">
-          <img
-            src="/assets/olovelylogo.jpeg"
-            alt="Olovely Total Suvidha"
-            className="w-40 sm:w-48 h-auto max-h-28 sm:max-h-36 object-contain mx-auto rounded-xl"
-          />
+        {/* Logo Card with Colorful Gradient Glow Border */}
+        <div className="p-[2.5px] rounded-3xl bg-gradient-to-tr from-amber-400 via-white to-blue-400 shadow-2xl shadow-black/30 inline-flex items-center justify-center mb-3 sm:mb-4 transition-transform duration-300 hover:scale-[1.03]">
+          <div className="bg-white rounded-[22px] px-4 py-2.5 sm:px-6 sm:py-3 shadow-inner flex items-center justify-center">
+            <img
+              src="/assets/olovelylogo_transparent.png"
+              alt="Olovely Total Suvidha"
+              className="w-44 sm:w-52 h-auto max-h-24 sm:max-h-28 object-contain mx-auto"
+            />
+          </div>
         </div>
 
-        {/* Brand Tagline */}
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
+        {/* Brand Tagline & Delivery Highlights */}
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-md">
             India's Total Suvidha
           </h1>
           <p className="text-xs sm:text-sm text-blue-100 font-medium tracking-wide">
             Fast grocery & daily essentials delivery
           </p>
+
+          {/* Quick Feature Badges */}
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 backdrop-blur-md text-amber-200 border border-white/20 shadow-sm">
+              ⚡ Superfast
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 backdrop-blur-md text-emerald-200 border border-white/20 shadow-sm">
+              🛡️ Best Prices
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 backdrop-blur-md text-sky-200 border border-white/20 shadow-sm">
+              📦 All Essentials
+            </span>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useAppSettings } from '../../context/AppSettingsContext';
 
 interface FAQItem {
   id: string;
@@ -72,6 +73,7 @@ const faqData: FAQItem[] = [
 
 export default function FAQ() {
   const navigate = useNavigate();
+  const { settings: appSettings } = useAppSettings();
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
 
   const toggleItem = (id: string) => {
@@ -212,7 +214,7 @@ export default function FAQ() {
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <a
-                  href="mailto:help@olovely.com"
+                  href={`mailto:${appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'}`}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors text-sm"
                 >
                   <svg
@@ -236,10 +238,10 @@ export default function FAQ() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Email Us
+                  Email Us ({appSettings?.supportEmail || appSettings?.contactEmail || 'Support'})
                 </a>
                 <a
-                  href="tel:+91-XXXXX-XXXXX"
+                  href={`tel:${appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}`}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-green-600 border-2 border-green-600 rounded-lg font-semibold hover:bg-green-50 transition-colors text-sm"
                 >
                   <svg
@@ -256,7 +258,7 @@ export default function FAQ() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Call Us
+                  Call +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
                 </a>
               </div>
             </div>

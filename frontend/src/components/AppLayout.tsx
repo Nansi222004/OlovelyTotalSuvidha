@@ -7,6 +7,7 @@ import LocationPermissionRequest from './LocationPermissionRequest';
 import { useThemeContext } from '../context/ThemeContext';
 import ServiceNotAvailable from './ServiceNotAvailable';
 import { checkServiceability } from '../services/api/customerHomeService';
+import { useAppSettings } from '../context/AppSettingsContext';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -24,6 +25,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [showLocationRequest, setShowLocationRequest] = useState(false);
   const [showLocationChangeModal, setShowLocationChangeModal] = useState(false);
   const { currentTheme } = useThemeContext();
+  const { settings: appSettings } = useAppSettings();
 
   // State to track if service is available at user's location
   const [isServiceAvailable, setIsServiceAvailable] = useState<boolean>(true);
@@ -158,14 +160,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   }, [isCategoriesActive, prevCategoriesActive]);
 
+  // Listen for openLocationChangeModal event from anywhere in the app
+  useEffect(() => {
+    const handleOpen = () => setShowLocationChangeModal(true);
+    window.addEventListener('openLocationChangeModal', handleOpen);
+    return () => window.removeEventListener('openLocationChangeModal', handleOpen);
+  }, []);
+
   const isProductDetailPage = location.pathname.startsWith('/product/');
   const isSearchPage = location.pathname === '/search';
   const isCheckoutPage = location.pathname === '/checkout' || location.pathname.startsWith('/checkout/');
   const isCartPage = location.pathname === '/cart';
   const isAuthPage = ['/login', '/signup', '/seller/login', '/seller/signup', '/delivery/login', '/delivery/signup', '/admin/login'].includes(location.pathname);
+  const isHomePage = location.pathname === '/' || location.pathname === '/user/home';
+  const isOrderAgainPage = location.pathname === '/order-again';
 
-  // Show header on search, category, home, account, etc.
-  const showHeader = !isCheckoutPage && !isCartPage && !isAuthPage;
+  // Show header on search, category, etc. (excluding Home & OrderAgain pages which render HomeHero)
+  const showHeader = !isCheckoutPage && !isCartPage && !isAuthPage && !isHomePage && !isOrderAgainPage;
   // Hide search bar everywhere as requested by user
   const showSearchBar = false;
   const showFooter = !isCheckoutPage && !isProductDetailPage && !isAuthPage;
@@ -178,23 +189,43 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {/* Top Navigation Bar - Desktop Only */}
           {showFooter && (
             <nav
-              className="hidden md:flex items-center justify-center gap-8 px-6 lg:px-8 py-3 shadow-sm transition-colors duration-300"
+              className="hidden md:flex items-center justify-between px-6 lg:px-8 py-2.5 shadow-sm transition-colors duration-300"
               style={{
                 background: `linear-gradient(to right, ${currentTheme.primary[0]}, ${currentTheme.primary[1]})`,
                 borderBottom: `1px solid ${currentTheme.primary[0]}`
               }}
             >
-              {/* Home */}
-              <Link
-                to="/"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/')
-                  ? 'bg-white shadow-md font-semibold'
-                  : 'hover:bg-white/20'
-                  }`}
-                style={{
-                  color: isActive('/') ? currentTheme.accentColor : currentTheme.headerTextColor
-                }}
-              >
+              {/* Brand Logo & Name */}
+              <Link to="/" className="flex items-center gap-2.5 hover:opacity-95 transition-opacity">
+                <img
+                  src={appSettings?.appLogo || '/assets/olovelylogo.png'}
+                  alt={appSettings?.appName || 'Olovely'}
+                  className="w-10 h-10 object-contain rounded-xl bg-white p-1 shadow-sm border border-white/80"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/assets/olovelylogo.png';
+                  }}
+                />
+                <span
+                  className="font-bold text-base tracking-tight"
+                  style={{ color: currentTheme.headerTextColor || '#ffffff' }}
+                >
+                  {appSettings?.appName || 'Olovely Total Suvidha'}
+                </span>
+              </Link>
+
+              {/* Navigation Links */}
+              <div className="flex items-center gap-4 lg:gap-6">
+                {/* Home */}
+                <Link
+                  to="/"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/')
+                    ? 'bg-white shadow-md font-semibold'
+                    : 'hover:bg-white/20'
+                    }`}
+                  style={{
+                    color: isActive('/') ? currentTheme.accentColor : currentTheme.headerTextColor
+                  }}
+                >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   {isActive('/') ? (
                     <>
@@ -289,21 +320,43 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </svg>
                 <span className="font-medium text-sm">Profile</span>
               </Link>
-            </nav>
+            </div>
+          </nav>
           )}
 
-          {/* Sticky Header - Show on search page and other non-home pages, excluding account page */}
-          {(showHeader || isSearchPage) && (
-            <header className="sticky top-0 z-50 bg-white shadow-sm md:shadow-md md:top-[60px]">
+          {/* Sticky Header - Show on search page and other non-hero pages */}
+          {showHeader && (
+            <header
+              className="sticky top-0 z-50 shadow-sm md:shadow-md md:top-[60px] transition-colors duration-300"
+              style={{
+                background: `linear-gradient(to right, ${currentTheme.primary[0]}, ${currentTheme.primary[1]})`,
+                borderBottom: `1px solid ${currentTheme.primary[0]}`
+              }}
+            >
               {/* Delivery info line */}
-              <div className="px-4 md:px-6 lg:px-8 py-1.5 bg-green-50 text-xs text-green-700 text-center">
+              <div
+                className="px-4 md:px-6 lg:px-8 py-1 text-xs text-center font-semibold transition-colors"
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.08)',
+                  color: currentTheme.headerTextColor || '#ffffff'
+                }}
+              >
                 Delivering in 10–15 mins
               </div>
 
               {/* Location line - only show if user has provided location */}
               {userLocation && (userLocation.address || userLocation.city) && (
-                <div className="px-4 md:px-6 lg:px-8 py-2 flex items-center justify-between text-sm">
-                  <span className="text-neutral-700 line-clamp-1" title={userLocation?.address || ''}>
+                <div
+                  className="px-4 md:px-6 lg:px-8 py-2 flex items-center justify-between text-sm transition-colors"
+                  style={{
+                    color: currentTheme.headerTextColor || '#ffffff'
+                  }}
+                >
+                  <span className="font-medium line-clamp-1 flex items-center gap-1.5" title={userLocation?.address || ''}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0" style={{ color: currentTheme.headerTextColor || '#ffffff' }}>
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth="2"/>
+                    </svg>
                     {userLocation?.address
                       ? userLocation.address.length > 50
                         ? `${userLocation.address.substring(0, 50)}...`
@@ -314,7 +367,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   </span>
                   <button
                     onClick={() => setShowLocationChangeModal(true)}
-                    className="text-blue-600 font-medium hover:text-blue-700 transition-colors flex-shrink-0 ml-2"
+                    className="font-bold transition-all flex-shrink-0 ml-2 text-xs px-3 py-1 rounded-full shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
+                    style={{
+                      color: currentTheme.primary[0] || '#48c479',
+                      backgroundColor: '#ffffff'
+                    }}
                   >
                     Change
                   </button>
@@ -330,7 +387,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       value={searchQuery}
                       onChange={(e) => handleSearchChange(e.target.value)}
                       placeholder="Search for products..."
-                      className="w-full px-4 py-2.5 pl-10 bg-neutral-50 border border-neutral-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent md:py-3"
+                      className="w-full px-4 py-2.5 pl-10 bg-white/90 border border-white/20 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent md:py-3"
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">🔍</span>
                   </div>
