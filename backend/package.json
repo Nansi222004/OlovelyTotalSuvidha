@@ -4,7 +4,7 @@
   "description": "Olovely Backend API Server",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc --ignoreDeprecations 6.0",
+    "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "test": "tsx test-auth.ts",
@@ -69,6 +69,6 @@
   },
   "devDependencies": {
     "@types/socket.io-client": "^1.4.36",
-    "typescript": "^6.0.3"
+    "typescript": "^5.7.2"
   }
 }
