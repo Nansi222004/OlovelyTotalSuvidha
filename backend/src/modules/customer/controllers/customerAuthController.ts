@@ -22,15 +22,21 @@ export const sendSmsOtp = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Send SMS OTP - no need to check if customer exists
-  // New customers will be auto-created upon OTP verification
-  const result = await sendSmsOtpService(mobile, "Customer");
+  try {
+    const result = await sendSmsOtpService(mobile, "Customer");
 
-  return res.status(200).json({
-    success: true,
-    message: result.message,
-    sessionId: result.sessionId,
-  });
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      sessionId: result.sessionId,
+    });
+  } catch (error: any) {
+    console.error(`[CUSTOMER_AUTH] send-sms-otp error for ${mobile}:`, error.message);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to send OTP. Please try again.",
+    });
+  }
 });
 
 /**
