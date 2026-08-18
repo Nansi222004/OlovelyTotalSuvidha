@@ -11,7 +11,7 @@ export interface AppConfig {
 // Default configuration (fallback)
 const defaultConfig: AppConfig = {
     deliveryFee: 40,
-    freeDeliveryThreshold: 199,
+    freeDeliveryThreshold: 500,
     platformFee: 2,
     taxes: {
         gst: 18

@@ -174,7 +174,6 @@ export async function getDeliveryPendingOrderAlerts(
     $or: [
       { deliveryBoy: { $exists: false } },
       { deliveryBoy: null },
-      { deliveryBoy: deliveryObjectId },
     ],
     status: { $nin: ["Cancelled", "Rejected", "Returned", "Delivered"] },
   }).lean();
@@ -187,6 +186,18 @@ export async function getDeliveryPendingOrderAlerts(
   for (const order of orders) {
     const orderId = order._id.toString();
 
+    // Skip if order is already assigned to any delivery boy
+    if (order.deliveryBoy) {
+      continue;
+    }
+
+    const offer = offerMap.get(orderId);
+
+    // Skip if offer is not pending (e.g. accepted, rejected, or expired)
+    if (offer && offer.status !== "pending") {
+      continue;
+    }
+
     const rejectedOffer = await DeliveryOrderOffer.findOne({
       order: order._id,
       deliveryBoy: deliveryObjectId,
@@ -197,7 +208,6 @@ export async function getDeliveryPendingOrderAlerts(
       continue;
     }
 
-    const offer = offerMap.get(orderId);
     const deliveryBoyEarning =
       offer?.deliveryBoyEarning ??
       (await calculateEstimatedDeliveryBoyEarning(order));
@@ -267,12 +277,26 @@ export async function markDeliveryOfferRejected(
   orderId: string,
   deliveryBoyId: string,
 ): Promise<void> {
+  const orderObjectId = new mongoose.Types.ObjectId(orderId);
+  const deliveryObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
+
   await DeliveryOrderOffer.findOneAndUpdate(
     {
-      order: new mongoose.Types.ObjectId(orderId),
-      deliveryBoy: new mongoose.Types.ObjectId(deliveryBoyId),
+      order: orderObjectId,
+      deliveryBoy: deliveryObjectId,
     },
     { $set: { status: "rejected", respondedAt: new Date() } },
+  );
+
+  // Mark related notifications as read
+  await Notification.updateMany(
+    {
+      recipientType: "Delivery",
+      recipientId: deliveryObjectId,
+      type: "Order",
+      link: { $regex: new RegExp(`/delivery/orders/${orderId}`) },
+    },
+    { $set: { isRead: true } },
   );
 }
 
@@ -281,6 +305,7 @@ export async function markDeliveryOfferAccepted(
   deliveryBoyId: string,
 ): Promise<void> {
   const orderObjectId = new mongoose.Types.ObjectId(orderId);
+  const deliveryObjectId = new mongoose.Types.ObjectId(deliveryBoyId);
 
   await DeliveryOrderOffer.updateMany(
     { order: orderObjectId, status: "pending" },
@@ -290,10 +315,21 @@ export async function markDeliveryOfferAccepted(
   await DeliveryOrderOffer.findOneAndUpdate(
     {
       order: orderObjectId,
-      deliveryBoy: new mongoose.Types.ObjectId(deliveryBoyId),
+      deliveryBoy: deliveryObjectId,
     },
     { $set: { status: "accepted", respondedAt: new Date() } },
     { upsert: true },
+  );
+
+  // Mark related notifications as read
+  await Notification.updateMany(
+    {
+      recipientType: "Delivery",
+      recipientId: deliveryObjectId,
+      type: "Order",
+      link: { $regex: new RegExp(`/delivery/orders/${orderId}`) },
+    },
+    { $set: { isRead: true } },
   );
 }
 

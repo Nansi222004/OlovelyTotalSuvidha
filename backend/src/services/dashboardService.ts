@@ -41,77 +41,86 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
   try {
     const [
       totalUser,
-      totalCategory,
-      totalSubcategory,
+      parentCategoryCount,
+      childCategoryCount,
+      legacySubcategoryCount,
       totalProduct,
       totalOrders,
       completedOrders,
       pendingOrders,
       cancelledOrders,
-      soldOutProducts,
-      lowStockProducts,
       revenueData,
       avgOrderValue,
+      activeProducts,
     ] = await Promise.all([
-      Customer.countDocuments({ status: "Active" }).catch(() => 0),
-      Category.countDocuments().catch(() => 0),
-      SubCategory.countDocuments().catch((err) => {
-        console.error("Error counting subcategories:", err);
-        return 0;
-      }),
-      Product.countDocuments({ status: "Active" }).catch(() => 0),
-      Order.countDocuments({ status: { $ne: "Pending" } }).catch(() => 0),
-      Order.countDocuments({ status: "Delivered" }).catch(() => 0),
+      Customer.countDocuments({ status: "Active" }),
+      Category.countDocuments({ parentId: null }),
+      Category.countDocuments({ parentId: { $ne: null } }),
+      SubCategory.countDocuments(),
+      Product.countDocuments({ status: "Active" }),
+      Order.countDocuments({ status: { $ne: "Pending" } }),
+      Order.countDocuments({ status: "Delivered" }),
       Order.countDocuments({
-        status: { $in: ["Received", "Processed"] },
-      }).catch(() => 0),
-      Order.countDocuments({ status: "Cancelled" }).catch(() => 0),
-      Product.countDocuments({ stock: 0, status: "Active" }).catch(() => 0),
-      Product.countDocuments({ stock: { $lte: 10, $gt: 0 }, status: "Active" }).catch(() => 0),
+        status: { $in: ["Received", "Accepted", "Processed", "Shipped", "Out for Delivery", "Out For Delivery"] },
+      }),
+      Order.countDocuments({ status: "Cancelled" }),
       Order.aggregate([
         { $match: { status: "Delivered", paymentStatus: "Paid" } },
         { $group: { _id: null, total: { $sum: { $ifNull: ["$total", 0] } } } },
-      ]).catch(() => []),
+      ]),
       Order.aggregate([
         { $match: { status: "Delivered", paymentStatus: "Paid" } },
         { $group: { _id: null, avg: { $avg: { $ifNull: ["$total", 0] } } } },
-      ]).catch(() => []),
+      ]),
+      Product.find({ status: "Active" }).select("stock variations").lean(),
     ]);
+
+    const totalCategory = parentCategoryCount || 0;
+    const totalSubcategory = (childCategoryCount || 0) + (legacySubcategoryCount || 0);
+
+    let soldOutProducts = 0;
+    let lowStockProducts = 0;
+
+    (activeProducts || []).forEach((product: any) => {
+      let isSoldOut = true;
+      let isLowStock = false;
+
+      if (product.variations && product.variations.length > 0) {
+        product.variations.forEach((v: any) => {
+          const stock = v.stock || 0;
+          if (stock > 0) isSoldOut = false;
+          if (stock > 0 && stock < 10) isLowStock = true;
+        });
+      } else {
+        const stock = product.stock || 0;
+        if (stock > 0) isSoldOut = false;
+        if (stock > 0 && stock < 10) isLowStock = true;
+      }
+
+      if (isSoldOut) soldOutProducts++;
+      else if (isLowStock) lowStockProducts++;
+    });
 
     const totalRevenue = revenueData[0]?.total || 0;
     const avgCompletedOrderValue = avgOrderValue[0]?.avg || 0;
 
     return {
       totalUser: totalUser || 0,
-      totalCategory: totalCategory || 0,
-      totalSubcategory: totalSubcategory || 0,
+      totalCategory,
+      totalSubcategory,
       totalProduct: totalProduct || 0,
       totalOrders: totalOrders || 0,
       completedOrders: completedOrders || 0,
       pendingOrders: pendingOrders || 0,
       cancelledOrders: cancelledOrders || 0,
-      soldOutProducts: soldOutProducts || 0,
-      lowStockProducts: lowStockProducts || 0,
+      soldOutProducts,
+      lowStockProducts,
       totalRevenue: totalRevenue || 0,
       avgCompletedOrderValue: Math.round((avgCompletedOrderValue || 0) * 100) / 100,
     };
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
-    // Return default values on error
-    return {
-      totalUser: 0,
-      totalCategory: 0,
-      totalSubcategory: 0,
-      totalProduct: 0,
-      totalOrders: 0,
-      completedOrders: 0,
-      pendingOrders: 0,
-      cancelledOrders: 0,
-      soldOutProducts: 0,
-      lowStockProducts: 0,
-      totalRevenue: 0,
-      avgCompletedOrderValue: 0,
-    };
+    throw error;
   }
 };
 

@@ -329,6 +329,30 @@ export default function ProductDetail() {
     addToCart(productWithVariant, addButtonRef.current);
   };
 
+  const handleBuyNow = async () => {
+    if (!isAvailableAtLocation) {
+      alert("This product is not available for delivery at your location.");
+      return;
+    }
+    if (!isVariantAvailable && variantStock !== 0) {
+      alert("This variant is currently out of stock.");
+      return;
+    }
+    const productWithVariant = {
+      ...product,
+      price: variantPrice,
+      mrp: variantMrp,
+      pack: variantTitle,
+      selectedVariant: selectedVariant,
+      variantId: selectedVariant?._id,
+      variantTitle: variantTitle,
+    };
+    if (inCartQty === 0) {
+      await addToCart(productWithVariant, addButtonRef.current);
+    }
+    navigate('/checkout');
+  };
+
   return (
     <div className="min-h-screen bg-white pb-24">
       {/* Header with back button and action icons */}
@@ -1343,83 +1367,91 @@ export default function ProductDetail() {
             </p>
           </div>
 
-          {/* Right side - Add to cart button or Quantity Stepper */}
-          <div className="ml-3 flex items-center">
-            <AnimatePresence mode="wait">
-              {inCartQty === 0 ? (
-                <motion.div
-                  key="add-button"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center">
-                  <Button
-                    ref={addButtonRef}
-                    variant="default"
-                    size="default"
-                    onClick={handleAddToCart}
-                    disabled={!isAvailableAtLocation || !isVariantAvailable}
-                    className={`px-6 py-2 text-sm font-semibold h-[36px] ${!isAvailableAtLocation || !isVariantAvailable
-                      ? "opacity-50 cursor-not-allowed"
-                      : ""
-                      }`}
-                    title={
-                      !isAvailableAtLocation
-                        ? "Not available at your location"
-                        : !isVariantAvailable
-                          ? "This variant is out of stock"
-                          : ""
-                    }>
-                    {!isAvailableAtLocation
-                      ? "Unavailable"
-                      : !isVariantAvailable
-                        ? "Out of Stock"
-                        : "Add to cart"}
-                  </Button>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="stepper"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-2 bg-white border-2 border-green-600 rounded-full px-2 py-1 h-[36px]">
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      const productId = product.id || product._id;
-                      const variantId = selectedVariant?._id;
-                      updateQuantity(productId, inCartQty - 1, variantId, variantTitle);
-                    }}
-                    className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
-                    style={{ lineHeight: 1 }}>
-                    <span className="relative top-[-1px]">−</span>
-                  </motion.button>
-                  <motion.span
-                    key={inCartQty}
-                    initial={{ scale: 1.2, y: -2 }}
-                    animate={{ scale: 1, y: 0 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                    className="text-sm font-bold text-green-600 min-w-[1.5rem] text-center">
-                    {inCartQty}
-                  </motion.span>
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      const productId = product.id || product._id;
-                      const variantId = selectedVariant?._id;
-                      updateQuantity(productId, inCartQty + 1, variantId, variantTitle);
-                    }}
-                    className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
-                    style={{ lineHeight: 1 }}>
-                    <span className="relative top-[-1px]">+</span>
-                  </motion.button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+          {/* Right side - Action Buttons (Add to Cart / Stepper AND Buy Now) */}
+          <div className="ml-3 flex items-center gap-2">
+            {!isAvailableAtLocation ? (
+              <Button
+                disabled
+                className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
+                Unavailable
+              </Button>
+            ) : !isVariantAvailable ? (
+              <Button
+                disabled
+                className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
+                Out of Stock
+              </Button>
+            ) : (
+              <>
+                <AnimatePresence mode="wait">
+                  {inCartQty === 0 ? (
+                    <motion.div
+                      key="add-button"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center">
+                      <Button
+                        ref={addButtonRef}
+                        variant="outline"
+                        size="default"
+                        onClick={handleAddToCart}
+                        className="px-4 py-2 text-sm font-semibold h-[38px] border-2 border-green-600 text-green-600 hover:bg-green-50 rounded-lg transition-colors whitespace-nowrap">
+                        Add to Cart
+                      </Button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="stepper"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center gap-2 bg-white border-2 border-green-600 rounded-lg px-2 py-1 h-[38px]">
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          const productId = product.id || product._id;
+                          const variantId = selectedVariant?._id;
+                          updateQuantity(productId, inCartQty - 1, variantId, variantTitle);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
+                        style={{ lineHeight: 1 }}>
+                        <span className="relative top-[-1px]">−</span>
+                      </motion.button>
+                      <motion.span
+                        key={inCartQty}
+                        initial={{ scale: 1.2, y: -2 }}
+                        animate={{ scale: 1, y: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                        className="text-sm font-bold text-green-600 min-w-[1.5rem] text-center">
+                        {inCartQty}
+                      </motion.span>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          const productId = product.id || product._id;
+                          const variantId = selectedVariant?._id;
+                          updateQuantity(productId, inCartQty + 1, variantId, variantTitle);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
+                        style={{ lineHeight: 1 }}>
+                        <span className="relative top-[-1px]">+</span>
+                      </motion.button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <Button
+                  onClick={handleBuyNow}
+                  className="px-5 py-2 text-sm font-semibold h-[38px] bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-sm whitespace-nowrap">
+                  Buy Now
+                </Button>
+              </>
+            )}
           </div>
+
         </div>
       </div>
     </div>

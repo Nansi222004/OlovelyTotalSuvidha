@@ -458,6 +458,7 @@ export const getSellerLocationsForOrder = asyncHandler(
 export const sendDeliveryOtp = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
+    const { latitude, longitude } = req.body || {};
     const deliveryId = req.user?.userId;
 
     const order = await Order.findById(id);
@@ -486,6 +487,38 @@ export const sendDeliveryOtp = asyncHandler(
           success: false,
           message: "Order must be picked up before sending delivery OTP",
         });
+    }
+
+    // Distance Security Check (>500m restriction)
+    const testModeActive = process.env.NODE_ENV !== "production" && process.env.DELIVERY_TEST_MODE === "true";
+    if (!testModeActive) {
+      if (latitude !== undefined && longitude !== undefined && order.deliveryAddress?.latitude && order.deliveryAddress?.longitude) {
+        const latNum = Number(latitude);
+        const lngNum = Number(longitude);
+        if (isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid GPS coordinates format provided.",
+          });
+        }
+
+        const { calculateDistance } = await import("../../../utils/locationHelper");
+        const distance = calculateDistance(
+          latNum,
+          lngNum,
+          Number(order.deliveryAddress.latitude),
+          Number(order.deliveryAddress.longitude)
+        );
+        if (distance > 0.5) {
+          return res.status(403).json({
+            success: false,
+            code: "DISTANCE_REQUIREMENT_NOT_SATISFIED",
+            message: `Distance requirement not satisfied. You are ${(distance * 1000).toFixed(0)}m away. Move within 500m to request OTP.`,
+          });
+        }
+      }
+    } else {
+      console.log(`[DELIVERY TEST MODE] GPS proximity check bypassed for order ${id}`);
     }
 
     try {
@@ -860,12 +893,15 @@ export const checkCustomerProximity = asyncHandler(
     const { latitude, longitude } = req.body;
     const deliveryId = req.user?.userId;
 
-    if (latitude === undefined || longitude === undefined) {
+    const latNum = Number(latitude);
+    const lngNum = Number(longitude);
+
+    if (latitude === undefined || longitude === undefined || isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
       return res
         .status(400)
         .json({
           success: false,
-          message: "Latitude and longitude are required",
+          message: "Valid latitude (-90 to 90) and longitude (-180 to 180) are required",
         });
     }
 
@@ -880,6 +916,21 @@ export const checkCustomerProximity = asyncHandler(
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
+    }
+
+    const testModeActive = process.env.NODE_ENV !== "production" && process.env.DELIVERY_TEST_MODE === "true";
+    if (testModeActive) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          withinRange: true,
+          distance: "0.000",
+          distanceMeters: 0,
+          customerName: order.customerName,
+          testMode: true,
+          message: "Development Test Mode — GPS proximity check bypassed",
+        },
+      });
     }
 
     // Get customer location from delivery address
@@ -915,3 +966,56 @@ export const checkCustomerProximity = asyncHandler(
     });
   },
 );
+
+/**
+ * Accept Order (REST Endpoint Fallback)
+ */
+export const acceptOrderController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const deliveryId = req.user?.userId;
+
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { handleOrderAcceptance } = await import(
+      "../../../services/orderNotificationService"
+    );
+    const io = (req.app as any).get("io");
+    const result = await handleOrderAcceptance(io, id, deliveryId);
+
+    if (result.success) {
+      return res.status(200).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  }
+);
+
+/**
+ * Reject Order (REST Endpoint Fallback)
+ */
+export const rejectOrderController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const deliveryId = req.user?.userId;
+
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { handleOrderRejection } = await import(
+      "../../../services/orderNotificationService"
+    );
+    const io = (req.app as any).get("io");
+    const result = await handleOrderRejection(io, id, deliveryId);
+
+    if (result.success) {
+      return res.status(200).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  }
+);
+

@@ -305,3 +305,55 @@ export const sendProductApprovalNotification = async (
     priority: "Medium",
   });
 };
+
+/**
+ * Send seller account approval / status notification
+ */
+export const sendSellerApprovalNotification = async (
+  sellerId: string,
+  status: "Approved" | "Pending" | "Rejected",
+) => {
+  const title =
+    status === "Approved"
+      ? "🎉 Store Application Approved!"
+      : status === "Rejected"
+      ? "Application Update"
+      : "Seller Account Under Review";
+
+  const message =
+    status === "Approved"
+      ? "Congratulations! Your seller account has been approved by admin. You can now access your seller dashboard and manage your products."
+      : status === "Rejected"
+      ? "Your seller application could not be approved at this time. Please contact support for more details."
+      : "Your seller application has been placed under review.";
+
+  return sendNotification("Seller", sellerId, title, message, {
+    type: status === "Approved" ? "Success" : status === "Rejected" ? "Error" : "Info",
+    link: status === "Approved" ? "/seller" : "/seller/under-review",
+    priority: "High",
+  });
+};
+
+/**
+ * Send delivery partner account approval / status notification
+ */
+export const sendDeliveryApprovalNotification = async (
+  deliveryId: string,
+  status: "Active" | "Inactive",
+) => {
+  const title =
+    status === "Active"
+      ? "🎉 Delivery Partner Account Activated!"
+      : "Delivery Account Update";
+
+  const message =
+    status === "Active"
+      ? "Congratulations! Your delivery partner account has been approved and activated. You can now go online and receive delivery orders."
+      : "Your delivery partner account has been set to Inactive.";
+
+  return sendNotification("Delivery", deliveryId, title, message, {
+    type: status === "Active" ? "Success" : "Warning",
+    link: status === "Active" ? "/delivery" : "/delivery/under-review",
+    priority: "High",
+  });
+};

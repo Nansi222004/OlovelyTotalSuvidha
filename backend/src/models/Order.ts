@@ -77,6 +77,7 @@ export interface IOrder extends Document {
   // Delivery OTP
   deliveryOtp?: string;
   deliveryOtpExpiresAt?: Date;
+  deliveryOtpAttempts?: number;
   deliveryOtpVerified?: boolean;
   invoiceEnabled?: boolean;
   deliveryDistanceKm?: number;
@@ -331,6 +332,10 @@ const OrderSchema = new Schema<IOrder>(
     deliveryOtpExpiresAt: {
       type: Date,
     },
+    deliveryOtpAttempts: {
+      type: Number,
+      default: 0,
+    },
     deliveryOtpVerified: {
       type: Boolean,
       default: false,
@@ -491,7 +496,6 @@ OrderSchema.index({ status: 1 });
 OrderSchema.index({ orderDate: -1 });
 OrderSchema.index({ sellerConfirmationStatus: 1, deliveryAssignmentStatus: 1 });
 OrderSchema.index({ deliveryBoy: 1 });
-OrderSchema.index({ orderNumber: 1 });
 
 const Order =
   (mongoose.models.Order as mongoose.Model<IOrder>) ||

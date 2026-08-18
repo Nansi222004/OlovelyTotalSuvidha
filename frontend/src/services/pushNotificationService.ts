@@ -1,7 +1,7 @@
 import { getAuthToken } from './api/config';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
-const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 type FirebaseMessagingModule = typeof import('./firebase');
 
@@ -109,19 +109,20 @@ async function getFCMToken(): Promise<string | null> {
  */
 export async function registerFCMToken(forceUpdate: boolean = false): Promise<string | null> {
     try {
-        const savedToken = localStorage.getItem('fcm_token_web');
-        if (savedToken && !forceUpdate) {
-            console.log('FCM token already registered');
-            return savedToken;
-        }
-
         const hasPermission = await requestNotificationPermission();
         if (!hasPermission) {
             console.warn('Notification permission not granted');
             return null;
         }
 
-        const token = await getFCMToken();
+        let token = localStorage.getItem('fcm_token_web');
+        if (!token || forceUpdate) {
+            const freshToken = await getFCMToken();
+            if (freshToken) {
+                token = freshToken;
+            }
+        }
+
         if (!token) {
             console.error('Failed to get FCM token');
             return null;
@@ -147,10 +148,10 @@ export async function registerFCMToken(forceUpdate: boolean = false): Promise<st
 
         if (response.ok) {
             localStorage.setItem('fcm_token_web', token);
-            console.log('FCM token registered with backend');
+            console.log('✅ FCM token registered with backend successfully');
             return token;
         } else {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             console.error('Failed to register token with backend:', error);
             return null;
         }

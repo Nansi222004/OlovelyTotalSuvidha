@@ -50,35 +50,34 @@ export const getOrderItemCommissionRate = async (
       }
     }
 
-    if (!headerCategoryId) {
-      console.log(
-        `[Commission] No headerCategoryId for product ${product._id}, returning 0%`,
-      );
-      return 0;
-    }
+    // Fetch settings if not provided
+    const settings = _settings || (await AppSettings.getSettings());
+    const globalRate = settings?.globalCommissionRate ?? 10;
 
-    // Look up seller's categoryCommissions for this headerCategory
     const seller = await Seller.findById(finalSellerId);
-    if (!seller || !seller.categoryCommissions || seller.categoryCommissions.length === 0) {
-      console.log(
-        `[Commission] No categoryCommissions for seller ${finalSellerId}, returning 0%`,
+
+    // Level 1: Category Commission
+    if (headerCategoryId && seller && seller.categoryCommissions && seller.categoryCommissions.length > 0) {
+      const headerCatIdStr = headerCategoryId.toString();
+      const entry = seller.categoryCommissions.find(
+        (cc: any) => cc.headerCategory.toString() === headerCatIdStr,
       );
-      return 0;
+
+      if (entry && entry.commissionRate > 0) {
+        return entry.commissionRate;
+      }
     }
 
-    const headerCatIdStr = headerCategoryId.toString();
-    const entry = seller.categoryCommissions.find(
-      (cc: any) => cc.headerCategory.toString() === headerCatIdStr,
-    );
-
-    if (entry && entry.commissionRate > 0) {
-      return entry.commissionRate;
+    // Level 2: Seller Profile Commission Rate
+    if (seller && typeof seller.commissionRate === "number" && seller.commissionRate > 0) {
+      return seller.commissionRate;
     }
 
-    return 0; // No commission set for this category
+    // Level 3: Global AppSettings Commission Rate Default
+    return globalRate;
   } catch (error) {
     console.error("Error calculating commission rate:", error);
-    return 0;
+    return 10; // Default fallback on error
   }
 };
 
@@ -302,8 +301,8 @@ export const createPendingCommissions = async (orderId: string) => {
         `[Commission] Item: ${item.product}, Rate: ${commissionRate}%, Amount: ${commissionAmount}, Net: ${netEarning}`,
       );
 
-      // Create commission record as PAID immediately
-      const commission = await Commission.create({
+      // Create commission record as Pending (to be released upon delivery)
+      await Commission.create({
         order: item.order,
         orderItem: item._id,
         seller: item.seller,
@@ -311,24 +310,11 @@ export const createPendingCommissions = async (orderId: string) => {
         orderAmount: item.total,
         commissionRate,
         commissionAmount,
-        status: "Paid", // Set to Paid immediately
-        paidAt: new Date(),
+        status: "Pending",
       });
-
-      // Credit Wallet Immediately
-      if (seller) {
-        await creditWallet(
-          seller._id.toString(),
-          "SELLER",
-          netEarning,
-          `Sale proceeds from Order #${order.orderNumber}`,
-          item.order.toString(),
-          commission._id.toString(),
-        );
-      }
     }
 
-    console.log(`Commissions processed and credited for order ${orderId}`);
+    console.log(`Pending commissions created for order ${orderId}`);
   } catch (error) {
     console.error("Error creating commissions:", error);
     throw error;
@@ -1030,11 +1016,12 @@ export const calculateCODOrderBreakdown = async (
       breakdown.adminDeliveryCommission = breakdown.totalDeliveryCharge;
     }
 
-    // 3. Calculate Total Admin Earning (Self Assign: admin gets product commission + platform fee only; no delivery)
-    breakdown.totalAdminEarning =
-      breakdown.adminProductCommission +
-      breakdown.platformFee +
-      (isSelfAssign ? 0 : breakdown.adminDeliveryCommission);
+    // 3. Calculate Total Admin Net Earning (Product Commission + Platform Fee + Shipping - Delivery Partner Share)
+    const deliveryPartnerShare = (isSelfAssign || !order.deliveryBoy) ? 0 : breakdown.deliveryBoyCommission;
+    const customerShipping = isSelfAssign ? 0 : breakdown.totalDeliveryCharge;
+    breakdown.totalAdminEarning = Math.round(
+      (breakdown.adminProductCommission + breakdown.platformFee + customerShipping - deliveryPartnerShare) * 100
+    ) / 100;
 
     // 4. Amount Delivery Boy Owes Admin (only when delivery boy assigned)
     breakdown.amountDeliveryBoyOwesAdmin = order.deliveryBoy ? breakdown.totalOrderAmount : 0;
@@ -1153,10 +1140,11 @@ export const getOrderEarningBreakdown = async (
     breakdown.adminDeliveryCommission = breakdown.totalDeliveryCharge;
   }
 
-  breakdown.totalAdminEarning =
-    breakdown.adminProductCommission +
-    breakdown.platformFee +
-    (isSelfAssign ? 0 : breakdown.adminDeliveryCommission);
+  const deliveryPartnerShare = (isSelfAssign || !order.deliveryBoy) ? 0 : breakdown.deliveryBoyCommission;
+  const customerShipping = isSelfAssign ? 0 : breakdown.totalDeliveryCharge;
+  breakdown.totalAdminEarning = Math.round(
+    (breakdown.adminProductCommission + breakdown.platformFee + customerShipping - deliveryPartnerShare) * 100
+  ) / 100;
 
   return breakdown;
 };
@@ -1350,10 +1338,11 @@ export const processCODOrderDelivery = async (
         type: "DELIVERY_BOY",
         orderAmount:
           breakdown.deliveryDistanceKm || breakdown.totalDeliveryCharge,
-        commissionRate: breakdown.deliveryDistanceKm
+        commissionRate: breakdown.deliveryDistanceKm && breakdown.deliveryDistanceKm > 0
           ? breakdown.deliveryBoyCommission / breakdown.deliveryDistanceKm
-          : (breakdown.deliveryBoyCommission / breakdown.totalDeliveryCharge) *
-          100,
+          : (breakdown.totalDeliveryCharge && breakdown.totalDeliveryCharge > 0
+              ? (breakdown.deliveryBoyCommission / breakdown.totalDeliveryCharge) * 100
+              : 5),
         commissionAmount: breakdown.deliveryBoyCommission,
         status: "Paid", // Delivery boy gets paid immediately
         paidAt: new Date(),

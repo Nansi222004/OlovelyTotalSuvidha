@@ -61,8 +61,11 @@ export const verifyOTP = async (mobile: string, otp: string): Promise<VerifyOTPR
   const response = await api.post<VerifyOTPResponse>('/auth/admin/verify-otp', { mobile, otp });
 
   if (response.data.success && response.data.data.token) {
-    setAuthToken(response.data.data.token);
-    localStorage.setItem('userData', JSON.stringify(response.data.data.user));
+    const userWithUserType = {
+      ...response.data.data.user,
+      userType: 'Admin' as const,
+    };
+    setAuthToken(response.data.data.token, 'Admin', userWithUserType);
   }
 
   return response.data;
@@ -75,8 +78,11 @@ export const register = async (data: RegisterData): Promise<RegisterResponse> =>
   const response = await api.post<RegisterResponse>('/auth/admin/register', data);
 
   if (response.data.success && response.data.data.token) {
-    setAuthToken(response.data.data.token);
-    localStorage.setItem('userData', JSON.stringify(response.data.data.user));
+    const userWithUserType = {
+      ...response.data.data.user,
+      userType: 'Admin' as const,
+    };
+    setAuthToken(response.data.data.token, 'Admin', userWithUserType);
   }
 
   return response.data;
@@ -86,7 +92,7 @@ export const register = async (data: RegisterData): Promise<RegisterResponse> =>
  * Logout admin
  */
 export const logout = (): void => {
-  removeAuthToken();
+  removeAuthToken('admin');
 };
 
 export interface AdminProfileResponse {

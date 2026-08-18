@@ -21,19 +21,15 @@ import Order from "../../../models/Order";
  */
 export const getFinancialDashboard = asyncHandler(
   async (_req: Request, res: Response) => {
-    // Import PlatformWallet
     const PlatformWallet = (await import("../../../models/PlatformWallet")).default;
-
-    // Get Platform Wallet data
-    const platformWallet = await PlatformWallet.findOne();
 
     // 1. Calculate Real-time Seller Pending Payouts -> Sum of all Seller Balances
     const sellerBalanceResult = await Seller.aggregate([
       { $group: { _id: null, total: { $sum: "$balance" } } },
     ]);
-    const realTimeSellerPending = sellerBalanceResult.length > 0 ? sellerBalanceResult[0].total : 0;
+    const sellerPendingPayouts = sellerBalanceResult.length > 0 ? sellerBalanceResult[0].total : 0;
 
-    // 2. Calculate Real-time Delivery Boy Pending Payouts & Debt
+    // 2. Calculate Real-time Delivery Boy Pending Payouts & Pending Debt
     const deliveryBalanceResult = await Delivery.aggregate([
       {
         $group: {
@@ -43,104 +39,31 @@ export const getFinancialDashboard = asyncHandler(
         },
       },
     ]);
-    const realTimeDeliveryPendingPayouts = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalBalance : 0;
-    const realTimePendingFromDeliveryBoy = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalPendingDebt : 0;
+    const deliveryBoyPendingPayouts = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalBalance : 0;
+    const pendingFromDeliveryBoy = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalPendingDebt : 0;
 
-    if (platformWallet) {
-      // Use platform wallet for overall earnings but real-time aggregates for payouts
-      return res.status(200).json({
-        success: true,
-        data: {
-          // Platform Wallet Data (Earnings & Balance)
-          totalPlatformEarning: platformWallet.totalPlatformEarning,
-          currentPlatformBalance: platformWallet.currentPlatformBalance,
-          totalAdminEarning: Math.round(platformWallet.totalAdminEarning * 100) / 100,
-
-          // Real-time aggregates of balances (Liabilities)
-          pendingFromDeliveryBoy: realTimePendingFromDeliveryBoy,
-          sellerPendingPayouts: realTimeSellerPending,
-          deliveryBoyPendingPayouts: realTimeDeliveryPendingPayouts,
-          deliveryPendingPayouts: realTimeDeliveryPendingPayouts,
-
-          // Legacy fields for backward compatibility
-          totalGMV: platformWallet.totalPlatformEarning,
-          totalAdminEarnings: Math.round(platformWallet.totalAdminEarning * 100) / 100,
-          currentAccountBalance: platformWallet.currentPlatformBalance,
-          pendingAmountFromDeliveryBoy: realTimePendingFromDeliveryBoy,
-
-          // Additional stats
-          pendingWithdrawalsCount: await WithdrawRequest.countDocuments({
-            status: "Pending",
-          }),
-        },
-      });
-    }
-
-    // Fallback: Calculate from scratch if platform wallet doesn't exist yet
-    // (This handles the case before any COD orders have been processed)
-
-    // 1. Total Platform Earnings (Net GMV)
-    // Formula: Sum(Order.total) - Sum(Delivery Commissions)
-    // This represents the total money that flows into the platform (Admin + Sellers)
+    // 3. Gross Platform Earnings (Gross GMV collected from customers on Paid/Delivered orders)
     const totalOrderAmountResult = await Order.aggregate([
       { $match: { status: { $ne: "Cancelled" }, paymentStatus: "Paid" } },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]);
-    const totalOrderAmount =
-      totalOrderAmountResult.length > 0 ? totalOrderAmountResult[0].total : 0;
+    const totalPlatformEarning = totalOrderAmountResult.length > 0 ? totalOrderAmountResult[0].total : 0;
 
-    // All delivery commissions (to be subtracted from gross GMV for net platform earnings)
-    // For COD orders, the user requested not to reduce anything from platform earning and balance
-    const allDeliveryCommResult = await Commission.aggregate([
-      { $match: { type: "DELIVERY_BOY", status: { $ne: "Cancelled" } } },
-      {
-        $lookup: {
-          from: "orders",
-          localField: "order",
-          foreignField: "_id",
-          as: "orderData",
-        },
-      },
-      { $unwind: "$orderData" },
-      { $match: { "orderData.paymentMethod": { $ne: "COD" } } },
-      { $group: { _id: null, total: { $sum: "$commissionAmount" } } },
-    ]);
-    const allDeliveryCommissions =
-      allDeliveryCommResult.length > 0 ? allDeliveryCommResult[0].total : 0;
-
-    const totalGMV = totalOrderAmount - allDeliveryCommissions;
-
-    // 2. Total Admin Earnings
-    // Formula: SellerCommissions + OrderFees (Platform+Shipping) - DeliveryCommissions
-
-    // A. Seller Commissions (The 10% part)
+    // 4. Seller Commissions collected on Paid/Delivered orders
     const sellerCommResult = await Commission.aggregate([
       { $match: { type: "SELLER", status: { $ne: "Cancelled" } } },
       { $group: { _id: null, total: { $sum: "$commissionAmount" } } },
     ]);
-    const sellerCommissions =
-      sellerCommResult.length > 0 ? sellerCommResult[0].total : 0;
+    const sellerCommissions = sellerCommResult.length > 0 ? sellerCommResult[0].total : 0;
 
-    // B. Delivery Commissions (The part paid to delivery boy)
-    // For COD orders, the user requested not to subtract delivery commissions from admin earnings
+    // 5. Delivery Commissions payable to delivery boys
     const deliveryCommResult = await Commission.aggregate([
       { $match: { type: "DELIVERY_BOY", status: { $ne: "Cancelled" } } },
-      {
-        $lookup: {
-          from: "orders",
-          localField: "order",
-          foreignField: "_id",
-          as: "orderData",
-        },
-      },
-      { $unwind: "$orderData" },
-      { $match: { "orderData.paymentMethod": { $ne: "COD" } } },
       { $group: { _id: null, total: { $sum: "$commissionAmount" } } },
     ]);
-    const deliveryCommissions =
-      deliveryCommResult.length > 0 ? deliveryCommResult[0].total : 0;
+    const deliveryCommissions = deliveryCommResult.length > 0 ? deliveryCommResult[0].total : 0;
 
-    // C. Order Fees (Platform Fee + Shipping Charge)
+    // 6. Order Fees (Platform Fee + Shipping Charge) collected
     const orderFeesResult = await Order.aggregate([
       { $match: { status: { $ne: "Cancelled" }, paymentStatus: "Paid" } },
       {
@@ -152,40 +75,53 @@ export const getFinancialDashboard = asyncHandler(
     ]);
     const orderFees = orderFeesResult.length > 0 ? orderFeesResult[0].total : 0;
 
-    // Calculation: (SellerComm + PlatformFee + Shipping) - DeliveryComm
-    // This effectively gives: SellerComm + PlatformFee + (Shipping - DeliveryComm) -> where (Shipping-DeliveryComm) is Base Charge
-    const totalAdminEarnings =
-      sellerCommissions + orderFees - deliveryCommissions;
+    // 7. Net Admin Earning = SellerCommissions + PlatformFees + ShippingCharges - DeliveryCommissions
+    const rawAdminEarning = sellerCommissions + orderFees - deliveryCommissions;
+    const totalAdminEarning = Math.round(rawAdminEarning * 100) / 100;
 
-    // Calculate Total Completed Withdrawals (Outflow)
+    // 8. Total Completed Withdrawals Outflow
     const withdrawalResult = await WithdrawRequest.aggregate([
       { $match: { status: "Completed" } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const totalWithdrawals =
-      withdrawalResult.length > 0 ? withdrawalResult[0].total : 0;
+    const totalWithdrawals = withdrawalResult.length > 0 ? withdrawalResult[0].total : 0;
 
-    // Current Platform Balance = Total Inflow (GMV) - Total Outflow (Withdrawals)
-    const currentAccountBalance = totalGMV - totalWithdrawals;
+    // 9. Current Platform Available Cash = Gross GMV - Seller Balances - Delivery Balances - Completed Withdrawals
+    const currentPlatformBalance = Math.max(
+      0,
+      Math.round((totalPlatformEarning - sellerPendingPayouts - deliveryBoyPendingPayouts - totalWithdrawals) * 100) / 100
+    );
 
-    // 3. Reuse calculated Real-time Seller Pending Payouts
-    const sellerPendingPayouts = realTimeSellerPending;
-
-    // 4. Reuse calculated Real-time Delivery Boy Pending Payouts
-    const deliveryPendingPayouts = realTimeDeliveryPendingPayouts;
-    const pendingAmountFromDeliveryBoy = realTimePendingFromDeliveryBoy;
+    // Sync PlatformWallet document in DB asynchronously for background consistency
+    PlatformWallet.getWallet().then((pw) => {
+      pw.totalPlatformEarning = totalPlatformEarning;
+      pw.currentPlatformBalance = currentPlatformBalance;
+      pw.totalAdminEarning = Math.max(0, totalAdminEarning);
+      pw.sellerPendingPayouts = sellerPendingPayouts;
+      pw.deliveryBoyPendingPayouts = deliveryBoyPendingPayouts;
+      pw.pendingFromDeliveryBoy = pendingFromDeliveryBoy;
+      pw.save().catch((e) => console.error("Error background saving PlatformWallet:", e));
+    });
 
     return res.status(200).json({
       success: true,
       data: {
-        totalGMV,
-        totalAdminEarnings,
-        totalWithdrawals,
-        currentAccountBalance,
+        totalPlatformEarning,
+        currentPlatformBalance,
+        totalAdminEarning,
+
         sellerPendingPayouts,
-        deliveryPendingPayouts,
-        pendingAmountFromDeliveryBoy,
-        // Legacy field just in case
+        deliveryBoyPendingPayouts,
+        deliveryPendingPayouts: deliveryBoyPendingPayouts,
+        pendingFromDeliveryBoy,
+
+        // Legacy fields for backward compatibility
+        totalGMV: totalPlatformEarning,
+        totalAdminEarnings: totalAdminEarning,
+        currentAccountBalance: currentPlatformBalance,
+        pendingAmountFromDeliveryBoy: pendingFromDeliveryBoy,
+        totalWithdrawals,
+
         pendingWithdrawalsCount: await WithdrawRequest.countDocuments({
           status: "Pending",
         }),

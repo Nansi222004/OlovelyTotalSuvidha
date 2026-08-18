@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getProfile, updateProfile, type AdminProfile as AdminProfileType } from '../../../services/api/admin/adminProfileService';
 import { useAuth } from '../../../context/AuthContext';
+import { getStoredUserData, getAuthToken, setAuthToken } from '../../../services/api/config';
 
 export default function AdminProfile() {
     const { isAuthenticated } = useAuth();
@@ -93,15 +94,14 @@ export default function AdminProfile() {
                 setSuccess('Profile updated successfully!');
                 setIsEditing(false);
 
-                // Update localStorage userData
-                const userData = localStorage.getItem('userData');
-                if (userData) {
-                    const parsedData = JSON.parse(userData);
-                    parsedData.firstName = response.data.firstName;
-                    parsedData.lastName = response.data.lastName;
-                    parsedData.email = response.data.email;
-                    parsedData.mobile = response.data.mobile;
-                    localStorage.setItem('userData', JSON.stringify(parsedData));
+                // Update role-isolated admin user data
+                const adminData = getStoredUserData('admin');
+                if (adminData) {
+                    adminData.firstName = response.data.firstName;
+                    adminData.lastName = response.data.lastName;
+                    adminData.email = response.data.email;
+                    adminData.mobile = response.data.mobile;
+                    setAuthToken(getAuthToken('admin') || '', 'Admin', adminData);
                 }
 
                 // Clear success message after 3 seconds

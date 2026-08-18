@@ -87,6 +87,13 @@ export const updateSellerStatus = asyncHandler(
       });
     }
 
+    // Trigger push notification and in-app alert to seller asynchronously
+    import("../../../services/notificationService").then(({ sendSellerApprovalNotification }) => {
+      sendSellerApprovalNotification(id, status).catch((err: any) => {
+        console.error(`❌ [Push Notification Error] Failed to send approval notification to seller ${id}:`, err?.message);
+      });
+    });
+
     return res.status(200).json({
       success: true,
       message: `Seller status updated to ${status}`,

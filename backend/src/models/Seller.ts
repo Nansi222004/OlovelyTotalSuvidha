@@ -200,7 +200,6 @@ const SellerSchema = new Schema<ISeller>(
       type: {
         type: String,
         enum: ['Point'],
-        default: 'Point',
       },
       coordinates: {
         type: [Number], // [longitude, latitude]

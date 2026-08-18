@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 dotenv.config({ path: path.join(__dirname, '../../.env') });
+dotenv.config(); // Also check current working directory .env
+
 
 const SAMPLE_PRODUCTS = [
   {
@@ -144,6 +146,9 @@ async function fixData() {
   console.log('Connecting to', uri);
   await mongoose.connect(uri);
   const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('Database connection not established');
+  }
 
   // 1. Ensure approved seller with 500km radius so service is always available
   let seller = await db.collection('sellers').findOne({});
@@ -276,8 +281,10 @@ async function fixData() {
     createdAt: new Date(),
     updatedAt: new Date(),
   }));
-  await db.collection('lowestpricesproducts').insertMany(lpDocs);
-  console.log(`Populated LowestPricesProducts: ${lpDocs.length}`);
+  if (lpDocs.length > 0) {
+    await db.collection('lowestpricesproducts').insertMany(lpDocs);
+    console.log(`Populated LowestPricesProducts: ${lpDocs.length}`);
+  }
 
   // 7. Populate BestsellerCards with categories that have products
   await db.collection('bestsellercards').deleteMany({});

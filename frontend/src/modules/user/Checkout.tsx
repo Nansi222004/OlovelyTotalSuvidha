@@ -137,7 +137,7 @@ export default function Checkout() {
 
   // Check if user has placeholder data (needs profile completion)
   const isPlaceholderUser =
-    user?.name === "User" || user?.email?.endsWith("@olovely.temp") || user?.email?.endsWith("@dhakadsnazzy.temp");
+    user?.name === "User" || user?.email?.endsWith("@olovely.temp");
 
   // Redirect logic removed to prevent auto-redirect on refresh issues
   // Instead we will show an Empty Cart UI
@@ -547,7 +547,7 @@ export default function Checkout() {
     if (!bypassProfileCheck && isPlaceholderUser) {
       setProfileFormData({
         name: user?.name === "User" ? "" : user?.name || "",
-        email: (user?.email?.endsWith("@olovely.temp") || user?.email?.endsWith("@dhakadsnazzy.temp"))
+        email: user?.email?.endsWith("@olovely.temp")
           ? ""
           : user?.email || "",
       });

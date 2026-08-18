@@ -19,13 +19,12 @@ dotenv.config();
 const app: Application = express();
 const httpServer = createServer(app);
 
-// Simple CORS configuration - Standard and reliable
-const allowedOrigins = [
-  "https://www.dhakadsnazzy.com",
-  "https://dhakadsnazzy.com",
-  // Add more origins from environment variable if needed
-  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(url => url.trim()) : [])
+// Environment-driven CORS configuration
+const envOrigins = [
+  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(url => url.trim()) : []),
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",").map(url => url.trim()) : [])
 ];
+const allowedOrigins = envOrigins.filter(url => url.length > 0);
 
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {

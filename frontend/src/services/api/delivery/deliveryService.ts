@@ -101,10 +101,11 @@ export const getSellerLocationsForOrder = async (id: string) => {
   }
 };
 
-export const sendDeliveryOtp = async (id: string) => {
+export const sendDeliveryOtp = async (id: string, coords?: { latitude?: number; longitude?: number }) => {
   try {
     const response = await api.post(
       `${BASE_URL}/orders/${id}/send-delivery-otp`,
+      coords || {}
     );
     return response.data;
   } catch (error) {

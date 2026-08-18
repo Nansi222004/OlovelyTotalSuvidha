@@ -1,12 +1,15 @@
 import { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import SellerUnderReview from "../modules/seller/pages/SellerUnderReview";
+import DeliveryUnderReview from "../modules/delivery/pages/DeliveryUnderReview";
 
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredRole?: string;
   requiredUserType?: "Admin" | "Seller" | "Customer" | "Delivery";
   redirectTo?: string;
+  allowUnapproved?: boolean;
 }
 
 export default function ProtectedRoute({
@@ -14,6 +17,7 @@ export default function ProtectedRoute({
   requiredRole,
   requiredUserType,
   redirectTo = "/login",
+  allowUnapproved = false,
 }: ProtectedRouteProps) {
   const { isAuthenticated, user, token } = useAuth();
   const location = useLocation();
@@ -34,7 +38,7 @@ export default function ProtectedRoute({
     if (requiredUserType === "Admin") {
       const isAdmin = userType === "Admin" || userType === "Super Admin";
       if (!isAdmin) {
-        return <Navigate to={redirectTo} state={{ from: location }} replace />;
+        return <Navigate to="/admin/login" state={{ from: location }} replace />;
       }
     } else if (userType && userType !== requiredUserType) {
       return <Navigate to={redirectTo} state={{ from: location }} replace />;
@@ -46,6 +50,21 @@ export default function ProtectedRoute({
     const userRole = (user as any).role;
     if (!userRole || userRole !== requiredRole) {
       return <Navigate to={redirectTo} state={{ from: location }} replace />;
+    }
+  }
+
+  // Check approval/activation status for operational routes
+  if (!allowUnapproved && user) {
+    if (requiredUserType === "Seller" || (user as any).userType === "Seller") {
+      const status = (user as any).status;
+      if (status === "Pending" || status === "Rejected" || status !== "Approved") {
+        return <SellerUnderReview />;
+      }
+    } else if (requiredUserType === "Delivery" || (user as any).userType === "Delivery") {
+      const status = (user as any).status;
+      if (status === "Inactive" || status === "Pending" || status !== "Active") {
+        return <DeliveryUnderReview />;
+      }
     }
   }
 

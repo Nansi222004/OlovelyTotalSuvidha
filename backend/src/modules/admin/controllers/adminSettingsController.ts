@@ -136,9 +136,9 @@ export const updateSMSGatewaySettings = asyncHandler(
 
     if (!settings) {
       settings = await AppSettings.create({
-        appName: "Dhakad Snazzy",
-        contactEmail: "contact@dhakadsnazzy.com",
-        contactPhone: "1234567890",
+        appName: "Olovely Total Suvidha",
+        contactEmail: "contact@olovely.com",
+        contactPhone: "9876543210",
         smsGateway,
       });
     } else {

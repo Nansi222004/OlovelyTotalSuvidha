@@ -595,13 +595,22 @@ export default function SellerAddProduct() {
                     value={formData.headerCategory}
                     onChange={handleChange}
                     className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
-                    <option value="">Select Header Category</option>
+                    <option value="">
+                      {headerCategories.length > 0
+                        ? "Select Header Category"
+                        : "No Allowed Categories Assigned"}
+                    </option>
                     {headerCategories.map((headerCat) => (
                       <option key={headerCat._id} value={headerCat._id}>
                         {headerCat.name}
                       </option>
                     ))}
                   </select>
+                  {headerCategories.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      No allowed categories assigned. You can select categories in Store Settings or ask Admin.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -744,20 +753,27 @@ export default function SellerAddProduct() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Select Brand
+                    Select Brand <span className="text-xs font-normal text-neutral-500">(Optional)</span>
                   </label>
                   <select
                     name="brand"
                     value={formData.brand}
                     onChange={handleChange}
                     className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
-                    <option value="">Select Brand</option>
+                    <option value="">
+                      {brands.length > 0 ? "Select Brand" : "Select Brand (No brands available)"}
+                    </option>
                     {brands.map((brand) => (
                       <option key={brand._id} value={brand._id}>
                         {brand.name}
                       </option>
                     ))}
                   </select>
+                  {brands.length === 0 && (
+                    <p className="mt-1 text-xs text-neutral-500">
+                      No brands currently added by Admin. Brand selection is optional.
+                    </p>
+                  )}
                 </div>
               </div>
               <div>

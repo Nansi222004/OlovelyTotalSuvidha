@@ -80,9 +80,15 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Ensure userType is set in user object if missing (for backward compatibility)
+    // Ensure userType is set in user object if missing (safely preserving Admin/Seller roles)
     if (isAuthenticated && user && !user.userType) {
-      const updatedUser = { ...user, userType: "Customer" as const };
+      const isRoleAdmin = user.role === "Admin" || user.role === "Super Admin";
+      const inferredType: "Admin" | "Seller" | "Customer" = isRoleAdmin
+        ? "Admin"
+        : user.storeName || user.sellerName
+        ? "Seller"
+        : "Customer";
+      const updatedUser = { ...user, userType: inferredType };
       updateUser(updatedUser);
     }
 

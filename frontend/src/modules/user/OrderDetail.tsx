@@ -13,6 +13,8 @@ import {
   getMyReviewForOrderProduct,
 } from "../../services/api/customerReviewService";
 import StarRating from "../../components/ui/StarRating";
+import RazorpayCheckout from "../../components/RazorpayCheckout";
+import { useAuth } from "../../context/AuthContext";
 
 // Icon Components
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
@@ -463,6 +465,8 @@ export default function OrderDetail() {
     durationValue: number;
     distanceValue: number;
   } | null>(null);
+  const { user } = useAuth();
+  const [showRazorpayCheckout, setShowRazorpayCheckout] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal states
@@ -1082,25 +1086,29 @@ export default function OrderDetail() {
       {/* Scrollable Content */}
       <div className="px-4 py-4 space-y-4 pb-24">
         {/* Payment Pending */}
-        <motion.div
-          className="bg-white rounded-xl p-4 shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">
-                Payment of ₹{order.totalAmount?.toFixed(0) || "0"} pending
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Pay now, or pay to the delivery partner using Cash/UPI
-              </p>
+        {order?.paymentStatus !== "Paid" && (
+          <motion.div
+            className="bg-white rounded-xl p-4 shadow-sm"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-gray-900">
+                  Payment of ₹{order.totalAmount?.toFixed(0) || order.total?.toFixed(0) || "0"} pending
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Pay now, or pay to the delivery partner using Cash/UPI
+                </p>
+              </div>
+              <Button
+                onClick={() => setShowRazorpayCheckout(true)}
+                className="bg-gray-900 hover:bg-gray-800 text-white rounded-full px-6">
+                Pay now <ChevronRightIcon className="w-4 h-4 ml-1" />
+              </Button>
             </div>
-            <Button className="bg-gray-900 hover:bg-gray-800 text-white rounded-full px-6">
-              Pay now <ChevronRightIcon className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
         {/* Promo Carousel */}
         <PromoCarousel />
@@ -1672,6 +1680,31 @@ export default function OrderDetail() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Razorpay Checkout Modal */}
+      {showRazorpayCheckout && order && (
+        <RazorpayCheckout
+          orderId={order._id || order.id || id!}
+          amount={order.totalAmount || order.total || 0}
+          customerDetails={{
+            name: user?.name || order.customerName || order.address?.name || "Customer",
+            email: user?.email || order.customerEmail || "customer@olovely.com",
+            phone: user?.phone || order.customerPhone || order.address?.phone || "9999999999",
+          }}
+          onSuccess={(paymentId) => {
+            console.log("Payment successful:", paymentId);
+            setShowRazorpayCheckout(false);
+            handleRefresh();
+          }}
+          onFailure={(error) => {
+            console.error("Payment failed:", error);
+            setShowRazorpayCheckout(false);
+            if (error !== "Payment cancelled by user") {
+              alert(`Payment note: ${error}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -111,6 +111,7 @@ export default function DeliveryOrderDetail() {
     // New state for customer proximity
     const [customerProximity, setCustomerProximity] = useState<{ withinRange: boolean; distance: number } | null>(null);
     const [getOtpEnabled, setGetOtpEnabled] = useState(false);
+    const [isTestMode, setIsTestMode] = useState(false);
 
     const fetchOrder = async () => {
         if (!id) return;
@@ -162,7 +163,8 @@ export default function DeliveryOrderDetail() {
         if (!id) return;
         try {
             setOtpSending(true);
-            await sendDeliveryOtp(id);
+            const coords = deliveryBoyLocation ? { latitude: deliveryBoyLocation.lat, longitude: deliveryBoyLocation.lng } : undefined;
+            await sendDeliveryOtp(id, coords);
             setShowOtpInput(true);
             alert('OTP sent to customer successfully');
         } catch (err: any) {
@@ -250,24 +252,32 @@ export default function DeliveryOrderDetail() {
     // Check proximity to customer (runs periodically)
     useEffect(() => {
         const checkCustomerProx = async () => {
-            if (!id || !deliveryBoyLocation) return;
+            if (!id) return;
             if (order?.status !== 'Out for Delivery') return;
 
             try {
-                const response = await checkCustomerProximity(id, deliveryBoyLocation.lat, deliveryBoyLocation.lng);
+                const lat = deliveryBoyLocation?.lat ?? 0;
+                const lng = deliveryBoyLocation?.lng ?? 0;
+                const response = await checkCustomerProximity(id, lat, lng);
                 if (response.success && response.data) {
-                    setCustomerProximity({
-                        withinRange: response.data.withinRange,
-                        distance: response.data.distanceMeters
-                    });
-                    setGetOtpEnabled(response.data.withinRange);
+                    if (response.data.testMode) {
+                        setIsTestMode(true);
+                        setGetOtpEnabled(true);
+                    } else {
+                        setIsTestMode(false);
+                        setCustomerProximity({
+                            withinRange: response.data.withinRange,
+                            distance: response.data.distanceMeters
+                        });
+                        setGetOtpEnabled(response.data.withinRange);
+                    }
                 }
             } catch (error) {
                 console.error('Failed to check customer proximity:', error);
             }
         };
 
-        if (deliveryBoyLocation && order?.status === 'Out for Delivery') {
+        if (order?.status === 'Out for Delivery') {
             checkCustomerProx();
             const interval = setInterval(checkCustomerProx, 4000); // Check every 4 seconds
             return () => clearInterval(interval);
@@ -374,8 +384,8 @@ export default function DeliveryOrderDetail() {
                 });
 
                 socket.on('connect_error', (error: any) => {
-                    if (isMounted) {
-                        console.error('❌ Delivery Socket Connection Error:', error.message);
+                    if (isMounted && error.message !== 'Invalid namespace') {
+                        console.warn('⚠️ Delivery Socket Connection Notice:', error.message);
                     }
                 });
 
@@ -858,6 +868,12 @@ export default function DeliveryOrderDetail() {
             {order.status === 'Out for Delivery' && (
                 <div className="fixed bottom-24 left-6 right-6 z-30">
                     <div className="bg-white rounded-2xl p-4 shadow-2xl border border-neutral-200">
+                        {isTestMode && (
+                            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs font-semibold flex items-center justify-between shadow-sm">
+                                <span>⚡ Development Test Mode</span>
+                                <span className="text-[11px] text-amber-700">GPS verification bypassed</span>
+                            </div>
+                        )}
                         <p className="text-sm font-semibold text-neutral-900 mb-3">Customer Delivery OTP</p>
 
                         {/* Distance indicator */}

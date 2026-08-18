@@ -1,0 +1,306 @@
+{
+  "timestamp": "2026-08-17T11:38:08.868Z",
+  "environment": {
+    "nodeEnv": "development",
+    "classification": "LOCAL / TEST",
+    "database": "MongoDB Atlas (test db)",
+    "serverUrl": "http://localhost:5000"
+  },
+  "matrixSummary": [
+    {
+      "module": "Customer Portal",
+      "pass": 18,
+      "partial": 1,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Seller Panel",
+      "pass": 16,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Delivery Partner",
+      "pass": 14,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Master Admin",
+      "pass": 20,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Payments (Razorpay & COD)",
+      "pass": 5,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Push Notifications (FCM)",
+      "pass": 7,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Socket.IO Real-Time Engine",
+      "pass": 5,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "OTP / SMS Communication",
+      "pass": 4,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Geospatial & Search Engine",
+      "pass": 6,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    },
+    {
+      "module": "Localization & Multi-Language",
+      "pass": 1,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 3
+    },
+    {
+      "module": "Dynamic Theme & Atmosphere",
+      "pass": 5,
+      "partial": 0,
+      "fail": 0,
+      "blocked": 0,
+      "notImplemented": 0
+    }
+  ],
+  "pushNotificationPipeline": [
+    {
+      "step": "1. Web App Notification Permission Request API",
+      "result": "PASS",
+      "evidence": "Frontend Notification.requestPermission() integrated in Firebase messaging initialization hook"
+    },
+    {
+      "step": "2. Firebase Web Client Config & VAPID Key",
+      "result": "PASS",
+      "evidence": "VAPID key configured in frontend/.env (BD503Op0wSHlNLuKL8yBeWXJPTelLwcos84inWOOOcioNuzOg6eKssFVXewPi0fEohHHj_9s0krkBNEYaZljoRk)"
+    },
+    {
+      "step": "3. Browser FCM Token Registration Endpoint (/api/v1/fcm-tokens/save)",
+      "result": "PASS",
+      "evidence": "POST /api/v1/fcm-tokens/save saves platform-specific FCM web tokens with max 10-token sliding window per user"
+    },
+    {
+      "step": "4. Service Worker Background Handler (firebase-messaging-sw.js)",
+      "result": "PASS",
+      "evidence": "Service worker located at frontend/public/firebase-messaging-sw.js handles push event, onBackgroundMessage and notificationclick routing"
+    },
+    {
+      "step": "5. Backend Firebase Admin SDK Credential Parsing",
+      "result": "PASS",
+      "evidence": "Firebase Admin SDK initialized successfully via FIREBASE_SERVICE_ACCOUNT environment variable"
+    },
+    {
+      "step": "6. Multicast Notification Dispatch Engine",
+      "result": "PASS",
+      "evidence": "admin.messaging().sendEachForMulticast() tested and operational; automatic dead token cleanup on error codes"
+    },
+    {
+      "step": "7. Notification Click Action URL Routing",
+      "result": "PASS",
+      "evidence": "Service worker client.openWindow() routes click events to specified order/product link"
+    }
+  ],
+  "socketIoPipeline": [
+    {
+      "eventFlow": "1. Customer Socket Handshake & Auth Guard",
+      "result": "PASS",
+      "evidence": "JWT verification middleware authenticates socket connection and extracts userId/role"
+    },
+    {
+      "eventFlow": "2. Live Order Tracking Room (track-order / order-${orderId})",
+      "result": "PASS",
+      "evidence": "Customer joins order room after validating order ownership; unauthorized socket rejected with tracking-error"
+    },
+    {
+      "eventFlow": "3. Seller Notification Room (join-seller-room / seller-${sellerId})",
+      "result": "PASS",
+      "evidence": "Seller receives instant real-time NEW_ORDER and STATUS_CHANGE notifications over private room channel"
+    },
+    {
+      "eventFlow": "4. Driver Notification Room (join-delivery-notifications)",
+      "result": "PASS",
+      "evidence": "Delivery driver joins broadcast channel and receives order offers with accept/reject responses"
+    },
+    {
+      "eventFlow": "5. Live GPS Coordinate Streaming & Haversine ETA Calculation",
+      "result": "PASS",
+      "evidence": "Driver sends update-location -> Server calculates Haversine distance, speed-based ETA -> Broadcasts location-update payload to order room -> Throttled DB write every 30s"
+    }
+  ],
+  "paymentPipeline": [
+    {
+      "feature": "1. Razorpay Sandbox Configuration",
+      "result": "PASS",
+      "evidence": "Configured in SANDBOX mode (Key ID prefix: rzp_test_S2t...)"
+    },
+    {
+      "feature": "2. Order Creation API (/api/v1/payment/create-order)",
+      "result": "PASS",
+      "evidence": "Calculates exact total from Order record and creates Razorpay Order instance with receipt tracking"
+    },
+    {
+      "feature": "3. Cryptographic Signature Verification (/api/v1/payment/verify)",
+      "result": "PASS",
+      "evidence": "HMAC-SHA256 signature verification validated; rejects mismatched/tampered signatures with 400 Bad Request"
+    },
+    {
+      "feature": "4. Webhook Event Handler (/api/v1/payment/webhook)",
+      "result": "PASS",
+      "evidence": "Processes payment.captured, payment.failed, and refund.processed webhooks with cryptographic x-razorpay-signature verification"
+    },
+    {
+      "feature": "5. Cash on Delivery (COD) Flow & Remittance",
+      "result": "PASS",
+      "evidence": "Generates COD orders, tracks driver cash collection ledger, and handles COD remittance requests to admin"
+    }
+  ],
+  "localizationAudit": [
+    {
+      "item": "Current Supported Languages",
+      "status": "English (100% Complete)",
+      "findings": "All Customer, Seller, Delivery and Admin portal views are currently in English"
+    },
+    {
+      "item": "Hindi Language Support",
+      "status": "Not Implemented (0%)",
+      "findings": "No Hindi translation strings or resource dictionaries found in codebase"
+    },
+    {
+      "item": "Language Selector UI",
+      "status": "Not Implemented",
+      "findings": "No header or settings language toggle button in user interface"
+    },
+    {
+      "item": "i18n Translation Infrastructure",
+      "status": "Not Installed",
+      "findings": "i18next / react-i18next is not listed in frontend package.json dependencies"
+    }
+  ],
+  "legacyBrandingAudit": {
+    "totalFilesScanned": 480,
+    "matchesFound": 6,
+    "fileList": [
+      "src\\scripts\\seedAlcatel1T7Parts.ts (contains \"Dhakad\")",
+      "src\\scripts\\seedDelivery.ts (contains \"Dhakad\")",
+      "src\\scripts\\seedProducts.ts (contains \"Dhakad\")",
+      "src\\scripts\\testPostQaHardening.ts (contains \"Dhakad\")",
+      "src\\services\\otpService.ts (contains \"Dhakad\")",
+      "..\\olovely_qa_results.json (contains \"Dhakad\")"
+    ]
+  },
+  "top10Recommendations": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "title": "Remove Duplicate Mongoose Schema Index on Order Number and Category Name",
+      "file": "backend/src/models/Order.ts, backend/src/models/Category.ts",
+      "description": "Mongoose throws warnings at runtime: Duplicate schema index on {\"orderNumber\":1}, {\"name\":1}, {\"slug\":1} due to specifying both index: true and schema.index().",
+      "suggestedFix": "Remove explicit schema.index() calls where field already has unique: true or index: true."
+    },
+    {
+      "id": 2,
+      "severity": "HIGH",
+      "title": "Replace Legacy Branding \"Dhakad Snazzy\" in Notification & CORS Config",
+      "file": "backend/src/routes/fcmTokenRoutes.ts (L280), backend/src/socket/socketService.ts (L57-58)",
+      "description": "Test notification body contains \"This is a test push notification from Dhakad Snazzy!\" and socket CORS allowed origins include dhakadsnazzy.com.",
+      "suggestedFix": "Update text strings to \"Olovely Total Suvidha\" and CORS origins to olovely.com domains."
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "title": "Install and Configure i18next for Hindi/Regional Language Support",
+      "file": "frontend/src/i18n/ (New Module), frontend/package.json",
+      "description": "The SOW quotation includes Multi-Language / Regional Language support, but i18next is currently not installed.",
+      "suggestedFix": "Install i18next + react-i18next and create en.json / hi.json localization dictionary files."
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "title": "Standardize Customer Auth Field Names (phone vs mobile)",
+      "file": "backend/src/models/Customer.ts vs Seller.ts vs Delivery.ts",
+      "description": "Customer model uses `phone` as primary mobile field while Seller and Delivery use `mobile`. Stale unique indexes on MongoDB collections caused collisions.",
+      "suggestedFix": "Ensure all models use consistent virtual getters or alias `phone` <-> `mobile`."
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "title": "Add Webhook Auto-Retry & Idempotency Key in Payment Service",
+      "file": "backend/src/services/paymentService.ts",
+      "description": "Webhook handler updates order on payment.captured. Adding an idempotency check prevents duplicate processing if Razorpay retries webhook delivery.",
+      "suggestedFix": "Check if order.paymentStatus is already \"Paid\" before re-executing stock decrements or wallet credits."
+    },
+    {
+      "id": 6,
+      "severity": "LOW",
+      "title": "Optimize Dynamic Category Theme Gradient Transition Latency",
+      "file": "frontend/src/context/ThemeContext.tsx",
+      "description": "Rapid category switching can cause slight visual repaint delays as gradient CSS variables propagate.",
+      "suggestedFix": "Apply CSS transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1) on themed elements."
+    },
+    {
+      "id": 7,
+      "severity": "LOW",
+      "title": "Compress Static Uploaded Images via WebP / Sharp Pipeline",
+      "file": "backend/src/routes/uploadRoutes.ts",
+      "description": "Uploaded product and banner images are stored uncompressed if local storage is used.",
+      "suggestedFix": "Integrate Sharp middleware in multer upload pipeline to auto-convert uploaded images to WebP format."
+    },
+    {
+      "id": 8,
+      "severity": "LOW",
+      "title": "Add Client-Side Location Permission Explainer Modal",
+      "file": "frontend/src/modules/user/Home.tsx",
+      "description": "When location is blocked or denied, the fallback modal could provide visual instructions to unblock browser location permissions.",
+      "suggestedFix": "Show animated step-by-step tooltip when geolocation error code 1 (PERMISSION_DENIED) is returned."
+    },
+    {
+      "id": 9,
+      "severity": "LOW",
+      "title": "Configure PWA Push Notification Action Buttons in Service Worker",
+      "file": "frontend/public/firebase-messaging-sw.js",
+      "description": "Push notification payloads support action buttons (\"Track Order\", \"View Bill\") which enhance customer engagement.",
+      "suggestedFix": "Add action buttons to showNotification() options in firebase-messaging-sw.js."
+    },
+    {
+      "id": 10,
+      "severity": "LOW",
+      "title": "Add Automated Stale Session & Temp OTP Cleanup Cron Job",
+      "file": "backend/src/services/cronService.ts",
+      "description": "Expired OTP documents rely on MongoDB TTL index; a daily cleanup worker ensures zero orphan memory overhead.",
+      "suggestedFix": "Add automated cron cleanup job running at midnight."
+    }
+  ]
+}

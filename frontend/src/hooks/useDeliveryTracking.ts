@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 // @ts-ignore - socket.io-client types may not be available
 import { io, Socket } from 'socket.io-client'
-import { getSocketBaseURL } from '../services/api/config'
+import { getSocketBaseURL, getAuthToken } from '../services/api/config'
 
 interface LocationUpdate {
     orderId: string
@@ -57,7 +57,7 @@ export const useDeliveryTracking = (orderId: string | undefined) => {
             reconnectTimeoutRef.current = null
         }
 
-        const token = localStorage.getItem('authToken')
+        const token = getAuthToken('delivery')
         const socket = io(getSocketBaseURL(), {
             auth: {
                 token,

@@ -70,6 +70,15 @@ export const sendOTP = async (mobile: string): Promise<SendOTPResponse> => {
  */
 export const verifyOTP = async (mobile: string, otp: string): Promise<VerifyOTPResponse> => {
   const response = await api.post<VerifyOTPResponse>('/auth/seller/verify-otp', { mobile, otp });
+
+  if (response.data.success && response.data.data?.token) {
+    const userData = {
+      ...response.data.data.user,
+      userType: 'Seller' as const,
+    };
+    setAuthToken(response.data.data.token, 'Seller', userData);
+  }
+
   return response.data;
 };
 
@@ -101,7 +110,7 @@ export const updateSellerProfile = async (data: any): Promise<any> => {
  * Logout seller
  */
 export const logout = (): void => {
-  removeAuthToken();
+  removeAuthToken('seller');
 };
 
 /**

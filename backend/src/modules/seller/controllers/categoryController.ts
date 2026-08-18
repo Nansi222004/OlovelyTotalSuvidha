@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import Category from "../../../models/Category";
 import SubCategory from "../../../models/SubCategory";
 import Product from "../../../models/Product";
+import HeaderCategory from "../../../models/HeaderCategory";
+import Seller from "../../../models/Seller";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
 /**
@@ -42,6 +44,7 @@ const findCategoryByIdOrSlug = async (idOrSlug: string) => {
 
 /**
  * Get all categories (parent categories only by default)
+ * Enforces seller allowed header category isolation when called by a seller.
  */
 export const getCategories = asyncHandler(
   async (req: Request, res: Response) => {
@@ -65,19 +68,41 @@ export const getCategories = asyncHandler(
       query.name = { $regex: search as string, $options: "i" };
     }
 
+    // Seller isolation check: If request comes from an authenticated seller, filter by allowed Header Categories
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+
+    if (userId && (userRole === "Seller" || !userRole)) {
+      const seller = await Seller.findById(userId).select("categories");
+      if (seller && seller.categories && seller.categories.length > 0) {
+        const allowedHeaderCats = await HeaderCategory.find({
+          name: { $in: seller.categories },
+          status: "Published",
+        }).select("_id");
+        const allowedHeaderIds = allowedHeaderCats.map((h) => h._id);
+        query.headerCategoryId = { $in: allowedHeaderIds };
+      }
+    }
+
     const categories = await Category.find(query)
       .populate("headerCategoryId", "name slug")
       .sort({ name: 1 });
 
-    // Get subcategory and product counts for each category
+    // Get subcategory and product counts for each category (combining both Category parentId and SubCategory models)
     const categoriesWithCounts = await Promise.all(
       categories.map(async (category) => {
-        const subcategoryCount = await SubCategory.countDocuments({
+        const catSubsCount = await Category.countDocuments({
+          parentId: category._id,
+        });
+
+        const legacySubsCount = await SubCategory.countDocuments({
           category: category._id,
         });
 
+        const subcategoryCount = catSubsCount + legacySubsCount;
+
         const productCount = await Product.countDocuments({
-          category: category._id, // Note: Product model uses 'category', not 'categoryId'
+          category: category._id,
         });
 
         return {
@@ -363,6 +388,8 @@ export const getAllCategoriesWithSubcategories = asyncHandler(
 
 /**
  * Get all subcategories (across all categories)
+ * Enforces seller allowed header category isolation when called by a seller.
+ * Combines subcategories from both Category (parentId != null) and SubCategory models.
  */
 export const getAllSubcategories = asyncHandler(
   async (req: Request, res: Response) => {
@@ -374,63 +401,121 @@ export const getAllSubcategories = asyncHandler(
       sortOrder = "asc",
     } = req.query;
 
-    const query: any = {};
-
-    // Search filter
-    if (search) {
-      query.name = { $regex: search, $options: "i" };
-    }
-
-    // Pagination
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    // Sort
-    const sort: any = {};
-    const sortField =
-      sortBy === "subcategoryName" ? "name" : (sortBy as string);
-    sort[sortField] = sortOrder === "asc" ? 1 : -1;
+    // Seller isolation check
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
+    let allowedParentCategoryIds: any[] | null = null;
 
-    // Fetch subcategories from the SubCategory model instead of Category model
-    // This fixes the issue where subcategories created by Admin (in SubCategory collection)
-    // were not visible to Sellers because this controller was looking in Category collection
-    const subcategories = await SubCategory.find(query)
-      .populate("category", "name image")
-      .sort(sort)
-      .skip(skip)
-      .limit(limitNum);
+    if (userId && (userRole === "Seller" || !userRole)) {
+      const seller = await Seller.findById(userId).select("categories");
+      if (seller && seller.categories && seller.categories.length > 0) {
+        const allowedHeaderCats = await HeaderCategory.find({
+          name: { $in: seller.categories },
+          status: "Published",
+        }).select("_id");
+        const allowedHeaderIds = allowedHeaderCats.map((h) => h._id);
 
-    // Get product counts and format response
-    const subcategoriesWithCounts = await Promise.all(
-      subcategories.map(async (subcategory) => {
-        const productCount = await Product.countDocuments({
-          subcategory: subcategory._id, // Note: Product model uses 'subcategory', not 'subcategoryId'
+        const allowedParents = await Category.find({
+          headerCategoryId: { $in: allowedHeaderIds },
+          parentId: null,
+        }).select("_id");
+
+        allowedParentCategoryIds = allowedParents.map((p) => p._id);
+      }
+    }
+
+    // 1. Fetch child categories from Category model (parentId != null)
+    const categorySubQuery: any = { parentId: { $ne: null } };
+    if (allowedParentCategoryIds !== null) {
+      categorySubQuery.parentId = { $in: allowedParentCategoryIds };
+    }
+    if (search) {
+      categorySubQuery.name = { $regex: search as string, $options: "i" };
+    }
+
+    const categorySubs = await Category.find(categorySubQuery)
+      .populate("parentId", "name")
+      .lean();
+
+    // 2. Fetch subcategories from SubCategory model
+    const legacySubQuery: any = {};
+    if (allowedParentCategoryIds !== null) {
+      legacySubQuery.category = { $in: allowedParentCategoryIds };
+    }
+    if (search) {
+      legacySubQuery.name = { $regex: search as string, $options: "i" };
+    }
+
+    const legacySubs = await SubCategory.find(legacySubQuery)
+      .populate("category", "name")
+      .lean();
+
+    // Combine and format results
+    const combined = [
+      ...categorySubs.map((sub: any) => ({
+        id: sub._id.toString(),
+        _id: sub._id.toString(),
+        categoryName: sub.parentId?.name || "Category",
+        subcategoryName: sub.name,
+        subcategoryImage: sub.image || "",
+        createdAt: sub.createdAt,
+      })),
+      ...legacySubs.map((sub: any) => ({
+        id: sub._id.toString(),
+        _id: sub._id.toString(),
+        categoryName: sub.category?.name || "Category",
+        subcategoryName: sub.name,
+        subcategoryImage: sub.image || "",
+        createdAt: sub.createdAt,
+      })),
+    ];
+
+    // Remove duplicates
+    const uniqueMap = new Map();
+    combined.forEach((item) => uniqueMap.set(item.id, item));
+    const uniqueSubs = Array.from(uniqueMap.values());
+
+    // Sort combined list
+    uniqueSubs.sort((a: any, b: any) => {
+      const fieldA = a.subcategoryName?.toLowerCase() || "";
+      const fieldB = b.subcategoryName?.toLowerCase() || "";
+      return sortOrder === "asc"
+        ? fieldA.localeCompare(fieldB)
+        : fieldB.localeCompare(fieldA);
+    });
+
+    // Calculate product counts and paginate
+    const total = uniqueSubs.length;
+    const paginatedSubs = uniqueSubs.slice(skip, skip + limitNum);
+
+    const dataWithCounts = await Promise.all(
+      paginatedSubs.map(async (sub) => {
+        const prodCountSub = await Product.countDocuments({
+          subcategory: sub.id,
         });
-
-        const parentCategory = subcategory.category as any;
-
+        const prodCountCat = await Product.countDocuments({
+          category: sub.id,
+        });
         return {
-          id: subcategory._id,
-          categoryName: parentCategory?.name || "Unknown",
-          subcategoryName: subcategory.name,
-          subcategoryImage: subcategory.image || "",
-          totalProduct: productCount,
+          ...sub,
+          totalProduct: prodCountSub + prodCountCat,
         };
       })
     );
 
-    const total = await SubCategory.countDocuments(query);
-
     return res.status(200).json({
       success: true,
       message: "Subcategories fetched successfully",
-      data: subcategoriesWithCounts,
+      data: dataWithCounts,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total,
-        pages: Math.ceil(total / limitNum),
+        pages: Math.ceil(total / limitNum) || 1,
       },
     });
   }

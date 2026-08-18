@@ -114,6 +114,9 @@ const DeliveryLogin = lazyWithRetry(
 const DeliverySignUp = lazyWithRetry(
   () => import("./modules/delivery/pages/DeliverySignUp"), "DeliverySignUp"
 );
+const DeliveryUnderReview = lazyWithRetry(
+  () => import("./modules/delivery/pages/DeliveryUnderReview"), "DeliveryUnderReview"
+);
 
 // Lazy load seller routes
 const SellerLayout = lazyWithRetry(
@@ -164,6 +167,7 @@ const SellerReviews = lazyWithRetry(
 );
 const SellerLogin = lazyWithRetry(() => import("./modules/seller/pages/SellerLogin"), "SellerLogin");
 const SellerSignUp = lazyWithRetry(() => import("./modules/seller/pages/SellerSignUp"), "SellerSignUp");
+const SellerUnderReview = lazyWithRetry(() => import("./modules/seller/pages/SellerUnderReview"), "SellerUnderReview");
 
 // Lazy load admin routes
 const AdminLayout = lazyWithRetry(
@@ -424,6 +428,16 @@ function App() {
                             }
                           />
                           <Route
+                            path="/seller/under-review"
+                            element={
+                              <ProtectedRoute requiredUserType="Seller" allowUnapproved redirectTo="/seller/login">
+                                <Suspense fallback={<IconLoader forceShow />}>
+                                  <SellerUnderReview />
+                                </Suspense>
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
                             path="/delivery/login"
                             element={
                               <PublicRoute userType="Delivery">
@@ -441,6 +455,16 @@ function App() {
                                   <DeliverySignUp />
                                 </Suspense>
                               </PublicRoute>
+                            }
+                          />
+                          <Route
+                            path="/delivery/under-review"
+                            element={
+                              <ProtectedRoute requiredUserType="Delivery" allowUnapproved redirectTo="/delivery/login">
+                                <Suspense fallback={<IconLoader forceShow />}>
+                                  <DeliveryUnderReview />
+                                </Suspense>
+                              </ProtectedRoute>
                             }
                           />
                           <Route

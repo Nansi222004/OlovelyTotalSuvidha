@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireUserType } from '../middleware/auth';
+import { authenticate, requireUserType, requireApprovedUser } from '../middleware/auth';
 import {
     getBalance,
     getTransactions,
@@ -10,8 +10,8 @@ import {
 
 const router = Router();
 
-// All routes require seller authentication
-router.use(authenticate, requireUserType('Seller'));
+// All routes require seller authentication and operational approval
+router.use(authenticate, requireUserType('Seller'), requireApprovedUser);
 
 // Wallet balance
 router.get('/balance', getBalance);

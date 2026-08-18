@@ -389,7 +389,7 @@ export default function AdminAppSettings() {
               <label className="block text-sm font-medium text-neutral-700 mb-1">Free Delivery Min Order (₹)</label>
               <input
                 type="number"
-                value={formData.freeDeliveryThreshold ?? 199}
+                value={formData.freeDeliveryThreshold ?? 500}
                 onChange={(e) => handleInputChange('freeDeliveryThreshold', Number(e.target.value))}
                 className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />

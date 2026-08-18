@@ -168,7 +168,6 @@ const PaymentSchema = new Schema<IPayment>(
 // Indexes for faster queries
 PaymentSchema.index({ order: 1 });
 PaymentSchema.index({ customer: 1 });
-PaymentSchema.index({ transactionId: 1 });
 PaymentSchema.index({ status: 1 });
 PaymentSchema.index({ paymentDate: -1 });
 

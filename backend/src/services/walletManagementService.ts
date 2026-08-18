@@ -18,6 +18,37 @@ export const creditWallet = async (
   session?: mongoose.ClientSession,
 ) => {
   try {
+    // Idempotency check: if relatedOrderId is provided, check if credit transaction already exists
+    if (relatedOrderId) {
+      const existingTxn = session
+        ? await WalletTransaction.findOne({
+            userId,
+            userType,
+            relatedOrder: relatedOrderId,
+            type: "Credit",
+          }).session(session)
+        : await WalletTransaction.findOne({
+            userId,
+            userType,
+            relatedOrder: relatedOrderId,
+            type: "Credit",
+          });
+
+      if (existingTxn) {
+        console.warn(
+          `[Idempotency Warning] Credit wallet skipped: Transaction already exists for ${userType} ${userId} order ${relatedOrderId} (Txn: ${existingTxn._id})`,
+        );
+        return {
+          success: true,
+          message: "Wallet already credited for this order",
+          data: {
+            transactionId: existingTxn._id,
+            newBalance: await getWalletBalance(userId, userType),
+          },
+        };
+      }
+    }
+
     // Generate unique reference
     const reference = `CR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 

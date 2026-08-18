@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { OrderNotificationData } from '../services/api/delivery/deliveryOrderNotificationService';
 import { acceptOrder, rejectOrder } from '../services/api/delivery/deliveryOrderNotificationService';
-import { getSocketBaseURL } from '../services/api/config';
+import { getSocketBaseURL, getAuthToken } from '../services/api/config';
 import { getPendingOrderAlerts } from '../services/api/delivery/deliveryService';
 
 interface NotificationState {
@@ -179,7 +179,7 @@ export const useDeliveryOrderNotifications = () => {
             reconnectTimeoutRef.current = null;
         }
 
-        const token = localStorage.getItem('authToken');
+        const token = getAuthToken('delivery');
         const socket = io(getSocketBaseURL(), {
             auth: {
                 token,
@@ -233,14 +233,6 @@ export const useDeliveryOrderNotifications = () => {
 
         socket.on('new-order', (orderData: OrderNotificationData) => {
             console.log('📦 New order notification received:', orderData);
-
-            // Play notification sound
-            try {
-                const audio = new Audio('/assets/sound/delivery-alert.mp3');
-                audio.play().catch(e => console.warn('🔊 Sound play failed:', e.message));
-            } catch (error) {
-                console.warn('🔊 Error playing notification sound:', error);
-            }
 
             setState(prev => {
                 // If there's already a current notification, queue this one
@@ -309,23 +301,6 @@ export const useDeliveryOrderNotifications = () => {
         socket.on('disconnect', (reason: any) => {
             console.log('❌ Delivery notification socket disconnected:', reason);
             setState(prev => ({ ...prev, isConnected: false }));
-
-            if (reason === 'io server disconnect' || reason === 'io client disconnect') {
-                return;
-            }
-
-            attemptReconnect();
-        });
-
-        socket.on('connect_error', (error: any) => {
-            console.error('Socket connection error:', error);
-            setState(prev => ({
-                ...prev,
-                isConnected: false,
-                error: 'Failed to connect to notification server',
-            }));
-
-            attemptReconnect();
         });
 
         socket.on('error', (error: any) => {
@@ -338,27 +313,6 @@ export const useDeliveryOrderNotifications = () => {
 
         return socket;
     }, [isAuthenticated, user, rehydratePendingAlerts]);
-
-    const attemptReconnect = useCallback(() => {
-        reconnectAttemptsRef.current += 1;
-
-        if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
-            console.log('❌ Max reconnection attempts reached');
-            setState(prev => ({
-                ...prev,
-                error: 'Unable to connect. Please refresh the page.',
-            }));
-            return;
-        }
-
-        const delay = INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current - 1);
-        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
-
-        reconnectTimeoutRef.current = setTimeout(() => {
-            disconnectSocket();
-            connectSocket();
-        }, delay);
-    }, [connectSocket]);
 
     const disconnectSocket = useCallback(() => {
         if (reconnectTimeoutRef.current) {
@@ -373,8 +327,8 @@ export const useDeliveryOrderNotifications = () => {
     }, []);
 
     const handleAccept = useCallback(async (orderId: string, navigate?: (path: string) => void) => {
-        if (!socketRef.current || !user?.id) {
-            return { success: false, message: 'Not connected or user not found' };
+        if (!user?.id) {
+            return { success: false, message: 'User not found' };
         }
 
         try {
@@ -412,8 +366,8 @@ export const useDeliveryOrderNotifications = () => {
     }, [user]);
 
     const handleReject = useCallback(async (orderId: string) => {
-        if (!socketRef.current || !user?.id) {
-            return { success: false, message: 'Not connected or user not found', allRejected: false };
+        if (!user?.id) {
+            return { success: false, message: 'User not found', allRejected: false };
         }
 
         setState(prev => {

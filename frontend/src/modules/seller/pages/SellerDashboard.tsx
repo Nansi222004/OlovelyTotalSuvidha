@@ -278,8 +278,8 @@ export default function SellerDashboard() {
       </div>
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <DashboardCard icon={userIcon} title="Total User" value={stats.totalUser} accentColor="#3b82f6" />
-        <DashboardCard icon={categoryIcon} title="Total Category" value={stats.totalCategory} accentColor="#eab308" />
+        <DashboardCard icon={userIcon} title="Total Customers" value={stats.totalUser} accentColor="#3b82f6" />
+        <DashboardCard icon={categoryIcon} title="Selling Categories" value={stats.sellingCategories ?? stats.totalCategory} accentColor="#eab308" />
         <DashboardCard icon={subcategoryIcon} title="Total Subcategory" value={stats.totalSubcategory} accentColor="#ec4899" />
         <DashboardCard icon={productIcon} title="Total Product" value={stats.totalProduct} accentColor="#f97316" />
         <DashboardCard icon={ordersIcon} title="Total Orders" value={stats.totalOrders} accentColor="#3b82f6" />

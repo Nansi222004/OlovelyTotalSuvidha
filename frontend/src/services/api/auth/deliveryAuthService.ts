@@ -81,12 +81,11 @@ export const verifyOTP = async (
   });
 
   if (response.data.success && response.data.data?.token) {
-    setAuthToken(response.data.data.token);
     const userData = {
       ...response.data.data.user,
       userType: 'Delivery' as const,
     };
-    localStorage.setItem('userData', JSON.stringify(userData));
+    setAuthToken(response.data.data.token, 'Delivery', userData);
   }
 
   return response.data;
@@ -101,9 +100,17 @@ export const register = async (data: RegisterData): Promise<RegisterResponse> =>
 };
 
 /**
+ * Get current delivery partner profile
+ */
+export const getDeliveryProfile = async (): Promise<any> => {
+  const response = await api.get('/auth/delivery/profile');
+  return response.data;
+};
+
+/**
  * Logout delivery partner
  */
 export const logout = (): void => {
-  removeAuthToken();
+  removeAuthToken('delivery');
 };
 

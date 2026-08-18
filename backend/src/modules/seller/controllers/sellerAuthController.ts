@@ -215,7 +215,10 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     viewCustomerDetails: false,
     commission: 0,
     balance: 0,
-    categories: req.body.categories || [],
+    categories:
+      Array.isArray(req.body.categories) && req.body.categories.length > 0
+        ? req.body.categories
+        : [category],
   });
 
   // Generate token

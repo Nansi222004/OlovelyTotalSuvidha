@@ -194,19 +194,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
                                item.variant ||
                                item.product.pack;
               
-              await apiAddToCart(
-                productId,
-                item.quantity,
-                variation,
-                location?.latitude,
-                location?.longitude
-              );
+              try {
+                await apiAddToCart(
+                  productId,
+                  item.quantity,
+                  variation,
+                  location?.latitude,
+                  location?.longitude
+                );
+              } catch (itemErr) {
+                // Silently skip stale/unserviceable local items during initial auth sync
+                console.warn(`[CartSync] Skipped unserviceable item ${productId}`);
+              }
             }
             hasSyncedRef.current = true;
             // Refresh cart to get updated data from backend
             await fetchCart();
           } catch (error) {
-            console.error("Failed to sync local cart to backend:", error);
+            console.warn("Local cart sync completed with warnings:", error);
           }
         } else {
           hasSyncedRef.current = true;

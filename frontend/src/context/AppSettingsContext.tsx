@@ -41,7 +41,7 @@ const defaultSettings: AppSettingsData = {
   companyPincode: '452001',
   platformFee: 2,
   deliveryCharges: 0,
-  freeDeliveryThreshold: 199,
+  freeDeliveryThreshold: 500,
 };
 
 const AppSettingsContext = createContext<AppSettingsContextType>({
@@ -76,6 +76,22 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
   useEffect(() => {
     fetchSettings();
   }, []);
+
+  // Sync favicon with website logo / custom favicon
+  useEffect(() => {
+    const faviconUrl = settings.appFavicon || '/assets/favicon-circle.png';
+    const iconLinks: NodeListOf<HTMLLinkElement> = document.querySelectorAll("link[rel*='icon']");
+    if (iconLinks.length > 0) {
+      iconLinks.forEach((link) => {
+        link.href = faviconUrl;
+      });
+    } else {
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.href = faviconUrl;
+      document.head.appendChild(link);
+    }
+  }, [settings.appFavicon]);
 
   return (
     <AppSettingsContext.Provider

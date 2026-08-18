@@ -45,22 +45,17 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
                 // In production, check against allowed origins
                 if (process.env.NODE_ENV === 'production') {
-                    // Get allowed origins from environment variable (comma-separated)
-                    const frontendUrl = process.env.FRONTEND_URL || "";
-                    const allowedOrigins = frontendUrl
-                        .split(",")
+                    // Get allowed origins from environment variables
+                    const envFrontend = process.env.FRONTEND_URL || "";
+                    const envCors = process.env.CORS_ORIGINS || "";
+                    const allAllowedOrigins = [...envFrontend.split(","), ...envCors.split(",")]
                         .map((url) => url.trim())
                         .filter((url) => url.length > 0);
 
-                    // Default production origins if FRONTEND_URL not set
-                    const defaultOrigins = [
-                        "https://www.dhakadsnazzy.com",
-                        "https://dhakadsnazzy.com",
-                    ];
-
-                    const allAllowedOrigins = allowedOrigins.length > 0
-                        ? [...allowedOrigins, ...defaultOrigins]
-                        : defaultOrigins;
+                    // If no explicit production origins defined, allow any valid origin or reject based on config
+                    if (allAllowedOrigins.length === 0) {
+                        return callback(null, true);
+                    }
 
                     // Normalize origins for comparison (remove trailing slash, lowercase)
                     const normalizeUrl = (url: string) => url.replace(/\/$/, '').toLowerCase();

@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import Product from "../../../models/Product";
 import Seller from "../../../models/Seller";
 import HeaderCategory from "../../../models/HeaderCategory";
+import Category from "../../../models/Category";
+import SubCategory from "../../../models/SubCategory";
 import Shop from "../../../models/Shop";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
@@ -58,6 +60,31 @@ export const createProduct = asyncHandler(
         success: false,
         message: categoryError,
       });
+    }
+
+    // Validate Category & Subcategory hierarchy
+    const targetCategoryId = productData.categoryId || productData.category;
+    const targetSubcategoryId = productData.subcategoryId || productData.subcategory;
+
+    if (targetCategoryId) {
+      const categoryObj = await Category.findById(targetCategoryId);
+      if (!categoryObj) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product category ID provided",
+        });
+      }
+
+      if (targetSubcategoryId) {
+        const childInCat = await Category.findOne({ _id: targetSubcategoryId, parentId: targetCategoryId });
+        const childInSub = await SubCategory.findOne({ _id: targetSubcategoryId, category: targetCategoryId });
+        if (!childInCat && !childInSub) {
+          return res.status(400).json({
+            success: false,
+            message: `Selected subcategory does not belong to category "${categoryObj.name}"`,
+          });
+        }
+      }
     }
 
     // 2. Map fields to match Product model
@@ -273,7 +300,7 @@ export const getProductById = asyncHandler(
 
     const product = await Product.findOne({ _id: id, seller: sellerId })
       .populate("category", "name")
-      .populate("subcategory", "subcategoryName")
+      .populate("subcategory", "name subcategoryName")
       .populate("headerCategoryId", "name slug")
       .populate("brand", "name")
       .populate("tax", "name rate");

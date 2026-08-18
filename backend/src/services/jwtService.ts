@@ -7,8 +7,8 @@ export interface TokenPayload {
   role?: string;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const getJwtSecret = () => process.env.JWT_SECRET || 'secret123';
+const getExpiresIn = () => process.env.JWT_EXPIRES_IN || '7d';
 
 /**
  * Generate JWT token for authenticated user
@@ -20,8 +20,8 @@ export function generateToken(userId: string, userType: UserType, role?: string)
     ...(role && { role }),
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
+  return jwt.sign(payload, getJwtSecret(), {
+    expiresIn: getExpiresIn(),
   } as jwt.SignOptions);
 }
 
@@ -30,7 +30,7 @@ export function generateToken(userId: string, userType: UserType, role?: string)
  */
 export function verifyToken(token: string): TokenPayload {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as TokenPayload;
     return decoded;
   } catch (error: any) {
     console.error('JWT verify error:', error.message, 'token:', token.substring(0, 20) + '...');

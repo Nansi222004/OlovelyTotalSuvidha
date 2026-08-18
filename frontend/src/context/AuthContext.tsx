@@ -7,8 +7,10 @@ import {
 } from "react";
 import {
   getAuthToken,
+  getStoredUserData,
   removeAuthToken,
   setAuthToken,
+  getPanelFromContext,
 } from "../services/api/config";
 
 interface User {
@@ -67,110 +69,84 @@ const inferLegacyUserType = (
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Initialize state synchronously from localStorage
+  const currentPanel = getPanelFromContext(undefined, typeof window !== "undefined" ? window.location.pathname : "");
+
+  // Initialize state synchronously from role-isolated localStorage
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const storedToken = getAuthToken();
-    const storedUser = localStorage.getItem("userData");
+    const storedToken = getAuthToken(currentPanel);
+    const storedUser = getStoredUserData(currentPanel);
     return !!(storedToken && storedUser);
   });
 
   const [user, setUser] = useState<User | null>(() => {
-    const storedUser = localStorage.getItem("userData");
+    const storedUser = getStoredUserData(currentPanel);
     if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        const inferredUserType = inferLegacyUserType(userData);
-        if (inferredUserType && !userData.userType) {
-          userData.userType = inferredUserType;
-        }
-        return userData;
-      } catch (error) {
-        return null;
+      const inferredUserType = inferLegacyUserType(storedUser);
+      if (inferredUserType && !storedUser.userType) {
+        storedUser.userType = inferredUserType;
       }
+      return storedUser;
     }
     return null;
   });
 
   const [token, setToken] = useState<string | null>(() => {
-    return getAuthToken();
+    return getAuthToken(currentPanel);
   });
 
   // Effect to sync state if localStorage changes externally or on mount validation
   useEffect(() => {
-    const storedToken = getAuthToken();
-    const storedUser = localStorage.getItem("userData");
+    const panel = getPanelFromContext(user?.userType, window.location.pathname);
+    const storedToken = getAuthToken(panel);
+    const storedUser = getStoredUserData(panel);
 
     if (storedToken && storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        const inferredUserType = inferLegacyUserType(userData);
-        if (inferredUserType && !userData.userType) {
-          userData.userType = inferredUserType;
-          localStorage.setItem("userData", JSON.stringify(userData));
-        }
-        // Only update if state doesn't match to avoid loops
-        if (!isAuthenticated || token !== storedToken || JSON.stringify(user) !== JSON.stringify(userData)) {
-          setToken(storedToken);
-          setUser(userData);
-          setIsAuthenticated(true);
-        }
-      } catch (error) {
-        removeAuthToken();
-        setToken(null);
-        setUser(null);
-        setIsAuthenticated(false);
+      const inferredUserType = inferLegacyUserType(storedUser);
+      if (inferredUserType && !storedUser.userType) {
+        storedUser.userType = inferredUserType;
       }
-    } else if (isAuthenticated) {
-      // Logged out
+
+      if (!isAuthenticated || token !== storedToken || JSON.stringify(user) !== JSON.stringify(storedUser)) {
+        setToken(storedToken);
+        setUser(storedUser);
+        setIsAuthenticated(true);
+      }
+
+      // Ensure FCM token is registered with backend
+      import("../services/pushNotificationService").then(({ registerFCMToken }) => {
+        registerFCMToken(true).catch(() => {});
+      });
+    } else if (isAuthenticated && !storedToken) {
       setToken(null);
       setUser(null);
       setIsAuthenticated(false);
     }
-  }, []);
+  }, [currentPanel]);
 
   const login = (newToken: string, userData: User) => {
+    const inferredType = inferLegacyUserType(userData);
+    const userType = userData.userType || inferredType;
+    const fullUser = { ...userData, ...(userType && { userType }) };
+
     setToken(newToken);
-    setUser(userData);
+    setUser(fullUser);
     setIsAuthenticated(true);
-    setAuthToken(newToken);
-    localStorage.setItem("userData", JSON.stringify(userData));
+    setAuthToken(newToken, userType, fullUser);
 
-    // Register FCM token for push notifications after successful login
+    // Register FCM token for push notifications after successful login (silently)
     import("../services/pushNotificationService").then(({ registerFCMToken }) => {
-      registerFCMToken(true)
-        .then(() => {
-          // Send test notification after successful token registration
-          const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
-
-          fetch(`${apiUrl}/fcm-tokens/test`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${newToken}`,
-              'Content-Type': 'application/json'
-            }
-          })
-            .then(response => response.json())
-            .then(data => {
-              console.log('✅ Test notification sent:', data);
-              if (data.success) {
-                console.log(`📬 Notification sent to ${data.details?.totalTokens} device(s)`);
-              }
-            })
-            .catch(error => {
-              console.error('❌ Failed to send test notification:', error);
-            });
-        })
-        .catch((error) => {
-          console.error("Failed to register FCM token:", error);
-        });
+      registerFCMToken(true).catch((error) => {
+        console.error("Failed to register FCM token:", error);
+      });
     });
   };
 
   const logout = () => {
+    const userType = user?.userType || getPanelFromContext(undefined, window.location.pathname);
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
-    removeAuthToken();
+    removeAuthToken(userType);
 
     // Remove FCM token on logout
     import("../services/pushNotificationService").then(({ removeFCMToken }) => {
@@ -181,8 +157,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUser = (userData: User) => {
-    setUser(userData);
-    localStorage.setItem("userData", JSON.stringify(userData));
+    const userType = userData.userType || user?.userType || inferLegacyUserType(userData);
+    const fullUser = { ...userData, ...(userType && { userType }) };
+    setUser(fullUser);
+    setAuthToken(token || getAuthToken(userType) || '', userType, fullUser);
   };
 
   return (
@@ -207,3 +185,4 @@ export function useAuth() {
   }
   return context;
 }
+

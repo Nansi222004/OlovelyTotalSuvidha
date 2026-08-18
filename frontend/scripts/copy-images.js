@@ -212,9 +212,11 @@ function copyShopByStoreImages() {
 
 // Copy olovely logo & background & manifest icons
 function copyOlovelyLogo() {
-  const files = ['olovelylogo.jpeg', 'olovelylogo.png', 'olovelylogo_transparent.png', 'login_background_mobile.jfif'];
+  const files = ['olovelylogo.jpeg', 'olovelylogo.png', 'olovelylogo_transparent.png', 'login_background_mobile.jfif', 'favicon-circle.png', 'favicon-circle-192.png', 'favicon-circle-64.png', 'favicon-circle-32.png', 'favicon-squircle.png'];
   files.forEach((file) => {
-    const srcPath = path.join(assetsDir, file);
+    // Check public/assets first, then assetsDir
+    const publicAssetPath = path.join(__dirname, '../public/assets', file);
+    const srcPath = fs.existsSync(publicAssetPath) ? publicAssetPath : path.join(assetsDir, file);
     if (fs.existsSync(srcPath)) {
       const destPath = path.join(publicAssetsDir, file);
       fs.copyFileSync(srcPath, destPath);
@@ -222,14 +224,14 @@ function copyOlovelyLogo() {
     }
   });
 
-  // Ensure public/logo192.png, public/logo512.png, public/favicon.ico exist for manifest
-  const sourceLogo = path.join(assetsDir, 'olovelylogo_transparent.png');
-  if (fs.existsSync(sourceLogo)) {
-    const publicDir = path.join(__dirname, '../public');
-    const manifestIcons = ['logo192.png', 'logo512.png', 'favicon.ico'];
+  // Ensure public/logo192.png, public/logo512.png, public/favicon.ico exist for manifest with white background
+  const publicDir = path.join(__dirname, '../public');
+  const sourceFavicon = path.join(publicDir, 'assets', 'favicon-circle.png');
+  if (fs.existsSync(sourceFavicon)) {
+    const manifestIcons = ['logo192.png', 'logo512.png', 'favicon.ico', 'favicon.png'];
     manifestIcons.forEach((iconName) => {
       const target = path.join(publicDir, iconName);
-      fs.copyFileSync(sourceLogo, target);
+      fs.copyFileSync(sourceFavicon, target);
       console.log(`Created manifest icon: ${iconName}`);
     });
   }

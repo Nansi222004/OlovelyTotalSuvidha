@@ -42,13 +42,11 @@ export const verifyOTP = async (mobile: string, otp: string, sessionId?: string)
   const response = await api.post<VerifyOTPResponse>('/auth/customer/verify-sms-otp', { mobile, otp, sessionId });
 
   if (response.data.success && response.data.data.token) {
-    setAuthToken(response.data.data.token);
-    // Add userType to user data for proper identification
     const userData = {
       ...response.data.data.user,
-      userType: 'Customer'
+      userType: 'Customer' as const
     };
-    localStorage.setItem('userData', JSON.stringify(userData));
+    setAuthToken(response.data.data.token, 'Customer', userData);
   }
 
   return response.data;
@@ -58,6 +56,6 @@ export const verifyOTP = async (mobile: string, otp: string, sessionId?: string)
  * Logout customer
  */
 export const logout = (): void => {
-  removeAuthToken();
+  removeAuthToken('customer');
 };
 

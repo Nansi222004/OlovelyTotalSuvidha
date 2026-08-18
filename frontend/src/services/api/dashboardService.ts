@@ -3,6 +3,7 @@ import api from './config';
 export interface DashboardStats {
     totalUser: number;
     totalCategory: number;
+    sellingCategories?: number;
     totalSubcategory: number;
     totalProduct: number;
     totalOrders: number;

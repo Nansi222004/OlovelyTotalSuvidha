@@ -26,7 +26,12 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
     onFailure,
     customerDetails,
 }) => {
+    const hasInitiatedRef = React.useRef(false);
+
     useEffect(() => {
+        if (hasInitiatedRef.current) return;
+        hasInitiatedRef.current = true;
+
         // Load Razorpay script if not already loaded
         const loadRazorpayScript = () => {
             return new Promise((resolve) => {
@@ -55,7 +60,28 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
                     return;
                 }
 
-                const { razorpayOrderId, razorpayKey } = orderResponse.data;
+                const { razorpayOrderId, razorpayKey, isMock } = orderResponse.data;
+
+                // Handle mock/development fallback payment
+                if (isMock || (razorpayOrderId && razorpayOrderId.startsWith('order_mock_'))) {
+                    console.log('⚡ Mock Razorpay mode active. Auto-verifying test payment...');
+                    const mockPaymentId = `pay_mock_${Date.now()}`;
+                    const mockSignature = `sig_mock_${Date.now()}`;
+
+                    const verificationResponse = await verifyPayment({
+                        orderId,
+                        razorpayOrderId,
+                        razorpayPaymentId: mockPaymentId,
+                        razorpaySignature: mockSignature,
+                    });
+
+                    if (verificationResponse.success) {
+                        onSuccess(mockPaymentId);
+                    } else {
+                        onFailure(verificationResponse.message || 'Payment verification failed');
+                    }
+                    return;
+                }
 
                 // Razorpay options
                 const options = {

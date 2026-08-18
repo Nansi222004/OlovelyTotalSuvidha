@@ -4,13 +4,14 @@ import {
   getReturnRequestById,
   updateReturnStatus,
 } from "../modules/seller/controllers/returnController";
-import { authenticate, requireUserType } from "../middleware/auth";
+import { authenticate, requireUserType, requireApprovedUser } from "../middleware/auth";
 
 const router = Router();
 
-// All routes require authentication and seller user type
+// All routes require authentication, seller user type, and operational approval
 router.use(authenticate);
 router.use(requireUserType("Seller"));
+router.use(requireApprovedUser);
 
 // Get seller's return requests with filters
 router.get("/", getReturnRequests);

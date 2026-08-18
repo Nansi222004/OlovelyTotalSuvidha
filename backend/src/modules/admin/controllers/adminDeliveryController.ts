@@ -249,6 +249,13 @@ export const updateDeliveryStatus = asyncHandler(
       });
     }
 
+    // Trigger push notification and in-app alert to delivery partner asynchronously
+    import("../../../services/notificationService").then(({ sendDeliveryApprovalNotification }) => {
+      sendDeliveryApprovalNotification(id, status as "Active" | "Inactive").catch((err: any) => {
+        console.error(`❌ [Push Notification Error] Failed to send approval notification to delivery partner ${id}:`, err?.message);
+      });
+    });
+
     return res.status(200).json({
       success: true,
       message: "Delivery boy status updated successfully",
@@ -284,6 +291,25 @@ export const updateDeliveryBoyAvailability = asyncHandler(
         message: "Delivery boy not found",
       });
     }
+
+    // Trigger push notification to delivery partner asynchronously
+    import("../../../services/notificationService").then(({ sendNotification }) => {
+      sendNotification(
+        "Delivery",
+        id,
+        available === "Available" ? "🟢 Status: Available" : "🔴 Status: Not Available",
+        available === "Available"
+          ? "Admin has set your status to Available for receiving orders."
+          : "Admin has set your status to Not Available for orders.",
+        {
+          type: available === "Available" ? "Success" : "Info",
+          link: "/delivery",
+          priority: "Medium",
+        }
+      ).catch((err: any) => {
+        console.error(`❌ [Push Notification Error] Failed to send availability notification to delivery partner ${id}:`, err?.message);
+      });
+    });
 
     return res.status(200).json({
       success: true,

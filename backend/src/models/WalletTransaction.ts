@@ -68,6 +68,7 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
 WalletTransactionSchema.index({ userId: 1, userType: 1 });
 WalletTransactionSchema.index({ createdAt: -1 });
 WalletTransactionSchema.index({ relatedOrder: 1 });
+WalletTransactionSchema.index({ userId: 1, userType: 1, relatedOrder: 1, type: 1 });
 
 const WalletTransaction = mongoose.models.WalletTransaction || mongoose.model<IWalletTransaction>('WalletTransaction', WalletTransactionSchema);
 

@@ -373,7 +373,7 @@ export default function AdminOrderDetail() {
               <h2 className="text-lg font-semibold mb-4">Earning breakdown</h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Product commission (admin):</span>
+                  <span className="text-neutral-600">Product commission (Admin):</span>
                   <span className="font-medium">₹{earningBreakdown.adminProductCommission?.toFixed(2) ?? '0.00'}</span>
                 </div>
                 <div className="flex justify-between">
@@ -381,7 +381,7 @@ export default function AdminOrderDetail() {
                   <span className="font-medium">₹{earningBreakdown.platformFee?.toFixed(2) ?? '0.00'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Delivery charge (order):</span>
+                  <span className="text-neutral-600">Delivery charge (Customer):</span>
                   <span className="font-medium">₹{earningBreakdown.totalDeliveryCharge?.toFixed(2) ?? '0.00'}</span>
                 </div>
                 <div className="flex justify-between">
@@ -392,22 +392,22 @@ export default function AdminOrderDetail() {
                 </div>
                 {earningBreakdown.sellerEarningsList?.length > 0 && (
                   <div className="pt-2 border-t">
-                    <span className="text-neutral-600 block mb-1">Seller(s) earning:</span>
+                    <span className="text-neutral-600 block mb-1">Seller earning:</span>
                     {earningBreakdown.sellerEarningsList.map((s) => (
                       <div key={s.sellerId} className="flex justify-between pl-2">
-                        <span className="text-neutral-600">{s.sellerName ?? s.sellerId}</span>
+                        <span className="text-neutral-600">{s.sellerName ?? s.sellerId}:</span>
                         <span className="font-medium">₹{(s.amount ?? 0).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                <div className="border-t pt-2 mt-2 flex justify-between font-semibold text-teal-700">
-                  <span>Admin earning (this order):</span>
+                <div className="border-t pt-2 mt-2 flex justify-between font-semibold text-teal-700 text-base">
+                  <span>Admin net earning (this order):</span>
                   <span>₹{(earningBreakdown.totalAdminEarning ?? 0).toFixed(2)}</span>
                 </div>
-                {earningBreakdown.note && (
-                  <p className="text-xs text-neutral-500 mt-2 pt-2 border-t">{earningBreakdown.note}</p>
-                )}
+                <p className="text-xs text-neutral-600 mt-2 pt-2 border-t bg-amber-50 p-2 rounded border border-amber-200">
+                  ℹ️ Delivery partner share is paid from Admin's product commission.
+                </p>
               </div>
             </div>
           )}

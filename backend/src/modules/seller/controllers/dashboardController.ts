@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import Order from "../../../models/Order";
 import Product from "../../../models/Product";
-// import Category from "../../../models/Category";
-// import Category from "../../../models/Category";
+import Seller from "../../../models/Seller";
 import OrderItem from "../../../models/OrderItem";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import mongoose from "mongoose";
@@ -19,6 +18,9 @@ export const getDashboardStats = asyncHandler(
         const sellerOrderItems = await OrderItem.find({ seller: sellerId }).select('order');
         const sellerOrderIds = [...new Set(sellerOrderItems.map(item => item.order.toString()))];
 
+        const sellerDoc = await Seller.findById(sellerId).select("categories");
+        const sellingCategoriesCount = sellerDoc?.categories?.length || 0;
+
         // 1. KPI Metrics
         const [
             totalOrders,
@@ -32,10 +34,10 @@ export const getDashboardStats = asyncHandler(
         ] = await Promise.all([
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: { $ne: "Pending" } }),
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: "Delivered" }),
-            Order.countDocuments({ _id: { $in: sellerOrderIds }, status: "Received" }), // Should ideally count Received, Accepted, etc.
+            Order.countDocuments({ _id: { $in: sellerOrderIds }, status: { $in: ["Received", "Accepted", "Processed", "Shipped", "Out for Delivery", "Out For Delivery"] } }),
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: "Cancelled" }),
             Product.countDocuments({ seller: sellerId }),
-            Product.distinct("category", { seller: sellerId }).then(ids => ids.length),
+            Promise.resolve(sellingCategoriesCount),
             Product.distinct("subcategory", { seller: sellerId }).then(ids => ids.length),
             Order.distinct("customer", { _id: { $in: sellerOrderIds }, status: { $ne: "Pending" } }).then(ids => ids.length),
         ]);

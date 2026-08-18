@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSellerProfile, updateSellerProfile } from '../../../services/api/auth/sellerAuthService';
 import { useAuth } from '../../../context/AuthContext';
-import { getCategories, Category } from '../../../services/api/categoryService';
+import { getHeaderCategoriesPublic, HeaderCategory } from '../../../services/api/headerCategoryService';
 import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
 import LocationPickerMap from '../../../components/LocationPickerMap';
 
@@ -12,7 +12,7 @@ const SellerAccountSettings = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [categories, setCategories] = useState<Category[]>([]);
+    const [headerCategories, setHeaderCategories] = useState<HeaderCategory[]>([]);
     const [saveLoading, setSaveLoading] = useState(false);
 
     // Initial state with empty values
@@ -22,6 +22,7 @@ const SellerAccountSettings = () => {
         mobile: '',
         storeName: '',
         category: '',
+        categories: [] as string[],
         address: '',
         city: '',
         searchLocation: '',
@@ -51,10 +52,12 @@ const SellerAccountSettings = () => {
 
     const fetchCategories = async () => {
         try {
-            const res = await getCategories();
-            if (res.success) setCategories(res.data);
+            const res = await getHeaderCategoriesPublic();
+            if (Array.isArray(res)) {
+                setHeaderCategories(res.filter(c => c.status === 'Published'));
+            }
         } catch (err) {
-            console.error('Error fetching categories:', err);
+            console.error('Error fetching header categories:', err);
         }
     };
 
@@ -64,10 +67,11 @@ const SellerAccountSettings = () => {
             const response = await getSellerProfile();
             if (response.success) {
                 const data = response.data;
-                // Map location data to state
                 const locationCoords = data.location?.coordinates || [];
                 setSellerData({
                     ...data,
+                    category: data.category || '',
+                    categories: Array.isArray(data.categories) ? data.categories : (data.category ? [data.category] : []),
                     latitude: data.latitude || (locationCoords[1]?.toString() || ''),
                     longitude: data.longitude || (locationCoords[0]?.toString() || ''),
                     searchLocation: data.searchLocation || data.address || '',
@@ -81,6 +85,21 @@ const SellerAccountSettings = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleAllowedCategory = (categoryName: string) => {
+        if (!isEditing) return;
+        setSellerData(prev => {
+            const exists = prev.categories.includes(categoryName);
+            const nextCategories = exists
+                ? prev.categories.filter(c => c !== categoryName)
+                : [...prev.categories, categoryName];
+            return {
+                ...prev,
+                categories: nextCategories,
+                category: prev.category || nextCategories[0] || '',
+            };
+        });
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -376,7 +395,7 @@ const SellerAccountSettings = () => {
                                                     <InputGroup label="Store Name" name="storeName" value={sellerData.storeName} onChange={handleInputChange} disabled={!isEditing} />
 
                                                     <div className="space-y-1.5">
-                                                        <label className="text-sm font-semibold text-gray-700 ml-1">Store Category</label>
+                                                        <label className="text-sm font-semibold text-gray-700 ml-1">Primary Store Category</label>
                                                         <div className="relative">
                                                             <select
                                                                 name="category"
@@ -385,14 +404,38 @@ const SellerAccountSettings = () => {
                                                                 disabled={!isEditing}
                                                                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none disabled:bg-gray-50/50 disabled:text-gray-500 transition-all appearance-none bg-white"
                                                             >
-                                                                <option value="">Select Category</option>
-                                                                {categories.map(cat => (
+                                                                <option value="">Select Primary Category</option>
+                                                                {headerCategories.map(cat => (
                                                                     <option key={cat._id} value={cat.name}>{cat.name}</option>
                                                                 ))}
                                                             </select>
                                                             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                                                             </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="md:col-span-2 space-y-2">
+                                                        <label className="text-sm font-semibold text-gray-700 ml-1">Allowed Selling Categories</label>
+                                                        <p className="text-xs text-gray-500 ml-1">Categories your store is authorized to list products in when adding new items:</p>
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            {headerCategories.map(cat => {
+                                                                const isSelected = sellerData.categories.includes(cat.name);
+                                                                return (
+                                                                    <button
+                                                                        type="button"
+                                                                        key={cat._id}
+                                                                        disabled={!isEditing}
+                                                                        onClick={() => toggleAllowedCategory(cat.name)}
+                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${isSelected
+                                                                            ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                                                                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-teal-300'
+                                                                            } ${!isEditing ? 'cursor-default opacity-85' : 'cursor-pointer'}`}
+                                                                    >
+                                                                        {isSelected ? '✓ ' : '+ '}{cat.name}
+                                                                    </button>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
 

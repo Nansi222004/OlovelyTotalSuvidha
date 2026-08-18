@@ -4,6 +4,7 @@ export interface ICustomer extends Document {
   name: string;
   email: string;
   phone: string;
+  mobile?: string; // Virtual alias for phone
   dateOfBirth?: Date;
   registrationDate: Date;
   status: 'Active' | 'Inactive';
@@ -167,6 +168,18 @@ const CustomerSchema = new Schema<ICustomer>(
     timestamps: true,
   }
 );
+
+// Virtual alias for mobile <-> phone compatibility
+CustomerSchema.virtual('mobile')
+  .get(function (this: ICustomer) {
+    return this.phone;
+  })
+  .set(function (this: ICustomer, val: string) {
+    this.phone = val;
+  });
+
+CustomerSchema.set('toJSON', { virtuals: true });
+CustomerSchema.set('toObject', { virtuals: true });
 
 // Generate refCode and deliveryOtp before saving if not provided
 CustomerSchema.pre('save', async function (next) {

@@ -24,21 +24,14 @@ export const isOriginAllowed = (origin: string | undefined): boolean => {
   if (isProduction) {
     // Get allowed origins from environment variable (comma-separated)
     const frontendUrl = process.env.FRONTEND_URL || '';
-    const allowedOrigins = frontendUrl
-      .split(',')
+    const corsOrigins = process.env.CORS_ORIGINS || '';
+    const allAllowedOrigins = [...frontendUrl.split(','), ...corsOrigins.split(',')]
       .map((url) => url.trim().replace(/\/$/, '')) // Remove trailing slashes
       .filter((url) => url.length > 0);
 
-    // Default production origins (explicitly include www.dhakadsnazzy.com)
-    const defaultOrigins = [
-      'https://www.dhakadsnazzy.com',
-      'https://dhakadsnazzy.com',
-    ];
-
-    // Combine and remove duplicates
-    const allAllowedOrigins = allowedOrigins.length > 0
-      ? [...new Set([...allowedOrigins, ...defaultOrigins])]
-      : defaultOrigins;
+    if (allAllowedOrigins.length === 0) {
+      return true;
+    }
 
     // Normalize origin (remove trailing slash if present)
     const normalizedOrigin = origin.replace(/\/$/, '');

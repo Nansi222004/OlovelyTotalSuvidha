@@ -20,10 +20,19 @@ const runListener = async () => {
   await connectDB();
 
   try {
-    const deliveryBoy = await Delivery.findOne({ name: { $regex: /vishal/i } });
+    let deliveryBoy = await Delivery.findOne();
+    let isTemp = false;
     if (!deliveryBoy) {
-      console.error("Delivery boy not found");
-      process.exit(1);
+      deliveryBoy = await Delivery.create({
+        name: 'Socket Test Driver',
+        mobile: `7${Math.floor(100000000 + Math.random() * 900000000)}`,
+        email: `driver_socket_${Date.now()}@test.com`,
+        password: 'Password123!',
+        address: 'Indore',
+        city: 'Indore',
+        status: 'Active',
+      });
+      isTemp = true;
     }
 
     console.log(`Found Delivery Boy: ${deliveryBoy.name} (${deliveryBoy._id})`);

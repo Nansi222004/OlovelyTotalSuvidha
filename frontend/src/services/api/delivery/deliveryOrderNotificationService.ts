@@ -1,4 +1,5 @@
 import { Socket } from 'socket.io-client';
+import api from '../config';
 
 export interface OrderNotificationData {
     orderId: string;
@@ -31,53 +32,94 @@ export interface RejectOrderResponse {
 }
 
 /**
- * Accept an order via WebSocket
+ * Accept an order via WebSocket with REST API fallback
  */
-export const acceptOrder = (
-    socket: Socket,
+export const acceptOrder = async (
+    socket: Socket | null,
     orderId: string,
     deliveryBoyId: string
 ): Promise<AcceptOrderResponse> => {
-    return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-            resolve({
-                success: false,
-                message: 'Request timeout',
+    // 1. Try WebSocket first if connected
+    if (socket && socket.connected) {
+        try {
+            const socketResult = await new Promise<AcceptOrderResponse>((resolve) => {
+                const timeout = setTimeout(() => {
+                    resolve({ success: false, message: 'Request timeout' });
+                }, 4000); // 4s timeout for socket
+
+                socket.emit('accept-order', { orderId, deliveryBoyId });
+
+                socket.once('accept-order-response', (response: AcceptOrderResponse) => {
+                    clearTimeout(timeout);
+                    resolve(response);
+                });
             });
-        }, 10000); // 10 second timeout
 
-        socket.emit('accept-order', { orderId, deliveryBoyId });
+            if (socketResult.success) {
+                return socketResult;
+            }
+        } catch (e) {
+            console.warn('Socket accept attempt failed, using REST fallback:', e);
+        }
+    }
 
-        socket.once('accept-order-response', (response: AcceptOrderResponse) => {
-            clearTimeout(timeout);
-            resolve(response);
-        });
-    });
+    // 2. Fallback to REST API if socket is not connected or timed out or failed
+    try {
+        const response = await api.post<AcceptOrderResponse>(`/delivery/orders/${orderId}/accept`);
+        return response.data;
+    } catch (err: any) {
+        console.error('REST accept order failed:', err);
+        return {
+            success: false,
+            message: err?.response?.data?.message || err?.message || 'Failed to accept order',
+        };
+    }
 };
 
 /**
- * Reject an order via WebSocket
+ * Reject an order via WebSocket with REST API fallback
  */
-export const rejectOrder = (
-    socket: Socket,
+export const rejectOrder = async (
+    socket: Socket | null,
     orderId: string,
     deliveryBoyId: string
 ): Promise<RejectOrderResponse> => {
-    return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-            resolve({
-                success: false,
-                message: 'Request timeout',
-                allRejected: false,
+    // 1. Try WebSocket first if connected
+    if (socket && socket.connected) {
+        try {
+            const socketResult = await new Promise<RejectOrderResponse>((resolve) => {
+                const timeout = setTimeout(() => {
+                    resolve({ success: false, message: 'Request timeout', allRejected: false });
+                }, 4000); // 4s timeout for socket
+
+                socket.emit('reject-order', { orderId, deliveryBoyId });
+
+                socket.once('reject-order-response', (response: RejectOrderResponse) => {
+                    clearTimeout(timeout);
+                    resolve(response);
+                });
             });
-        }, 10000); // 10 second timeout
 
-        socket.emit('reject-order', { orderId, deliveryBoyId });
+            if (socketResult.success) {
+                return socketResult;
+            }
+        } catch (e) {
+            console.warn('Socket reject attempt failed, using REST fallback:', e);
+        }
+    }
 
-        socket.once('reject-order-response', (response: RejectOrderResponse) => {
-            clearTimeout(timeout);
-            resolve(response);
-        });
-    });
+    // 2. Fallback to REST API if socket is not connected or timed out or failed
+    try {
+        const response = await api.post<RejectOrderResponse>(`/delivery/orders/${orderId}/reject`);
+        return response.data;
+    } catch (err: any) {
+        console.error('REST reject order failed:', err);
+        return {
+            success: false,
+            message: err?.response?.data?.message || err?.message || 'Failed to reject order',
+            allRejected: false,
+        };
+    }
 };
+
 
