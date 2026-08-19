@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAppSettings } from '../../context/AppSettingsContext';
+import SupportModal from '../../components/SupportModal';
+
 
 interface FAQItem {
   id: string;
@@ -75,6 +77,7 @@ export default function FAQ() {
   const navigate = useNavigate();
   const { settings: appSettings } = useAppSettings();
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const toggleItem = (id: string) => {
     const newOpenItems = new Set(openItems);
@@ -213,9 +216,10 @@ export default function FAQ() {
                 Our customer support team is here to help you 24/7
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <a
-                  href={`mailto:${appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'}`}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors text-sm"
+                <button
+                  type="button"
+                  onClick={() => setIsSupportModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 active:scale-[0.98] transition-all text-sm cursor-pointer shadow-xs"
                 >
                   <svg
                     width="18"
@@ -238,8 +242,8 @@ export default function FAQ() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Email Us ({appSettings?.supportEmail || appSettings?.contactEmail || 'Support'})
-                </a>
+                  Contact Support
+                </button>
                 <a
                   href={`tel:${appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}`}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-green-600 border-2 border-green-600 rounded-lg font-semibold hover:bg-green-50 transition-colors text-sm"
@@ -265,7 +269,14 @@ export default function FAQ() {
           </div>
         </div>
       </div>
+      
+      {/* Contact Support Modal */}
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
     </div>
   );
 }
+
 

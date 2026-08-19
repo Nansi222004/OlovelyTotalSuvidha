@@ -848,14 +848,54 @@ export const getOrderById = async (req: Request, res: Response) => {
       });
     }
 
-    // Get customer's permanent delivery OTP
+    // Suppress OTP for delivered/cancelled orders
     const customer = await Customer.findById(userId).select("deliveryOtp");
-    const deliveryOtp = customer?.deliveryOtp;
+    const deliveryOtp = (order.status === "Delivered" || order.status === "Cancelled")
+      ? null
+      : customer?.deliveryOtp;
+
 
     // Transform order to match frontend Order type
     const orderObj = order.toObject();
+
+    // Fetch existing return requests for items in this order
+    const itemIds = (orderObj.items || []).map((i: any) => i._id);
+    const existingReturns = await Return.find({
+      orderItem: { $in: itemIds },
+    }).sort({ createdAt: -1 });
+    const returnMap = new Map(existingReturns.map((r: any) => [r.orderItem.toString(), r]));
+
+    const enrichedItems = await Promise.all(
+      (orderObj.items || []).map(async (item: any) => {
+        const prodId = item.product?._id || item.product;
+        const prod = prodId ? await Product.findById(prodId).select("isReturnable maxReturnDays") : null;
+        const isReturnable = prod?.isReturnable || false;
+        const maxReturnDays = prod?.maxReturnDays || 7;
+
+        const deliveryDate = orderObj.deliveredAt || orderObj.updatedAt || orderObj.createdAt;
+        const expiryDate = new Date(deliveryDate);
+        expiryDate.setDate(expiryDate.getDate() + maxReturnDays);
+        const isReturnWindowActive = new Date() <= expiryDate;
+
+        const activeReturn: any = returnMap.get(item._id.toString());
+
+        return {
+          ...item,
+          isReturnable,
+          maxReturnDays,
+          returnExpiryDate: expiryDate.toISOString(),
+          isReturnWindowActive,
+          activeReturnStatus: activeReturn ? activeReturn.status : null,
+          activeReturnId: activeReturn ? activeReturn._id : null,
+          activeReturnRejectionReason: activeReturn?.rejectionReason || null,
+        };
+      })
+    );
+
+
     const transformedOrder = {
       ...orderObj,
+      items: enrichedItems,
       id: orderObj._id.toString(),
       totalItems: Array.isArray(orderObj.items) ? orderObj.items.length : 0,
       totalAmount: orderObj.total,
@@ -868,11 +908,12 @@ export const getOrderById = async (req: Request, res: Response) => {
       address: orderObj.deliveryAddress,
       // Include invoice enabled flag
       invoiceEnabled: orderObj.invoiceEnabled || false,
-      // Include customer's permanent delivery OTP
+      // Include customer's permanent delivery OTP (null if delivered)
       deliveryOtp,
       // Map deliveryBoy to deliveryPartner for frontend
       deliveryPartner: orderObj.deliveryBoy,
     };
+
 
     return res.status(200).json({
       success: true,
@@ -1183,11 +1224,15 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
  */
 export const requestItemReturn = async (req: Request, res: Response) => {
   try {
-    const { orderId } = req.params;
+    const id = req.params.id || req.params.orderId;
     const { orderItemId, reason, description, quantity } = req.body;
     const userId = req.user!.userId;
 
-    const order = await Order.findOne({ _id: orderId, customer: userId });
+    if (!orderItemId || !reason) {
+      return res.status(400).json({ success: false, message: "Order item ID and return reason are required" });
+    }
+
+    const order = await Order.findOne({ _id: id, customer: userId }).populate("items");
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
@@ -1196,54 +1241,82 @@ export const requestItemReturn = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Returns can only be requested for delivered orders" });
     }
 
-    const orderItem = await OrderItem.findOne({ _id: orderItemId, order: order._id });
-    if (!orderItem) {
-      return res.status(404).json({ success: false, message: "Order item not found" });
+
+    const item = (order.items as any[]).find(
+      (i: any) => i._id?.toString() === orderItemId || i.id === orderItemId
+    );
+    if (!item) {
+      return res.status(404).json({ success: false, message: "Order item not found in this order" });
     }
 
-    if (orderItem.isReturnable === false) {
+    const productId = item.product?._id || item.product;
+    const product = await Product.findById(productId);
+    if (!product || product.isReturnable === false) {
       return res.status(400).json({ success: false, message: "This product is marked non-returnable" });
     }
 
-    const deliveredAt = order.deliveredAt || order.updatedAt;
-    const windowDays = orderItem.returnWindowDays ?? 7;
-    const deadline = orderItem.returnDeadline || new Date(deliveredAt.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    const deliveredAt = order.deliveredAt || order.updatedAt || order.createdAt;
+    const windowDays = product.maxReturnDays ?? 7;
+    const deadline = new Date(deliveredAt);
+    deadline.setDate(deadline.getDate() + windowDays);
 
     if (Date.now() > deadline.getTime()) {
-      return res.status(400).json({ success: false, message: "Return eligibility period has expired for this item" });
+      return res.status(400).json({ success: false, message: `Return window for this product has expired (${windowDays} days)` });
     }
 
     const existingReturn = await Return.findOne({
-      order: order._id,
-      orderItem: orderItem._id,
-      status: { $in: ["Pending", "Approved", "Processing", "Completed"] },
+      orderItem: item._id,
+      status: { $ne: "Rejected" },
     });
 
     if (existingReturn) {
-      return res.status(400).json({ success: false, message: "A return request already exists for this item" });
+      return res.status(400).json({
+        success: false,
+        message: `A return request already exists for this item (Status: ${existingReturn.status})`,
+      });
     }
 
-    const returnQty = quantity && quantity > 0 ? Math.min(quantity, orderItem.quantity) : orderItem.quantity;
+    const returnQty = quantity && quantity > 0 ? Math.min(quantity, item.quantity) : item.quantity;
 
-    const newReturn = new Return({
+    const newReturn = await Return.create({
       order: order._id,
-      orderItem: orderItem._id,
+      orderItem: item._id,
       customer: userId,
       reason,
-      description,
+      description: description || "",
       quantity: returnQty,
       status: "Pending",
     });
 
-    await newReturn.save();
+    // Notify seller of new return request
+    try {
+      const { sendReturnRequestNotificationToSeller } = await import("../../../services/notificationService");
+      const sellerId = item.seller?._id?.toString() || item.seller?.toString() || item.vendor?.toString();
+      if (sellerId) {
+        const io = req.app.get("io");
+        await sendReturnRequestNotificationToSeller(
+          sellerId,
+          order.orderNumber || "N/A",
+          product.productName || "Product",
+          newReturn._id.toString(),
+          io
+        );
+      }
+    } catch (notifErr) {
+      console.error("Error notifying seller of return request:", notifErr);
+    }
 
     return res.status(201).json({
       success: true,
       message: "Return request submitted successfully",
       data: newReturn,
     });
+
   } catch (error: any) {
     console.error("Error requesting item return:", error);
     return res.status(500).json({ success: false, message: "Failed to submit return request", error: error.message });
   }
 };
+
+export const requestCustomerReturn = requestItemReturn;
+

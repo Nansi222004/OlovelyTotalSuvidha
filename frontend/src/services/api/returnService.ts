@@ -20,6 +20,10 @@ export interface ReturnRequest {
   customerName?: string;
   customerPhone?: string;
   orderId?: string;
+  image?: string;
+  returnReason?: string;
+  reason?: string;
+  rejectionReason?: string;
 }
 
 export interface ReturnRequestDetail {
@@ -38,10 +42,20 @@ export interface ReturnRequestDetail {
   returnDate: string;
   processedDate?: string;
   reason?: string;
+  reasonDescription?: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
   customerAddress?: string;
+  items?: Array<{
+    id?: string;
+    name?: string;
+    sku?: string;
+    price?: number;
+    quantity?: number;
+    total?: number;
+    image?: string;
+  }>;
   // Delivery partner fields
   deliveryBoy?: { _id: string; name: string; phone: string } | null;
   assignedAt?: string;
@@ -51,6 +65,7 @@ export interface ReturnRequestDetail {
   completedAt?: string;
   approvedAt?: string;
 }
+
 
 export interface UpdateReturnStatusData {
   status: 'Approved' | 'Rejected';

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
+import { useToast } from '../../../context/ToastContext';
 import {
   getAssignedReturns,
   generateReturnPickupOtp,
@@ -19,6 +20,12 @@ type ReturnStatus =
 
 interface ReturnPickup {
   _id: string;
+  returnId?: string;
+  orderNumber?: string;
+  productName?: string;
+  productImage?: string;
+  customerName?: string;
+  customerPhone?: string;
   status: ReturnStatus | string;
   pickupOtpVerified?: boolean;
   customer?: { name?: string; phone?: string; address?: string };
@@ -30,6 +37,7 @@ interface ReturnPickup {
   inTransitAt?: string;
   handedToSellerAt?: string;
 }
+
 
 const STATUS_STEPS: { status: string; label: string; emoji: string }[] = [
   { status: 'Delivery Partner Assigned', label: 'Assigned', emoji: '📋' },
@@ -56,6 +64,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DeliveryReturnOrders() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [returns, setReturns] = useState<ReturnPickup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -112,7 +121,7 @@ export default function DeliveryReturnOrders() {
         setOtpModal(null);
         setOtpInput('');
         await fetchReturns();
-        alert('✅ OTP verified! Item marked as Picked Up.');
+        showToast('✅ OTP verified! Item marked as Picked Up.', 'success');
       } else {
         setOtpError(res.message || 'Invalid OTP. Try again.');
       }
@@ -124,39 +133,39 @@ export default function DeliveryReturnOrders() {
   };
 
   const handleMarkInTransit = async (returnId: string) => {
-    if (!window.confirm('Mark this return as In Transit?')) return;
     setActionLoading(returnId);
     try {
       const res = await markReturnInTransit(returnId);
       if (res.success) {
+        showToast('Return marked as In Transit.', 'success');
         await fetchReturns();
       } else {
-        alert('Failed: ' + (res.message || 'Unknown error'));
+        showToast('Failed: ' + (res.message || 'Unknown error'), 'error');
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      showToast('Error: ' + err.message, 'error');
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleHandedToSeller = async (returnId: string) => {
-    if (!window.confirm('Confirm that you have physically handed the item to the seller?')) return;
     setActionLoading(returnId);
     try {
       const res = await markReturnHandedToSeller(returnId);
       if (res.success) {
         await fetchReturns();
-        alert('✅ Item handed to seller. The seller will now confirm receipt and complete the return.');
+        showToast('✅ Item handed to seller. The seller will now confirm receipt.', 'success');
       } else {
-        alert('Failed: ' + (res.message || 'Unknown error'));
+        showToast('Failed: ' + (res.message || 'Unknown error'), 'error');
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      showToast('Error: ' + err.message, 'error');
     } finally {
       setActionLoading(null);
     }
   };
+
 
   if (loading) {
     return (
@@ -184,24 +193,45 @@ export default function DeliveryReturnOrders() {
     <div className="min-h-screen bg-neutral-100 pb-20">
       <DeliveryHeader />
       <div className="px-4 py-4">
-        {/* Header */}
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="mr-3 p-2 hover:bg-neutral-200 rounded-full transition-colors"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Return Pickups</h2>
-          <button onClick={fetchReturns} className="ml-auto p-2 hover:bg-neutral-200 rounded-full transition-colors" title="Refresh">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-          </button>
+        {/* Header with Tab Switcher */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <button
+              onClick={() => navigate(-1)}
+              className="mr-2 p-1.5 hover:bg-neutral-200 rounded-full transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <h2 className="text-neutral-900 text-lg font-semibold">Return Pickups</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-neutral-200/80 p-1 rounded-xl gap-1 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => navigate("/delivery/orders")}
+                className="px-2.5 py-1 rounded-lg text-neutral-600 hover:text-neutral-900 transition-colors"
+              >
+                📦 Deliveries
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/delivery/orders/return")}
+                className="px-2.5 py-1 rounded-lg bg-white text-neutral-900 shadow-xs"
+              >
+                ↩ Returns
+              </button>
+            </div>
+            <button onClick={fetchReturns} className="p-1.5 hover:bg-neutral-200 rounded-full transition-colors" title="Refresh">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </button>
+          </div>
         </div>
+
 
         {/* Legend */}
         <div className="bg-white rounded-xl p-3 mb-4 shadow-sm border border-neutral-200">
@@ -223,17 +253,18 @@ export default function DeliveryReturnOrders() {
           </div>
         ) : (
           <div className="space-y-4">
-            {returns.map((ret) => {
-              const isLoading = actionLoading === ret._id;
-              const orderNum = ret.order?.orderNumber || ret._id.slice(-6).toUpperCase();
-              const productName = ret.orderItem?.product?.name || 'Product';
+            {returns.map((ret, idx) => {
+              const returnId = ret._id || ret.returnId || '';
+              const isLoading = actionLoading === returnId;
+              const orderNum = ret.orderNumber || ret.order?.orderNumber || (returnId ? returnId.slice(-6).toUpperCase() : 'N/A');
+              const productName = ret.productName || ret.orderItem?.product?.name || 'Product';
               const amount = ret.orderItem?.total;
-              const customerName = ret.customer?.name || 'Customer';
-              const customerPhone = ret.customer?.phone || '';
+              const customerName = ret.customerName || ret.customer?.name || 'Customer';
+              const customerPhone = ret.customerPhone || ret.customer?.phone || '';
               const address = ret.deliveryAddress?.address || ret.customer?.address || '';
 
               return (
-                <div key={ret._id} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+                <div key={returnId || idx} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
                   {/* Card Header */}
                   <div className="flex items-start justify-between p-4 border-b border-neutral-100">
                     <div>
@@ -273,8 +304,8 @@ export default function DeliveryReturnOrders() {
                           Go to the customer's address and generate an OTP to confirm pickup.
                         </p>
                         <button
-                          id={`btn-generate-otp-${ret._id}`}
-                          onClick={() => handleGenerateOtp(ret._id)}
+                          id={`btn-generate-otp-${returnId}`}
+                          onClick={() => handleGenerateOtp(returnId)}
                           disabled={isLoading}
                           className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-300 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                         >
@@ -292,8 +323,8 @@ export default function DeliveryReturnOrders() {
                           ✅ Item picked up from customer. Head to the seller's store.
                         </p>
                         <button
-                          id={`btn-in-transit-${ret._id}`}
-                          onClick={() => handleMarkInTransit(ret._id)}
+                          id={`btn-in-transit-${returnId}`}
+                          onClick={() => handleMarkInTransit(returnId)}
                           disabled={isLoading}
                           className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white rounded-lg text-sm font-medium transition-colors"
                         >
@@ -308,8 +339,8 @@ export default function DeliveryReturnOrders() {
                           🚗 In transit to seller. Tap below when you have physically handed the item.
                         </p>
                         <button
-                          id={`btn-handed-${ret._id}`}
-                          onClick={() => handleHandedToSeller(ret._id)}
+                          id={`btn-handed-${returnId}`}
+                          onClick={() => handleHandedToSeller(returnId)}
                           disabled={isLoading}
                           className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-neutral-300 text-white rounded-lg text-sm font-medium transition-colors"
                         >
@@ -335,6 +366,7 @@ export default function DeliveryReturnOrders() {
                 </div>
               );
             })}
+
           </div>
         )}
       </div>

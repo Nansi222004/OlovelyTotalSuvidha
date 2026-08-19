@@ -767,8 +767,6 @@ export const getStoreProducts = async (req: Request, res: Response) => {
     let query: any = {
       status: "Active",
       publish: true,
-      // Only show shop-by-store-only products in shop by store section
-      isShopByStoreOnly: true,
     };
 
     console.log(`[getStoreProducts] Looking for shop with storeId: ${storeId}`);
@@ -820,36 +818,32 @@ export const getStoreProducts = async (req: Request, res: Response) => {
       // Get shop ID for filtering
       const shopId = (shop as any)._id;
 
-      // If shop has specific products assigned, use those
+      // If shop has specific products assigned, use those product IDs
       if (productIds.length > 0) {
         query._id = { $in: productIds };
-        // Also filter by shopId to ensure products belong to this shop
-        query.shopId = shopId;
-        console.log(`[getStoreProducts] Filtering by product IDs: ${productIds.length} products and shopId: ${shopId}`);
+        console.log(`[getStoreProducts] Filtering by assigned product IDs: ${productIds.length} products`);
       }
-      // Otherwise, filter by shopId and category/subcategory
+      // Otherwise, filter by shopId or category/subcategory
       else {
-        // Filter by shopId to show only products assigned to this shop
-        query.shopId = shopId;
-        console.log(`[getStoreProducts] Filtering by shopId: ${shopId}`);
+        const orConditions: any[] = [
+          { shopId: shopId },
+          { isShopByStoreOnly: true }
+        ];
 
         if (shop.category) {
           const categoryId = (shop.category as any)._id || (shop.category as any);
-          query.category = categoryId;
-          console.log(`[getStoreProducts] Also filtering by category: ${categoryId}`);
+          orConditions.push({ category: categoryId });
 
-          // If subcategory is also specified, filter by both
           if (shop.subCategory) {
             const subCategoryId = (shop.subCategory as any)._id || (shop.subCategory as any);
-            query.$or = [
-              { category: categoryId, shopId: shopId },
-              { subcategory: subCategoryId, shopId: shopId },
-            ];
-            console.log(`[getStoreProducts] Also filtering by subcategory: ${subCategoryId}`);
+            orConditions.push({ subcategory: subCategoryId });
           }
         }
+        query.$or = orConditions;
+        console.log(`[getStoreProducts] Filtering by shop fallback conditions`);
       }
     } else {
+
       // Fallback: try to match by category name (legacy support)
       const categoryId = await getCategoryIdByName(storeId);
       if (categoryId) {

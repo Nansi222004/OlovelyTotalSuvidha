@@ -201,5 +201,10 @@ CustomerSchema.pre('save', async function (next) {
 
 const Customer = (mongoose.models.Customer as mongoose.Model<ICustomer>) || mongoose.model<ICustomer>('Customer', CustomerSchema);
 
+// Register Alias for refPath 'CUSTOMER'
+if (!(mongoose.models.CUSTOMER as mongoose.Model<ICustomer>)) {
+  mongoose.model<ICustomer>('CUSTOMER', CustomerSchema, 'customers');
+}
+
 export default Customer;
 

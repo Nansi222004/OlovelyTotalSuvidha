@@ -45,6 +45,7 @@ import {
   getMyOrders,
   getOrderById,
   cancelOrder,
+  requestCustomerReturn,
   updateOrderNotes,
 } from "../modules/customer/controllers/customerOrderController";
 
@@ -111,6 +112,7 @@ router.post(
 router.get("/customer/orders", authenticate, requireUserType("Customer"), getMyOrders);
 router.get("/customer/orders/:id", authenticate, requireUserType("Customer"), getOrderById);
 router.post("/customer/orders/:id/cancel", authenticate, requireUserType("Customer"), cancelOrder);
+router.post("/customer/orders/:id/return", authenticate, requireUserType("Customer"), requestCustomerReturn);
 router.patch("/customer/orders/:id/notes", authenticate, requireUserType("Customer"), updateOrderNotes);
 
 router.use("/customer/coupons", customerCouponRoutes);

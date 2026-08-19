@@ -31,7 +31,7 @@ interface TrackingData {
 const MAX_RECONNECT_ATTEMPTS = 5
 const INITIAL_RECONNECT_DELAY = 2000 // 2 seconds
 
-export const useDeliveryTracking = (orderId: string | undefined) => {
+export const useDeliveryTracking = (orderId: string | undefined, enabled: boolean = true) => {
     const [trackingData, setTrackingData] = useState<TrackingData>({
         deliveryLocation: null,
         eta: 30,
@@ -49,7 +49,7 @@ export const useDeliveryTracking = (orderId: string | undefined) => {
     const reconnectAttemptsRef = useRef(0)
 
     const connectSocket = useCallback(() => {
-        if (!orderId) return
+        if (!orderId || !enabled) return
 
         // Clear any existing reconnect timeout
         if (reconnectTimeoutRef.current) {
@@ -57,7 +57,7 @@ export const useDeliveryTracking = (orderId: string | undefined) => {
             reconnectTimeoutRef.current = null
         }
 
-        const token = getAuthToken('delivery')
+        const token = getAuthToken('delivery') || getAuthToken('customer');
         const socket = io(getSocketBaseURL(), {
             auth: {
                 token,
@@ -253,7 +253,10 @@ export const useDeliveryTracking = (orderId: string | undefined) => {
     }, [connectSocket, disconnectSocket])
 
     useEffect(() => {
-        if (!orderId) return
+        if (!orderId || !enabled) {
+            disconnectSocket()
+            return
+        }
 
         const socket = connectSocket()
 
@@ -263,7 +266,7 @@ export const useDeliveryTracking = (orderId: string | undefined) => {
             }
             disconnectSocket()
         }
-    }, [orderId, connectSocket, disconnectSocket])
+    }, [orderId, enabled, connectSocket, disconnectSocket])
 
     return {
         ...trackingData,

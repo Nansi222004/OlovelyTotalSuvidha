@@ -85,8 +85,10 @@ export const getAssignedReturns = asyncHandler(async (req: Request, res: Respons
     const order = r.order as any;
     const customer = r.customer as any;
     return {
-      returnId: r._id,
+      _id: r._id.toString(),
+      returnId: r._id.toString(),
       orderNumber: order?.orderNumber || "N/A",
+
       productName: item?.product?.productName || item?.productName || "Product",
       productImage: item?.product?.mainImage,
       customerName: customer?.name || "Customer",

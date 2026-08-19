@@ -682,10 +682,11 @@ export default function AdminReturnRequest() {
                     </svg>
                   </div>
                 </th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+                <th className="sticky right-0 bg-neutral-50 px-4 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider shadow-xs z-10">
                   Action
                 </th>
               </tr>
+
             </thead>
             <tbody className="bg-white divide-y divide-neutral-200">
               {loading ? (
@@ -715,7 +716,7 @@ export default function AdminReturnRequest() {
                 </tr>
               ) : (
                 displayedRequests.map((request) => (
-                  <tr key={request._id} className="hover:bg-neutral-50">
+                  <tr key={request._id} className="hover:bg-neutral-50 group">
                     <td className="px-4 sm:px-6 py-3 text-sm text-neutral-900">
                       {request.orderItemId}
                     </td>
@@ -748,8 +749,9 @@ export default function AdminReturnRequest() {
                     <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">
                       {new Date(request.requestedAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 sm:px-6 py-3">
+                    <td className="sticky right-0 bg-white group-hover:bg-neutral-50 px-4 sm:px-6 py-3 shadow-xs z-10">
                       <div className="flex flex-col gap-1.5">
+
                         {request.status === "Pending" ? (
                           <>
                             <button

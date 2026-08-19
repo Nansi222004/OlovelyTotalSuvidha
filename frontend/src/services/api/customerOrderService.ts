@@ -104,3 +104,14 @@ export const updateOrderNotes = async (id: string, data: { deliveryInstructions?
     const response = await api.patch<OrderResponse>(`/customer/orders/${id}/notes`, data);
     return response.data;
 };
+
+/**
+ * Submit Item-Specific Return Request
+ */
+export const requestCustomerReturn = async (
+    orderId: string,
+    data: { orderItemId: string; reason: string; description?: string; quantity?: number }
+): Promise<OrderResponse> => {
+    const response = await api.post<OrderResponse>(`/customer/orders/${orderId}/return`, data);
+    return response.data;
+};

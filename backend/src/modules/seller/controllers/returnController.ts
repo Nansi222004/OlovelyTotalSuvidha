@@ -11,6 +11,8 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import Return from "../../../models/Return";
 import OrderItem from "../../../models/OrderItem";
+import Order from "../../../models/Order";
+
 
 /**
  * Helper: verify the return's orderItem belongs to the authenticated seller.
@@ -67,12 +69,23 @@ export const getReturnRequests = asyncHandler(
     const formattedReturns = returns.map((ret) => {
       const item = ret.orderItem as any;
       const order = ret.order as any;
+      const price = Number(item?.unitPrice || 0);
+      const quantity = Number(ret.quantity || item?.quantity || 1);
+      const totalAmount = Number(item?.total || price * quantity || 0);
+
       return {
         id: ret._id,
+        orderItemId: item?._id?.toString() || ret._id?.toString(),
+        product: item?.productName || "Unknown Product",
         productName: item?.productName || "Unknown Product",
-        customerName: order?.customerName || "Unknown Customer",
+        variant: item?.sku || "Standard",
+        price,
+        discPrice: price,
+        quantity,
+        total: totalAmount,
+        customerName: order?.customerName || (ret.customer as any)?.name || "Unknown Customer",
         orderId: order?.orderNumber || "Unknown Order",
-        amount: item?.total || 0,
+        amount: totalAmount,
         status: ret.status,
         date: ret.createdAt,
         returnReason: ret.reason,
@@ -87,6 +100,7 @@ export const getReturnRequests = asyncHandler(
         })(),
       };
     });
+
 
     return res.status(200).json({
       success: true,
@@ -228,10 +242,40 @@ export const updateReturnStatus = asyncHandler(
       updateData.status = "Pickup Pending";
       updateData.approvedAt = new Date();
     } else {
-      updateData.status = status; // Rejected
+      updateData.status = "Rejected";
+      const rejectionReason = req.body.reason || req.body.rejectionReason;
+      if (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "A reason is required when rejecting a return request.",
+        });
+      }
+      updateData.rejectionReason = rejectionReason.trim();
     }
 
     const updatedReturn = await Return.findByIdAndUpdate(id, updateData, { new: true });
+
+    // Send customer notification via notificationService
+    try {
+      const { sendReturnStatusNotificationToCustomer } = await import("../../../services/notificationService");
+      const order = await Order.findById(returnReq.order);
+      const item = await OrderItem.findById(returnReq.orderItem);
+      const productName = item?.productName || "Product";
+      const orderNum = order?.orderNumber || "Order";
+      const io = req.app.get("io");
+
+      await sendReturnStatusNotificationToCustomer(
+        returnReq.customer.toString(),
+        orderNum,
+        productName,
+        status,
+        updateData.rejectionReason,
+        returnReq.order.toString(),
+        io
+      );
+    } catch (notifErr) {
+      console.error("Error sending customer return notification:", notifErr);
+    }
 
     // NO financial settlement here — ONLY triggered after seller confirms physical receipt.
 
@@ -245,6 +289,7 @@ export const updateReturnStatus = asyncHandler(
     });
   }
 );
+
 
 /**
  * POST /returns/:id/confirm-receipt
@@ -293,14 +338,7 @@ export const confirmSellerReceipt = asyncHandler(
       });
     }
 
-    // Mark as Completed
-    returnReq.status = "Completed";
-    returnReq.completedAt = new Date();
-    returnReq.processedBy = sellerId as any;
-    returnReq.processedAt = new Date();
-    await returnReq.save();
-
-    // *** TRIGGER FINANCIAL SETTLEMENT ***
+    // *** TRIGGER FINANCIAL SETTLEMENT & COMPLETE RETURN ATOMICALLY ***
     // This is the ONLY place settlement is triggered in the return lifecycle.
     let settlementResult: any = null;
     try {
@@ -310,26 +348,44 @@ export const confirmSellerReceipt = asyncHandler(
       settlementResult = await triggerReturnFinancialSettlement(id, sellerId);
 
       if (!settlementResult.success) {
-        // Mark settlement as failed on the return document, but don't revert Completed status
-        await Return.findByIdAndUpdate(id, {
-          financialSettlementStatus: "Failed",
-        });
         return res.status(500).json({
           success: false,
-          message: `Return marked Completed but financial settlement failed: ${settlementResult.message}`,
+          message: `Return receipt confirmation failed: ${settlementResult.message}`,
         });
       }
     } catch (settleErr: any) {
-      await Return.findByIdAndUpdate(id, { financialSettlementStatus: "Failed" });
       return res.status(500).json({
         success: false,
-        message: `Return completed but settlement error: ${settleErr.message}`,
+        message: `Return receipt confirmation error: ${settleErr.message}`,
       });
     }
+
 
     const finalReturn = await Return.findById(id)
       .populate("order", "orderNumber")
       .populate("customer", "name email");
+
+    // Send customer notification that return is completed and refund is credited
+    try {
+      const { sendReturnStatusNotificationToCustomer } = await import("../../../services/notificationService");
+      const order = await Order.findById(returnReq.order);
+      const item = await OrderItem.findById(returnReq.orderItem);
+      const productName = item?.productName || "Product";
+      const orderNum = order?.orderNumber || "Order";
+      const io = req.app.get("io");
+
+      await sendReturnStatusNotificationToCustomer(
+        returnReq.customer.toString(),
+        orderNum,
+        productName,
+        "Completed",
+        undefined,
+        returnReq.order.toString(),
+        io
+      );
+    } catch (notifErr) {
+      console.error("Error sending customer completion notification:", notifErr);
+    }
 
     return res.status(200).json({
       success: true,
@@ -339,5 +395,6 @@ export const confirmSellerReceipt = asyncHandler(
         settlement: settlementResult?.data,
       },
     });
+
   }
 );

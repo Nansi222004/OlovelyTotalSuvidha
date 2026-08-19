@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSettings } from '../../context/AppSettingsContext';
+import SupportModal from '../../components/SupportModal';
 
 export default function AboutUs() {
     const navigate = useNavigate();
     const { settings: appSettings } = useAppSettings();
+    const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
     return (
         <div className="pb-24 md:pb-8 bg-white min-h-screen">
@@ -160,12 +163,13 @@ export default function AboutUs() {
                                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                 <polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
-                            <a
-                                href={`mailto:${appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'}`}
-                                className="text-neutral-700 hover:text-teal-700 hover:underline transition-colors"
+                            <button
+                                type="button"
+                                onClick={() => setIsSupportModalOpen(true)}
+                                className="text-neutral-700 hover:text-teal-700 hover:underline transition-colors text-left"
                             >
-                                {appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'}
-                            </a>
+                                {appSettings?.supportEmail || appSettings?.contactEmail || 'olovelytotalsuvidha@gmail.com'}
+                            </button>
                         </div>
                         <div className="flex items-center gap-3 text-sm">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600 flex-shrink-0">
@@ -196,6 +200,12 @@ export default function AboutUs() {
                     <p className="text-xs text-neutral-500 mt-1">© {new Date().getFullYear()} {appSettings?.appName || 'Olovely Total Suvidha'}. All rights reserved.</p>
                 </div>
             </div>
+
+            <SupportModal
+                isOpen={isSupportModalOpen}
+                onClose={() => setIsSupportModalOpen(false)}
+            />
         </div>
     );
 }
+

@@ -66,8 +66,27 @@ export default function DeliveryOrders() {
     <div className="min-h-screen bg-neutral-100 pb-20">
       <DeliveryHeader />
       <div className="px-4 py-4">
-        <h2 className="text-neutral-900 text-xl font-semibold mb-4">Orders</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-neutral-900 text-xl font-semibold">Orders</h2>
+          <div className="flex bg-neutral-200/80 p-1 rounded-xl gap-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => navigate("/delivery/orders")}
+              className="px-3 py-1.5 rounded-lg bg-white text-neutral-900 shadow-xs"
+            >
+              📦 Deliveries
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/delivery/orders/return")}
+              className="px-3 py-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 transition-colors"
+            >
+              ↩ Return Pickups
+            </button>
+          </div>
+        </div>
         {orders.length > 0 ? (
+
           <div className="space-y-3">
             {orders.map((order) => (
               <div

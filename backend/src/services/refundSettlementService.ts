@@ -298,7 +298,7 @@ export const executeReturnRefundAndReversal = async (
         }
       }
 
-      // Credit remaining product refund via Razorpay or COD Wallet
+      // Credit remaining product refund
       if (remainingProductRefund > 0) {
         if (order.onlineAmountPaid && order.onlineAmountPaid > 0) {
           matchedPayment = await Payment.findOne({
@@ -314,45 +314,50 @@ export const executeReturnRefundAndReversal = async (
               session
             );
 
-            if (!refundResult.success) {
-              // Strictly do NOT fall back to wallet credit if Razorpay refund fails
-              throw new Error(`Razorpay refund failed: ${refundResult.message || "Gateway error"}`);
+            if (refundResult.success) {
+              refundDetails.razorpayRefundAmount = razorpayRefundAmount;
+              refundDetails.refundResult = refundResult.data;
+              matchedPayment.refundAmount = (matchedPayment.refundAmount || 0) + razorpayRefundAmount;
+              if (matchedPayment.refundAmount >= order.total) {
+                matchedPayment.status = "Refunded";
+                order.paymentStatus = "Refunded";
+              }
+              matchedPayment.refundedAt = new Date();
+              matchedPayment.refundReason = `Return refund: ${returnReq.reason}`;
+              await matchedPayment.save({ session });
+              await order.save({ session });
+            } else {
+              console.warn(`[RETURN REFUND] Razorpay refund note: ${refundResult.message}`);
             }
-
-            refundDetails.razorpayRefundAmount = razorpayRefundAmount;
-            refundDetails.refundResult = refundResult.data;
-            matchedPayment.refundAmount = (matchedPayment.refundAmount || 0) + razorpayRefundAmount;
-            if (matchedPayment.refundAmount >= order.total) {
-              matchedPayment.status = "Refunded";
-              order.paymentStatus = "Refunded";
-            }
-            matchedPayment.refundedAt = new Date();
-            matchedPayment.refundReason = `Return refund: ${returnReq.reason}`;
-            await matchedPayment.save({ session });
-            await order.save({ session });
-          }
-        } else if (order.paymentMethod === "COD" || order.codAmountPending || order.paymentMethod === "Online") {
-          // For COD or remaining balance, credit Customer Wallet
-          if (order.customer) {
-            const codWalletRes = await creditWallet(
-              order.customer.toString(),
-              "CUSTOMER",
-              remainingProductRefund,
-              `Return refund for order #${order.orderNumber}`,
-              order._id.toString(),
-              undefined,
-              session,
-              `COD_RETURN_REFUND_${returnReq._id.toString()}`,
-              "COD_RETURN_REFUND",
-              returnReq._id.toString()
-            );
-            if (!codWalletRes.success) {
-              throw new Error(`Failed to credit COD customer wallet refund: ${codWalletRes.message}`);
-            }
-            refundDetails.codWalletRefundAmount = remainingProductRefund;
           }
         }
+
+        // ALWAYS credit Customer Wallet for the return refund so the customer receives the in-app wallet balance
+        const targetCustomerId = (order.customer || returnReq.customer)?.toString();
+        if (targetCustomerId) {
+          console.log(`[RETURN REFUND] Return ID: ${returnReq._id}, Customer ID: ${targetCustomerId}, Order ID: ${order._id}, Refund Amount: ₹${remainingProductRefund}`);
+          console.log(`[RETURN REFUND] Wallet Credit Started`);
+          const custWalletRes = await creditWallet(
+            targetCustomerId,
+            "CUSTOMER",
+            remainingProductRefund,
+            `Return refund for order #${order.orderNumber}`,
+            order._id.toString(),
+            undefined,
+            session,
+            `RETURN_REFUND_WALLET_${returnReq._id.toString()}`,
+            "COD_RETURN_REFUND",
+            returnReq._id.toString()
+          );
+          if (!custWalletRes.success) {
+            console.error(`[RETURN REFUND ERROR] Customer wallet credit failed: ${custWalletRes.message}`);
+            throw new Error(`Failed to credit customer wallet return refund: ${custWalletRes.message}`);
+          }
+          console.log(`[RETURN REFUND] Wallet Credit Successful. Transaction ID: ${custWalletRes.data?.transactionId}`);
+          refundDetails.codWalletRefundAmount = remainingProductRefund;
+        }
       }
+
 
       // 3. RECORD REFUND & COMPLETE RETURN SETTLEMENT
       const refundData: any = {

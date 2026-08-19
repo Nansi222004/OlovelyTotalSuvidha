@@ -548,7 +548,123 @@ async function testReturnModelSchema() {
 // MAIN — Run all sections
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 10: Customer Wallet Return Refund Verification (₹499)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function testCustomerWalletReturnRefundFlow() {
+  console.log("\n💳 SECTION 10: Customer Wallet Return Refund Verification (₹499)");
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const custId = new mongoose.Types.ObjectId();
+    const sellerId = new mongoose.Types.ObjectId();
+    const orderId = new mongoose.Types.ObjectId();
+    const itemId = new mongoose.Types.ObjectId();
+    const returnId = new mongoose.Types.ObjectId();
+
+    // 1. Create mock Customer
+    const testCust = new Customer({
+      _id: custId,
+      name: "Test Customer ₹499",
+      email: `test_499_${Date.now()}@test.com`,
+      mobile: `99${Date.now().toString().slice(-8)}`,
+      walletAmount: 0,
+    });
+    await testCust.save({ session });
+
+    // 2. Create mock Order & Item for ₹499
+    const testOrder = new Order({
+      _id: orderId,
+      orderNumber: `ORD_499_${Date.now()}`,
+      customer: custId,
+      customerName: "Test Customer ₹499",
+      customerPhone: "9999999999",
+      customerEmail: `test_499_${Date.now()}@test.com`,
+      status: "Delivered",
+      subtotal: 499,
+      total: 499,
+      paymentMethod: "Online",
+      onlineAmountPaid: 499,
+      walletAmountUsed: 0,
+      paymentStatus: "Paid",
+      deliveryAddress: { address: "Test street", city: "Test city", pincode: "110001", name: "Test Customer", phone: "9999999999" },
+    });
+
+    await testOrder.save({ session });
+
+    const testItem = new OrderItem({
+      _id: itemId,
+      order: orderId,
+      seller: sellerId,
+      product: new mongoose.Types.ObjectId(),
+      productName: "Cap ₹499",
+      price: 499,
+      unitPrice: 499,
+      quantity: 1,
+      total: 499,
+      commissionRate: 10,
+      status: "Delivered",
+    });
+
+    await testItem.save({ session });
+
+    // 3. Create Return in "Handed To Seller" state
+    const testReturn = new Return({
+      _id: returnId,
+      order: orderId,
+      orderItem: itemId,
+      customer: custId,
+      reason: "Damaged product",
+      quantity: 1,
+      status: "Handed To Seller",
+      financialSettlementStatus: "Pending",
+    });
+    await testReturn.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // 4. Execute triggerReturnFinancialSettlement
+    const { triggerReturnFinancialSettlement } = await import("../services/returnLifecycleService");
+    const result = await triggerReturnFinancialSettlement(returnId.toString(), sellerId.toString());
+
+    assert("W499-01 - triggerReturnFinancialSettlement returns success", result.success === true);
+
+    // 5. Verify Return is Completed & Settled
+    const updatedReturn = await Return.findById(returnId).lean();
+    assert("W499-02 - Return status is Completed", updatedReturn?.status === "Completed");
+    assert("W499-03 - Financial settlement status is Completed", updatedReturn?.financialSettlementStatus === "Completed");
+
+    // 6. Verify Customer Wallet balance is updated to ₹499
+    const updatedCust = await Customer.findById(custId).lean();
+    assert("W499-04 - Customer wallet balance credited with ₹499", updatedCust?.walletAmount === 499);
+
+    // 7. Verify WalletTransaction is created with correct details
+    const txn = await WalletTransaction.findOne({ userId: custId, type: "Credit" }).lean();
+    assert("W499-05 - Wallet transaction record created", txn !== null);
+    assert("W499-06 - Wallet transaction amount is 499", txn?.amount === 499);
+    assert("W499-07 - Wallet transaction userType is CUSTOMER", txn?.userType === "CUSTOMER");
+    assert("W499-08 - Wallet transaction category is COD_RETURN_REFUND", txn?.category === "COD_RETURN_REFUND");
+    assert("W499-09 - Wallet transaction reference links to return", txn?.reference === `RETURN_REFUND_WALLET_${returnId.toString()}`);
+
+    // Cleanup test records
+    await Return.findByIdAndDelete(returnId);
+    await OrderItem.findByIdAndDelete(itemId);
+    await Order.findByIdAndDelete(orderId);
+    await Customer.findByIdAndDelete(custId);
+    if (txn) await WalletTransaction.findByIdAndDelete(txn._id);
+
+  } catch (err: any) {
+    session.endSession();
+    throw err;
+  }
+}
+
 async function main() {
+
   console.log("═══════════════════════════════════════════════════════════════");
   console.log("   OLOVELY TOTAL SUVIDHA — Return Lifecycle Regression Suite   ");
   console.log("═══════════════════════════════════════════════════════════════");
@@ -576,6 +692,8 @@ async function main() {
   await testWalletCancellationFix();
   await testCommissionDistributionOnce();
   await testReturnModelSchema();
+  await testCustomerWalletReturnRefundFlow();
+
 
   await mongoose.disconnect();
 

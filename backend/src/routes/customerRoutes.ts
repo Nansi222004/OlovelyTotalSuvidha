@@ -40,12 +40,20 @@ router.put("/profile", authenticate, customerController.updateProfile);
 router.post("/location", authenticate, customerController.updateLocation);
 
 import * as walletController from "../modules/customer/controllers/customerWalletController";
-
-// Get customer location (protected route)
-router.get("/location", authenticate, customerController.getLocation);
+import * as supportController from "../modules/customer/controllers/customerSupportController";
 
 // Customer Wallet routes (protected)
 router.get("/wallet/balance", authenticate, walletController.getCustomerWalletBalance);
 router.get("/wallet/transactions", authenticate, walletController.getCustomerWalletTransactions);
 
+// Customer Support Contact route (optional authentication)
+const optionalAuthenticate = (req: any, res: any, next: any) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return next();
+  return authenticate(req, res, next);
+};
+
+router.post("/support/contact", optionalAuthenticate, supportController.submitCustomerSupport);
+
 export default router;
+

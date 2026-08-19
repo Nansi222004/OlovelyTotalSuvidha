@@ -242,6 +242,18 @@ export const getDashboardStats = asyncHandler(
       console.error("Error fetching wallet balance for dashboard:", error);
     }
 
+    // Fetch count of Return Pickups assigned to this delivery partner
+    let activeReturnPickupsCount = 0;
+    try {
+      const { default: ReturnModel } = await import("../../../models/Return");
+      activeReturnPickupsCount = await ReturnModel.countDocuments({
+        deliveryBoy: objectId,
+        status: { $in: ["Delivery Partner Assigned", "Picked Up", "In Transit", "Handed To Seller"] },
+      });
+    } catch (err) {
+      console.error("Error fetching return pickup count:", err);
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -249,8 +261,8 @@ export const getDashboardStats = asyncHandler(
         cashBalance: deliveryPartner.cashCollected, // This field stores total cash holding
         pendingOrders: result.pendingOrders,
         allOrders: result.allOrdersToday,
-        returnOrders: result.returnOrdersToday,
-        returnItems: 0, // Need 'OrderItem' logic for this, keeping 0 for now
+        returnOrders: activeReturnPickupsCount || result.returnOrdersToday,
+        returnItems: activeReturnPickupsCount,
         todayEarning: todayEarning,
         totalEarning: totalEarning,
         walletBalance: walletBalance,
@@ -259,6 +271,7 @@ export const getDashboardStats = asyncHandler(
         pendingOrdersList: formattedPendingList,
       },
     });
+
   },
 );
 

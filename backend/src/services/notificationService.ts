@@ -401,3 +401,83 @@ export const sendDeliveryApprovalNotification = async (
     priority: "High",
   });
 };
+
+/**
+ * Send return request notification to seller
+ */
+export const sendReturnRequestNotificationToSeller = async (
+  sellerId: string,
+  orderNumber: string,
+  productName: string,
+  returnId: string,
+  io?: any
+) => {
+  const title = "New Return Request";
+  const message = `Customer has requested a return for ${productName} (Order #${orderNumber}).`;
+
+  if (io) {
+    io.to(`seller-${sellerId}`).emit("seller-notification", {
+      type: "ORDER",
+      title,
+      message,
+      link: "/seller/return",
+      timestamp: new Date(),
+    });
+  }
+
+  return sendNotification("Seller", sellerId, title, message, {
+    type: "Order",
+    link: "/seller/return",
+    priority: "High",
+  });
+};
+
+/**
+ * Send return status notification to customer
+ */
+export const sendReturnStatusNotificationToCustomer = async (
+  customerId: string,
+  orderNumber: string,
+  productName: string,
+  status: string,
+  rejectionReason?: string,
+  orderId?: string,
+  io?: any
+) => {
+  let title = "Return Status Update";
+  let message = `Your return request for ${productName} (Order #${orderNumber}) status is now ${status}.`;
+  let type: "Success" | "Error" | "Info" = "Info";
+
+  if (status === "Approved" || status === "Pickup Pending") {
+    title = "Return Request Approved";
+    message = `Your return request for ${productName} (Order #${orderNumber}) has been approved by the seller. Pickup will be scheduled soon.`;
+    type = "Success";
+  } else if (status === "Rejected") {
+    title = "Return Request Rejected";
+    message = `Your return request for ${productName} (Order #${orderNumber}) was rejected by the seller. Reason: ${rejectionReason || "Not specified"}`;
+    type = "Error";
+  } else if (status === "Completed") {
+    title = "Return Completed & Refund Processed";
+    message = `Your return for ${productName} (Order #${orderNumber}) has been completed and refund has been credited.`;
+    type = "Success";
+  }
+
+  const targetLink = orderId ? `/orders/${orderId}` : "/orders";
+
+  if (io) {
+    io.to(`customer-${customerId}`).emit("customer-notification", {
+      title,
+      message,
+      status,
+      link: targetLink,
+      timestamp: new Date(),
+    });
+  }
+
+  return sendNotification("Customer", customerId, title, message, {
+    type,
+    link: targetLink,
+    priority: status === "Rejected" || status === "Completed" ? "High" : "Medium",
+  });
+};
+

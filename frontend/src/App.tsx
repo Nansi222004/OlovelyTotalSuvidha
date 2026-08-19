@@ -514,6 +514,15 @@ function App() {
                                         element={<DeliveryReturnOrders />}
                                       />
                                       <Route
+                                        path="returns"
+                                        element={<DeliveryReturnOrders />}
+                                      />
+                                      <Route
+                                        path="returns/:id"
+                                        element={<DeliveryReturnOrders />}
+                                      />
+
+                                      <Route
                                         path="notifications"
                                         element={<DeliveryNotifications />}
                                       />

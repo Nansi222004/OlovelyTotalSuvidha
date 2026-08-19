@@ -7,7 +7,7 @@ import { OrderStatus } from "../../types/order";
 import GoogleMapsTracking from "../../components/GoogleMapsTracking";
 import { useDeliveryTracking } from "../../hooks/useDeliveryTracking";
 import DeliveryPartnerCard from "../../components/DeliveryPartnerCard";
-import { cancelOrder, updateOrderNotes, getSellerLocationsForOrder, refreshDeliveryOtp } from "../../services/api/customerOrderService";
+import { cancelOrder, updateOrderNotes, getSellerLocationsForOrder, refreshDeliveryOtp, requestCustomerReturn } from "../../services/api/customerOrderService";
 import {
   addReview,
   getMyReviewForOrderProduct,
@@ -497,7 +497,22 @@ export default function OrderDetail() {
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
-  // Real-time delivery tracking via WebSocket
+  // Return Modal states
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [selectedReturnItem, setSelectedReturnItem] = useState<any>(null);
+  const [returnReason, setReturnReason] = useState<string>("Damaged product");
+  const [customReturnReason, setCustomReturnReason] = useState<string>("");
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
+
+  // Real-time delivery tracking via WebSocket (disabled for loading, delivered, completed, or cancelled orders)
+  const activeOrderStatus = order?.status || (orderStatus !== "Received" ? orderStatus : "");
+  const isTerminalOrDelivered = Boolean(
+    activeOrderStatus && ["Delivered", "Completed", "Cancelled", "Returned"].includes(activeOrderStatus)
+  );
+  const isLiveTrackingEnabled = Boolean(order && activeOrderStatus && !isTerminalOrDelivered);
+
+
   const {
     deliveryLocation,
     eta,
@@ -509,7 +524,8 @@ export default function OrderDetail() {
     error: trackingError,
     reconnectAttempts,
     reconnect,
-  } = useDeliveryTracking(id);
+  } = useDeliveryTracking(id, isLiveTrackingEnabled);
+
 
   // Seller locations for the order
   const [sellerLocations, setSellerLocations] = useState<any[]>([]);
@@ -1055,16 +1071,16 @@ export default function OrderDetail() {
         />
       )}
 
-      {/* Tracking Error Display */}
-      {trackingError && (
+      {/* Tracking Error Display — only during active delivery */}
+      {isLiveTrackingEnabled && trackingError && (
         <div className="mx-4 mt-2 px-4 py-2 bg-red-50 text-red-700 text-xs rounded-lg border border-red-100 flex items-center gap-2">
           <span>⚠️</span>
           <span>{trackingError}</span>
         </div>
       )}
 
-      {/* Delivery Partner Card */}
-      {(order?.deliveryPartner || order?.deliveryOtp) && (
+      {/* Delivery Partner Card — hide OTP and card after delivery */}
+      {!["Delivered", "Completed", "Cancelled"].includes(orderStatus) && (order?.deliveryPartner || order?.deliveryOtp) && (
         <DeliveryPartnerCard
           partner={{
             name: order?.deliveryPartner?.name || "Delivery Partner",
@@ -1431,13 +1447,96 @@ export default function OrderDetail() {
             </div>
             <ChevronRightIcon className="w-5 h-5 text-gray-400" />
           </div>
-          <SectionItem
-            icon={CircleSlashIcon}
-            title="Cancel order"
-            subtitle=""
-            onClick={() => setShowCancelModal(true)}
-          />
+
+          {/* Cancel Order — ONLY shown if in cancellable state */}
+          {["Pending", "Received", "Accepted", "Processed", "Shipped"].includes(orderStatus) && (
+            <SectionItem
+              icon={CircleSlashIcon}
+              title="Cancel order"
+              subtitle=""
+              onClick={() => setShowCancelModal(true)}
+            />
+          )}
         </motion.div>
+
+        {/* Return & Replacement Options — shown for delivered returnable items */}
+        {["Delivered", "Completed"].includes(orderStatus) && order.items && order.items.length > 0 && (
+          <motion.div
+            className="bg-white rounded-xl shadow-sm p-4 space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.82 }}>
+            <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+              <span>↩</span> Return & Replacement Options
+            </h3>
+            {order.items.map((item: any, idx: number) => {
+              const productName = item.product?.productName || item.product?.name || item.productName || "Product";
+              const isReturnable = item.isReturnable ?? true;
+              const isReturnWindowActive = item.isReturnWindowActive ?? true;
+              const activeReturnStatus = item.activeReturnStatus;
+              const expiryDate = item.returnExpiryDate
+                ? new Date(item.returnExpiryDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })
+                : null;
+
+              return (
+                <div key={item._id || idx} className="p-3 border border-gray-100 rounded-xl bg-neutral-50/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-sm text-gray-900">{productName}</p>
+                    <p className="text-xs text-gray-500">Qty: {item.quantity} | Amount: ₹{(item.total || (item.unitPrice * item.quantity) || 0).toFixed(2)}</p>
+                    {activeReturnStatus ? (
+                      activeReturnStatus === 'Rejected' ? (
+                        <div className="mt-1 space-y-1">
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
+                            Return Rejected
+                          </span>
+                          {item.activeReturnRejectionReason && (
+                            <p className="text-xs text-red-700 bg-red-50 p-2 rounded-lg border border-red-200 mt-1">
+                              <span className="font-bold">Reason:</span> {item.activeReturnRejectionReason}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                          Return Requested: {activeReturnStatus}
+                        </span>
+                      )
+                    ) : isReturnable && isReturnWindowActive ? (
+
+                      <p className="text-xs text-green-700 font-medium mt-0.5">
+                        Return available until {expiryDate}
+                      </p>
+                    ) : isReturnable && !isReturnWindowActive ? (
+                      <p className="text-xs text-red-600 font-medium mt-0.5">
+                        Return window expired
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400 font-medium mt-0.5">
+                        Non-returnable product
+                      </p>
+                    )}
+                  </div>
+                  {isReturnable && isReturnWindowActive && !activeReturnStatus && (
+                    <button
+                      type="button"
+                      id={`btn-return-item-${item._id || idx}`}
+                      onClick={() => {
+                        setSelectedReturnItem(item);
+                        setReturnReason("Damaged product");
+                        setCustomReturnReason("");
+                        setReturnError(null);
+                        setShowReturnModal(true);
+                      }}
+                      className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all shrink-0 flex items-center gap-1.5 border border-green-600"
+                    >
+                      <span>↩</span> Return Product
+                    </button>
+                  )}
+
+                </div>
+              );
+            })}
+          </motion.div>
+        )}
 
         {/* Quick Actions */}
         <motion.div
@@ -1705,6 +1804,157 @@ export default function OrderDetail() {
           }}
         />
       )}
+
+      {/* Return Request Modal */}
+      <AnimatePresence>
+        {showReturnModal && selectedReturnItem && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+            onClick={() => setShowReturnModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <span>↩</span> Request Return
+                </h2>
+                <button
+                  onClick={() => setShowReturnModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold">
+                  ✕
+                </button>
+              </div>
+
+              {/* Selected Item Summary */}
+              <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 flex items-center gap-3">
+                <div className="w-12 h-12 bg-white rounded-lg border flex items-center justify-center shrink-0">
+                  {selectedReturnItem.product?.mainImage ? (
+                    <img src={selectedReturnItem.product.mainImage} alt="Product" className="w-full h-full object-cover rounded-lg" />
+                  ) : (
+                    <span className="text-xl">📦</span>
+                  )}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-gray-900">
+                    {selectedReturnItem.product?.productName || selectedReturnItem.product?.name || selectedReturnItem.productName || "Product"}
+                  </p>
+                  <p className="text-xs text-gray-500">Qty: {selectedReturnItem.quantity} | Amount: ₹{(selectedReturnItem.total || (selectedReturnItem.unitPrice * selectedReturnItem.quantity) || 0).toFixed(2)}</p>
+                </div>
+              </div>
+
+              {/* Reason Selection */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Select Reason</label>
+                <div className="space-y-2">
+                  {[
+                    "Damaged product",
+                    "Wrong product received",
+                    "Product not as described",
+                    "Quality issue",
+                    "Size / fit issue",
+                    "Other",
+                  ].map((reason) => (
+                    <label
+                      key={reason}
+                      className={`flex items-center gap-3 p-3 rounded-xl border text-sm cursor-pointer transition-colors ${
+                        returnReason === reason ? "border-neutral-900 bg-neutral-50 font-medium text-neutral-900" : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}>
+                      <input
+                        type="radio"
+                        name="returnReason"
+                        checked={returnReason === reason}
+                        onChange={() => setReturnReason(reason)}
+                        className="w-4 h-4 accent-neutral-900"
+                      />
+                      <span>{reason}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom reason text input if Other */}
+              {returnReason === "Other" && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Details</label>
+                  <textarea
+                    className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                    rows={3}
+                    placeholder="Describe the issue with this item..."
+                    value={customReturnReason}
+                    onChange={(e) => setCustomReturnReason(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* Refund Summary Preview */}
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
+                <p className="font-semibold flex items-center gap-1">
+                  <span>💰</span> Expected Refund Amount: ₹{(selectedReturnItem.total || (selectedReturnItem.unitPrice * selectedReturnItem.quantity) || 0).toFixed(2)}
+                </p>
+                <p className="text-amber-800">
+                  Refund will be settled after physical return pickup and seller receipt verification.
+                </p>
+              </div>
+
+              {/* Error Banner */}
+              {returnError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs">
+                  {returnError}
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 text-sm font-semibold border-gray-300"
+                  onClick={() => setShowReturnModal(false)}
+                  disabled={submittingReturn}>
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-semibold"
+                  disabled={submittingReturn}
+                  onClick={async () => {
+                    if (returnReason === "Other" && !customReturnReason.trim()) {
+                      setReturnError("Please specify the reason in details field");
+                      return;
+                    }
+                    try {
+                      setSubmittingReturn(true);
+                      setReturnError(null);
+                      const res = await requestCustomerReturn(id!, {
+                        orderItemId: selectedReturnItem._id || selectedReturnItem.id,
+                        reason: returnReason === "Other" ? `Other: ${customReturnReason}` : returnReason,
+                        description: customReturnReason,
+                        quantity: selectedReturnItem.quantity || 1,
+                      });
+
+                      if (res.success) {
+                        setShowReturnModal(false);
+                        handleRefresh();
+                      } else {
+                        setReturnError(res.message || "Failed to submit return request");
+                      }
+                    } catch (err: any) {
+                      setReturnError(err.response?.data?.message || err.message || "Error submitting return request");
+                    } finally {
+                      setSubmittingReturn(false);
+                    }
+                  }}>
+                  {submittingReturn ? "Submitting..." : "Submit Return Request"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

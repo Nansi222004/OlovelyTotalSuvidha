@@ -48,3 +48,27 @@ export const updateProfile = async (data: UpdateProfileData): Promise<UpdateProf
   return response.data;
 };
 
+export interface SupportContactData {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}
+
+export interface SupportContactResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    requestId: string;
+  };
+}
+
+/**
+ * Submit customer support contact message
+ */
+export const submitCustomerSupport = async (data: SupportContactData): Promise<SupportContactResponse> => {
+  const response = await api.post<SupportContactResponse>('/customer/support/contact', data);
+  return response.data;
+};
+
+
