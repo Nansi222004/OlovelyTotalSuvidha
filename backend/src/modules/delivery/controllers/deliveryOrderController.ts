@@ -354,6 +354,21 @@ export const updateOrderStatus = asyncHandler(
       if (order.paymentStatus === "Paid" || status === "Delivered") {
         notifySellersOfOrderUpdate(io, order, "STATUS_UPDATE");
       }
+
+      // Notify customer of order status change
+      if (order.customer && previousStatus !== order.status) {
+        try {
+          const { sendOrderStatusNotification } = await import(
+            "../../../services/notificationService"
+          );
+          const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
+          sendOrderStatusNotification(order._id.toString(), customerId, order.status, io).catch((e) =>
+            console.error("Error sending customer order status notification:", e)
+          );
+        } catch (notifErr) {
+          console.error("Error importing notificationService:", notifErr);
+        }
+      }
     }
 
     return res.status(200).json({
@@ -601,31 +616,14 @@ export const verifyDeliveryOtpController = asyncHandler(
       }
 
       // Update delivery boy balance and cash collected (if COD)
-      if (updatedOrder && updatedOrder.status === "Delivered") {
-        if (updatedOrder.paymentMethod === "COD") {
-          // Use new COD processing function
-          const { processCODOrderDelivery } =
-            await import("../../../services/commissionService");
-          try {
-            await processCODOrderDelivery(id);
-            console.log(`[COD] Order ${updatedOrder.orderNumber} delivery processed via OTP verification`);
-          } catch (codError: any) {
-            console.error("Error processing COD order delivery:", codError);
-            // Continue - order is already marked as delivered
-          }
-        } else {
-          // For non-COD orders, use existing distribution logic
-          const { distributeCommissions } =
-            await import("../../../services/commissionService");
-          try {
-            await distributeCommissions(id);
-          } catch (commError: any) {
-            console.error("Error distributing commissions:", commError);
-            // Continue even if commission distribution fails
-          }
-        }
+      // NOTE: processOrderStatusTransition (called above at line 608) already invokes
+      // createCommissions → distributeCommissions / processCODOrderDelivery internally.
+      // The explicit calls below were removed to prevent the double-invocation.
+      // The idempotency checks inside commissionService prevent actual double-payment,
+      // but eliminating the redundant call removes unnecessary DB load and race risk.
 
-        // Emit socket events for real-time status update
+      // Emit socket events for real-time status update
+      if (updatedOrder && updatedOrder.status === "Delivered") {
         const io = (req.app as any).get("io");
         if (io && previousStatus !== "Delivered") {
           // Emit order-delivered event to customer

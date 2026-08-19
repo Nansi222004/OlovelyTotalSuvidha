@@ -31,17 +31,29 @@ const buildPushPayload = (
     actionLabel?: string;
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
+    data?: Record<string, string>;
   },
-) => ({
-  title,
-  body: message,
-  data: {
-    type: options?.type || "Info",
-    link: options?.link || DEFAULT_NOTIFICATION_LINKS[recipientType],
-    recipientType,
-    priority: options?.priority || "Medium",
-  },
-});
+) => {
+  const link = options?.link || DEFAULT_NOTIFICATION_LINKS[recipientType];
+  const orderIdMatch = link.match(/\/orders\/([^/?#]+)/);
+  const derivedOrderId = orderIdMatch ? orderIdMatch[1] : undefined;
+  const roleLower = recipientType.toLowerCase();
+
+  return {
+    title,
+    body: message,
+    data: {
+      type: options?.type || "Info",
+      link,
+      recipientType,
+      role: roleLower,
+      panel: roleLower,
+      priority: options?.priority || "Medium",
+      ...(derivedOrderId ? { orderId: derivedOrderId } : {}),
+      ...(options?.data || {}),
+    },
+  };
+};
 
 const markNotificationsAsSent = async (notificationIds: string[]) => {
   if (notificationIds.length === 0) {
@@ -124,6 +136,7 @@ export const sendNotification = async (
     actionLabel?: string;
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
+    data?: Record<string, string>;
   },
 ) => {
   const notification = await Notification.create({
@@ -173,6 +186,7 @@ export const sendBroadcastNotification = async (
     broadcastBatchId?: string;
     broadcastRecipientType?: "Admin" | "Seller" | "Customer" | "Delivery" | "All";
     createdBy?: string;
+    data?: Record<string, string>;
   },
 ) => {
   // Get all users of the specified type
@@ -239,8 +253,13 @@ export const sendOrderStatusNotification = async (
   orderId: string,
   customerId: string,
   status: string,
+  io?: any,
 ) => {
   const statusMessages: Record<string, { title: string; message: string }> = {
+    Accepted: {
+      title: "Order Accepted",
+      message: "Your order has been accepted by the seller.",
+    },
     Processed: {
       title: "Order Processed",
       message:
@@ -249,6 +268,14 @@ export const sendOrderStatusNotification = async (
     Shipped: {
       title: "Order Shipped",
       message: "Your order has been shipped and is on its way!",
+    },
+    "Picked up": {
+      title: "Order Picked Up",
+      message: "Your order has been picked up by our delivery partner.",
+    },
+    "On the way": {
+      title: "Out for Delivery",
+      message: "Your order is out for delivery and will reach you soon.",
     },
     "Out for Delivery": {
       title: "Out for Delivery",
@@ -268,6 +295,23 @@ export const sendOrderStatusNotification = async (
 
   const statusInfo = statusMessages[status];
   if (!statusInfo) return;
+
+  if (io) {
+    io.to(`order-${orderId}`).emit("order-status-update", {
+      orderId,
+      status,
+      title: statusInfo.title,
+      message: statusInfo.message,
+      timestamp: new Date(),
+    });
+    io.to(`customer-${customerId}`).emit("customer-notification", {
+      orderId,
+      status,
+      title: statusInfo.title,
+      message: statusInfo.message,
+      timestamp: new Date(),
+    });
+  }
 
   return sendNotification(
     "Customer",

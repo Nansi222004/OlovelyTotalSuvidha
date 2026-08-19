@@ -4,6 +4,7 @@ import * as deliveryOrderController from "../modules/delivery/controllers/delive
 import * as deliveryEarningController from "../modules/delivery/controllers/deliveryEarningController";
 import { getProfile } from "../modules/delivery/controllers/deliveryAuthController";
 import { requireApprovedUser } from "../middleware/auth";
+import * as deliveryReturnController from "../modules/delivery/controllers/deliveryReturnController";
 
 import * as deliveryProfileController from "../modules/delivery/controllers/deliveryProfileController";
 import * as deliveryNotificationController from "../modules/delivery/controllers/deliveryNotificationController";
@@ -50,5 +51,15 @@ router.post("/orders/:id/check-customer-proximity", requireApprovedUser, deliver
 // Earnings & Withdrawals (require approval)
 router.get("/earnings", requireApprovedUser, deliveryEarningController.getEarningsHistory);
 router.post("/withdraw", requireApprovedUser, deliveryEarningController.requestWithdrawal);
+
+// ==================== Return Pickup Routes ====================
+// All return routes require approval — DP must be verified and active
+router.get("/returns", requireApprovedUser, deliveryReturnController.getAssignedReturns);
+router.get("/returns/:id", requireApprovedUser, deliveryReturnController.getReturnDetails);
+router.post("/returns/:id/accept", requireApprovedUser, deliveryReturnController.acceptReturnAssignment);
+router.post("/returns/:id/generate-pickup-otp", requireApprovedUser, deliveryReturnController.generateReturnPickupOtpController);
+router.post("/returns/:id/verify-pickup-otp", requireApprovedUser, deliveryReturnController.verifyReturnPickupOtpController);
+router.patch("/returns/:id/mark-in-transit", requireApprovedUser, deliveryReturnController.markReturnInTransit);
+router.patch("/returns/:id/mark-handed-to-seller", requireApprovedUser, deliveryReturnController.markHandedToSeller);
 
 export default router;

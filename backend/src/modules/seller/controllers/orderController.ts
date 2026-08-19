@@ -603,6 +603,47 @@ export const updateOrderStatus = asyncHandler(
       }
 
       await order.save();
+
+      // ─── PRE-FULFILLMENT CANCELLATION REFUND ────────────────────────────
+      // Trigger refund for ALL payment combinations where customer actually paid.
+      // BUG FIX: Old code only triggered for paymentMethod === "Online",
+      // causing wallet-only orders to lose money on seller cancellation.
+      if (status === "Cancelled") {
+        const customerActuallyPaid =
+          (order.walletAmountUsed && order.walletAmountUsed > 0) ||
+          (order.onlineAmountPaid && order.onlineAmountPaid > 0);
+
+        if (customerActuallyPaid && order.paymentStatus !== "Refunded") {
+          try {
+            const { handleOnlineOrderCancellation } = await import(
+              "../../../services/refundSettlementService"
+            );
+            // handleOnlineOrderCancellation handles all cases:
+            //   walletAmountUsed > 0 → Customer Wallet credit
+            //   onlineAmountPaid > 0 → Razorpay refund
+            //   COD (both = 0)       → No refund needed
+            await handleOnlineOrderCancellation(
+              order._id.toString(),
+              "Order cancelled by seller"
+            );
+            console.log(`[Seller Cancel] Refund issued for order ${order.orderNumber} (wallet: ₹${order.walletAmountUsed || 0}, online: ₹${order.onlineAmountPaid || 0})`);
+          } catch (refundErr) {
+            console.error("Error issuing refund on seller cancellation:", refundErr);
+          }
+        }
+
+        // Always cancel stale commission records on any cancellation
+        // (covers COD orders where handleOnlineOrderCancellation is not called)
+        try {
+          const Commission = (await import("../../../models/Commission")).default;
+          await Commission.updateMany(
+            { order: order._id, status: { $in: ["Pending", "OnHold"] } },
+            { $set: { status: "Cancelled" } }
+          );
+        } catch (commErr) {
+          console.error("Error cancelling commissions on seller cancellation:", commErr);
+        }
+      }
     }
 
     // Distribute commissions on delivery (unchanged)
@@ -614,6 +655,22 @@ export const updateOrderStatus = asyncHandler(
         await distributeCommissions(order._id.toString());
       } catch (commissionError) {
         console.error("Error distributing commissions on seller delivery:", commissionError);
+      }
+    }
+
+    // Send status update notification to customer
+    if (order.customer && previousStatus !== order.status) {
+      try {
+        const { sendOrderStatusNotification } = await import(
+          "../../../services/notificationService"
+        );
+        const io: SocketIOServer = req.app.get("io") as SocketIOServer;
+        const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
+        sendOrderStatusNotification(order._id.toString(), customerId, order.status, io).catch((e) =>
+          console.error("Error sending customer order status notification:", e)
+        );
+      } catch (notifErr) {
+        console.error("Error importing notificationService:", notifErr);
       }
     }
 

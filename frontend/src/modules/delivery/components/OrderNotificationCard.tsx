@@ -30,86 +30,9 @@ export default function OrderNotificationCard({
         }
     }, []);
 
-    // Initialize audio with better error handling
+    // Vibrate when card mounts
     useEffect(() => {
-        const audio = new Audio('/assets/sound/delivery-alert.mp3');
-        audio.loop = true;
-        audio.volume = 0.8;
-
-        // Set up error handlers
-        const handleAudioError = (error: Event) => {
-            console.error('Audio error:', error);
-            setAudioError('Audio file could not be loaded');
-        };
-
-        const handleAudioAbort = () => {
-            console.log('Audio playback aborted');
-        };
-
-        const handleAudioStalled = () => {
-            console.log('Audio playback stalled');
-        };
-
-        audio.addEventListener('error', handleAudioError);
-        audio.addEventListener('abort', handleAudioAbort);
-        audio.addEventListener('stalled', handleAudioStalled);
-
-        audioRef.current = audio;
-
-        // Vibrate when notification appears
         vibrate();
-
-        // Try to play audio with better permission handling
-        const playAudio = async () => {
-            try {
-                // Check if audio is ready
-                if (audio.readyState >= 2) {
-                    await audio.play();
-                    setHasUserInteracted(true);
-                    setAudioError(null);
-                } else {
-                    // Wait for audio to load
-                    audio.addEventListener('canplaythrough', async () => {
-                        try {
-                            await audio.play();
-                            setHasUserInteracted(true);
-                            setAudioError(null);
-                        } catch (playError: any) {
-                            console.log('Audio autoplay blocked:', playError);
-                            if (playError.name === 'NotAllowedError') {
-                                setAudioError('Tap to enable sound');
-                            } else if (playError.name === 'NotSupportedError') {
-                                setAudioError('Audio not supported');
-                            }
-                        }
-                    }, { once: true });
-
-                    // Load the audio
-                    audio.load();
-                }
-            } catch (error: any) {
-                console.log('Audio autoplay blocked:', error);
-                if (error.name === 'NotAllowedError') {
-                    setAudioError('Tap to enable sound');
-                } else if (error.name === 'NotSupportedError') {
-                    setAudioError('Audio not supported');
-                } else {
-                    setAudioError('Audio playback failed');
-                }
-            }
-        };
-
-        playAudio();
-
-        return () => {
-            audio.removeEventListener('error', handleAudioError);
-            audio.removeEventListener('abort', handleAudioAbort);
-            audio.removeEventListener('stalled', handleAudioStalled);
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
-        };
     }, [vibrate]);
 
     // Play audio on user interaction with better error handling

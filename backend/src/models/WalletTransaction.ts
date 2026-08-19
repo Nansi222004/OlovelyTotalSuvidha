@@ -1,15 +1,19 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IWalletTransaction extends Document {
-    userId: mongoose.Types.ObjectId; // Generic user reference (seller or delivery boy)
-    userType: 'SELLER' | 'DELIVERY_BOY'; // Type of user
+    userId: mongoose.Types.ObjectId; // Generic user reference (seller, delivery boy, or customer)
+    userType: 'SELLER' | 'DELIVERY_BOY' | 'CUSTOMER'; // Type of user
+    category?: 'COD_RETURN_REFUND' | 'ORDER_CANCELLATION_REFUND' | 'ORDER_PAYMENT' | 'MANUAL_ADMIN_CREDIT' | 'MANUAL_ADMIN_DEBIT';
     amount: number;
+    balanceBefore?: number;
+    balanceAfter?: number;
     type: 'Credit' | 'Debit';
     description: string;
     status: 'Completed' | 'Pending' | 'Failed';
     reference: string;
-    relatedOrder?: mongoose.Types.ObjectId; // Reference to order (for commission credits)
+    relatedOrder?: mongoose.Types.ObjectId; // Reference to order
     relatedCommission?: mongoose.Types.ObjectId; // Reference to commission record
+    relatedReturn?: mongoose.Types.ObjectId; // Reference to return record
     createdAt: Date;
     updatedAt: Date;
 }
@@ -23,13 +27,23 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
         },
         userType: {
             type: String,
-            enum: ['SELLER', 'DELIVERY_BOY'],
+            enum: ['SELLER', 'DELIVERY_BOY', 'CUSTOMER'],
             required: [true, 'User type is required'],
+        },
+        category: {
+            type: String,
+            enum: ['COD_RETURN_REFUND', 'ORDER_CANCELLATION_REFUND', 'ORDER_PAYMENT', 'MANUAL_ADMIN_CREDIT', 'MANUAL_ADMIN_DEBIT'],
         },
         amount: {
             type: Number,
             required: [true, 'Amount is required'],
             min: [0, 'Amount cannot be negative'],
+        },
+        balanceBefore: {
+            type: Number,
+        },
+        balanceAfter: {
+            type: Number,
         },
         type: {
             type: String,
@@ -58,6 +72,10 @@ const WalletTransactionSchema = new Schema<IWalletTransaction>(
         relatedCommission: {
             type: Schema.Types.ObjectId,
             ref: 'Commission',
+        },
+        relatedReturn: {
+            type: Schema.Types.ObjectId,
+            ref: 'Return',
         },
     },
     {

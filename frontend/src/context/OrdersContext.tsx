@@ -130,6 +130,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         couponCode: order.couponCode,
         tipAmount: order.tipAmount,
         giftPackaging: order.giftPackaging,
+        useWallet: order.useWallet,
       };
 
       const response = await createOrder(payload);

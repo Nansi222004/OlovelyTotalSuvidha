@@ -24,15 +24,21 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
         messaging.onBackgroundMessage((payload) => {
             console.log('[firebase-messaging-sw.js] Received background message', payload);
 
-            const isOrderAlert = payload.data?.type === 'NEW_ORDER_REQUEST';
+            const isOrderAlert = payload.data?.type === 'NEW_ORDER_REQUEST' || payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'Order';
             const notificationTitle = payload.notification?.title || 'New Notification';
+
+            // Unique notification tag per order prevents Chrome from replacing/overwriting previous order notifications
+            const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
+            const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
+
             const notificationOptions = {
                 body: payload.notification?.body || '',
                 icon: payload.notification?.icon || '/favicon.png',
                 badge: '/favicon.png',
                 data: payload.data || {},
-                tag: payload.data?.type || 'default',
+                tag: notificationTag,
                 requireInteraction: isOrderAlert,
+                renotify: true,
                 silent: !isOrderAlert
             };
             // Custom sound for order alerts (Chrome/Edge); other browsers use system sound or ignore
@@ -48,32 +54,91 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
 }
 
 
+// Service worker installation
+self.addEventListener('install', (event) => {
+    console.log('[firebase-messaging-sw.js] Service worker installing, skipping waiting');
+    self.skipWaiting();
+});
+
+// Service worker activation
+self.addEventListener('activate', (event) => {
+    console.log('[firebase-messaging-sw.js] Service worker activated, claiming clients');
+    event.waitUntil(self.clients.claim());
+});
+
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
     console.log('[firebase-messaging-sw.js] Notification clicked', event);
 
     event.notification.close();
 
-    const data = event.notification.data;
-    const urlToOpen = data?.link || '/';
+    const data = event.notification.data || {};
+    const link = data.link;
+    const role = (data.role || data.panel || data.recipientType || '').toLowerCase();
+    const orderId = data.orderId || data.id;
+
+    // Determine target URL route
+    let targetUrl = link;
+    if (!targetUrl) {
+        if (role === 'seller') {
+            targetUrl = orderId ? `/seller/orders/${orderId}` : '/seller/orders';
+        } else if (role === 'delivery') {
+            targetUrl = orderId ? `/delivery/orders/${orderId}` : '/delivery/orders';
+        } else if (role === 'admin') {
+            targetUrl = '/admin';
+        } else {
+            targetUrl = '/';
+        }
+    }
+
+    const fullTargetUrl = new URL(targetUrl, self.location.origin).href;
+    const panelPrefix = role ? `/${role}` : '/';
+
+    console.log('[SW CLICK DEBUG] Target URL:', fullTargetUrl);
+    console.log('[SW CLICK DEBUG] Role:', role, '| Panel Prefix:', panelPrefix);
 
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            // Check if app is already open
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+            console.log('[SW CLICK DEBUG] Total matching window clients found:', clientList.length);
+            clientList.forEach((c, idx) => {
+                console.log(`[SW CLICK DEBUG] Client ${idx}: url=${c.url}, focused=${c.focused}`);
+            });
+
+            // 1. Check if an exact tab matching fullTargetUrl is open
             for (const client of clientList) {
-                if (client.url.includes(urlToOpen) && 'focus' in client) {
+                if (client.url === fullTargetUrl && 'focus' in client) {
+                    console.log('[SW CLICK DEBUG] Found exact matching client tab, focusing:', client.url);
                     return client.focus();
                 }
             }
-            // Open new window if app is not already open
+
+            // 2. Check if a tab matching the target panel (e.g., /seller or /delivery) is open
+            for (const client of clientList) {
+                const urlLower = client.url.toLowerCase();
+                const isPanelTab = panelPrefix.length > 1 ? urlLower.includes(panelPrefix) : true;
+
+                if (isPanelTab && 'focus' in client) {
+                    console.log('[SW CLICK DEBUG] Found panel client tab, focusing and navigating:', client.url);
+                    await client.focus();
+                    if ('navigate' in client && client.url !== fullTargetUrl) {
+                        try {
+                            const navigatedClient = await client.navigate(fullTargetUrl);
+                            if (navigatedClient && 'focus' in navigatedClient) {
+                                await navigatedClient.focus();
+                            }
+                        } catch (navErr) {
+                            console.warn('[SW CLICK DEBUG] client.navigate error:', navErr);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            // 3. Otherwise, open a new window to the target URL
+            console.log('[SW CLICK DEBUG] No open panel tab found. Opening new window:', fullTargetUrl);
             if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
+                return clients.openWindow(fullTargetUrl);
             }
         })
     );
-});
-
-// Service worker activation
-self.addEventListener('activate', (event) => {
-    console.log('[firebase-messaging-sw.js] Service worker activated');
 });

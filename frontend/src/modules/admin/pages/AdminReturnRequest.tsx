@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import {
   getReturnRequests,
   updateReturnRequest,
+  assignDeliveryPartnerToReturn,
+  getAvailableDeliveryPartnersForReturn,
   type MiscReturnRequest as ReturnRequest,
 } from "../../../services/api/admin/adminMiscService";
 import { useAuth } from "../../../context/AuthContext";
@@ -21,6 +23,14 @@ export default function AdminReturnRequest() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Assign DP modal state ──
+  const [assignModal, setAssignModal] = useState<{ returnId: string; returnNum: string } | null>(null);
+  const [dpList, setDpList] = useState<Array<{ _id: string; name: string; phone: string; isOnline: boolean }>>([]);
+  const [dpLoading, setDpLoading] = useState(false);
+  const [selectedDp, setSelectedDp] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState('');
 
   // Fetch return requests on component mount
   useEffect(() => {
@@ -175,9 +185,69 @@ export default function AdminReturnRequest() {
     "All Status",
     "Pending",
     "Approved",
-    "Rejected",
+    "Pickup Pending",
+    "Delivery Partner Assigned",
+    "Picked Up",
+    "In Transit",
+    "Handed To Seller",
     "Completed",
+    "Rejected",
   ];
+
+  const getStatusBadgeClass = (status: string) => {
+    const map: Record<string, string> = {
+      Pending: 'bg-yellow-100 text-yellow-800',
+      Approved: 'bg-blue-100 text-blue-800',
+      Rejected: 'bg-red-100 text-red-800',
+      'Pickup Pending': 'bg-sky-100 text-sky-800',
+      'Delivery Partner Assigned': 'bg-indigo-100 text-indigo-800',
+      'Picked Up': 'bg-orange-100 text-orange-800',
+      'In Transit': 'bg-amber-100 text-amber-800',
+      'Handed To Seller': 'bg-purple-100 text-purple-800',
+      Completed: 'bg-green-100 text-green-800',
+    };
+    return map[status] || 'bg-neutral-100 text-neutral-700';
+  };
+
+  const openAssignModal = async (req: ReturnRequest) => {
+    setAssignModal({ returnId: req._id, returnNum: req.orderItemId });
+    setSelectedDp('');
+    setAssignError('');
+    setDpLoading(true);
+    try {
+      const res = await getAvailableDeliveryPartnersForReturn();
+      setDpList(res.success ? (res.data || []) : []);
+    } catch {
+      setDpList([]);
+    } finally {
+      setDpLoading(false);
+    }
+  };
+
+  const handleAssignDp = async () => {
+    if (!assignModal || !selectedDp) return;
+    setAssigning(true);
+    setAssignError('');
+    try {
+      const res = await assignDeliveryPartnerToReturn(assignModal.returnId, selectedDp);
+      if (res.success) {
+        setReturnRequests(prev =>
+          prev.map(r => r._id === assignModal.returnId
+            ? { ...r, status: 'Delivery Partner Assigned', deliveryBoy: { _id: selectedDp, name: dpList.find(d => d._id === selectedDp)?.name || '' } }
+            : r
+          )
+        );
+        setAssignModal(null);
+        alert('✅ Delivery partner assigned! They will receive a notification.');
+      } else {
+        setAssignError(res.message || 'Assignment failed');
+      }
+    } catch (err: any) {
+      setAssignError(err.message || 'Assignment failed');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -671,15 +741,7 @@ export default function AdminReturnRequest() {
                       ₹{request.total.toFixed(2)}
                     </td>
                     <td className="px-4 sm:px-6 py-3">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${request.status === "Approved"
-                          ? "bg-green-100 text-green-800"
-                          : request.status === "Pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : request.status === "Rejected"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-blue-100 text-blue-800"
-                          }`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(request.status)}`}>
                         {request.status}
                       </span>
                     </td>
@@ -687,7 +749,7 @@ export default function AdminReturnRequest() {
                       {new Date(request.requestedAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 sm:px-6 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1.5">
                         {request.status === "Pending" ? (
                           <>
                             <button
@@ -695,15 +757,7 @@ export default function AdminReturnRequest() {
                               disabled={updating === request._id}
                               className="p-1.5 bg-green-100 hover:bg-green-200 disabled:bg-neutral-100 disabled:text-neutral-400 text-green-700 rounded transition-colors"
                               title="Approve">
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="20 6 9 17 4 12"></polyline>
                               </svg>
                             </button>
@@ -712,26 +766,21 @@ export default function AdminReturnRequest() {
                               disabled={updating === request._id}
                               className="p-1.5 bg-red-100 hover:bg-red-200 disabled:bg-neutral-100 disabled:text-neutral-400 text-red-700 rounded transition-colors"
                               title="Reject">
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
                               </svg>
                             </button>
                           </>
+                        ) : request.status === "Pickup Pending" ? (
+                          <button
+                            id={`btn-assign-dp-${request._id}`}
+                            onClick={() => openAssignModal(request)}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium transition-colors whitespace-nowrap"
+                          >
+                            Assign DP
+                          </button>
                         ) : (
-                          <span className="text-sm text-neutral-400">
-                            {request.status === "Approved"
-                              ? "Approved"
-                              : "Rejected"}
-                          </span>
+                          <span className="text-xs text-neutral-500">{request.status}</span>
                         )}
                       </div>
                     </td>
@@ -809,6 +858,64 @@ export default function AdminReturnRequest() {
           Olovely Total Suvidha
         </a>
       </div>
+
+      {/* Assign Delivery Partner Modal */}
+      {assignModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-neutral-900 font-semibold text-lg mb-1">Assign Delivery Partner</h3>
+            <p className="text-neutral-500 text-sm mb-4">Order Item: <span className="font-medium text-neutral-700">{assignModal.returnNum}</span></p>
+            {dpLoading ? (
+              <div className="flex items-center gap-2 py-4">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600" />
+                <span className="text-neutral-500 text-sm">Loading delivery partners...</span>
+              </div>
+            ) : dpList.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 mb-4">
+                <p className="text-yellow-700 text-sm">No active delivery partners available. Make sure DPs are online.</p>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Select Delivery Partner</label>
+                <select
+                  id="select-dp"
+                  value={selectedDp}
+                  onChange={e => setSelectedDp(e.target.value)}
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Choose a delivery partner --</option>
+                  {dpList.map(dp => (
+                    <option key={dp._id} value={dp._id}>
+                      {dp.name} — {dp.phone} {dp.isOnline ? '🟢' : '⚫'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {assignError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
+                <p className="text-red-600 text-sm">{assignError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAssignModal(null)}
+                className="flex-1 py-2.5 border border-neutral-300 rounded-lg text-neutral-700 text-sm font-medium hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              <button
+                id="btn-confirm-assign-dp"
+                onClick={handleAssignDp}
+                disabled={!selectedDp || assigning}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-300 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                {assigning ? 'Assigning...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -71,12 +71,6 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black bg-opacity-60 backdrop-blur-sm">
-      <audio
-        ref={audioRef}
-        src="/assets/sound/seller_alert.mp3"
-        loop
-      />
-
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-300">
         {/* Header */}
         <div className={`px-6 py-4 flex items-center justify-between ${notification.type === 'NEW_ORDER' ? 'bg-teal-600' : 'bg-blue-600'} text-white`}>

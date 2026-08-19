@@ -282,10 +282,11 @@ export const capturePayment = async (
 export const processRefund = async (
     paymentId: string,
     amount?: number,
-    reason?: string
+    reason?: string,
+    session?: mongoose.ClientSession
 ) => {
     try {
-        const payment = await Payment.findById(paymentId);
+        const payment = session ? await Payment.findById(paymentId).session(session) : await Payment.findById(paymentId);
         if (!payment) {
             throw new Error('Payment not found');
         }
@@ -294,29 +295,38 @@ export const processRefund = async (
             throw new Error('Razorpay payment ID not found');
         }
 
-        const razorpay = getRazorpayInstance();
-
         const refundAmount = amount || payment.amount;
 
-        const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
-            amount: Math.round(refundAmount * 100), // Amount in paise
-            notes: {
-                reason: reason || 'Order cancelled',
-            },
-        });
+        const isMockPayment = payment.razorpayPaymentId.startsWith('pay_mock_') || process.env.USE_MOCK_PAYMENT === 'true';
+        let refundId = `rfnd_mock_${Date.now()}`;
+
+        if (!isMockPayment) {
+            const razorpay = getRazorpayInstance();
+            const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
+                amount: Math.round(refundAmount * 100), // Amount in paise
+                notes: {
+                    reason: reason || 'Order cancelled',
+                },
+            });
+            refundId = refund.id;
+        }
 
         // Update payment record
         payment.status = 'Refunded';
         payment.refundAmount = refundAmount;
         payment.refundedAt = new Date();
         payment.refundReason = reason;
-        await payment.save();
+        if (session) {
+            await payment.save({ session });
+        } else {
+            await payment.save();
+        }
 
         return {
             success: true,
             message: 'Refund processed successfully',
             data: {
-                refundId: refund.id,
+                refundId,
                 amount: refundAmount,
             },
         };

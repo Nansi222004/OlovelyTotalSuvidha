@@ -2,69 +2,78 @@ import WalletTransaction from "../models/WalletTransaction";
 import WithdrawRequest from "../models/WithdrawRequest";
 import Seller from "../models/Seller";
 import Delivery from "../models/Delivery";
+import Customer from "../models/Customer";
 import AppSettings from "../models/AppSettings";
 import mongoose from "mongoose";
+
+export type WalletUserType = "SELLER" | "DELIVERY_BOY" | "CUSTOMER";
+export type WalletCategory = "COD_RETURN_REFUND" | "ORDER_CANCELLATION_REFUND" | "ORDER_PAYMENT" | "MANUAL_ADMIN_CREDIT" | "MANUAL_ADMIN_DEBIT";
 
 /**
  * Credit wallet
  */
 export const creditWallet = async (
   userId: string,
-  userType: "SELLER" | "DELIVERY_BOY",
+  userType: WalletUserType,
   amount: number,
   description: string,
   relatedOrderId?: string,
   relatedCommissionId?: string,
   session?: mongoose.ClientSession,
+  customReference?: string,
+  category?: WalletCategory,
+  relatedReturnId?: string,
 ) => {
   try {
-    // Idempotency check: if relatedOrderId is provided, check if credit transaction already exists
-    if (relatedOrderId) {
-      const existingTxn = session
-        ? await WalletTransaction.findOne({
-            userId,
-            userType,
-            relatedOrder: relatedOrderId,
-            type: "Credit",
-          }).session(session)
-        : await WalletTransaction.findOne({
-            userId,
-            userType,
-            relatedOrder: relatedOrderId,
-            type: "Credit",
-          });
+    const reference = customReference || `CR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-      if (existingTxn) {
-        console.warn(
-          `[Idempotency Warning] Credit wallet skipped: Transaction already exists for ${userType} ${userId} order ${relatedOrderId} (Txn: ${existingTxn._id})`,
-        );
-        return {
-          success: true,
-          message: "Wallet already credited for this order",
-          data: {
-            transactionId: existingTxn._id,
-            newBalance: await getWalletBalance(userId, userType),
-          },
-        };
-      }
+    // Idempotency check: check if transaction with this reference or relatedOrder/return already exists
+    const existingQuery: any = { userId, userType, type: "Credit" };
+    if (customReference) {
+      existingQuery.reference = customReference;
+    } else if (relatedOrderId) {
+      existingQuery.relatedOrder = relatedOrderId;
     }
 
-    // Generate unique reference
-    const reference = `CR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const existingTxn = session
+      ? await WalletTransaction.findOne(existingQuery).session(session)
+      : await WalletTransaction.findOne(existingQuery);
+
+    if (existingTxn) {
+      console.warn(
+        `[Idempotency Warning] Credit wallet skipped: Transaction already exists for ${userType} ${userId} (Txn: ${existingTxn._id})`,
+      );
+      return {
+        success: true,
+        message: "Wallet already credited for this operation",
+        data: {
+          transactionId: existingTxn._id,
+          newBalance: await getWalletBalance(userId, userType, session),
+        },
+      };
+    }
+
+    const currentBalance = await getWalletBalance(userId, userType, session);
+    const balanceAfter = currentBalance + amount;
 
     // Create transaction record
-    const transaction = new WalletTransaction({
+    const transactionData: any = {
       userId,
       userType,
+      category,
       amount,
+      balanceBefore: currentBalance,
+      balanceAfter,
       type: "Credit",
       description,
       status: "Completed",
       reference,
       relatedOrder: relatedOrderId,
       relatedCommission: relatedCommissionId,
-    });
+      relatedReturn: relatedReturnId,
+    };
 
+    const transaction = new WalletTransaction(transactionData);
     if (session) {
       await transaction.save({ session });
     } else {
@@ -72,13 +81,21 @@ export const creditWallet = async (
     }
 
     // Update user balance
-    const Model: any = userType === "SELLER" ? Seller : Delivery;
-    const updateQuery = { $inc: { balance: amount } };
-
-    if (session) {
-      await Model.findByIdAndUpdate(userId, updateQuery, { session });
+    if (userType === "CUSTOMER") {
+      const updateQuery = { $inc: { walletAmount: amount } };
+      if (session) {
+        await Customer.findByIdAndUpdate(userId, updateQuery, { session });
+      } else {
+        await Customer.findByIdAndUpdate(userId, updateQuery);
+      }
     } else {
-      await Model.findByIdAndUpdate(userId, updateQuery);
+      const Model: any = userType === "SELLER" ? Seller : Delivery;
+      const updateQuery = { $inc: { balance: amount } };
+      if (session) {
+        await Model.findByIdAndUpdate(userId, updateQuery, { session });
+      } else {
+        await Model.findByIdAndUpdate(userId, updateQuery);
+      }
     }
 
     return {
@@ -86,7 +103,7 @@ export const creditWallet = async (
       message: "Wallet credited successfully",
       data: {
         transactionId: transaction._id,
-        newBalance: await getWalletBalance(userId, userType),
+        newBalance: balanceAfter,
       },
     };
   } catch (error: any) {
@@ -103,48 +120,98 @@ export const creditWallet = async (
  */
 export const debitWallet = async (
   userId: string,
-  userType: "SELLER" | "DELIVERY_BOY",
+  userType: WalletUserType,
   amount: number,
   description: string,
   relatedOrderId?: string,
   session?: mongoose.ClientSession,
+  customReference?: string,
+  category?: WalletCategory,
 ) => {
   try {
-    // Check balance
-    const currentBalance = await getWalletBalance(userId, userType);
+    const reference = customReference || `DR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+    // Idempotency check
+    if (customReference) {
+      const existingTxn = session
+        ? await WalletTransaction.findOne({ reference }).session(session)
+        : await WalletTransaction.findOne({ reference });
+
+      if (existingTxn) {
+        return {
+          success: true,
+          message: "Wallet already debited for this reference",
+          data: {
+            transactionId: existingTxn._id,
+            newBalance: await getWalletBalance(userId, userType, session),
+          },
+        };
+      }
+    }
+
+    const currentBalance = await getWalletBalance(userId, userType, session);
     if (currentBalance < amount) {
       throw new Error("Insufficient wallet balance");
     }
 
-    // Generate unique reference
-    const reference = `DR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const balanceAfter = currentBalance - amount;
 
     // Create transaction record
-    const transaction = new WalletTransaction({
+    const transactionData: any = {
       userId,
       userType,
+      category,
       amount,
+      balanceBefore: currentBalance,
+      balanceAfter,
       type: "Debit",
       description,
       status: "Completed",
       reference,
       relatedOrder: relatedOrderId,
-    });
+    };
 
+    const transaction = new WalletTransaction(transactionData);
     if (session) {
       await transaction.save({ session });
     } else {
       await transaction.save();
     }
 
-    // Update user balance
-    const Model: any = userType === "SELLER" ? Seller : Delivery;
-    const updateQuery = { $inc: { balance: -amount } };
+    // Atomic update user balance with $gte check to guarantee no negative balances under race conditions
+    if (userType === "CUSTOMER") {
+      const updatedCust = session
+        ? await Customer.findOneAndUpdate(
+            { _id: userId, walletAmount: { $gte: amount } },
+            { $inc: { walletAmount: -amount } },
+            { session, new: true }
+          )
+        : await Customer.findOneAndUpdate(
+            { _id: userId, walletAmount: { $gte: amount } },
+            { $inc: { walletAmount: -amount } },
+            { new: true }
+          );
 
-    if (session) {
-      await Model.findByIdAndUpdate(userId, updateQuery, { session });
+      if (!updatedCust) {
+        throw new Error("Insufficient wallet balance for debit");
+      }
     } else {
-      await Model.findByIdAndUpdate(userId, updateQuery);
+      const Model: any = userType === "SELLER" ? Seller : Delivery;
+      const updatedUser = session
+        ? await Model.findOneAndUpdate(
+            { _id: userId, balance: { $gte: amount } },
+            { $inc: { balance: -amount } },
+            { session, new: true }
+          )
+        : await Model.findOneAndUpdate(
+            { _id: userId, balance: { $gte: amount } },
+            { $inc: { balance: -amount } },
+            { new: true }
+          );
+
+      if (!updatedUser) {
+        throw new Error("Insufficient wallet balance for debit");
+      }
     }
 
     return {
@@ -152,7 +219,7 @@ export const debitWallet = async (
       message: "Wallet debited successfully",
       data: {
         transactionId: transaction._id,
-        newBalance: await getWalletBalance(userId, userType),
+        newBalance: balanceAfter,
       },
     };
   } catch (error: any) {
@@ -169,18 +236,28 @@ export const debitWallet = async (
  */
 export const getWalletBalance = async (
   userId: string,
-  userType: "SELLER" | "DELIVERY_BOY",
+  userType: WalletUserType,
+  session?: mongoose.ClientSession,
 ): Promise<number> => {
   try {
+    if (userType === "CUSTOMER") {
+      const customer = session
+        ? await Customer.findById(userId).session(session)
+        : await Customer.findById(userId);
+      return customer?.walletAmount || 0;
+    }
+
     const Model: any = userType === "SELLER" ? Seller : Delivery;
-    const user = await Model.findById(userId);
+    const user = session
+      ? await Model.findById(userId).session(session)
+      : await Model.findById(userId);
 
     if (!user) {
       throw new Error("User not found");
     }
 
     return user.balance || 0;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting wallet balance:", error);
     return 0;
   }
@@ -191,7 +268,7 @@ export const getWalletBalance = async (
  */
 export const getWalletTransactions = async (
   userId: string,
-  userType: "SELLER" | "DELIVERY_BOY",
+  userType: WalletUserType,
   page: number = 1,
   limit: number = 20,
 ) => {

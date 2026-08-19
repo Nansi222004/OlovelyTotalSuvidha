@@ -9,7 +9,24 @@ export interface IReturn extends Document {
   // Return Info
   reason: string;
   description?: string;
-  status: "Pending" | "Approved" | "Rejected" | "Processing" | "Completed";
+
+  /**
+   * Full 9-stage return lifecycle:
+   * Pending → Approved → Pickup Pending → Delivery Partner Assigned →
+   * Picked Up → In Transit → Handed To Seller → Completed
+   * (Rejected is a terminal failure state)
+   * NOTE: "Processing" was removed — MongoDB confirmed 0 existing Processing records.
+   */
+  status:
+    | "Pending"
+    | "Approved"
+    | "Rejected"
+    | "Pickup Pending"
+    | "Delivery Partner Assigned"
+    | "Picked Up"
+    | "In Transit"
+    | "Handed To Seller"
+    | "Completed";
 
   // Items
   quantity: number;
@@ -20,7 +37,25 @@ export interface IReturn extends Document {
   processedAt?: Date;
   rejectionReason?: string;
 
-  // Pickup
+  // ─────── Delivery Partner Assignment (for return pickup) ───────
+  /** Delivery partner assigned specifically for this return pickup (NOT the forward-order DP) */
+  deliveryBoy?: mongoose.Types.ObjectId;
+  assignedAt?: Date;
+
+  // ─────── Return Pickup OTP ───────
+  pickupOtp?: string;
+  pickupOtpExpiresAt?: Date;
+  pickupOtpAttempts?: number;
+  pickupOtpVerified?: boolean;
+
+  // ─────── Lifecycle Timestamps ───────
+  approvedAt?: Date;
+  pickedUpAt?: Date;
+  inTransitAt?: Date;
+  handedToSellerAt?: Date;
+  completedAt?: Date;
+
+  // Legacy pickup fields (kept for backward compat)
   pickupScheduled?: Date;
   pickupCompleted?: Date;
   pickupAddress?: {
@@ -32,6 +67,7 @@ export interface IReturn extends Document {
   // Refund
   refundAmount?: number;
   refundId?: mongoose.Types.ObjectId;
+  financialSettlementStatus?: "Pending" | "Completed" | "Failed";
 
   createdAt: Date;
   updatedAt: Date;
@@ -67,7 +103,17 @@ const ReturnSchema = new Schema<IReturn>(
     },
     status: {
       type: String,
-      enum: ["Pending", "Approved", "Rejected", "Processing", "Completed"],
+      enum: [
+        "Pending",
+        "Approved",
+        "Rejected",
+        "Pickup Pending",
+        "Delivery Partner Assigned",
+        "Picked Up",
+        "In Transit",
+        "Handed To Seller",
+        "Completed",
+      ],
       default: "Pending",
     },
 
@@ -95,7 +141,40 @@ const ReturnSchema = new Schema<IReturn>(
       trim: true,
     },
 
-    // Pickup
+    // ─────── Delivery Partner Assignment ───────
+    deliveryBoy: {
+      type: Schema.Types.ObjectId,
+      ref: "Delivery",
+    },
+    assignedAt: {
+      type: Date,
+    },
+
+    // ─────── Return Pickup OTP ───────
+    pickupOtp: {
+      type: String,
+      select: false, // Never expose OTP in regular queries
+    },
+    pickupOtpExpiresAt: {
+      type: Date,
+    },
+    pickupOtpAttempts: {
+      type: Number,
+      default: 0,
+    },
+    pickupOtpVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    // ─────── Lifecycle Timestamps ───────
+    approvedAt: { type: Date },
+    pickedUpAt: { type: Date },
+    inTransitAt: { type: Date },
+    handedToSellerAt: { type: Date },
+    completedAt: { type: Date },
+
+    // Legacy pickup fields
     pickupScheduled: {
       type: Date,
     },
@@ -117,6 +196,11 @@ const ReturnSchema = new Schema<IReturn>(
       type: Schema.Types.ObjectId,
       ref: "Refund",
     },
+    financialSettlementStatus: {
+      type: String,
+      enum: ["Pending", "Completed", "Failed"],
+      default: "Pending",
+    },
   },
   {
     timestamps: true,
@@ -127,7 +211,10 @@ const ReturnSchema = new Schema<IReturn>(
 ReturnSchema.index({ order: 1 });
 ReturnSchema.index({ customer: 1 });
 ReturnSchema.index({ status: 1 });
+ReturnSchema.index({ deliveryBoy: 1 }); // For DP return pickup queries
 
-const Return = (mongoose.models.Return as mongoose.Model<IReturn>) || mongoose.model<IReturn>("Return", ReturnSchema);
+const Return =
+  (mongoose.models.Return as mongoose.Model<IReturn>) ||
+  mongoose.model<IReturn>("Return", ReturnSchema);
 
 export default Return;

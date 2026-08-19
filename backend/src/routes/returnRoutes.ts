@@ -3,6 +3,7 @@ import {
   getReturnRequests,
   getReturnRequestById,
   updateReturnStatus,
+  confirmSellerReceipt,
 } from "../modules/seller/controllers/returnController";
 import { authenticate, requireUserType, requireApprovedUser } from "../middleware/auth";
 
@@ -19,7 +20,10 @@ router.get("/", getReturnRequests);
 // Get return request by ID
 router.get("/:id", getReturnRequestById);
 
-// Update return request status
+// Update return request status (Seller: Pending → Approved | Rejected ONLY)
 router.patch("/:id/status", updateReturnStatus);
+
+// Confirm physical receipt of returned item (Handed To Seller → Completed → triggers settlement)
+router.post("/:id/confirm-receipt", confirmSellerReceipt);
 
 export default router;

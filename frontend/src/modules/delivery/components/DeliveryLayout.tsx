@@ -8,6 +8,7 @@ import { useDeliveryOrderNotifications } from '../../../hooks/useDeliveryOrderNo
 import OrderNotificationCard from './OrderNotificationCard';
 import { AnimatePresence } from 'framer-motion';
 import { registerFCMToken } from '../../../services/pushNotificationService';
+import { useRingtoneAlert } from '../../../hooks/useRingtoneAlert';
 
 const PUSH_PROMPT_DISMISSED_KEY = 'delivery_push_prompt_dismissed';
 
@@ -21,11 +22,16 @@ function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
   const { setUserName } = useDeliveryUser();
   const {
     currentNotification,
+    notificationQueue,
     acceptOrder,
     rejectOrder,
   } = useDeliveryOrderNotifications();
   const [showPushBanner, setShowPushBanner] = useState(false);
   const [pushEnabling, setPushEnabling] = useState(false);
+
+  // Count total actionable pending delivery assignments
+  const actionableCount = (currentNotification ? 1 : 0) + notificationQueue.length;
+  const { autoplayBlocked, enableAndPlaySound } = useRingtoneAlert('/assets/sound/delivery-alert.mp3', actionableCount > 0);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -72,6 +78,18 @@ function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
 
   return (
     <div className={`flex flex-col min-h-screen bg-neutral-100 transition-all duration-300 ${!isOnline ? 'grayscale' : ''}`}>
+      {autoplayBlocked && (
+        <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">
+          <span>🔔 Incoming delivery ringtone blocked by browser. Click to enable sound!</span>
+          <button
+            onClick={enableAndPlaySound}
+            className="bg-white text-amber-800 px-3 py-1 rounded shadow hover:bg-neutral-100 font-bold transition-transform active:scale-95 ml-3"
+          >
+            Enable Sound
+          </button>
+        </div>
+      )}
+
       {showPushBanner && (
         <div className="bg-amber-50 border-b border-amber-200 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
           <p className="text-sm text-amber-900 flex-1 min-w-0">

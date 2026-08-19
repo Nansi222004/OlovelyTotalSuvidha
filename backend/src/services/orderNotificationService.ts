@@ -459,7 +459,14 @@ export async function notifyDeliveryBoysOfNewOrder(
                 {
                     type: 'Order',
                     link: `/delivery/orders/${order._id}`,
-                    priority: 'High'
+                    priority: 'High',
+                    data: {
+                        orderId: order._id.toString(),
+                        orderNumber: order.orderNumber,
+                        role: 'delivery',
+                        panel: 'delivery',
+                        type: 'NEW_ORDER',
+                    },
                 }
             ).catch(err => console.error(`❌ [DB Notif Error] ${idString}:`, err.message));
         }

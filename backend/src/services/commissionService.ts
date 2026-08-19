@@ -374,22 +374,41 @@ export const distributeCommissions = async (orderId: string) => {
       // Ideally we should call `createPendingCommissions` here but pass the session.
     }
 
-    const processedCommissions: any[] = [];
+    const deliveredAt = order.deliveredAt || new Date();
+    if (!order.deliveredAt) {
+      order.deliveredAt = deliveredAt;
+      await order.save({ session });
+    }
 
-    // Group by Seller to credit wallet once per seller
+    const processedCommissions: any[] = [];
     const sellerEarnings = new Map<
       string,
-      { netAmount: number; commissionIds: string[] }
+      { netAmount: number; orderAmount: number; commissionIds: string[]; maxDeadline: Date; hasHold: boolean }
     >();
 
     for (const comm of commissionsToProcess) {
-      // Update status to Paid
-      comm.status = "Paid";
-      comm.paidAt = new Date();
+      let itemDeadline = new Date(deliveredAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      if (comm.orderItem) {
+        const item = await OrderItem.findById(comm.orderItem).session(session);
+        if (item) {
+          const windowDays = item.returnWindowDays ?? 7;
+          itemDeadline = new Date(deliveredAt.getTime() + windowDays * 24 * 60 * 60 * 1000);
+          item.returnDeadline = itemDeadline;
+          await item.save({ session });
+        }
+      }
+
+      const isHoldActive = itemDeadline.getTime() > Date.now();
+      if (isHoldActive) {
+        comm.status = "OnHold";
+        comm.onHoldUntil = itemDeadline;
+      } else {
+        comm.status = "Paid";
+        comm.paidAt = new Date();
+      }
       await comm.save({ session });
       processedCommissions.push(comm);
 
-      // Group for wallet credit (track orderAmount per seller for Self Assign shipping split)
       if (comm.type === "SELLER" && comm.seller) {
         const sellerId = comm.seller.toString();
         const netAmount = comm.orderAmount - comm.commissionAmount;
@@ -399,12 +418,16 @@ export const distributeCommissions = async (orderId: string) => {
             netAmount: 0,
             orderAmount: 0,
             commissionIds: [] as string[],
-          } as any);
+            maxDeadline: itemDeadline,
+            hasHold: isHoldActive,
+          });
         }
-        const data = sellerEarnings.get(sellerId)! as any;
+        const data = sellerEarnings.get(sellerId)!;
         data.netAmount += netAmount;
         data.orderAmount = (data.orderAmount || 0) + comm.orderAmount;
         data.commissionIds.push(comm._id.toString());
+        if (itemDeadline > data.maxDeadline) data.maxDeadline = itemDeadline;
+        if (isHoldActive) data.hasHold = true;
       }
     }
 
@@ -424,41 +447,11 @@ export const distributeCommissions = async (orderId: string) => {
           const shippingShare = Math.round(shippingTotal * proportion * 100) / 100;
           data.netAmount += shippingShare;
         }
-      } else {
-        // Prepaid Self: seller commissions already Paid on payment; credit only shipping now
-        const existingSellerCommissions = await Commission.find({
-          order: orderId,
-          type: "SELLER",
-        }).session(session);
-        const sellerOrderAmounts = new Map<string, number>();
-        for (const c of existingSellerCommissions) {
-          const sid = (c.seller || c).toString();
-          sellerOrderAmounts.set(sid, (sellerOrderAmounts.get(sid) || 0) + c.orderAmount);
-        }
-        const totalAmt = Array.from(sellerOrderAmounts.values()).reduce((a, b) => a + b, 0);
-        if (totalAmt > 0) {
-          for (const [sellerId, amt] of sellerOrderAmounts.entries()) {
-            const proportion = amt / totalAmt;
-            const shippingShare = Math.round(shippingTotal * proportion * 100) / 100;
-            if (shippingShare > 0) {
-              await creditWallet(
-                sellerId,
-                "SELLER",
-                shippingShare,
-                `Delivery charge (self-delivered) for order ${order.orderNumber}`,
-                orderId,
-                undefined,
-                session,
-              );
-            }
-          }
-        }
       }
     }
 
-    // Credit Seller Wallets
+    // Credit / Hold Seller Wallets
     for (const [sellerId, data] of sellerEarnings.entries()) {
-      // For COD orders: Self Assign is credited in processCODOrderDeliverySelf; else credited when delivery boy pays admin.
       if (order.paymentMethod === "COD") {
         if (!isSelfAssign) {
           console.log(
@@ -473,17 +466,27 @@ export const distributeCommissions = async (orderId: string) => {
         continue;
       }
 
-      await creditWallet(
-        sellerId,
-        "SELLER",
-        data.netAmount,
-        isSelfAssign && shippingTotal > 0
-          ? `Sale proceeds + delivery charge (self-delivered) for order ${order.orderNumber}`
-          : `Sale proceeds for order ${order.orderNumber}`,
-        orderId,
-        data.commissionIds[0], // Link to first commission for ref
-        session,
-      );
+      if (data.hasHold) {
+        // Place seller earning on hold
+        await Seller.findByIdAndUpdate(
+          sellerId,
+          { $inc: { onHoldBalance: data.netAmount } },
+          { session }
+        );
+      } else {
+        // Return window expired or 0 return days: credit directly to Available Wallet balance
+        await creditWallet(
+          sellerId,
+          "SELLER",
+          data.netAmount,
+          isSelfAssign && shippingTotal > 0
+            ? `Sale proceeds + delivery charge (self-delivered) for order ${order.orderNumber}`
+            : `Sale proceeds for order ${order.orderNumber}`,
+          orderId,
+          data.commissionIds[0],
+          session,
+        );
+      }
     }
 
     // For COD orders, delegate to the specialized COD processing logic
@@ -1414,5 +1417,66 @@ export const processCODOrderDelivery = async (
     if (!useExternalSession) {
       session.endSession();
     }
+  }
+};
+
+/**
+ * Automatically releases expired seller escrow earnings (OnHold -> Paid & Available Wallet balance)
+ */
+export const releaseExpiredEscrow = async (): Promise<{ success: boolean; releasedCount: number }> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const expiredCommissions = await Commission.find({
+      status: "OnHold",
+      onHoldUntil: { $lte: new Date() },
+    }).session(session);
+
+    let releasedCount = 0;
+
+    for (const comm of expiredCommissions) {
+      if (comm.type === "SELLER" && comm.seller) {
+        const netAmount = comm.orderAmount - comm.commissionAmount;
+        const sellerId = comm.seller.toString();
+
+        // Move balance from onHoldBalance -> balance
+        await Seller.findByIdAndUpdate(
+          sellerId,
+          {
+            $inc: {
+              onHoldBalance: -netAmount,
+              balance: netAmount,
+            },
+          },
+          { session }
+        );
+
+        // Record Credit Wallet Transaction
+        await creditWallet(
+          sellerId,
+          "SELLER",
+          netAmount,
+          `Released held sale proceeds after return window expired (Order ${comm.order})`,
+          comm.order.toString(),
+          comm._id.toString(),
+          session
+        );
+
+        comm.status = "Paid";
+        comm.paidAt = new Date();
+        await comm.save({ session });
+        releasedCount++;
+      }
+    }
+
+    await session.commitTransaction();
+    return { success: true, releasedCount };
+  } catch (error: any) {
+    await session.abortTransaction();
+    console.error("Error releasing expired escrow:", error);
+    return { success: false, releasedCount: 0 };
+  } finally {
+    session.endSession();
   }
 };

@@ -40,6 +40,8 @@ export interface Order {
   couponCode?: string;
   giftPackaging?: boolean;
   deliveryOption?: 'Instant' | 'Standard';
+  useWallet?: boolean;
+  walletAmountUsed?: number;
 }
 
 

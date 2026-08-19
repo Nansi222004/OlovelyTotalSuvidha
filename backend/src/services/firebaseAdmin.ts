@@ -186,7 +186,8 @@ export async function sendNotificationToUser(
                     // Check if error is due to invalid token
                     const errorCode = (resp.error as any)?.code;
                     if (errorCode === 'messaging/invalid-registration-token' ||
-                        errorCode === 'messaging/registration-token-not-registered') {
+                        errorCode === 'messaging/registration-token-not-registered' ||
+                        errorCode === 'messaging/invalid-argument') {
                         invalidTokens.push(uniqueTokens[idx]);
                     }
                 }

@@ -9,12 +9,14 @@ export type UserPanel = 'admin' | 'seller' | 'delivery' | 'customer';
 // Socket.io base URL - extract from API_BASE_URL by removing /api/v1
 // Socket connections need the base server URL without the API path
 export const getSocketBaseURL = (): string => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
+  const rawUrl =
+    import.meta.env.VITE_SOCKET_URL ||
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://localhost:5000";
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
-  const socketUrl = apiBaseUrl.replace(/\/api\/v\d+$|\/api$/, '');
+  // Strip trailing /api/v1 or /api to prevent Socket.io from interpreting path as a custom namespace
+  const socketUrl = rawUrl.replace(/\/api\/v\d+\/?$|\/api\/?$/, '');
 
   return socketUrl || "http://localhost:5000";
 };

@@ -36,6 +36,7 @@ import { addToWishlist } from "../../services/api/customerWishlistService";
 import { updateProfile } from "../../services/api/customerService";
 import { calculateProductPrice } from "../../utils/priceUtils";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
+import { getCustomerWalletBalance } from "../../services/api/customerWalletService";
 
 // const STORAGE_KEY = 'saved_address'; // Removed
 
@@ -69,6 +70,10 @@ export default function Checkout() {
   const [showPartyPopper, setShowPartyPopper] = useState(false);
   const [hasAppliedCouponBefore, setHasAppliedCouponBefore] = useState(false);
   const [showOrderSuccess, setShowOrderSuccess] = useState(false);
+
+  // Wallet State
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [useWallet, setUseWallet] = useState<boolean>(false);
 
   // Delivery Option State
   const [deliveryOption, setDeliveryOption] = useState<"Instant" | "Standard">(
@@ -248,7 +253,20 @@ export default function Checkout() {
         console.error("Error loading checkout data:", error);
       }
     };
+
+    const fetchWallet = async () => {
+      try {
+        const res = await getCustomerWalletBalance();
+        if (res.success) {
+          setWalletBalance(res.data.balance || 0);
+        }
+      } catch (err) {
+        console.error("Failed to load wallet balance", err);
+      }
+    };
+
     fetchInitialData();
+    fetchWallet();
   }, []);
 
   // Fetch similar products dynamically
@@ -464,6 +482,8 @@ export default function Checkout() {
       giftPackagingFee -
       currentCouponDiscount,
   );
+  const walletDeduction = useWallet ? Math.min(walletBalance, grandTotal) : 0;
+  const finalPayable = Math.max(0, grandTotal - walletDeduction);
 
   const handleApplyCoupon = async (coupon: ApiCoupon) => {
     setIsValidatingCoupon(true);
@@ -597,14 +617,16 @@ export default function Checkout() {
       },
       totalAmount: grandTotal,
       address: addressWithLocation,
-      paymentMethod: paymentMethod,
-      status: paymentMethod === "COD" ? "Received" : "Pending", // COD orders start as 'Received'
+      paymentMethod: walletDeduction === grandTotal ? "Wallet" : paymentMethod,
+      status: (paymentMethod === "COD" || walletDeduction === grandTotal) ? "Received" : "Pending",
       createdAt: new Date().toISOString(),
       tipAmount: finalTipAmount,
       gstin: gstin || undefined,
       couponCode: selectedCoupon?.code || undefined,
       giftPackaging: giftPackaging,
       deliveryOption: deliveryOption,
+      useWallet: useWallet && walletDeduction > 0,
+      walletAmountUsed: walletDeduction,
     };
 
     setIsProcessingOrder(true);
@@ -1755,67 +1777,103 @@ export default function Checkout() {
         </div>
       </div>
 
+      {/* Wallet Balance Usage Toggle */}
+      <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200 bg-emerald-50/40">
+        <label className="flex items-center justify-between cursor-pointer">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={useWallet}
+              onChange={(e) => setUseWallet(e.target.checked)}
+              disabled={walletBalance <= 0}
+              className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-neutral-900">Use Wallet Balance</span>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+                  ₹{walletBalance.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-0.5">
+                {walletBalance > 0
+                  ? useWallet
+                    ? `₹${walletDeduction.toFixed(2)} applied from wallet balance`
+                    : "Use wallet balance to pay for this order"
+                  : "Available wallet balance is ₹0.00"}
+              </p>
+            </div>
+          </div>
+        </label>
+      </div>
+
       {/* Payment Method Selection */}
       <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200">
         <h2 className="text-sm font-bold text-neutral-900 mb-3">
           Select Payment Method
         </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setPaymentMethod("Online")}
-            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-              paymentMethod === "Online"
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-            }`}>
-            <div
-              className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${paymentMethod === "Online" ? "bg-green-600" : "bg-neutral-100"}`}>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={paymentMethod === "Online" ? "white" : "currentColor"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                <line x1="1" y1="10" x2="23" y2="10" />
-              </svg>
-            </div>
-            <span className="text-xs font-bold">Online Payment</span>
-            <p className="text-[8px] mt-0.5 opacity-70">
-              (Cards, UPI, NetBanking)
-            </p>
-          </button>
+        {useWallet && walletDeduction === grandTotal ? (
+          <div className="bg-emerald-600 text-white rounded-xl p-4 text-center font-bold text-sm shadow-md">
+            ✓ Order 100% Covered by Wallet (No additional payment needed)
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setPaymentMethod("Online")}
+              className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                paymentMethod === "Online"
+                  ? "border-green-600 bg-green-50 text-green-700"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+              }`}>
+              <div
+                className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${paymentMethod === "Online" ? "bg-green-600" : "bg-neutral-100"}`}>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={paymentMethod === "Online" ? "white" : "currentColor"}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                  <line x1="1" y1="10" x2="23" y2="10" />
+                </svg>
+              </div>
+              <span className="text-xs font-bold">Online Payment</span>
+              <p className="text-[8px] mt-0.5 opacity-70">
+                (Cards, UPI, NetBanking)
+              </p>
+            </button>
 
-          <button
-            onClick={() => setPaymentMethod("COD")}
-            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-              paymentMethod === "COD"
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-            }`}>
-            <div
-              className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${paymentMethod === "COD" ? "bg-green-600" : "bg-neutral-100"}`}>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={paymentMethod === "COD" ? "white" : "currentColor"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
-            </div>
-            <span className="text-xs font-bold">Cash on Delivery</span>
-            <p className="text-[8px] mt-0.5 opacity-70">
-              (Pay when you receive)
-            </p>
-          </button>
-        </div>
+            <button
+              onClick={() => setPaymentMethod("COD")}
+              className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                paymentMethod === "COD"
+                  ? "border-green-600 bg-green-50 text-green-700"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+              }`}>
+              <div
+                className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${paymentMethod === "COD" ? "bg-green-600" : "bg-neutral-100"}`}>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={paymentMethod === "COD" ? "white" : "currentColor"}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round">
+                  <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              </div>
+              <span className="text-xs font-bold">Cash on Delivery</span>
+              <p className="text-[8px] mt-0.5 opacity-70">
+                (Pay when you receive)
+              </p>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Bill details */}
@@ -1986,10 +2044,28 @@ export default function Checkout() {
           {/* Grand total */}
           <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
             <span className="text-sm font-bold text-neutral-900">
-              Grand total
+              Order Total
             </span>
             <span className="text-sm font-bold text-neutral-900">
-              ₹{Math.max(0, grandTotal)}
+              ₹{Math.max(0, grandTotal).toFixed(2)}
+            </span>
+          </div>
+
+          {/* Wallet deduction */}
+          {useWallet && walletDeduction > 0 && (
+            <div className="flex items-center justify-between text-emerald-600 font-medium">
+              <span className="text-xs">Wallet Balance Applied</span>
+              <span className="text-xs font-bold">-₹{walletDeduction.toFixed(2)}</span>
+            </div>
+          )}
+
+          {/* Final Payable total */}
+          <div className="pt-2 border-t border-neutral-300 flex items-center justify-between">
+            <span className="text-sm font-extrabold text-neutral-900">
+              To Pay
+            </span>
+            <span className="text-sm font-extrabold text-emerald-600">
+              ₹{finalPayable.toFixed(2)}
             </span>
           </div>
         </div>

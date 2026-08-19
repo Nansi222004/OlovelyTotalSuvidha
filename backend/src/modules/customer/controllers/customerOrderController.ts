@@ -14,6 +14,8 @@ import { Server as SocketIOServer } from "socket.io";
 import { getOrderItemCommissionRate } from "../../../services/commissionService";
 import DeliveryAssignment from "../../../models/DeliveryAssignment";
 import Coupon from "../../../models/Coupon";
+import Return from "../../../models/Return";
+import { debitWallet } from "../../../services/walletManagementService";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -24,14 +26,14 @@ export const createOrder = async (req: Request, res: Response) => {
     try {
       session = await mongoose.startSession();
       session.startTransaction();
-    } catch (sessionError) {
+    } catch (txError) {
       console.warn(
         "MongoDB Transactions not supported or failed to start. Proceeding without transaction.",
       );
       session = null;
     }
 
-    const { items, address, paymentMethod, fees, deliveryOption, couponCode, tipAmount, giftPackaging } = req.body;
+    const { items, address, paymentMethod, fees, deliveryOption, couponCode, tipAmount, giftPackaging, useWallet } = req.body;
     const userId = req.user!.userId;
 
     // Log incoming request for debugging
@@ -350,6 +352,14 @@ export const createOrder = async (req: Request, res: Response) => {
       );
       const commAmount = (itemTotal * commRate) / 100;
 
+      // Calculate return policy snapshot
+      const returnsEnabled = settings?.returnConfig?.returnsEnabled !== false;
+      const productIsReturnable = product.isReturnable !== false;
+      const isReturnableSnapshot = returnsEnabled && productIsReturnable;
+      const returnDaysSnapshot = product.maxReturnDays && product.maxReturnDays > 0
+        ? product.maxReturnDays
+        : settings?.returnConfig?.defaultReturnWindowDays ?? 7;
+
       // Create OrderItem
       const newOrderItemData = {
         order: newOrder._id,
@@ -365,6 +375,8 @@ export const createOrder = async (req: Request, res: Response) => {
         commissionAmount: commAmount,
         variation: variationValue,
         status: "Pending",
+        isReturnable: isReturnableSnapshot,
+        returnWindowDays: returnDaysSnapshot,
       };
 
       const newOrderItem = new OrderItem(newOrderItemData);
@@ -604,6 +616,57 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const finalTotal = Math.max(0, baseForCoupon + finalTipAmount + giftPackagingFee - discountAmount);
+
+    let walletAmountUsed = 0;
+    if (useWallet) {
+      const availWallet = customer.walletAmount || 0;
+      if (availWallet > 0) {
+        walletAmountUsed = Math.min(availWallet, finalTotal);
+        const debitRes = await debitWallet(
+          userId,
+          "CUSTOMER",
+          walletAmountUsed,
+          `Payment for order #${newOrder.orderNumber}`,
+          newOrder._id.toString(),
+          session || undefined,
+          `CUSTOMER_WALLET_DEBIT_ORDER_${newOrder._id.toString()}`,
+          "ORDER_PAYMENT"
+        );
+
+        if (!debitRes.success) {
+          if (session) await session.abortTransaction();
+          return res.status(400).json({
+            success: false,
+            message: debitRes.message || "Failed to debit customer wallet for order payment",
+          });
+        }
+      }
+    }
+
+    const remainingPayable = Number((finalTotal - walletAmountUsed).toFixed(2));
+    newOrder.walletAmountUsed = Number(walletAmountUsed.toFixed(2));
+
+    if (walletAmountUsed > 0 && remainingPayable === 0) {
+      newOrder.paymentMethod = "Wallet";
+      newOrder.paymentStatus = "Paid";
+      newOrder.status = "Received";
+      newOrder.onlineAmountPaid = 0;
+      newOrder.codAmountPending = 0;
+    } else {
+      if (paymentMethod === "Online" || paymentMethod === "razorpay") {
+        newOrder.paymentMethod = paymentMethod;
+        newOrder.paymentStatus = "Pending";
+        newOrder.status = "Pending";
+        newOrder.onlineAmountPaid = remainingPayable;
+        newOrder.codAmountPending = 0;
+      } else {
+        newOrder.paymentMethod = "COD";
+        newOrder.paymentStatus = "Pending";
+        newOrder.status = "Received";
+        newOrder.codAmountPending = remainingPayable;
+        newOrder.onlineAmountPaid = 0;
+      }
+    }
 
     // Update Order with calculated values and items
     newOrder.subtotal = Number(calculatedSubtotal.toFixed(2));
@@ -980,10 +1043,6 @@ export const cancelOrder = async (req: Request, res: Response) => {
     }
 
     order.status = "Cancelled";
-    order.cancellationReason = reason;
-    order.cancelledAt = new Date();
-    order.cancelledBy = new mongoose.Types.ObjectId(userId); // Use Customer ID as canceller
-
     // So delivery boy is no longer "busy" and can take next order
     if (order.deliveryBoy) {
       order.deliveryBoyStatus = "Failed";
@@ -994,6 +1053,23 @@ export const cancelOrder = async (req: Request, res: Response) => {
       await session.commitTransaction();
     } else {
       await order.save();
+    }
+
+    // ─── PRE-FULFILLMENT CANCELLATION REFUND ────────────────────────────
+    // BUG FIX: Old code only triggered for paymentMethod === "Online",
+    // causing wallet-only orders to lose money on customer self-cancellation.
+    const customerActuallyPaid =
+      (order.walletAmountUsed && order.walletAmountUsed > 0) ||
+      (order.onlineAmountPaid && order.onlineAmountPaid > 0);
+
+    if (customerActuallyPaid && order.paymentStatus !== "Refunded") {
+      try {
+        const { handleOnlineOrderCancellation } = await import("../../../services/refundSettlementService");
+        await handleOnlineOrderCancellation(order._id.toString(), reason);
+        console.log(`[Customer Cancel] Refund issued for order ${order.orderNumber} (wallet: ₹${order.walletAmountUsed || 0}, online: ₹${order.onlineAmountPaid || 0})`);
+      } catch (refundErr) {
+        console.error("Error issuing refund on customer cancellation:", refundErr);
+      }
     }
 
     // Mark DeliveryAssignment as Cancelled so delivery boy is available for new orders
@@ -1011,7 +1087,6 @@ export const cancelOrder = async (req: Request, res: Response) => {
       if (io) {
         await notifySellersOfOrderUpdate(io, order, "ORDER_CANCELLED");
 
-        // Notify delivery boy so they know order is cancelled and can take next order
         if (order.deliveryBoy) {
           const deliveryBoyId = order.deliveryBoy.toString();
           io.to(`delivery-${deliveryBoyId}`).emit("order-cancelled", {
@@ -1020,13 +1095,8 @@ export const cancelOrder = async (req: Request, res: Response) => {
             status: "Cancelled",
             message: "Order has been cancelled by the customer. You are now available for the next order.",
           });
-
-          console.log(
-            `Notification sent to delivery boy ${deliveryBoyId} for cancelled order ${order.orderNumber}`,
-          );
         }
 
-        // Emit to order room for real-time updates on tracking screen
         io.to(`order-${order._id}`).emit("order-cancelled", {
           orderId: order._id,
           status: "Cancelled",
@@ -1063,7 +1133,9 @@ export const cancelOrder = async (req: Request, res: Response) => {
   }
 };
 
-// Update Order Notes (Instructions/Special Requests)
+/**
+ * Update Order Notes (Instructions/Special Requests)
+ */
 export const updateOrderNotes = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1073,9 +1145,7 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
     const order = await Order.findOne({ _id: id, customer: userId });
 
     if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({ success: false, message: "Order not found" });
     }
 
     if (["Delivered", "Cancelled", "Returned"].includes(order.status)) {
@@ -1085,8 +1155,7 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
       });
     }
 
-    if (deliveryInstructions !== undefined)
-      order.deliveryInstructions = deliveryInstructions;
+    if (deliveryInstructions !== undefined) order.deliveryInstructions = deliveryInstructions;
     if (specialRequests !== undefined) order.specialRequests = specialRequests;
 
     await order.save();
@@ -1106,5 +1175,75 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
       message: "Failed to update order notes",
       error: error.message,
     });
+  }
+};
+
+/**
+ * Customer Return Request Endpoint with Backend Validation
+ */
+export const requestItemReturn = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { orderItemId, reason, description, quantity } = req.body;
+    const userId = req.user!.userId;
+
+    const order = await Order.findOne({ _id: orderId, customer: userId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (order.status !== "Delivered") {
+      return res.status(400).json({ success: false, message: "Returns can only be requested for delivered orders" });
+    }
+
+    const orderItem = await OrderItem.findOne({ _id: orderItemId, order: order._id });
+    if (!orderItem) {
+      return res.status(404).json({ success: false, message: "Order item not found" });
+    }
+
+    if (orderItem.isReturnable === false) {
+      return res.status(400).json({ success: false, message: "This product is marked non-returnable" });
+    }
+
+    const deliveredAt = order.deliveredAt || order.updatedAt;
+    const windowDays = orderItem.returnWindowDays ?? 7;
+    const deadline = orderItem.returnDeadline || new Date(deliveredAt.getTime() + windowDays * 24 * 60 * 60 * 1000);
+
+    if (Date.now() > deadline.getTime()) {
+      return res.status(400).json({ success: false, message: "Return eligibility period has expired for this item" });
+    }
+
+    const existingReturn = await Return.findOne({
+      order: order._id,
+      orderItem: orderItem._id,
+      status: { $in: ["Pending", "Approved", "Processing", "Completed"] },
+    });
+
+    if (existingReturn) {
+      return res.status(400).json({ success: false, message: "A return request already exists for this item" });
+    }
+
+    const returnQty = quantity && quantity > 0 ? Math.min(quantity, orderItem.quantity) : orderItem.quantity;
+
+    const newReturn = new Return({
+      order: order._id,
+      orderItem: orderItem._id,
+      customer: userId,
+      reason,
+      description,
+      quantity: returnQty,
+      status: "Pending",
+    });
+
+    await newReturn.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Return request submitted successfully",
+      data: newReturn,
+    });
+  } catch (error: any) {
+    console.error("Error requesting item return:", error);
+    return res.status(500).json({ success: false, message: "Failed to submit return request", error: error.message });
   }
 };

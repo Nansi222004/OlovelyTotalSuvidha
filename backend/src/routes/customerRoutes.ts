@@ -39,7 +39,13 @@ router.put("/profile", authenticate, customerController.updateProfile);
 // Update customer location (protected route)
 router.post("/location", authenticate, customerController.updateLocation);
 
+import * as walletController from "../modules/customer/controllers/customerWalletController";
+
 // Get customer location (protected route)
 router.get("/location", authenticate, customerController.getLocation);
+
+// Customer Wallet routes (protected)
+router.get("/wallet/balance", authenticate, walletController.getCustomerWalletBalance);
+router.get("/wallet/transactions", authenticate, walletController.getCustomerWalletTransactions);
 
 export default router;

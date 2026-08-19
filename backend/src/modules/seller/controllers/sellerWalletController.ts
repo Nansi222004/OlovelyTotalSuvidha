@@ -13,11 +13,20 @@ import { getCommissionSummary } from '../../../services/commissionService';
 export const getBalance = async (req: Request, res: Response) => {
     try {
         const sellerId = req.user!.userId;
-        const balance = await getWalletBalance(sellerId, 'SELLER');
+        
+        // Auto-release expired escrows
+        const { releaseExpiredEscrow } = await import('../../../services/commissionService');
+        await releaseExpiredEscrow();
+
+        const Seller = (await import('../../../models/Seller')).default;
+        const seller = await Seller.findById(sellerId).select('balance onHoldBalance');
 
         return res.status(200).json({
             success: true,
-            data: { balance },
+            data: {
+                balance: seller?.balance || 0,
+                onHoldBalance: seller?.onHoldBalance || 0,
+            },
         });
     } catch (error: any) {
         console.error('Error getting wallet balance:', error);

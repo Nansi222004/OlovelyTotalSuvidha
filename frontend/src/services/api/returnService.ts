@@ -24,6 +24,7 @@ export interface ReturnRequest {
 
 export interface ReturnRequestDetail {
   id: string;
+  _id?: string;
   orderId: string;
   orderItemId: string;
   productName: string;
@@ -32,18 +33,40 @@ export interface ReturnRequestDetail {
   discPrice: number;
   quantity: number;
   total: number;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
+  status: ReturnLifecycleStatus;
+  financialSettlementStatus?: 'Pending' | 'Completed' | 'Failed';
   returnDate: string;
   processedDate?: string;
   reason?: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  customerAddress?: string;
+  // Delivery partner fields
+  deliveryBoy?: { _id: string; name: string; phone: string } | null;
+  assignedAt?: string;
+  pickedUpAt?: string;
+  inTransitAt?: string;
+  handedToSellerAt?: string;
+  completedAt?: string;
+  approvedAt?: string;
 }
 
 export interface UpdateReturnStatusData {
-  status: 'Approved' | 'Rejected' | 'Completed';
+  status: 'Approved' | 'Rejected';
+  reason?: string;
 }
+
+export type ReturnLifecycleStatus =
+  | 'Pending'
+  | 'Approved'
+  | 'Rejected'
+  | 'Pickup Pending'
+  | 'Delivery Partner Assigned'
+  | 'Picked Up'
+  | 'In Transit'
+  | 'Handed To Seller'
+  | 'Completed';
 
 export interface GetReturnRequestsParams {
   dateFrom?: string;
@@ -87,5 +110,20 @@ export const getReturnRequestById = async (id: string): Promise<ApiResponse<Retu
  */
 export const updateReturnStatus = async (id: string, data: UpdateReturnStatusData): Promise<ApiResponse<{ id: string; status: string; processedDate?: string }>> => {
   const response = await api.patch<ApiResponse<{ id: string; status: string; processedDate?: string }>>(`/returns/${id}/status`, data);
+  return response.data;
+};
+
+/**
+ * Seller: Confirm physical receipt of returned item.
+ * This is the ONLY action that triggers financial settlement.
+ * Return status must be 'Handed To Seller' for this to succeed.
+ */
+export const confirmSellerReceipt = async (
+  returnId: string
+): Promise<ApiResponse<{ id: string; status: string; financialSettlementStatus: string }>> => {
+  const response = await api.post<ApiResponse<{ id: string; status: string; financialSettlementStatus: string }>>(
+    `/returns/${returnId}/confirm-receipt`,
+    {}
+  );
   return response.data;
 };

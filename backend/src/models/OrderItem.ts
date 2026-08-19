@@ -28,6 +28,11 @@ export interface IOrderItem extends Document {
   commissionRate: number;
   commissionAmount: number;
 
+  // Return Policy Snapshot
+  isReturnable: boolean;
+  returnWindowDays: number;
+  returnDeadline?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,6 +124,18 @@ const OrderItemSchema = new Schema<IOrderItem>(
     orderId: {
       type: String,
       trim: true,
+    },
+    // Return Policy Snapshot
+    isReturnable: {
+      type: Boolean,
+      default: true,
+    },
+    returnWindowDays: {
+      type: Number,
+      default: 7,
+    },
+    returnDeadline: {
+      type: Date,
     },
   },
   {

@@ -35,11 +35,23 @@ export interface MiscReturnRequest {
   quantity: number;
   total: number;
   reason: string;
-  status: "Pending" | "Approved" | "Rejected" | "Refunded";
+  status:
+    | "Pending"
+    | "Approved"
+    | "Rejected"
+    | "Pickup Pending"
+    | "Delivery Partner Assigned"
+    | "Picked Up"
+    | "In Transit"
+    | "Handed To Seller"
+    | "Completed";
   requestedAt: string;
   processedAt?: string;
   refundAmount?: number;
   adminNotes?: string;
+  // Delivery partner assignment
+  deliveryBoy?: { _id: string; name: string; phone?: string } | null;
+  assignedAt?: string;
 }
 
 export interface HeaderCategory {
@@ -202,6 +214,33 @@ export const updateReturnRequest = async (
     `/admin/return-requests/${id}`,
     data
   );
+  return response.data;
+};
+
+/**
+ * Assign a delivery partner to pick up a return item from the customer.
+ * Transitions the return from "Pickup Pending" → "Delivery Partner Assigned".
+ */
+export const assignDeliveryPartnerToReturn = async (
+  returnId: string,
+  deliveryBoyId: string
+): Promise<ApiResponse<MiscReturnRequest>> => {
+  const response = await api.post<ApiResponse<MiscReturnRequest>>(
+    `/admin/return-requests/${returnId}/assign-delivery`,
+    { deliveryBoyId }
+  );
+  return response.data;
+};
+
+/**
+ * Get active delivery partners available for return pickup assignment.
+ */
+export const getAvailableDeliveryPartnersForReturn = async (
+  city?: string
+): Promise<ApiResponse<Array<{ _id: string; name: string; phone: string; isOnline: boolean }>>> => {
+  const response = await api.get(`/admin/delivery/available-for-return`, {
+    params: city ? { city } : undefined,
+  });
   return response.data;
 };
 

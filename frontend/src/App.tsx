@@ -58,6 +58,7 @@ const FashionStore = lazyWithRetry(() => import("./modules/user/FashionStore"), 
 const ToyStore = lazyWithRetry(() => import("./modules/user/ToyStore"), "ToyStore");
 const HobbyStore = lazyWithRetry(() => import("./modules/user/HobbyStore"), "HobbyStore");
 const StorePage = lazyWithRetry(() => import("./modules/user/StorePage"), "StorePage");
+const CustomerWallet = lazyWithRetry(() => import("./modules/Customer/pages/CustomerWallet"), "CustomerWallet");
 
 // Lazy load delivery routes
 const DeliveryLayout = lazyWithRetry(
@@ -911,6 +912,10 @@ function App() {
                                     <Route
                                       path="/account"
                                       element={<Account />}
+                                    />
+                                    <Route
+                                      path="/account/wallet"
+                                      element={<CustomerWallet />}
                                     />
                                     <Route
                                       path="/notifications"

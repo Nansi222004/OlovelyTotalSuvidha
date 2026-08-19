@@ -15,7 +15,8 @@ export interface ICommission extends Document {
   commissionAmount: number;
 
   // Status
-  status: "Pending" | "Paid" | "Cancelled";
+  status: "Pending" | "OnHold" | "Paid" | "Cancelled";
+  onHoldUntil?: Date;
 
   // Payment
   paidAt?: Date;
@@ -73,8 +74,11 @@ const CommissionSchema = new Schema<ICommission>(
     // Status
     status: {
       type: String,
-      enum: ["Pending", "Paid", "Cancelled"],
+      enum: ["Pending", "OnHold", "Paid", "Cancelled"],
       default: "Pending",
+    },
+    onHoldUntil: {
+      type: Date,
     },
 
     // Payment

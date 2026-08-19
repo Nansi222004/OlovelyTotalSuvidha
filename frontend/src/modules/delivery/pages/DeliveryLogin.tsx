@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../../services/api/auth/deliveryAuthService';
 import OTPInput from '../../../components/OTPInput';
 import { useAuth } from '../../../context/AuthContext';
-import { removeAuthToken } from '../../../services/api/config';
+import { removeAuthToken, getAuthToken } from '../../../services/api/config';
 
 export default function DeliveryLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const [mobileNumber, setMobileNumber] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -15,9 +16,11 @@ export default function DeliveryLogin() {
   const [error, setError] = useState('');
   const [isNotRegistered, setIsNotRegistered] = useState(false);
 
-  // Clear any existing token on mount to prevent role conflicts
+  // Clear token on mount only if unauthenticated
   useEffect(() => {
-    removeAuthToken();
+    if (!getAuthToken('delivery')) {
+      removeAuthToken('delivery');
+    }
   }, []);
 
   const handleMobileLogin = async () => {
@@ -62,7 +65,8 @@ export default function DeliveryLogin() {
           ...response.data.user,
           userType: 'Delivery'
         });
-        navigate('/delivery');
+        const from = (location.state as any)?.from?.pathname || (location.state as any)?.from || '/delivery';
+        navigate(from, { replace: true });
       }
     } catch (err: any) {
       // Also handle 401 Unauthorized for verify step

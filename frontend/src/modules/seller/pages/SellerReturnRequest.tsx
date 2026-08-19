@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getReturnRequests, ReturnRequest, GetReturnRequestsParams } from '../../../services/api/returnService';
+import { getReturnRequests, confirmSellerReceipt, ReturnRequest, GetReturnRequestsParams } from '../../../services/api/returnService';
 
 export default function SellerReturnRequest() {
     const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
@@ -14,6 +14,7 @@ export default function SellerReturnRequest() {
     const [currentPage, setCurrentPage] = useState(1);
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
     // Fetch return requests from API
     useEffect(() => {
@@ -162,6 +163,11 @@ export default function SellerReturnRequest() {
                                     <option value="Pending">Pending</option>
                                     <option value="Approved">Approved</option>
                                     <option value="Rejected">Rejected</option>
+                                    <option value="Pickup Pending">Pickup Pending</option>
+                                    <option value="Delivery Partner Assigned">Delivery Partner Assigned</option>
+                                    <option value="Picked Up">Picked Up</option>
+                                    <option value="In Transit">In Transit</option>
+                                    <option value="Handed To Seller">Handed To Seller</option>
                                     <option value="Completed">Completed</option>
                                 </select>
                             </div>
@@ -365,17 +371,64 @@ export default function SellerReturnRequest() {
                                                 <td className="p-4 border border-neutral-200 text-sm text-neutral-900">₹{request.discPrice.toFixed(2)}</td>
                                                 <td className="p-4 border border-neutral-200 text-sm text-neutral-900">{request.quantity}</td>
                                                 <td className="p-4 border border-neutral-200 text-sm text-neutral-900">₹{request.total.toFixed(2)}</td>
-                                                <td className="p-4 border border-neutral-200 text-sm text-neutral-900">{request.status}</td>
+                                                <td className="p-4 border border-neutral-200 text-sm">
+                                                    {/* Status badge with lifecycle colors */}
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                      request.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                      request.status === 'Approved' ? 'bg-blue-100 text-blue-800' :
+                                                      request.status === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                                      request.status === 'Pickup Pending' ? 'bg-sky-100 text-sky-800' :
+                                                      request.status === 'Delivery Partner Assigned' ? 'bg-indigo-100 text-indigo-800' :
+                                                      request.status === 'Picked Up' ? 'bg-orange-100 text-orange-800' :
+                                                      request.status === 'In Transit' ? 'bg-amber-100 text-amber-800' :
+                                                      request.status === 'Handed To Seller' ? 'bg-purple-100 text-purple-800' :
+                                                      request.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                                                      'bg-neutral-100 text-neutral-700'
+                                                    }`}>{request.status}</span>
+                                                </td>
                                                 <td className="p-4 border border-neutral-200 text-sm text-neutral-900">{request.date}</td>
                                                 <td className="p-4 border border-neutral-200 text-sm text-neutral-900">
+                                                    <div className="flex flex-col gap-1.5">
+                                                    {/* Confirm Receipt — only when item is physically with seller */}
+                                                    {request.status === 'Handed To Seller' && (
+                                                        <button
+                                                            id={`btn-confirm-receipt-${request.id || index}`}
+                                                            disabled={confirmingId === (request.id || String(index))}
+                                                            onClick={async () => {
+                                                                const id = request.id || '';
+                                                                if (!id) { alert('Return ID not found'); return; }
+                                                                if (!window.confirm('Confirm that you physically received the returned item?\n\nThis will trigger the customer refund.')) return;
+                                                                setConfirmingId(id);
+                                                                try {
+                                                                    const res = await confirmSellerReceipt(id);
+                                                                    if (res.success) {
+                                                                        alert('✅ Receipt confirmed!\nReturn marked Completed.\nCustomer refund has been processed.');
+                                                                        // Refresh the list
+                                                                        setReturnRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'Completed' } : r));
+                                                                    } else {
+                                                                        alert('Failed: ' + (res.message || 'Unknown error'));
+                                                                    }
+                                                                } catch (err: any) {
+                                                                    alert('Error: ' + err.message);
+                                                                } finally {
+                                                                    setConfirmingId(null);
+                                                                }
+                                                            }}
+                                                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-neutral-300 text-white rounded text-xs font-semibold transition-colors"
+                                                        >
+                                                            {confirmingId === (request.id || String(index)) ? 'Processing...' : '✅ Confirm Receipt'}
+                                                        </button>
+                                                    )}
+                                                    {/* View detail button — always shown */}
                                                     <button
                                                         onClick={() => {
                                                             alert(`Return Request Details:\n\nOrder Item ID: ${request.orderItemId}\nProduct: ${request.product}\nVariant: ${request.variant}\nPrice: ₹${request.price.toFixed(2)}\nDiscounted Price: ₹${request.discPrice.toFixed(2)}\nQuantity: ${request.quantity}\nTotal: ₹${request.total.toFixed(2)}\nStatus: ${request.status}\nDate: ${request.date}`);
                                                         }}
-                                                        className="text-green-600 hover:text-green-700 text-xs font-medium transition-colors"
+                                                        className="text-blue-600 hover:text-blue-700 text-xs font-medium transition-colors"
                                                     >
                                                         View
                                                     </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))

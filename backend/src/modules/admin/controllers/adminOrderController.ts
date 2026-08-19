@@ -379,6 +379,22 @@ export const updateOrderStatus = asyncHandler(
       }
     }
 
+    // Notify customer of order status change
+    if (order.customer) {
+      try {
+        const { sendOrderStatusNotification } = await import(
+          "../../../services/notificationService"
+        );
+        const io: SocketIOServer = req.app.get("io");
+        const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
+        sendOrderStatusNotification(order._id.toString(), customerId, status, io).catch((e) =>
+          console.error("Error sending customer order status notification:", e)
+        );
+      } catch (notifErr) {
+        console.error("Error importing notificationService:", notifErr);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Order status updated successfully",
@@ -692,11 +708,14 @@ export const processReturnRequest = asyncHandler(
     const { id } = req.params;
     const { status, rejectionReason, refundAmount, adminNotes } = req.body;
 
-    const validStatuses = ["Approved", "Rejected", "Processing", "Completed"];
+    // Admin can only set: Approved, Rejected (from Pending), or Pickup Pending (from Approved)
+    // Full state machine is enforced in returnLifecycleService.
+    // Direct admin-editable statuses (subset of full lifecycle):
+    const validStatuses = ["Approved", "Rejected", "Pickup Pending"];
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        message: `Admin can only set return status to: ${validStatuses.join(", ")}. Other transitions are performed by delivery partner or seller.`,
       });
     }
 
@@ -708,6 +727,16 @@ export const processReturnRequest = asyncHandler(
       });
     }
 
+    // Validate state machine transition
+    if (status) {
+      try {
+        const { validateAdminReturnTransition } = await import("../../../services/returnLifecycleService");
+        validateAdminReturnTransition(returnRequest.status as any, status as any);
+      } catch (transErr: any) {
+        return res.status(400).json({ success: false, message: transErr.message });
+      }
+    }
+
     const updateData: any = {
       processedBy: req.user?.userId,
       processedAt: new Date(),
@@ -715,14 +744,17 @@ export const processReturnRequest = asyncHandler(
 
     if (status) updateData.status = status;
 
-    // Handle rejection reason (frontend sends 'adminNotes' for rejection reason)
+    // Handle rejection reason
     if (status === "Rejected") {
       if (rejectionReason) updateData.rejectionReason = rejectionReason;
       else if (adminNotes) updateData.rejectionReason = adminNotes;
     }
 
-    if (status === "Approved" && refundAmount) {
-      updateData.refundAmount = refundAmount;
+    // When Admin approves, atomically advance to Pickup Pending
+    // so the return never sits stuck in "Approved" without becoming "Pickup Pending"
+    if (status === "Approved") {
+      updateData.approvedAt = new Date();
+      updateData.status = "Pickup Pending"; // Atomic: Approved → Pickup Pending
     }
 
     const updatedReturn = await Return.findByIdAndUpdate(id, updateData, {
@@ -733,10 +765,14 @@ export const processReturnRequest = asyncHandler(
       .populate("orderItem")
       .populate("customer", "name email phone");
 
+    // ⚠️ FINANCIAL SETTLEMENT: NEVER fires here.
+    // Settlement ONLY occurs after seller confirms physical receipt (Handed To Seller → Completed)
+    // which is handled by seller/returnController.ts → confirmSellerReceipt()
+    // DO NOT add executeReturnRefundAndReversal() here.
+
     return res.status(200).json({
       success: true,
-      message: `Return request ${status ? status.toLowerCase() : "updated"
-        } successfully`,
+      message: `Return request ${status ? status.toLowerCase() : "updated"} successfully`,
       data: updatedReturn,
     });
   },

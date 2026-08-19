@@ -164,9 +164,18 @@ export const createProduct = asyncHandler(
     newProductData.requiresApproval = false;
 
     // Set default values for other required fields if not provided
+    // Handle Returnability
+    if (productData.isReturnable !== undefined) {
+      newProductData.isReturnable = productData.isReturnable === true || productData.isReturnable === "true";
+    } else {
+      newProductData.isReturnable = true; // Default to returnable unless specified false
+    }
+    if (productData.maxReturnDays !== undefined) {
+      newProductData.maxReturnDays = Number(productData.maxReturnDays) || 0;
+    }
+
     if (!newProductData.popular) newProductData.popular = false;
     if (!newProductData.dealOfDay) newProductData.dealOfDay = false;
-    if (!newProductData.isReturnable) newProductData.isReturnable = false;
     if (!newProductData.rating) newProductData.rating = 0;
     if (!newProductData.reviewsCount) newProductData.reviewsCount = 0;
     if (!newProductData.discount) newProductData.discount = 0;

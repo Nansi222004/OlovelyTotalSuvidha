@@ -58,8 +58,74 @@ export const getTodayOrders = async () => {
 };
 
 export const getReturnOrders = async () => {
-  const response = await api.get("/delivery/orders/returns");
+  // Fixed: was /delivery/orders/returns (wrong), now /delivery/returns (correct new endpoint)
+  const response = await api.get("/delivery/returns");
   return response.data.data;
+};
+
+// ─── Return Pickup Lifecycle ───────────────────────────────────────────────
+
+export const getAssignedReturns = async (status?: string) => {
+  try {
+    const response = await api.get(`${BASE_URL}/returns`, { params: { status } });
+    return response.data.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const getReturnPickupDetails = async (returnId: string) => {
+  try {
+    const response = await api.get(`${BASE_URL}/returns/${returnId}`);
+    return response.data.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const acceptReturnAssignment = async (returnId: string) => {
+  try {
+    const response = await api.post(`${BASE_URL}/returns/${returnId}/accept`, {});
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const generateReturnPickupOtp = async (returnId: string) => {
+  try {
+    const response = await api.post(`${BASE_URL}/returns/${returnId}/generate-pickup-otp`, {});
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const verifyReturnPickupOtp = async (returnId: string, otp: string) => {
+  try {
+    const response = await api.post(`${BASE_URL}/returns/${returnId}/verify-pickup-otp`, { otp });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const markReturnInTransit = async (returnId: string) => {
+  try {
+    const response = await api.patch(`${BASE_URL}/returns/${returnId}/mark-in-transit`, {});
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+export const markReturnHandedToSeller = async (returnId: string) => {
+  try {
+    const response = await api.patch(`${BASE_URL}/returns/${returnId}/mark-handed-to-seller`, {});
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
 };
 
 export const getPendingOrders = async () => {

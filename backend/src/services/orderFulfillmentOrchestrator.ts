@@ -133,6 +133,16 @@ export async function recomputeOrderFulfillment(
     order.deliveryAssignmentResolvedAt = new Date();
     await order.save();
 
+    // Trigger online payment refund if order was online paid
+    if (order.paymentMethod === "Online" && order.paymentStatus === "Paid") {
+      try {
+        const { handleOnlineOrderCancellation } = await import("./refundSettlementService");
+        await handleOnlineOrderCancellation(order._id.toString(), order.cancellationReason);
+      } catch (refundErr) {
+        console.error("Error issuing online refund on all_rejected:", refundErr);
+      }
+    }
+
     if (io) {
       io.to(`order-${orderId}`).emit("order-status-update", {
         orderId,

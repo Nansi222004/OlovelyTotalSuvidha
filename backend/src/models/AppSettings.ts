@@ -80,6 +80,12 @@ export interface IAppSettings extends Document {
   customerAppPolicy?: string;
   deliveryAppPolicy?: string;
 
+  returnConfig?: {
+    returnsEnabled: boolean;
+    defaultReturnWindowDays: number;
+    autoApproveReturns?: boolean;
+  };
+
   // FAQ
   faq?: Array<{
     question: string;
@@ -330,6 +336,11 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     deliveryAppPolicy: {
       type: String,
       trim: true,
+    },
+    returnConfig: {
+      returnsEnabled: { type: Boolean, default: true },
+      defaultReturnWindowDays: { type: Number, default: 7, min: 0 },
+      autoApproveReturns: { type: Boolean, default: false },
     },
 
     // FAQ

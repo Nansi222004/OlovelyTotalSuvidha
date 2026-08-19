@@ -4,6 +4,7 @@ import SellerSidebar from './SellerSidebar';
 import { useSellerSocket, SellerNotification } from '../hooks/useSellerSocket';
 import SellerNotificationAlert from './SellerNotificationAlert';
 import { getPendingOrderAlerts } from '../../../services/api/orderService';
+import { useRingtoneAlert } from '../../../hooks/useRingtoneAlert';
 
 interface SellerLayoutProps {
   children: ReactNode;
@@ -71,6 +72,10 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
   const [activeNotification, setActiveNotification] = useState<SellerNotification | null>(null);
   const [notificationQueue, setNotificationQueue] = useState<SellerNotification[]>([]);
   const hasRehydratedRef = useRef(false);
+
+  // Count total actionable pending orders
+  const actionableCount = (activeNotification ? 1 : 0) + notificationQueue.length;
+  const { autoplayBlocked, enableAndPlaySound } = useRingtoneAlert('/assets/sound/seller_alert.mp3', actionableCount > 0);
 
   const showNextNotification = useCallback((queue: SellerNotification[]) => {
     const [next, ...rest] = queue;
@@ -151,42 +156,57 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
   };
 
   return (
-    <div className="flex min-h-screen bg-neutral-50">
-      {/* Real-time Notification Alert */}
-      <SellerNotificationAlert
-        notification={activeNotification}
-        onClose={closeNotification}
-        onResolved={handleNotificationResolved}
-      />
-
-      {/* Overlay for mobile */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={toggleSidebar}
-        />
+    <div className="flex min-h-screen bg-neutral-50 flex-col">
+      {/* Autoplay blocked fallback banner */}
+      {autoplayBlocked && (
+        <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">
+          <span>🔔 Incoming order ringtone blocked by browser. Click to enable sound!</span>
+          <button
+            onClick={enableAndPlaySound}
+            className="bg-white text-amber-800 px-3 py-1 rounded shadow hover:bg-neutral-100 font-bold transition-transform active:scale-95 ml-3"
+          >
+            Enable Sound
+          </button>
+        </div>
       )}
 
-      {/* Sidebar - Fixed */}
-      <div
-        className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <SellerSidebar onClose={() => setIsSidebarOpen(false)} />
-      </div>
+      <div className="flex flex-1 min-h-screen bg-neutral-50 relative">
+        {/* Real-time Notification Alert */}
+        <SellerNotificationAlert
+          notification={activeNotification}
+          onClose={closeNotification}
+          onResolved={handleNotificationResolved}
+        />
 
-      {/* Main Content */}
-      <div
-        className={`flex-1 flex flex-col transition-all duration-300 w-full ${
-          isSidebarOpen ? 'ml-64' : 'ml-0'
-        }`}
-      >
-        {/* Header */}
-        <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
+        {/* Overlay for mobile */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            onClick={toggleSidebar}
+          />
+        )}
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-neutral-50">{children}</main>
+        {/* Sidebar - Fixed */}
+        <div
+          className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out ${
+            isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <SellerSidebar onClose={() => setIsSidebarOpen(false)} />
+        </div>
+
+        {/* Main Content */}
+        <div
+          className={`flex-1 flex flex-col transition-all duration-300 w-full ${
+            isSidebarOpen ? 'ml-64' : 'ml-0'
+          }`}
+        >
+          {/* Header */}
+          <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
+
+          {/* Page Content */}
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-neutral-50">{children}</main>
+        </div>
       </div>
     </div>
   );

@@ -1,155 +1,343 @@
+/**
+ * seller/returnController.ts
+ *
+ * Seller return management with:
+ * - AUTHORIZATION: Seller can only view/act on returns for THEIR order items
+ * - STATE MACHINE: Seller can only transition Pending→Approved/Rejected and confirm Handed To Seller→Completed
+ * - SETTLEMENT: Financial settlement triggered ONLY on seller's confirmSellerReceipt (→ Completed)
+ */
+
 import { Request, Response } from "express";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import Return from "../../../models/Return";
-// import Order from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
 
+/**
+ * Helper: verify the return's orderItem belongs to the authenticated seller.
+ * Returns the orderItem if valid, throws a 403 error if not.
+ */
+async function assertReturnBelongsToSeller(
+  returnId: string,
+  sellerId: string
+): Promise<any> {
+  const returnReq = await Return.findById(returnId).populate("orderItem");
+  if (!returnReq) {
+    throw Object.assign(new Error("Return request not found"), { statusCode: 404 });
+  }
+
+  const orderItem = returnReq.orderItem as any;
+  if (!orderItem || orderItem.seller?.toString() !== sellerId) {
+    throw Object.assign(
+      new Error("You are not authorized to manage this return. It does not belong to your store."),
+      { statusCode: 403 }
+    );
+  }
+
+  return { returnReq, orderItem };
+}
+
+/**
+ * GET /returns
+ * Seller's return requests — filtered to ONLY their own order items.
+ */
 export const getReturnRequests = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = req.user?.userId;
     const { status, page = 1, limit = 10 } = req.query;
 
-    const query: any = {};
-    if (status && status !== 'All Status') {
+    // Find this seller's OrderItem IDs
+    const sellerOrderItems = await OrderItem.find({ seller: sellerId }).select("_id");
+    const sellerOrderItemIds = sellerOrderItems.map((item) => item._id);
+
+    const query: any = { orderItem: { $in: sellerOrderItemIds } };
+    if (status && status !== "All Status") {
       query.status = status;
     }
 
-    // Find return requests where the associated OrderItem belongs to this seller
-    // 1. Find OrderItems for this seller
-    const sellerOrderItems = await OrderItem.find({ seller: sellerId }).select('_id');
-    const sellerOrderItemIds = sellerOrderItems.map(item => item._id);
-
-    // 2. Filter Returns by these OrderItem IDs
-    query.orderItem = { $in: sellerOrderItemIds };
-
     const returns = await Return.find(query)
-      .populate({
-        path: 'orderItem',
-        select: 'productName productImage quantity unitPrice total sku'
-      })
-      .populate({
-        path: 'order',
-        select: 'orderNumber customerName'
-      })
-      .populate('customer', 'name email mobile')
+      .populate({ path: "orderItem", select: "productName productImage quantity unitPrice total sku" })
+      .populate({ path: "order", select: "orderNumber customerName" })
+      .populate("customer", "name email mobile")
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit));
 
     const total = await Return.countDocuments(query);
 
-    // Map to frontend friendly format
-    const formattedReturns = returns.map(ret => {
+    const formattedReturns = returns.map((ret) => {
       const item = ret.orderItem as any;
       const order = ret.order as any;
       return {
         id: ret._id,
-        productName: item?.productName || 'Unknown Product',
-        customerName: order?.customerName || 'Unknown Customer',
-        orderId: order?.orderNumber || 'Unknown Order',
+        productName: item?.productName || "Unknown Product",
+        customerName: order?.customerName || "Unknown Customer",
+        orderId: order?.orderNumber || "Unknown Order",
         amount: item?.total || 0,
         status: ret.status,
         date: ret.createdAt,
         returnReason: ret.reason,
-        image: item?.productImage
+        image: item?.productImage,
+        lifecycleStage: (() => {
+          const stages: Record<string, number> = {
+            Pending: 1, Approved: 2, "Pickup Pending": 3,
+            "Delivery Partner Assigned": 4, "Picked Up": 5, "In Transit": 6,
+            "Handed To Seller": 7, Completed: 8, Rejected: 0,
+          };
+          return stages[ret.status] || 1;
+        })(),
       };
     });
 
     return res.status(200).json({
       success: true,
       data: formattedReturns,
-      pagination: {
-        total,
-        page: Number(page),
-        pages: Math.ceil(total / Number(limit))
-      }
+      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
     });
   }
 );
 
+/**
+ * GET /returns/:id
+ * Return detail — seller must own the item.
+ */
 export const getReturnRequestById = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
+    const sellerId = req.user?.userId;
 
-    const returnRequest = await Return.findById(id)
-      .populate({
-        path: 'orderItem',
-        select: 'productName productImage quantity unitPrice total sku'
-      })
-      .populate({
-        path: 'order',
-        select: 'orderNumber customerName deliveryAddress paymentMethod'
-      })
-      .populate('customer', 'name email mobile');
+    let returnReq: any;
+    let orderItem: any;
 
-    if (!returnRequest) {
-      return res.status(404).json({
-        success: false,
-        message: "Return request not found"
-      });
+    try {
+      const result = await assertReturnBelongsToSeller(id, sellerId!);
+      returnReq = result.returnReq;
+      orderItem = result.orderItem;
+    } catch (err: any) {
+      return res.status(err.statusCode || 500).json({ success: false, message: err.message });
     }
 
-    const item = returnRequest.orderItem as any;
-    const order = returnRequest.order as any;
+    const order = returnReq.order as any;
+    const fullReturn = await Return.findById(id)
+      .populate({ path: "orderItem", select: "productName productImage quantity unitPrice total sku" })
+      .populate({ path: "order", select: "orderNumber customerName deliveryAddress paymentMethod" })
+      .populate("customer", "name email mobile")
+      .populate("deliveryBoy", "name mobile");
+
+    if (!fullReturn) {
+      return res.status(404).json({ success: false, message: "Return request not found" });
+    }
+
+    const item = fullReturn.orderItem as any;
+    const orderDoc = fullReturn.order as any;
+
+    const { getReturnLifecycleSummary } = await import("../../../services/returnLifecycleService");
+    const lifecycle = getReturnLifecycleSummary(fullReturn.status as any);
 
     const formattedDetail = {
-      id: returnRequest._id,
-      orderId: order?.orderNumber,
-      orderDate: order?.createdAt, // Or orderDate if available
-      status: returnRequest.status,
-      customerName: order?.customerName,
-      customerEmail: (returnRequest.customer as any)?.email,
-      customerPhone: (returnRequest.customer as any)?.mobile,
-      shippingAddress: order?.deliveryAddress ? `${order.deliveryAddress.address}, ${order.deliveryAddress.city}, ${order.deliveryAddress.pincode}` : 'N/A',
-      paymentMethod: order?.paymentMethod,
+      id: fullReturn._id,
+      orderId: orderDoc?.orderNumber,
+      status: fullReturn.status,
+      lifecycle,
+      customerName: orderDoc?.customerName,
+      customerEmail: (fullReturn.customer as any)?.email,
+      customerPhone: (fullReturn.customer as any)?.mobile,
+      shippingAddress: orderDoc?.deliveryAddress
+        ? `${orderDoc.deliveryAddress.address}, ${orderDoc.deliveryAddress.city}, ${orderDoc.deliveryAddress.pincode}`
+        : "N/A",
+      paymentMethod: orderDoc?.paymentMethod,
+      deliveryPartner: fullReturn.deliveryBoy
+        ? {
+            name: (fullReturn.deliveryBoy as any)?.name,
+            mobile: (fullReturn.deliveryBoy as any)?.mobile,
+          }
+        : null,
       items: [
         {
           id: item?._id,
           name: item?.productName,
-          sku: item?.sku || 'N/A',
+          sku: item?.sku || "N/A",
           price: item?.unitPrice || 0,
-          quantity: returnRequest.quantity, // Return quantity might differ from order item quantity? Using return quantity.
-          total: (item?.unitPrice || 0) * returnRequest.quantity,
-          image: item?.productImage
-        }
+          quantity: fullReturn.quantity,
+          total: (item?.unitPrice || 0) * fullReturn.quantity,
+          image: item?.productImage,
+        },
       ],
-      subtotal: (item?.unitPrice || 0) * returnRequest.quantity,
-      tax: 0, // Mock for now
-      total: (item?.unitPrice || 0) * returnRequest.quantity,
-      reason: returnRequest.reason,
-      reasonDescription: returnRequest.description
+      subtotal: (item?.unitPrice || 0) * fullReturn.quantity,
+      total: (item?.unitPrice || 0) * fullReturn.quantity,
+      reason: fullReturn.reason,
+      reasonDescription: fullReturn.description,
+      // Lifecycle timestamps
+      approvedAt: fullReturn.approvedAt,
+      pickedUpAt: fullReturn.pickedUpAt,
+      inTransitAt: fullReturn.inTransitAt,
+      handedToSellerAt: fullReturn.handedToSellerAt,
+      completedAt: fullReturn.completedAt,
     };
 
-
-    return res.status(200).json({
-      success: true,
-      data: formattedDetail,
-    });
+    return res.status(200).json({ success: true, data: formattedDetail });
   }
 );
 
+/**
+ * PATCH /returns/:id/status
+ * Seller can ONLY approve or reject a Pending return.
+ * Transitions enforced: Pending → Approved | Rejected
+ * On Approved: status atomically becomes "Pickup Pending" (admin then assigns DP).
+ *
+ * NO financial settlement is triggered here.
+ */
 export const updateReturnStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const { status } = req.body;
+    const sellerId = req.user?.userId;
 
-    const returnRequest = await Return.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
-
-    if (!returnRequest) {
-      return res.status(404).json({
+    // Seller can only set these statuses
+    const sellerAllowedStatuses = ["Approved", "Rejected"];
+    if (!sellerAllowedStatuses.includes(status)) {
+      return res.status(400).json({
         success: false,
-        message: "Return request not found"
+        message: `Sellers can only set return status to: ${sellerAllowedStatuses.join(", ")}`,
       });
     }
 
+    // Authorization: verify return belongs to this seller
+    let returnReq: any;
+    try {
+      const result = await assertReturnBelongsToSeller(id, sellerId!);
+      returnReq = result.returnReq;
+    } catch (err: any) {
+      return res.status(err.statusCode || 500).json({ success: false, message: err.message });
+    }
+
+    // State machine: seller can only act from "Pending"
+    try {
+      const { validateSellerReturnTransition } = await import("../../../services/returnLifecycleService");
+      validateSellerReturnTransition(returnReq.status as any, status as any);
+    } catch (err: any) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    const updateData: any = {
+      processedBy: sellerId,
+      processedAt: new Date(),
+    };
+
+    if (status === "Approved") {
+      // Atomic: Pending → Approved → Pickup Pending (never leaves a return stuck at Approved)
+      updateData.status = "Pickup Pending";
+      updateData.approvedAt = new Date();
+    } else {
+      updateData.status = status; // Rejected
+    }
+
+    const updatedReturn = await Return.findByIdAndUpdate(id, updateData, { new: true });
+
+    // NO financial settlement here — ONLY triggered after seller confirms physical receipt.
+
     return res.status(200).json({
       success: true,
-      message: "Return status updated successfully",
-      data: returnRequest
+      message:
+        status === "Approved"
+          ? "Return approved. Now awaiting delivery partner assignment for pickup."
+          : "Return rejected successfully.",
+      data: updatedReturn,
+    });
+  }
+);
+
+/**
+ * POST /returns/:id/confirm-receipt
+ *
+ * Seller confirms they physically received the returned item from the delivery partner.
+ * This is the FINAL physical step that advances the lifecycle to "Completed" and
+ * TRIGGERS FINANCIAL SETTLEMENT:
+ *   - Customer receives refund (product price only)
+ *   - Seller's onHoldBalance / balance is reversed by net product earning
+ *   - Commission record marked Cancelled
+ *   - Refund document created
+ *
+ * Transition: "Handed To Seller" → "Completed" → executeReturnRefundAndReversal()
+ */
+export const confirmSellerReceipt = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const sellerId = req.user?.userId;
+
+    // Authorization
+    let returnReq: any;
+    try {
+      const result = await assertReturnBelongsToSeller(id, sellerId!);
+      returnReq = result.returnReq;
+    } catch (err: any) {
+      return res.status(err.statusCode || 500).json({ success: false, message: err.message });
+    }
+
+    // Idempotency: if already Completed with settlement done, return success
+    if (
+      returnReq.status === "Completed" &&
+      returnReq.financialSettlementStatus === "Completed"
+    ) {
+      return res.status(200).json({
+        success: true,
+        message: "Return is already completed and settled (idempotent).",
+        data: returnReq,
+      });
+    }
+
+    // State machine check: must be in "Handed To Seller"
+    if (returnReq.status !== "Handed To Seller") {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot confirm receipt — return is in "${returnReq.status}" status. Delivery partner must first hand the item to you.`,
+      });
+    }
+
+    // Mark as Completed
+    returnReq.status = "Completed";
+    returnReq.completedAt = new Date();
+    returnReq.processedBy = sellerId as any;
+    returnReq.processedAt = new Date();
+    await returnReq.save();
+
+    // *** TRIGGER FINANCIAL SETTLEMENT ***
+    // This is the ONLY place settlement is triggered in the return lifecycle.
+    let settlementResult: any = null;
+    try {
+      const { triggerReturnFinancialSettlement } = await import(
+        "../../../services/returnLifecycleService"
+      );
+      settlementResult = await triggerReturnFinancialSettlement(id, sellerId);
+
+      if (!settlementResult.success) {
+        // Mark settlement as failed on the return document, but don't revert Completed status
+        await Return.findByIdAndUpdate(id, {
+          financialSettlementStatus: "Failed",
+        });
+        return res.status(500).json({
+          success: false,
+          message: `Return marked Completed but financial settlement failed: ${settlementResult.message}`,
+        });
+      }
+    } catch (settleErr: any) {
+      await Return.findByIdAndUpdate(id, { financialSettlementStatus: "Failed" });
+      return res.status(500).json({
+        success: false,
+        message: `Return completed but settlement error: ${settleErr.message}`,
+      });
+    }
+
+    const finalReturn = await Return.findById(id)
+      .populate("order", "orderNumber")
+      .populate("customer", "name email");
+
+    return res.status(200).json({
+      success: true,
+      message: "Return completed. Financial settlement executed — customer refund issued.",
+      data: {
+        return: finalReturn,
+        settlement: settlementResult?.data,
+      },
     });
   }
 );

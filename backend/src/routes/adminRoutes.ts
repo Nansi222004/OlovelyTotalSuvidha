@@ -10,6 +10,9 @@ import * as productController from "../modules/admin/controllers/adminProductCon
 // Order Controllers
 import * as orderController from "../modules/admin/controllers/adminOrderController";
 
+// Return Controllers
+import * as returnController from "../modules/admin/controllers/adminReturnController";
+
 // Customer Controllers
 import * as customerController from "../modules/admin/controllers/adminCustomerController";
 
@@ -164,6 +167,12 @@ router.get("/return-requests/:id", orderController.getReturnRequestById);
 router.put("/return-requests/:id", orderController.processReturnRequest);
 // Legacy route support if needed, but frontend uses /return-requests
 router.patch("/returns/:id/process", orderController.processReturnRequest);
+
+// Return management routes (extended lifecycle, DP assignment)
+router.get("/returns", returnController.getAdminReturns);
+router.get("/returns/:id/detail", returnController.getAdminReturnById);
+router.post("/return-requests/:id/assign-delivery", returnController.assignDeliveryPartnerToReturn);
+router.get("/delivery/available-for-return", returnController.getAvailableDeliveryPartnersForReturn);
 
 // ==================== Customer Routes ====================
 router.get("/customers", customerController.getAllCustomers);

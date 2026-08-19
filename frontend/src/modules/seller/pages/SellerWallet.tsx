@@ -15,6 +15,7 @@ export default function SellerWallet() {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [balance, setBalance] = useState(0);
+  const [onHoldBalance, setOnHoldBalance] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [commissions, setCommissions] = useState<any>({ commissions: [], total: 0, paid: 0, pending: 0 });
@@ -38,7 +39,10 @@ export default function SellerWallet() {
         getSellerCommissions(),
       ]);
 
-      if (balanceRes.success) setBalance(balanceRes.data.balance);
+      if (balanceRes.success) {
+        setBalance(balanceRes.data.balance || 0);
+        setOnHoldBalance(balanceRes.data.onHoldBalance || 0);
+      }
       if (transactionsRes.success) setTransactions(transactionsRes.data.transactions || []);
       if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data || []);
       if (commissionsRes.success) setCommissions(commissionsRes.data);
@@ -100,14 +104,21 @@ export default function SellerWallet() {
         animate={{ opacity: 1, y: 0 }}
         className="m-4 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg"
       >
-        <p className="text-sm opacity-90 mb-1">Wallet Balance</p>
-        <h1 className="text-4xl font-bold mb-4">₹{balance.toFixed(2)}</h1>
-        <button
-          onClick={() => setShowWithdrawModal(true)}
-          className="bg-white text-blue-600 px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-50 transition-all shadow-md"
-        >
-          Request Withdrawal
-        </button>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <p className="text-sm opacity-90 mb-1">Available Withdrawable Balance</p>
+            <h1 className="text-4xl font-bold mb-2">₹{balance.toFixed(2)}</h1>
+            <p className="text-xs bg-white/20 px-3 py-1 rounded-full inline-block backdrop-blur-sm">
+              On-Hold (Return Window): <span className="font-semibold">₹{onHoldBalance.toFixed(2)}</span>
+            </p>
+          </div>
+          <button
+            onClick={() => setShowWithdrawModal(true)}
+            className="bg-white text-blue-600 px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-50 transition-all shadow-md self-stretch sm:self-auto text-center"
+          >
+            Request Withdrawal
+          </button>
+        </div>
       </motion.div>
 
 

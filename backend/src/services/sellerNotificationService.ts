@@ -26,13 +26,21 @@ export async function notifySellersOfOrderUpdate(
             orderItems = await OrderItem.find({ order: order._id });
         }
 
-        const sellerIds = Array.from(new Set(orderItems.map((item: any) => item.seller.toString()))) as string[];
+        const extractSellerId = (item: any): string => {
+            if (!item.seller) return '';
+            if (typeof item.seller === 'object' && item.seller._id) {
+                return item.seller._id.toString();
+            }
+            return item.seller.toString();
+        };
+
+        const sellerIds = Array.from(new Set(orderItems.map(extractSellerId).filter(Boolean))) as string[];
 
         console.log(`🔔 Notifying ${sellerIds.length} sellers about ${type} for order ${order.orderNumber}`);
 
         for (const sellerId of sellerIds) {
             // Get only items belonging to this seller
-            const sellerSpecificItems = orderItems.filter((item: any) => item.seller.toString() === sellerId);
+            const sellerSpecificItems = orderItems.filter((item: any) => extractSellerId(item) === sellerId);
 
             const notificationData = {
                 type,
@@ -70,10 +78,17 @@ export async function notifySellersOfOrderUpdate(
                          type === 'ORDER_CANCELLED' ? `Order #${order.orderNumber} has been cancelled` :
                          `Order #${order.orderNumber} status updated to ${order.status}`;
 
-            sendNotification('Seller', sellerId, title, body, {
+            await sendNotification('Seller', sellerId, title, body, {
                 type: 'Order',
                 link: `/seller/orders/${order._id}`,
-                priority: type === 'NEW_ORDER' ? 'High' : 'Medium'
+                priority: type === 'NEW_ORDER' ? 'High' : 'Medium',
+                data: {
+                    orderId: order._id.toString(),
+                    orderNumber: order.orderNumber,
+                    role: 'seller',
+                    panel: 'seller',
+                    type: type || 'NEW_ORDER',
+                },
             }).catch(err => console.error(`❌ [Seller Notification Error] ${sellerId}:`, err?.message));
         }
     } catch (error) {

@@ -107,7 +107,10 @@ async function getFCMToken(): Promise<string | null> {
 /**
  * Register FCM token with backend
  */
-export async function registerFCMToken(forceUpdate: boolean = false): Promise<string | null> {
+export async function registerFCMToken(
+    forceUpdate: boolean = false,
+    panelOrUserType?: string,
+): Promise<string | null> {
     try {
         const hasPermission = await requestNotificationPermission();
         if (!hasPermission) {
@@ -128,7 +131,7 @@ export async function registerFCMToken(forceUpdate: boolean = false): Promise<st
             return null;
         }
 
-        const authToken = getAuthToken();
+        const authToken = getAuthToken(panelOrUserType);
         if (!authToken) {
             console.warn('User not authenticated, skipping token registration');
             return null;
@@ -178,11 +181,14 @@ export async function setupForegroundNotificationHandler(
         console.log('Foreground message received:', payload);
 
         if ('Notification' in window && Notification.permission === 'granted') {
+            const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
+            const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
+
             const notification = new Notification(payload.notification?.title || 'New Notification', {
                 body: payload.notification?.body || '',
                 icon: payload.notification?.icon || '/favicon.png',
                 badge: '/favicon.png',
-                tag: payload.data?.type || 'notification',
+                tag: notificationTag,
                 requireInteraction: false,
                 silent: false,
                 data: payload.data,
@@ -220,14 +226,14 @@ export async function initializePushNotifications(): Promise<void> {
 /**
  * Remove FCM token from backend
  */
-export async function removeFCMToken(): Promise<void> {
+export async function removeFCMToken(panelOrUserType?: string): Promise<void> {
     try {
         const savedToken = localStorage.getItem('fcm_token_web');
         if (!savedToken) {
             return;
         }
 
-        const authToken = getAuthToken();
+        const authToken = getAuthToken(panelOrUserType);
         if (!authToken) {
             return;
         }

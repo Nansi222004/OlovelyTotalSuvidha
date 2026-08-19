@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../../services/api/auth/sellerAuthService';
 import OTPInput from '../../../components/OTPInput';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function SellerLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const [mobileNumber, setMobileNumber] = useState('');
   const [showOTP, setShowOTP] = useState(false);
@@ -55,8 +56,8 @@ export default function SellerLogin() {
           address: response.data.user.address,
           city: response.data.user.city,
         });
-        // Navigate to seller dashboard only on success
-        navigate('/seller', { replace: true });
+        const from = (location.state as any)?.from?.pathname || (location.state as any)?.from || '/seller';
+        navigate(from, { replace: true });
       } else {
         // If response is not successful, show error and stay on page
         setError(response.message || 'Login failed. Please try again.');

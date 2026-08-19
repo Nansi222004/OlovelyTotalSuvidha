@@ -12,6 +12,16 @@ interface ProtectedRouteProps {
   allowUnapproved?: boolean;
 }
 
+const inferUserType = (u: any): string | undefined => {
+  if (!u || typeof u !== "object") return undefined;
+  if (u.userType) return u.userType;
+  if (u.role === "Admin" || u.role === "Super Admin") return "Admin";
+  if (u.storeName || u.sellerName) return "Seller";
+  if (u.mobile && u.city && u.status && !u.phone && !u.storeName && !u.sellerName) return "Delivery";
+  if (u.phone || u.walletAmount !== undefined) return "Customer";
+  return undefined;
+};
+
 export default function ProtectedRoute({
   children,
   requiredRole,
@@ -29,10 +39,7 @@ export default function ProtectedRoute({
 
   // Check user type if required
   if (requiredUserType && user) {
-    // Check userType or role field
-    // Admin users have role: "Admin" or "Super Admin"
-    // For Admin userType check, we need to verify the user is an admin
-    const userType = (user as any).userType || (user as any).role;
+    const userType = (user as any).userType || (user as any).role || inferUserType(user);
 
     // For Admin routes, check if role is "Admin" or "Super Admin"
     if (requiredUserType === "Admin") {

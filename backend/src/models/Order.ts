@@ -44,6 +44,11 @@ export interface IOrder extends Document {
   /** When admin received COD for this order (settled); null = pending pay to admin */
   codPaidToAdminAt?: Date;
 
+  // Payment Allocation Breakdown
+  walletAmountUsed?: number;
+  onlineAmountPaid?: number;
+  codAmountPending?: number;
+
   // Order Status
   status:
   | "Received"
@@ -277,6 +282,22 @@ const OrderSchema = new Schema<IOrder>(
     codPaidToAdminAt: {
       type: Date,
       default: null,
+    },
+    // Payment Allocation Breakdown
+    walletAmountUsed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    onlineAmountPaid: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    codAmountPending: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     // Order Status
