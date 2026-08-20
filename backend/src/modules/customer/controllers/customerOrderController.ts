@@ -914,6 +914,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       deliveryPartner: orderObj.deliveryBoy,
     };
 
+    console.log(`\n[CUSTOMER ORDER RESPONSE]\nOrder ID: ${transformedOrder.id}\nstatus: ${transformedOrder.status}\npaymentStatus: ${transformedOrder.paymentStatus}\npaymentId: ${transformedOrder.paymentId || 'N/A'}`);
 
     return res.status(200).json({
       success: true,

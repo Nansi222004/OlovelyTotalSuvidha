@@ -2,15 +2,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, type OrderDetail, type SellerEarningBreakdown } from '../../../services/api/orderService';
 import jsPDF from 'jspdf';
+import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [orderStatus, setOrderStatus] = useState<string>('Out For Delivery');
   const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
   const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin' | 'Auto'>('Admin');
   const [earningBreakdown, setEarningBreakdown] = useState<SellerEarningBreakdown | null>(null);
 
@@ -73,11 +77,12 @@ export default function SellerOrderDetail() {
       if (response.success) {
         setOrderStatus(newStatus);
         setOrderDetail({ ...orderDetail, status: newStatus as any });
+        showToast(`Order status updated to ${newStatus}`, 'success');
       } else {
-        alert('Failed to update order status');
+        showToast('Failed to update order status', 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update order status');
+      showToast(err.response?.data?.message || 'Failed to update order status', 'error');
     }
   };
 
@@ -428,11 +433,7 @@ export default function SellerOrderDetail() {
                     Accept Order
                   </button>
                   <button
-                    onClick={() => {
-                      if (window.confirm('Are you sure you want to reject this order? This cannot be undone.')) {
-                        handleStatusUpdate('Rejected');
-                      }
-                    }}
+                    onClick={() => setShowRejectModal(true)}
                     className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
                   >
                     Reject Order
@@ -745,7 +746,20 @@ export default function SellerOrderDetail() {
           </div>
         )
       }
-    </div >
+
+      <ConfirmationModal
+        isOpen={showRejectModal}
+        title="Reject Order"
+        message="Are you sure you want to reject this order? This cannot be undone."
+        confirmText="Reject Order"
+        variant="danger"
+        onConfirm={async () => {
+          setShowRejectModal(false);
+          await handleStatusUpdate('Rejected');
+        }}
+        onCancel={() => setShowRejectModal(false)}
+      />
+    </div>
   );
 }
 

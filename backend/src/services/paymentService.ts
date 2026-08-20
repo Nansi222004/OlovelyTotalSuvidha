@@ -150,34 +150,43 @@ export const capturePayment = async (
         };
     }
 
+    // Verify signature first
+    const isValid = verifyPaymentSignature(
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature
+    );
+
+    if (!isValid) {
+        console.error(`❌ [PAYMENT VERIFY FAILED] Order ID: ${orderId}, Razorpay Order ID: ${razorpayOrderId}`);
+        return {
+            success: false,
+            message: 'Invalid payment signature',
+        };
+    }
+
     const maxRetries = 3;
     let attempt = 0;
 
     while (attempt < maxRetries) {
         attempt++;
-        const session = await mongoose.startSession();
-        session.startTransaction();
+        let session: mongoose.ClientSession | null = null;
+        try {
+            session = await mongoose.startSession();
+            session.startTransaction();
+        } catch (txErr) {
+            session = null;
+        }
 
         try {
-            // Verify signature
-            const isValid = verifyPaymentSignature(
-                razorpayOrderId,
-                razorpayPaymentId,
-                razorpaySignature
-            );
-
-            if (!isValid) {
-                throw new Error('Invalid payment signature');
-            }
-
-            // Find order inside session
-            const order = await Order.findById(orderId).session(session);
+            // Find order
+            const order = session ? await Order.findById(orderId).session(session) : await Order.findById(orderId);
             if (!order) {
                 throw new Error('Order not found');
             }
 
             if (order.paymentStatus === 'Paid') {
-                await session.commitTransaction();
+                if (session) await session.commitTransaction();
                 return {
                     success: true,
                     message: 'Payment already captured',
@@ -188,10 +197,30 @@ export const capturePayment = async (
                 };
             }
 
+            // Explicitly verify & capture on Razorpay API if real payment
+            let payStatus = 'captured';
+            if (razorpayPaymentId && !razorpayPaymentId.startsWith('pay_mock_')) {
+                try {
+                    const razorpay = getRazorpayInstance();
+                    const payDetails = await razorpay.payments.fetch(razorpayPaymentId);
+                    payStatus = payDetails.status;
+                    console.log(`ℹ️ [Razorpay API] Fetched payment ${razorpayPaymentId} status: ${payDetails.status}`);
+                    if (payDetails.status === 'authorized') {
+                        await razorpay.payments.capture(razorpayPaymentId, Math.round(order.total * 100), 'INR');
+                        payStatus = 'captured';
+                        console.log(`✅ [Razorpay API] Explicitly captured authorized payment ${razorpayPaymentId} for ₹${order.total}`);
+                    }
+                } catch (apiErr: any) {
+                    console.warn(`⚠️ [Razorpay API] Fetch/Capture warning for ${razorpayPaymentId}:`, apiErr?.message || apiErr);
+                }
+            }
+
+            console.log(`\n[PAYMENT VERIFY]\nOrder ID: ${orderId}\nRazorpay Order ID: ${razorpayOrderId}\nRazorpay Payment ID: ${razorpayPaymentId}\nRazorpay Payment Status: ${payStatus}`);
+
             // Check if payment document already exists
-            let payment = await Payment.findOne({
-                $or: [{ razorpayPaymentId }, { razorpayOrderId }]
-            }).session(session);
+            let payment = session 
+                ? await Payment.findOne({ $or: [{ razorpayPaymentId }, { razorpayOrderId }] }).session(session)
+                : await Payment.findOne({ $or: [{ razorpayPaymentId }, { razorpayOrderId }] });
 
             if (!payment) {
                 payment = new Payment({
@@ -211,17 +240,29 @@ export const capturePayment = async (
                         message: 'Payment captured successfully',
                     },
                 });
-                await payment.save({ session });
+                if (session) {
+                    await payment.save({ session });
+                } else {
+                    await payment.save();
+                }
             }
 
-            // Update order
+            // Update order payment status and allocation fields
             order.paymentStatus = 'Paid';
             order.paymentId = razorpayPaymentId;
+            order.onlineAmountPaid = order.total;
+            order.codAmountPending = 0;
             if (order.status === 'Pending') {
                 order.status = 'Received';
             }
-            await order.save({ session });
-            await session.commitTransaction();
+            if (session) {
+                await order.save({ session });
+                await session.commitTransaction();
+            } else {
+                await order.save();
+            }
+
+            console.log(`\n[ORDER PAYMENT UPDATE]\nOrder ID: ${orderId}\nPayment Method: ${order.paymentMethod}\nPayment Status: ${order.paymentStatus}`);
 
             // Notify sellers after successful payment capture
             if (io) {
@@ -251,7 +292,7 @@ export const capturePayment = async (
                 },
             };
         } catch (error: any) {
-            await session.abortTransaction();
+            if (session) await session.abortTransaction();
             const isWriteConflict = error?.message?.includes('Write conflict') || error?.code === 112 || error?.hasErrorLabel?.('TransientTransactionError');
             if (isWriteConflict && attempt < maxRetries) {
                 console.warn(`⚠️ [Payment] Write conflict on capturePayment (attempt ${attempt}/${maxRetries}). Retrying...`);
@@ -265,7 +306,7 @@ export const capturePayment = async (
                 message: error.message || 'Failed to capture payment',
             };
         } finally {
-            session.endSession();
+            if (session) session.endSession();
         }
     }
 
@@ -288,34 +329,72 @@ export const processRefund = async (
     try {
         const payment = session ? await Payment.findById(paymentId).session(session) : await Payment.findById(paymentId);
         if (!payment) {
-            throw new Error('Payment not found');
+            throw new Error(`Payment record not found for ID: ${paymentId}`);
         }
 
         if (!payment.razorpayPaymentId) {
-            throw new Error('Razorpay payment ID not found');
+            throw new Error(`Razorpay payment ID missing on payment record: ${paymentId}`);
+        }
+
+        // Pre-check: Idempotency
+        if (payment.status === 'Refunded') {
+            console.log(`ℹ️ [RAZORPAY REFUND] Payment ${paymentId} is already marked Refunded. Skipping duplicate refund.`);
+            return {
+                success: true,
+                message: 'Payment is already marked Refunded (Idempotent)',
+                data: {
+                    refundId: payment.refundId || `rfnd_existing_${payment._id}`,
+                    amount: payment.refundAmount || payment.amount,
+                },
+            };
         }
 
         const refundAmount = amount || payment.amount;
+        if (!refundAmount || refundAmount <= 0) {
+            throw new Error(`Invalid refund amount: ₹${refundAmount}`);
+        }
+
+        const amountPaise = Math.round(refundAmount * 100);
 
         const isMockPayment = payment.razorpayPaymentId.startsWith('pay_mock_') || process.env.USE_MOCK_PAYMENT === 'true';
         let refundId = `rfnd_mock_${Date.now()}`;
 
         if (!isMockPayment) {
             const razorpay = getRazorpayInstance();
+
+            // 1. Fetch payment details from Razorpay to verify status
+            const payDetails = await razorpay.payments.fetch(payment.razorpayPaymentId);
+            console.log(`ℹ️ [Razorpay Refund Check] Payment ${payment.razorpayPaymentId} status: ${payDetails.status}`);
+
+            if (payDetails.status !== 'captured' && payDetails.status !== 'refunded') {
+                throw new Error(`Cannot refund payment ${payment.razorpayPaymentId}. Current Razorpay status is '${payDetails.status}' (expected 'captured')`);
+            }
+
+            // 2. Call Razorpay Refund API
             const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
-                amount: Math.round(refundAmount * 100), // Amount in paise
+                amount: amountPaise,
                 notes: {
-                    reason: reason || 'Order cancelled',
+                    reason: reason || 'Order cancelled by seller',
+                    orderId: payment.order?.toString() || '',
                 },
             });
+
+            if (!refund || !refund.id) {
+                throw new Error(`Razorpay refund API call failed to return refund ID`);
+            }
+
             refundId = refund.id;
         }
 
-        // Update payment record
+        console.log(`\n[RAZORPAY REFUND]\nOrder ID: ${payment.order}\nRazorpay Payment ID: ${payment.razorpayPaymentId}\nRefund Amount: ₹${refundAmount}\nRefund Amount Paise: ${amountPaise}\nRazorpay Refund ID: ${refundId}\nRefund Status: Refunded`);
+
+        // Update payment record only AFTER Razorpay API succeeds
         payment.status = 'Refunded';
+        payment.refundId = refundId;
         payment.refundAmount = refundAmount;
         payment.refundedAt = new Date();
         payment.refundReason = reason;
+
         if (session) {
             await payment.save({ session });
         } else {
@@ -331,10 +410,10 @@ export const processRefund = async (
             },
         };
     } catch (error: any) {
-        console.error('Error processing refund:', error);
+        console.error('❌ [RAZORPAY REFUND ERROR]:', error.message || error);
         return {
             success: false,
-            message: error.message || 'Failed to process refund',
+            message: error.message || 'Failed to process Razorpay refund',
         };
     }
 };
@@ -365,23 +444,35 @@ export const handleWebhook = async (
         }
 
         const event = body.event;
-        const payload = body.payload.payment.entity;
 
         // Handle different events
         switch (event) {
             case 'payment.captured':
                 // Payment was captured successfully
-                await handlePaymentCaptured(payload, io);
+                if (body.payload?.payment?.entity) {
+                    await handlePaymentCaptured(body.payload.payment.entity, io);
+                }
                 break;
 
             case 'payment.failed':
                 // Payment failed
-                await handlePaymentFailed(payload);
+                if (body.payload?.payment?.entity) {
+                    await handlePaymentFailed(body.payload.payment.entity);
+                }
                 break;
 
             case 'refund.created':
-                // Refund was created
-                await handleRefundCreated(body.payload.refund.entity);
+            case 'refund.processed':
+                // Refund was created or processed
+                if (body.payload?.refund?.entity) {
+                    await handleRefundCreated(body.payload.refund.entity);
+                }
+                break;
+
+            case 'payment.authorized':
+            case 'order.paid':
+                // Acknowledged webhook events
+                console.log(`ℹ️ [Webhook] Acknowledged ${event} event cleanly.`);
                 break;
 
             default:
@@ -559,9 +650,12 @@ const handleRefundCreated = async (payload: any) => {
             await payment.save();
 
             // Update order
-            await Order.findByIdAndUpdate(payment.order, {
+            const updatedOrder = await Order.findByIdAndUpdate(payment.order, {
                 paymentStatus: 'Refunded',
-            });
+                status: 'Cancelled',
+            }, { new: true });
+
+            console.log(`\n[REFUND WEBHOOK ORDER UPDATE]\nRefund ID: ${payload.id || 'N/A'}\nPayment ID: ${payment._id}\nOrder ID: ${payment.order}\npayment.status: ${payment.status}\norder.status: ${updatedOrder?.status}\norder.paymentStatus: ${updatedOrder?.paymentStatus}`);
         }
     } catch (error) {
         console.error('Error handling refund created webhook:', error);

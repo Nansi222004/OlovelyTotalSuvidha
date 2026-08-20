@@ -6,6 +6,7 @@ import {
 } from "../../../services/api/admin/adminWalletService";
 import { getAllSellers as getSellers } from "../../../services/api/sellerService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
 
 interface Transaction {
   id: string;
@@ -31,6 +32,7 @@ interface Seller {
 
 export default function AdminSellerTransaction() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedSeller, setSelectedSeller] = useState("all");
@@ -331,7 +333,7 @@ export default function AdminSellerTransaction() {
         <button
           onClick={() => {
             if (selectedSeller === "all") {
-              alert("Please select a specific seller from the dropdown filter first.");
+              showToast("Please select a specific seller from the dropdown filter first.", "error");
               return;
             }
             setIsTransferModalOpen(true);

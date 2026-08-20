@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAllSellers, updateSellerStatus, deleteSeller, Seller as SellerType, updateSeller, updateSellerCategoryCommissions } from '../../../services/api/sellerService';
 import { getHeaderCategoriesAdmin, HeaderCategory } from '../../../services/api/headerCategoryService';
 import SellerServiceMap from '../components/SellerServiceMap';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 interface Seller {
     _id: string;
@@ -100,6 +101,7 @@ const FALLBACK_LOGO =
 
 export default function AdminManageSellerList() {
     const [sellers, setSellers] = useState<Seller[]>([]);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
     const [successMessage, setSuccessMessage] = useState<string>('');
@@ -501,25 +503,26 @@ export default function AdminManageSellerList() {
         setEditError('');
     };
 
-    const handleDelete = async (id: number | string) => {
-        const sellerId = typeof id === 'number' ? sellers.find(s => s.id === id)?._id : id;
-        if (!sellerId) return;
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        const sellerId = deleteId;
 
-        if (window.confirm('Are you sure you want to delete this seller?')) {
-            try {
-                const response = await deleteSeller(sellerId);
-                if (response.success) {
-                    // Remove from local state
-                    setSellers(prevSellers => prevSellers.filter(seller => seller._id !== sellerId));
-                    setSuccessMessage('Seller deleted successfully.');
-                    setTimeout(() => setSuccessMessage(''), 3000);
-                } else {
-                    setError('Failed to delete seller. Please try again.');
-                }
-            } catch (err: any) {
-                console.error('Error deleting seller:', err);
-                setError(err.response?.data?.message || 'Failed to delete seller. Please try again.');
+        try {
+            const response = await deleteSeller(sellerId);
+            if (response.success) {
+                // Remove from local state
+                setSellers(prevSellers => prevSellers.filter(seller => seller._id !== sellerId));
+                setSuccessMessage('Seller deleted successfully.');
+                setDeleteId(null);
+                setTimeout(() => setSuccessMessage(''), 3000);
+            } else {
+                setError('Failed to delete seller. Please try again.');
+                setDeleteId(null);
             }
+        } catch (err: any) {
+            console.error('Error deleting seller:', err);
+            setError(err.response?.data?.message || 'Failed to delete seller. Please try again.');
+            setDeleteId(null);
         }
     };
 
@@ -772,7 +775,7 @@ export default function AdminManageSellerList() {
                                                         </svg>
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDelete(seller._id)}
+                                                        onClick={() => setDeleteId(seller._id)}
                                                         className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
                                                         title="Delete"
                                                     >
@@ -1406,72 +1409,78 @@ export default function AdminManageSellerList() {
 
             {/* Category Commission Modal */}
             {isCommissionModalOpen && commissionModalSeller && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden my-8 transform transition-all">
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                        <div className="bg-teal-600 px-6 py-4 flex justify-between items-center">
                             <div>
-                                <h3 className="text-lg font-bold text-neutral-900">Category Commissions</h3>
-                                <p className="text-sm text-neutral-500 mt-0.5">
-                                    {commissionModalSeller.name} — {commissionModalSeller.storeName}
+                                <h3 className="text-lg font-bold text-white">
+                                    Category Commissions
+                                </h3>
+                                <p className="text-xs text-teal-100">
+                                    {commissionModalSeller.storeName} ({commissionModalSeller.name})
                                 </p>
                             </div>
                             <button
-                                onClick={() => { setIsCommissionModalOpen(false); setCommissionModalSeller(null); setCommissionSuccess(''); }}
-                                className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                                onClick={() => setIsCommissionModalOpen(false)}
+                                className="text-white hover:text-neutral-200 text-2xl font-bold transition-colors"
                             >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
+                                ×
                             </button>
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
                             {commissionSuccess && (
-                                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+                                <div className="p-3 bg-green-50 border-l-4 border-green-500 text-green-700 text-sm rounded">
                                     {commissionSuccess}
                                 </div>
                             )}
 
+                            <p className="text-xs text-neutral-500">
+                                Set custom commission rates (%) for each category. If a category is set to <strong>0%</strong>, the seller's global commission rate (<strong>{commissionModalSeller.commission}%</strong>) will apply.
+                            </p>
+
                             {headerCategories.length === 0 ? (
-                                <div className="text-center py-8 text-neutral-500">
-                                    <p>No header categories found.</p>
-                                    <p className="text-xs mt-1">Please add header categories first.</p>
+                                <div className="py-8 text-center text-neutral-400 text-sm">
+                                    No header categories found.
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {headerCategories.map((hc) => (
+                                    {headerCategories.map(hc => (
                                         <div
                                             key={hc._id}
-                                            className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg border border-neutral-200"
+                                            className="flex items-center justify-between p-3 bg-neutral-50 rounded-lg border border-neutral-200 hover:border-teal-300 transition-colors"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                                                    <span className="text-teal-700 font-bold text-sm">
-                                                        {hc.name.charAt(0).toUpperCase()}
-                                                    </span>
+                                                <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold">
+                                                    {hc.name.slice(0, 2).toUpperCase()}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-semibold text-neutral-900">{hc.name}</p>
-                                                    <p className="text-xs text-neutral-500">{hc.status}</p>
+                                                    <span className="text-sm font-semibold text-neutral-800">
+                                                        {hc.name}
+                                                    </span>
+                                                    <span className="text-xs text-neutral-400 block capitalize">
+                                                        {hc.status}
+                                                    </span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <input
                                                     type="number"
+                                                    step="0.1"
                                                     min="0"
                                                     max="100"
-                                                    step="0.5"
                                                     value={commissionRates[hc._id] ?? 0}
-                                                    onChange={(e) => {
-                                                        const val = parseFloat(e.target.value) || 0;
-                                                        setCommissionRates(prev => ({ ...prev, [hc._id]: Math.min(100, Math.max(0, val)) }));
-                                                    }}
-                                                    className="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                                                    onChange={e =>
+                                                        setCommissionRates({
+                                                            ...commissionRates,
+                                                            [hc._id]: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
+                                                        })
+                                                    }
+                                                    className="w-24 px-3 py-1.5 border border-neutral-300 rounded-md text-sm font-semibold text-right focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white"
                                                 />
-                                                <span className="text-sm font-medium text-neutral-600">%</span>
+                                                <span className="text-sm font-bold text-neutral-600">%</span>
                                             </div>
                                         </div>
                                     ))}
@@ -1480,9 +1489,9 @@ export default function AdminManageSellerList() {
                         </div>
 
                         {/* Footer */}
-                        <div className="px-6 py-4 border-t border-neutral-200 flex justify-end gap-3">
+                        <div className="bg-neutral-50 px-6 py-4 flex justify-between items-center border-t border-neutral-200">
                             <button
-                                onClick={() => { setIsCommissionModalOpen(false); setCommissionModalSeller(null); setCommissionSuccess(''); }}
+                                onClick={() => setIsCommissionModalOpen(false)}
                                 className="px-4 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-700 rounded-lg text-sm font-medium transition-colors"
                             >
                                 Cancel
@@ -1508,8 +1517,16 @@ export default function AdminManageSellerList() {
                     </div>
                 </div>
             )}
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                title="Delete Seller"
+                message="Are you sure you want to delete this seller?"
+                confirmText="Delete"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div>
     );
 }
-
-

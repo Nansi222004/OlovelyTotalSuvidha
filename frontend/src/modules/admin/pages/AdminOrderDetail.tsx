@@ -1,10 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, markOrderCODPaid, Order, type EarningBreakdown } from '../../../services/api/admin/adminOrderService';
+import { useToast } from '../../../context/ToastContext';
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [earningBreakdown, setEarningBreakdown] = useState<EarningBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,12 +59,12 @@ export default function AdminOrderDetail() {
       const res = await markOrderCODPaid(id);
       if (res.success && res.data) {
         setOrder({ ...order, codPaidToAdminAt: res.data.codPaidToAdminAt });
-        alert('COD marked as received. This order will no longer appear in seller pending settlement.');
+        showToast('COD marked as received. This order will no longer appear in seller pending settlement.', 'success');
       } else {
-        alert(res.message || 'Failed to mark COD as paid');
+        showToast(res.message || 'Failed to mark COD as paid', 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to mark COD as paid');
+      showToast(err.response?.data?.message || 'Failed to mark COD as paid', 'error');
     } finally {
       setMarkingCodPaid(false);
     }
@@ -77,12 +79,12 @@ export default function AdminOrderDetail() {
       const response = await updateOrderStatus(order._id, { status: newStatus });
       if (response.success && response.data) {
         setOrder(response.data);
-        alert('Order status updated successfully');
+        showToast('Order status updated successfully', 'success');
       } else {
-        alert('Failed to update order status');
+        showToast('Failed to update order status', 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update order status');
+      showToast(err.response?.data?.message || 'Failed to update order status', 'error');
     } finally {
       setUpdating(false);
     }

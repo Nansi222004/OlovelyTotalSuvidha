@@ -4,9 +4,11 @@ import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { useDeliveryUser } from '../context/DeliveryUserContext';
 import { getDeliveryProfile, updateProfile } from '../../../services/api/delivery/deliveryService';
+import { useToast } from '../../../context/ToastContext';
 
 export default function DeliveryProfile() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const { userName, setUserName } = useDeliveryUser();
 
@@ -78,10 +80,10 @@ export default function DeliveryProfile() {
       });
       setUserName(profileData.name);
       setIsEditing(false);
-      // You could add a toast notification here
+      showToast("Profile updated successfully", "success");
     } catch (error) {
       console.error("Failed to update profile", error);
-      alert("Failed to update profile");
+      showToast("Failed to update profile", "error");
     }
   };
 

@@ -10,9 +10,12 @@ import {
   type UpdateTaxData,
 } from "../../../services/api/admin/adminTaxService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminTaxes() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [taxTitle, setTaxTitle] = useState("");
   const [percentage, setPercentage] = useState("");
   const [taxes, setTaxes] = useState<Tax[]>([]);
@@ -22,6 +25,7 @@ export default function AdminTaxes() {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +101,7 @@ export default function AdminTaxes() {
 
   const handleAddTax = async () => {
     if (!taxTitle.trim() || !percentage.trim()) {
-      alert("Please fill in all fields");
+      showToast("Please fill in all fields", "info");
       return;
     }
 
@@ -107,7 +111,7 @@ export default function AdminTaxes() {
       percentageValue < 0 ||
       percentageValue > 100
     ) {
-      alert("Please enter a valid percentage (0-100)");
+      showToast("Please enter a valid percentage (0-100)", "info");
       return;
     }
 
@@ -133,11 +137,12 @@ export default function AdminTaxes() {
                 : tax
             )
           );
-          alert("Tax updated successfully!");
+          showToast("Tax updated successfully!", "success");
           setEditingTax(null);
         } else {
-          alert(
-            "Failed to update tax: " + (response.message || "Unknown error")
+          showToast(
+            "Failed to update tax: " + (response.message || "Unknown error"),
+            "error"
           );
         }
       } else {
@@ -152,9 +157,9 @@ export default function AdminTaxes() {
         if (response.success) {
           // Add to local state
           setTaxes([...taxes, response.data]);
-          alert("Tax added successfully!");
+          showToast("Tax added successfully!", "success");
         } else {
-          alert("Failed to add tax: " + (response.message || "Unknown error"));
+          showToast("Failed to add tax: " + (response.message || "Unknown error"), "error");
         }
       }
 
@@ -163,9 +168,10 @@ export default function AdminTaxes() {
       setPercentage("");
     } catch (err: any) {
       console.error("Error saving tax:", err);
-      alert(
+      showToast(
         "Failed to save tax: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     } finally {
       setSubmitting(false);
@@ -178,10 +184,9 @@ export default function AdminTaxes() {
     setEditingTax(tax);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this tax?")) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
 
     try {
       setSubmitting(true);
@@ -190,7 +195,8 @@ export default function AdminTaxes() {
       if (response.success) {
         // Remove from local state
         setTaxes(taxes.filter((tax) => tax._id !== id));
-        alert("Tax deleted successfully!");
+        showToast("Tax deleted successfully!", "success");
+        setDeleteId(null);
 
         // Reset form if editing this tax
         if (editingTax?._id === id) {
@@ -199,14 +205,17 @@ export default function AdminTaxes() {
           setPercentage("");
         }
       } else {
-        alert("Failed to delete tax: " + (response.message || "Unknown error"));
+        showToast("Failed to delete tax: " + (response.message || "Unknown error"), "error");
+        setDeleteId(null);
       }
     } catch (err: any) {
       console.error("Error deleting tax:", err);
-      alert(
+      showToast(
         "Failed to delete tax: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
+      setDeleteId(null);
     } finally {
       setSubmitting(false);
     }
@@ -470,7 +479,7 @@ export default function AdminTaxes() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleDelete(tax._id)}
+                              onClick={() => setDeleteId(tax._id)}
                               disabled={submitting}
                               className="p-1.5 text-red-600 hover:bg-red-50 disabled:text-neutral-400 disabled:cursor-not-allowed rounded transition-colors"
                               title="Delete">
@@ -579,6 +588,16 @@ export default function AdminTaxes() {
           Olovely Total Suvidha
         </a>
       </footer>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Tax"
+        message="Are you sure you want to delete this tax?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

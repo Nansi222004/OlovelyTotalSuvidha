@@ -9,9 +9,12 @@ import {
   type Brand,
 } from "../../../services/api/admin/adminProductService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminBrand() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [brandName, setBrandName] = useState("");
   const [brandImageFile, setBrandImageFile] = useState<File | null>(null);
@@ -27,6 +30,7 @@ export default function AdminBrand() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Fetch brands on component mount
   useEffect(() => {
@@ -137,7 +141,7 @@ export default function AdminBrand() {
               brand._id === editingId ? response.data : brand
             )
           );
-          alert("Brand updated successfully!");
+          showToast("Brand updated successfully!", "success");
           setEditingId(null);
         }
       } else {
@@ -145,7 +149,7 @@ export default function AdminBrand() {
         const response = await createBrand(brandData);
         if (response.success) {
           setBrands((prev) => [...prev, response.data]);
-          alert("Brand added successfully!");
+          showToast("Brand added successfully!", "success");
         }
       }
 
@@ -180,24 +184,29 @@ export default function AdminBrand() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      const response = await deleteBrand(id);
+      const response = await deleteBrand(deleteId);
       if (response.success) {
-        setBrands((prev) => prev.filter((brand) => brand._id !== id));
+        setBrands((prev) => prev.filter((brand) => brand._id !== deleteId));
+        showToast("Brand deleted successfully!", "success");
+        setDeleteId(null);
       }
     } catch (error) {
       if (error && typeof error === "object" && "response" in error) {
         const axiosError = error as {
           response?: { data?: { message?: string } };
         };
-        alert(
+        showToast(
           axiosError.response?.data?.message ||
-          "Failed to delete brand. Please try again."
+          "Failed to delete brand. Please try again.",
+          "error"
         );
       } else {
-        alert("Failed to delete brand. Please try again.");
+        showToast("Failed to delete brand. Please try again.", "error");
       }
+      setDeleteId(null);
     }
   };
 
@@ -583,7 +592,7 @@ export default function AdminBrand() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(brand._id)}
+                            onClick={() => setDeleteId(brand._id)}
                             className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors"
                             title="Delete">
                             <svg
@@ -688,6 +697,16 @@ export default function AdminBrand() {
           Olovely Total Suvidha
         </a>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Brand"
+        message="Are you sure you want to delete this brand?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

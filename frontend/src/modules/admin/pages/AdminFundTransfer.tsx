@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   getWalletTransactions,
   getWalletSummary,
@@ -7,9 +7,11 @@ import {
   type WalletSummaryUser
 } from '../../../services/api/admin/adminWalletService';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 
 export default function AdminFundTransfer() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
 
   // States
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -80,7 +82,7 @@ export default function AdminFundTransfer() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addForm.userId || !addForm.amount || !addForm.description) {
-      alert('Please fill all required fields');
+      showToast('Please fill all required fields', 'error');
       return;
     }
 
@@ -91,10 +93,10 @@ export default function AdminFundTransfer() {
         setShowAddModal(false);
         setAddForm({ userId: '', userType: 'DELIVERY_BOY', amount: 0, type: 'Debit', description: '' });
         fetchData(); // Refresh both summary and history
-        alert('Transfer processed successfully');
+        showToast('Transfer processed successfully', 'success');
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to process transfer');
+      showToast(err.response?.data?.message || 'Failed to process transfer', 'error');
     } finally {
       setIsSubmitting(false);
     }

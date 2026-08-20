@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getUsers, updateUserStatus, type User as UserType } from '../../../services/api/admin/adminMiscService';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 
 interface User {
     _id: string;
@@ -17,6 +18,7 @@ interface User {
 
 export default function AdminUsers() {
     const { isAuthenticated, token } = useAuth();
+    const { showToast } = useToast();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -147,17 +149,14 @@ export default function AdminUsers() {
                 setUsers(users.map(user =>
                     user._id === userId ? { ...user, status: newStatus } : user
                 ));
-                // Show success message (can be replaced with toast notification)
                 setError('');
-                setTimeout(() => {
-                    alert(`User status updated to ${newStatus} successfully!`);
-                }, 100);
+                showToast(`User status updated to ${newStatus} successfully!`, 'success');
             } else {
-                alert('Failed to update user status: ' + (response.message || 'Unknown error'));
+                showToast('Failed to update user status: ' + (response.message || 'Unknown error'), 'error');
             }
         } catch (err: any) {
             console.error('Error updating user status:', err);
-            alert('Failed to update user status: ' + (err.response?.data?.message || 'Please try again.'));
+            showToast('Failed to update user status: ' + (err.response?.data?.message || 'Please try again.'), 'error');
         }
     };
 

@@ -13,6 +13,7 @@ import {
   deleteShopByStore,
   ShopByStore
 } from "../../../services/api/admin/adminMiscService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 // Using ShopByStore from API service instead of local interface
 
@@ -26,6 +27,7 @@ export default function AdminShopByStore() {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string>("");
@@ -312,24 +314,28 @@ export default function AdminShopByStore() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this store?")) {
-      try {
-        const res = await deleteShopByStore(id);
-        if (res.success) {
-          await fetchStores(); // Refresh the list
-          if (editingId === id) {
-            handleReset();
-          }
-          setSuccessMessage("Store deleted successfully!");
-          // Clear success message after 3 seconds
-          setTimeout(() => setSuccessMessage(""), 3000);
-        } else {
-          setUploadError("Failed to delete store. Please try again.");
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
+
+    try {
+      const res = await deleteShopByStore(id);
+      if (res.success) {
+        await fetchStores(); // Refresh the list
+        if (editingId === id) {
+          handleReset();
         }
-      } catch (error: any) {
-        setUploadError(error.response?.data?.message || "Failed to delete store. Please try again.");
+        setSuccessMessage("Store deleted successfully!");
+        setDeleteId(null);
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccessMessage(""), 3000);
+      } else {
+        setUploadError("Failed to delete store. Please try again.");
+        setDeleteId(null);
       }
+    } catch (error: any) {
+      setUploadError(error.response?.data?.message || "Failed to delete store. Please try again.");
+      setDeleteId(null);
     }
   };
 
@@ -939,7 +945,7 @@ export default function AdminShopByStore() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(store._id)}
+                            onClick={() => setDeleteId(store._id)}
                             className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors"
                             title="Delete">
                             <svg
@@ -1045,6 +1051,16 @@ export default function AdminShopByStore() {
           Olovely Total Suvidha
         </a>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Store"
+        message="Are you sure you want to delete this store?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

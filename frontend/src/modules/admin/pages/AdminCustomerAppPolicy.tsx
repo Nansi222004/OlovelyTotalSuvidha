@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useToast } from '../../../context/ToastContext';
 
 export default function AdminCustomerAppPolicy() {
+  const { showToast } = useToast();
   const [policyContent, setPolicyContent] = useState(`Welcome to Olovely Total Suvidha - 10 Minute App!
 
 By using our customer app, you agree to the following terms and conditions:
@@ -49,7 +51,7 @@ Last updated: December 2025`);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Handle form submission
-    alert('Customer App Policy updated successfully!');
+    showToast('Customer App Policy updated successfully!', 'success');
   };
 
   return (

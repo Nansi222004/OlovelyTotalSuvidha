@@ -9,9 +9,13 @@ import {
   type UpdateFAQData,
 } from "../../../services/api/admin/adminContentService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminFAQ() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -96,7 +100,7 @@ export default function AdminFAQ() {
 
   const handleAddFAQ = async () => {
     if (!faqQuestion.trim() || !faqAnswer.trim()) {
-      alert("Please fill in both question and answer");
+      showToast("Please fill in both question and answer", "error");
       return;
     }
 
@@ -125,11 +129,12 @@ export default function AdminFAQ() {
                 : faq
             )
           );
-          alert("FAQ updated successfully!");
+          showToast("FAQ updated successfully!", "success");
           setEditingFAQ(null);
         } else {
-          alert(
-            "Failed to update FAQ: " + (response.message || "Unknown error")
+          showToast(
+            "Failed to update FAQ: " + (response.message || "Unknown error"),
+            "error"
           );
         }
       } else {
@@ -145,9 +150,9 @@ export default function AdminFAQ() {
         if (response.success) {
           // Add to local state
           setFaqs((prev) => [...prev, response.data]);
-          alert("FAQ added successfully!");
+          showToast("FAQ added successfully!", "success");
         } else {
-          alert("Failed to add FAQ: " + (response.message || "Unknown error"));
+          showToast("Failed to add FAQ: " + (response.message || "Unknown error"), "error");
         }
       }
 
@@ -156,9 +161,10 @@ export default function AdminFAQ() {
       setFaqAnswer("");
     } catch (err: any) {
       console.error("Error saving FAQ:", err);
-      alert(
+      showToast(
         "Failed to save FAQ: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     } finally {
       setSubmitting(false);
@@ -171,35 +177,37 @@ export default function AdminFAQ() {
     setEditingFAQ(faq);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this FAQ?")) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
 
     try {
       setSubmitting(true);
-      const response = await deleteFAQ(id);
+      const response = await deleteFAQ(deleteId);
 
       if (response.success) {
         // Remove from local state
-        setFaqs((prev) => prev.filter((faq) => faq._id !== id));
-        alert("FAQ deleted successfully!");
+        setFaqs((prev) => prev.filter((faq) => faq._id !== deleteId));
+        showToast("FAQ deleted successfully!", "success");
 
         // Reset form if editing this FAQ
-        if (editingFAQ?._id === id) {
+        if (editingFAQ?._id === deleteId) {
           setEditingFAQ(null);
           setFaqQuestion("");
           setFaqAnswer("");
         }
+        setDeleteId(null);
       } else {
-        alert("Failed to delete FAQ: " + (response.message || "Unknown error"));
+        showToast("Failed to delete FAQ: " + (response.message || "Unknown error"), "error");
+        setDeleteId(null);
       }
     } catch (err: any) {
       console.error("Error deleting FAQ:", err);
-      alert(
+      showToast(
         "Failed to delete FAQ: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
+      setDeleteId(null);
     } finally {
       setSubmitting(false);
     }
@@ -458,7 +466,7 @@ export default function AdminFAQ() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleDelete(faq._id)}
+                              onClick={() => setDeleteId(faq._id)}
                               disabled={submitting}
                               className="p-1.5 bg-red-600 hover:bg-red-700 disabled:bg-neutral-400 disabled:cursor-not-allowed text-white rounded transition-colors"
                               title="Delete">
@@ -558,6 +566,17 @@ export default function AdminFAQ() {
           Olovely Total Suvidha
         </a>
       </footer>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete FAQ"
+        message="Are you sure you want to delete this FAQ?"
+        confirmText="Delete"
+        variant="danger"
+        isLoading={submitting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

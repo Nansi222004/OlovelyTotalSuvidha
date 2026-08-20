@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useToast } from '../../../context/ToastContext';
+import PromptModal from '../../../components/PromptModal';
 import {
     getWithdrawalRequests,
     processWithdrawal,
@@ -16,6 +17,7 @@ export default function AdminWithdrawals() {
     const [selectedWithdrawal, setSelectedWithdrawal] = useState<any>(null);
     const [transactionRef, setTransactionRef] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [rejectModal, setRejectModal] = useState<{ isOpen: boolean; requestId: string | null }>({ isOpen: false, requestId: null });
 
     useEffect(() => {
         fetchWithdrawals();
@@ -61,15 +63,16 @@ export default function AdminWithdrawals() {
         }
     };
 
-    const handleReject = async (id: string) => {
-        const remarks = prompt('Enter rejection reason (optional):');
-        if (remarks === null) return; // User cancelled
+    const handleRejectSubmit = async (remarks: string) => {
+        if (!rejectModal.requestId) return;
+        const id = rejectModal.requestId;
 
         try {
             setIsProcessing(true);
             const response = await processWithdrawal({ requestId: id, action: 'Reject', remark: remarks });
             if (response.success) {
                 showToast('Withdrawal rejected', 'success');
+                setRejectModal({ isOpen: false, requestId: null });
                 fetchWithdrawals();
             }
         } catch (error: any) {
@@ -218,7 +221,7 @@ export default function AdminWithdrawals() {
                                         Approve
                                     </button>
                                     <button
-                                        onClick={() => handleReject(withdrawal._id || withdrawal.id)}
+                                        onClick={() => setRejectModal({ isOpen: true, requestId: withdrawal._id || withdrawal.id })}
                                         disabled={isProcessing}
                                         className="flex-1 bg-white text-red-600 border border-red-200 py-2 rounded-lg font-medium hover:bg-red-50 transition disabled:opacity-50"
                                     >
@@ -291,6 +294,16 @@ export default function AdminWithdrawals() {
                     </motion.div>
                 </div>
             )}
+
+            <PromptModal
+                isOpen={rejectModal.isOpen}
+                title="Reject Withdrawal"
+                message="Enter rejection reason (optional):"
+                placeholder="Rejection reason..."
+                confirmText="Reject Withdrawal"
+                onConfirm={handleRejectSubmit}
+                onCancel={() => setRejectModal({ isOpen: false, requestId: null })}
+            />
         </div>
     );
 }

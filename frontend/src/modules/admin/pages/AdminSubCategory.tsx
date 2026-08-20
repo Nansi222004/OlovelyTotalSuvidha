@@ -15,9 +15,12 @@ import {
   type Category,
 } from "../../../services/api/admin/adminProductService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminSubCategory() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -38,6 +41,7 @@ export default function AdminSubCategory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Fetch categories and subcategories on component mount
   useEffect(() => {
@@ -167,7 +171,7 @@ export default function AdminSubCategory() {
           setSubCategories((prev) =>
             prev.map((sub) => (sub._id === editingId ? response.data : sub))
           );
-          alert("SubCategory updated successfully!");
+          showToast("SubCategory updated successfully!", "success");
           setEditingId(null);
         }
       } else {
@@ -175,7 +179,7 @@ export default function AdminSubCategory() {
         const response = await createSubCategory(subCategoryData);
         if (response.success) {
           setSubCategories((prev) => [...prev, response.data]);
-          alert("SubCategory added successfully!");
+          showToast("SubCategory added successfully!", "success");
         }
       }
 
@@ -216,32 +220,34 @@ export default function AdminSubCategory() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this subcategory?")) {
-      try {
-        const response = await deleteSubCategory(id);
-        if (response.success) {
-          setSubCategories((prev) => prev.filter((sub) => sub._id !== id));
-          alert("SubCategory deleted successfully!");
-        }
-      } catch (error) {
-        if (error && typeof error === "object" && "response" in error) {
-          const axiosError = error as {
-            response?: { data?: { message?: string } };
-          };
-          alert(
-            axiosError.response?.data?.message ||
-            "Failed to delete subcategory. Please try again."
-          );
-        } else {
-          alert("Failed to delete subcategory. Please try again.");
-        }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    try {
+      const response = await deleteSubCategory(deleteId);
+      if (response.success) {
+        setSubCategories((prev) => prev.filter((sub) => sub._id !== deleteId));
+        showToast("SubCategory deleted successfully!", "success");
+        setDeleteId(null);
       }
+    } catch (error) {
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as {
+          response?: { data?: { message?: string } };
+        };
+        showToast(
+          axiosError.response?.data?.message ||
+          "Failed to delete subcategory. Please try again.",
+          "error"
+        );
+      } else {
+        showToast("Failed to delete subcategory. Please try again.", "error");
+      }
+      setDeleteId(null);
     }
   };
 
   const handleExport = () => {
-    alert("Export functionality will be implemented here");
+    showToast("Export functionality will be implemented here", "info");
   };
 
   return (
@@ -651,7 +657,7 @@ export default function AdminSubCategory() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleDelete(subCategory._id)}
+                              onClick={() => setDeleteId(subCategory._id)}
                               className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors"
                               title="Delete">
                               <svg
@@ -758,6 +764,16 @@ export default function AdminSubCategory() {
           Olovely Total Suvidha
         </a>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete SubCategory"
+        message="Are you sure you want to delete this subcategory?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

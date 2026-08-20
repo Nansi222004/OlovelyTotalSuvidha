@@ -7,7 +7,13 @@ export interface TokenPayload {
   role?: string;
 }
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'secret123';
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not defined in backend configuration');
+  }
+  return secret;
+};
 const getExpiresIn = () => process.env.JWT_EXPIRES_IN || '7d';
 
 /**

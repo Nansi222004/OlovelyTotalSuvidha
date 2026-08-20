@@ -539,6 +539,7 @@ export const updateOrderStatus = asyncHandler(
           { order: id, seller: sellerId },
           { $set: { status: "Cancelled" } }
         );
+        console.log(`\n[SELLER REJECT]\nOrder ID: ${order._id}\nSeller ID: ${sellerIdStr}\nPayment Method: ${order.paymentMethod}\nPayment Status: ${order.paymentStatus}\nRazorpay Payment ID: ${order.paymentId || 'N/A'}`);
         console.log(`🚫 [MULTI-SELLER] Seller ${sellerIdStr} rejected order ${order.orderNumber}. Their items cancelled.`);
       }
 

@@ -7,10 +7,12 @@ import {
     type DeliveryBoy,
 } from '../../../services/api/admin/adminDeliveryService';
 import { useAuth } from '../../../context/AuthContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function AdminManageDeliveryBoy() {
     const { isAuthenticated, token } = useAuth();
     const [deliveryBoys, setDeliveryBoys] = useState<DeliveryBoy[]>([]);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState<string | null>(null);
@@ -192,10 +194,9 @@ export default function AdminManageDeliveryBoy() {
         }
     };
 
-    const handleDelete = async (deliveryBoyId: string) => {
-        if (!window.confirm('Are you sure you want to delete this delivery boy? This action cannot be undone.')) {
-            return;
-        }
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        const deliveryBoyId = deleteId;
 
         try {
             setProcessing(deliveryBoyId);
@@ -204,6 +205,7 @@ export default function AdminManageDeliveryBoy() {
             if (response.success) {
                 setSuccessMessage('Delivery boy deleted successfully!');
                 setError('');
+                setDeleteId(null);
                 // Refresh list
                 const params: any = {
                     page: currentPage,
@@ -225,11 +227,13 @@ export default function AdminManageDeliveryBoy() {
             } else {
                 setError('Failed to delete delivery boy: ' + (response.message || 'Unknown error'));
                 setSuccessMessage('');
+                setDeleteId(null);
             }
         } catch (err: any) {
             console.error('Error deleting delivery boy:', err);
             setError('Failed to delete delivery boy: ' + (err.response?.data?.message || 'Please try again.'));
             setSuccessMessage('');
+            setDeleteId(null);
         } finally {
             setProcessing(null);
         }
@@ -596,7 +600,7 @@ export default function AdminManageDeliveryBoy() {
                                                         </svg>
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDelete(deliveryBoy._id)}
+                                                        onClick={() => setDeleteId(deliveryBoy._id)}
                                                         disabled={processing === deliveryBoy._id}
                                                         className="p-1.5 text-red-600 hover:bg-red-50 disabled:text-neutral-400 disabled:cursor-not-allowed rounded transition-colors"
                                                         title="Delete"
@@ -708,6 +712,16 @@ export default function AdminManageDeliveryBoy() {
                 Copyright © 2025. Developed By{' '}
                 <a href="#" className="text-blue-600 hover:underline">Olovely Total Suvidha</a>
             </footer>
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                title="Delete Delivery Boy"
+                message="Are you sure you want to delete this delivery boy? This action cannot be undone."
+                confirmText="Delete"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div>
     );
 }

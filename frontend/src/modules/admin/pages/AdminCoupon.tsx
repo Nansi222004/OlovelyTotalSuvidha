@@ -12,9 +12,13 @@ import {
   type Coupon,
 } from "../../../services/api/admin/adminCouponService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminCoupon() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     userType: "",
     numberOfTimes: "Single Time Valid",
@@ -189,14 +193,18 @@ export default function AdminCoupon() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      const response = await deleteCoupon(id);
+      const response = await deleteCoupon(deleteId);
       if (response.success) {
-        setCoupons(coupons.filter((coupon) => coupon._id !== id));
+        setCoupons(coupons.filter((coupon) => coupon._id !== deleteId));
+        showToast("Coupon deleted successfully!", "success");
+        setDeleteId(null);
       }
     } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to delete coupon");
+      showToast(error.response?.data?.message || "Failed to delete coupon", "error");
+      setDeleteId(null);
     }
   };
 
@@ -675,7 +683,7 @@ export default function AdminCoupon() {
                       </td>
                       <td className="p-4 align-middle">
                         <button
-                          onClick={() => handleDelete(coupon._id)}
+                          onClick={() => setDeleteId(coupon._id)}
                           className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
                           title="Delete">
                           <svg
@@ -770,6 +778,16 @@ export default function AdminCoupon() {
           Olovely Total Suvidha
         </a>
       </footer>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Coupon"
+        message="Are you sure you want to delete this coupon?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

@@ -578,7 +578,7 @@ export default function Checkout() {
     // Validate required address fields
     if (!selectedAddress.city || !selectedAddress.pincode) {
       console.error("Address is missing required fields (city or pincode)");
-      alert("Please ensure your address has city and pincode.");
+      showGlobalToast("Please ensure your address has city and pincode.", "error");
       return;
     }
 
@@ -591,8 +591,9 @@ export default function Checkout() {
       console.error(
         "Address is missing location data (latitude/longitude) and user location is not available",
       );
-      alert(
+      showGlobalToast(
         "Location is required for delivery. Please ensure your address has location data or enable location access.",
+        "error"
       );
       return;
     }
@@ -655,7 +656,7 @@ export default function Checkout() {
         error.message ||
         error.response?.data?.message ||
         "Failed to place order. Please try again.";
-      alert(errorMessage);
+      showGlobalToast(errorMessage, "error");
     } finally {
       setIsProcessingOrder(false);
     }
@@ -2353,7 +2354,7 @@ export default function Checkout() {
                 if (gstin.length === 15) {
                   setShowGstinSheet(false);
                 } else {
-                  alert("Please enter a valid 15-character GSTIN");
+                  showGlobalToast("Please enter a valid 15-character GSTIN", "error");
                 }
               }}
               className="w-full bg-green-600 text-white py-3 px-4 font-bold text-sm uppercase tracking-wide hover:bg-green-700 transition-colors rounded-lg">

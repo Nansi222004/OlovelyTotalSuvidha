@@ -6,9 +6,11 @@ import {
   type PaymentMethodConfig as PaymentMethod,
 } from "../../../services/api/admin/adminPaymentService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
 
 export default function AdminPaymentList() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -91,17 +93,19 @@ export default function AdminPaymentList() {
             method._id === id ? { ...method, status: newStatus } : method
           )
         );
-        alert(`Payment method status updated successfully!`);
+        showToast("Payment method status updated successfully!", "success");
       } else {
-        alert(
-          "Failed to update status: " + (response.message || "Unknown error")
+        showToast(
+          "Failed to update status: " + (response.message || "Unknown error"),
+          "error"
         );
       }
     } catch (err: any) {
       console.error("Error updating payment method status:", err);
-      alert(
+      showToast(
         "Failed to update status: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     }
   };
@@ -126,18 +130,20 @@ export default function AdminPaymentList() {
       const response = await updatePaymentMethod(id, updateData);
 
       if (response.success) {
-        alert(`${method.name} updated successfully!`);
+        showToast(`${method.name} updated successfully!`, "success");
       } else {
-        alert(
+        showToast(
           "Failed to update payment method: " +
-          (response.message || "Unknown error")
+          (response.message || "Unknown error"),
+          "error"
         );
       }
     } catch (err: any) {
       console.error("Error updating payment method:", err);
-      alert(
+      showToast(
         "Failed to update payment method: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     } finally {
       setUpdating(null);

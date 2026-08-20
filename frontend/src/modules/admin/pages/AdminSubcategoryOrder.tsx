@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useToast } from '../../../context/ToastContext';
 
 interface Subcategory {
     id: number;
@@ -53,6 +54,7 @@ const SUBCATEGORIES_BY_CATEGORY: Record<string, Subcategory[]> = {
 };
 
 export default function AdminSubcategoryOrder() {
+    const { showToast } = useToast();
     const [selectedCategory, setSelectedCategory] = useState('Select category');
     const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
     const [draggedItem, setDraggedItem] = useState<number | null>(null);
@@ -115,18 +117,18 @@ export default function AdminSubcategoryOrder() {
 
     const handleUpdateOrder = () => {
         if (selectedCategory === 'Select category') {
-            alert('Please select a category');
+            showToast('Please select a category', 'error');
             return;
         }
         
         if (subcategories.length === 0) {
-            alert('No subcategories to update');
+            showToast('No subcategories to update', 'error');
             return;
         }
 
         // In real app, this would make an API call to update the order
         console.log('Updating subcategory order:', subcategories);
-        alert('Subcategory order updated successfully!');
+        showToast('Subcategory order updated successfully!', 'success');
         
         // Update original order to match current order
         setOriginalOrder([...subcategories]);
@@ -135,7 +137,7 @@ export default function AdminSubcategoryOrder() {
     const handleResetOrder = () => {
         if (originalOrder.length > 0) {
             setSubcategories([...originalOrder]);
-            alert('Order reset to original');
+            showToast('Order reset to original', 'info');
         }
     };
 

@@ -5,9 +5,11 @@ import OrderChart from '../components/OrderChart';
 import AlertCard from '../components/AlertCard';
 import { getSellerDashboardStats, DashboardStats, NewOrder } from '../../../services/api/dashboardService';
 import { getSellerProfile, toggleShopStatus } from '../../../services/api/auth/sellerAuthService';
+import { useToast } from '../../../context/ToastContext';
 
 export default function SellerDashboard() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [newOrders, setNewOrders] = useState<NewOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,10 +60,10 @@ export default function SellerDashboard() {
 
       if (response.success) {
         setIsShopOpen(response.data.isShopOpen);
-        alert(`Shop is now ${response.data.isShopOpen ? 'Open' : 'Closed'}`);
+        showToast(`Shop is now ${response.data.isShopOpen ? 'Open' : 'Closed'}`, 'success');
       } else {
         console.error('Toggle failed - response not successful:', response);
-        alert('Failed to toggle shop status: ' + (response.message || 'Unknown error'));
+        showToast('Failed to toggle shop status: ' + (response.message || 'Unknown error'), 'error');
       }
     } catch (error: any) {
       console.error('Failed to toggle shop status - error:', error);
@@ -70,7 +72,7 @@ export default function SellerDashboard() {
         response: error.response?.data,
         status: error.response?.status
       });
-      alert('Error toggling shop status: ' + (error.response?.data?.message || error.message || 'Unknown error'));
+      showToast('Error toggling shop status: ' + (error.response?.data?.message || error.message || 'Unknown error'), 'error');
     } finally {
       setStatusLoading(false);
     }

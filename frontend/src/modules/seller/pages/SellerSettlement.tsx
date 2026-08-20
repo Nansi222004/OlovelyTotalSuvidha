@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSettlementOrders, markOrderCODPaid, type SettlementOrderItem } from '../../../services/api/orderService';
+import { useToast } from '../../../context/ToastContext';
 
 export default function SellerSettlement() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [orders, setOrders] = useState<SettlementOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -19,11 +21,12 @@ export default function SellerSettlement() {
       if (res.success) {
         setOrders((prev) => prev.filter(({ order }) => order._id !== orderId));
         setTotal((t) => Math.max(0, t - 1));
+        showToast('Marked as paid to admin', 'success');
       } else {
-        alert(res.message || 'Failed to mark as paid');
+        showToast(res.message || 'Failed to mark as paid', 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to mark as paid');
+      showToast(err.response?.data?.message || 'Failed to mark as paid', 'error');
     } finally {
       setMarkingId(null);
     }

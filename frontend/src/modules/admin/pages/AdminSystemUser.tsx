@@ -8,6 +8,7 @@ import {
   CreateSystemUserData,
   UpdateSystemUserData,
 } from '../../../services/api/admin/adminSystemUserService';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function AdminSystemUser() {
   const [formData, setFormData] = useState({
@@ -25,6 +26,7 @@ export default function AdminSystemUser() {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [systemUsers, setSystemUsers] = useState<SystemUserType[]>([]);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -208,10 +210,9 @@ export default function AdminSystemUser() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this system user?')) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
 
     setLoading(true);
     setError('');
@@ -220,12 +221,15 @@ export default function AdminSystemUser() {
       const response = await deleteSystemUser(id);
       if (response.success) {
         setSuccessMessage('System user deleted successfully!');
+        setDeleteId(null);
         fetchSystemUsers();
       } else {
         setError(response.message || 'Failed to delete system user');
+        setDeleteId(null);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Error deleting system user');
+      setDeleteId(null);
     } finally {
       setLoading(false);
     }
@@ -629,7 +633,7 @@ export default function AdminSystemUser() {
                                   </svg>
                                 </button>
                                 <button
-                                  onClick={() => handleDelete(user.id)}
+                                  onClick={() => setDeleteId(user.id)}
                                   disabled={loading}
                                   className="p-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
                                   title="Delete"
@@ -703,6 +707,16 @@ export default function AdminSystemUser() {
           Olovely Total Suvidha
         </a>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete System User"
+        message="Are you sure you want to delete this system user?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

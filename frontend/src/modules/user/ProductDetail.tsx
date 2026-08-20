@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 // import { products } from '../../data/products'; // REMOVED
 // import { categories } from '../../data/categories'; // REMOVED
 import { useCart } from '../../context/CartContext';
+import { useToast } from '../../context/ToastContext';
 import { useLocation } from '../../hooks/useLocation';
 import { useLoading } from '../../context/LoadingContext';
 import { useAppSettings } from '../../context/AppSettingsContext';
@@ -30,6 +31,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const { cart, addToCart, updateQuantity } = useCart();
+  const { showToast } = useToast();
   const { location } = useLocation();
   const { startLoading, stopLoading } = useLoading();
   const { settings: appSettings } = useAppSettings();
@@ -308,12 +310,12 @@ export default function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!isAvailableAtLocation) {
-      // Show alert if trying to add item outside delivery area
-      alert("This product is not available for delivery at your location.");
+      // Show toast if trying to add item outside delivery area
+      showToast("This product is not available for delivery at your location.", "info");
       return;
     }
     if (!isVariantAvailable && variantStock !== 0) {
-      alert("This variant is currently out of stock.");
+      showToast("This variant is currently out of stock.", "info");
       return;
     }
     // Create product with selected variant info
@@ -331,11 +333,11 @@ export default function ProductDetail() {
 
   const handleBuyNow = async () => {
     if (!isAvailableAtLocation) {
-      alert("This product is not available for delivery at your location.");
+      showToast("This product is not available for delivery at your location.", "info");
       return;
     }
     if (!isVariantAvailable && variantStock !== 0) {
-      alert("This variant is currently out of stock.");
+      showToast("This variant is currently out of stock.", "info");
       return;
     }
     const productWithVariant = {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useToast } from '../../../context/ToastContext';
 
 interface SmsGateway {
   id: string;
@@ -10,6 +11,7 @@ interface SmsGateway {
 }
 
 export default function AdminSmsGateway() {
+  const { showToast } = useToast();
   const [gateways, setGateways] = useState<SmsGateway[]>([
     {
       id: 'smsindiahub',
@@ -51,7 +53,7 @@ export default function AdminSmsGateway() {
     if (gateway) {
       // Handle update logic here
       console.log('Updating gateway:', gateway);
-      alert(`${gateway.name} configuration updated successfully!`);
+      showToast(`${gateway.name} configuration updated successfully!`, 'success');
     }
   };
 

@@ -102,7 +102,6 @@ const DeliveryAssignmentSchema = new Schema<IDeliveryAssignment>(
 
 // Indexes
 DeliveryAssignmentSchema.index({ deliveryBoy: 1, status: 1 });
-DeliveryAssignmentSchema.index({ order: 1 });
 DeliveryAssignmentSchema.index({ assignedAt: -1 });
 
 const DeliveryAssignment = mongoose.models.DeliveryAssignment || mongoose.model<IDeliveryAssignment>(

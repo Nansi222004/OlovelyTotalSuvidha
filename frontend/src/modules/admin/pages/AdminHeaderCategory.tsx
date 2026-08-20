@@ -8,8 +8,12 @@ import {
 } from '../../../services/api/headerCategoryService';
 import { themes } from '../../../utils/themes';
 import { ICON_LIBRARY, getIconByName, IconDef } from '../../../utils/iconLibrary';
+import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function AdminHeaderCategory() {
+  const { showToast } = useToast();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [headerCategories, setHeaderCategories] = useState<HeaderCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +49,7 @@ export default function AdminHeaderCategory() {
       setHeaderCategories(data);
     } catch (error) {
       console.error('Failed to fetch header categories', error);
-      alert('Failed to fetch categories');
+      showToast('Failed to fetch categories', 'error');
     } finally {
       setLoading(false);
     }
@@ -114,9 +118,9 @@ export default function AdminHeaderCategory() {
   };
 
   const handleAddOrUpdate = async () => {
-    if (!headerCategoryName.trim()) return alert('Please enter a header category name');
-    if (!headerCategoryIcon.trim()) return alert('Please select an icon. If your category is unique, try searching for a generic icon.');
-    if (!selectedTheme) return alert('Please select a theme');
+    if (!headerCategoryName.trim()) return showToast('Please enter a header category name', 'error');
+    if (!headerCategoryIcon.trim()) return showToast('Please select an icon. If your category is unique, try searching for a generic icon.', 'error');
+    if (!selectedTheme) return showToast('Please select a theme', 'error');
 
     try {
       const payload = {
@@ -130,17 +134,17 @@ export default function AdminHeaderCategory() {
 
       if (editingId) {
         await updateHeaderCategory(editingId, payload);
-        alert('Header Category updated successfully!');
+        showToast('Header Category updated successfully!', 'success');
       } else {
         await createHeaderCategory(payload);
-        alert('Header Category added successfully!');
+        showToast('Header Category added successfully!', 'success');
       }
 
       fetchCategories();
       resetForm();
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.message || 'Operation failed');
+      showToast(error.response?.data?.message || 'Operation failed', 'error');
     }
   };
 
@@ -155,16 +159,18 @@ export default function AdminHeaderCategory() {
     setIconSearchTerm('');
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this header category?')) {
-      try {
-        await deleteHeaderCategory(id);
-        alert('Header Category deleted successfully!');
-        fetchCategories();
-      } catch (error) {
-        console.error(error);
-        alert('Failed to delete category');
-      }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+
+    try {
+      await deleteHeaderCategory(deleteId);
+      showToast('Header Category deleted successfully!', 'success');
+      setDeleteId(null);
+      fetchCategories();
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to delete category', 'error');
+      setDeleteId(null);
     }
   };
 
@@ -454,7 +460,7 @@ export default function AdminHeaderCategory() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleDelete(category._id)}
+                          onClick={() => setDeleteId(category._id)}
                           className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-1.5 rounded transition-colors"
                           title="Delete"
                         >
@@ -506,6 +512,16 @@ export default function AdminHeaderCategory() {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Header Category"
+        message="Are you sure you want to delete this header category?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useToast } from '../../../context/ToastContext';
 
 export default function AdminDeliveryAppPolicy() {
+  const { showToast } = useToast();
   const [policyContent, setPolicyContent] = useState(`Welcome to Olovely Total Suvidha - 10 Minute App Delivery Partner Program!
 
 By using our delivery app, you agree to the following terms and conditions:
@@ -80,7 +82,7 @@ Last updated: January 2025`);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Handle form submission
-    alert('Delivery App Policy updated successfully!');
+    showToast('Delivery App Policy updated successfully!', 'success');
   };
 
   return (

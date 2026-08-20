@@ -134,7 +134,7 @@ export async function recomputeOrderFulfillment(
     await order.save();
 
     // Trigger online payment refund if order was online paid
-    if (order.paymentMethod === "Online" && order.paymentStatus === "Paid") {
+    if ((order.paymentMethod === "Online" || (order.onlineAmountPaid && order.onlineAmountPaid > 0)) && order.paymentStatus !== "Refunded") {
       try {
         const { handleOnlineOrderCancellation } = await import("./refundSettlementService");
         await handleOnlineOrderCancellation(order._id.toString(), order.cancellationReason);

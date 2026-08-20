@@ -8,6 +8,8 @@ import {
   type Category,
 } from "../../../services/api/admin/adminProductService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 interface ProductVariation {
   id: string;
@@ -29,6 +31,7 @@ const STOCK_OPTIONS = ["All Products", "In Stock", "Out of Stock", "Unlimited"];
 export default function AdminStockManagement() {
   const navigate = useNavigate();
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,6 +41,7 @@ export default function AdminStockManagement() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const [filterCategory, setFilterCategory] = useState("All Category");
   const [filterSeller, setFilterSeller] = useState("All Sellers");
@@ -109,20 +113,24 @@ export default function AdminStockManagement() {
     filterStatus,
   ]);
 
-  const handleDelete = async (productId: string) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
-      try {
-        const response = await deleteProduct(productId);
-        if (response.success || response.message === "Product deleted successfully") {
-          alert("Product deleted successfully");
-          fetchData();
-        } else {
-          alert("Failed to delete product");
-        }
-      } catch (error) {
-        console.error("Error deleting product:", error);
-        alert("An error occurred while deleting the product");
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const productId = deleteId;
+
+    try {
+      const response = await deleteProduct(productId);
+      if (response.success || response.message === "Product deleted successfully") {
+        showToast("Product deleted successfully", "success");
+        setDeleteId(null);
+        fetchData();
+      } else {
+        showToast("Failed to delete product", "error");
+        setDeleteId(null);
       }
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      showToast("An error occurred while deleting the product", "error");
+      setDeleteId(null);
     }
   };
 
@@ -633,7 +641,7 @@ export default function AdminStockManagement() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(product.productId)}
+                            onClick={() => setDeleteId(product.productId)}
                             className="p-1 text-red-600 hover:bg-red-50 rounded"
                             title="Delete">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -723,6 +731,16 @@ export default function AdminStockManagement() {
           Olovely Total Suvidha
         </a>
       </footer>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Product"
+        message="Are you sure you want to delete this product?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

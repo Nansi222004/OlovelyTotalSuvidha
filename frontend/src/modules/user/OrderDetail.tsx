@@ -15,6 +15,7 @@ import {
 import StarRating from "../../components/ui/StarRating";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 // Icon Components
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
@@ -451,6 +452,7 @@ export default function OrderDetail() {
   const [searchParams] = useSearchParams();
   const confirmed = searchParams.get("confirmed") === "true";
   const { getOrderById, fetchOrderById, loading: contextLoading } = useOrders();
+  const { showToast } = useToast();
   const [order, setOrder] = useState<any>(id ? getOrderById(id) : undefined);
   const [loading, setLoading] = useState(!order);
 
@@ -541,10 +543,10 @@ export default function OrderDetail() {
         setOrder(existingOrder);
         setOrderStatus(existingOrder.status);
         setLoading(false);
-        return;
+      } else {
+        setLoading(true);
       }
 
-      setLoading(true);
       const fetchedOrder = await fetchOrderById(id);
       if (fetchedOrder) {
         setOrder(fetchedOrder);
@@ -554,7 +556,7 @@ export default function OrderDetail() {
     };
 
     loadOrder();
-  }, [id, getOrderById, fetchOrderById]);
+  }, [id]);
 
   // Fetch seller locations when order is loaded
   useEffect(() => {
@@ -777,7 +779,7 @@ export default function OrderDetail() {
       } else {
         // Fallback: copy link to clipboard
         await navigator.clipboard.writeText(window.location.href);
-        alert("Link copied to clipboard!");
+        showToast("Link copied to clipboard!", "info");
       }
     } catch (error) {
       console.error("Error sharing:", error);
@@ -792,7 +794,7 @@ export default function OrderDetail() {
 
   const handleCancelOrder = async () => {
     if (!cancellationReason.trim()) {
-      alert("Please provide a cancellation reason");
+      showToast("Please provide a cancellation reason", "error");
       return;
     }
 
@@ -803,12 +805,12 @@ export default function OrderDetail() {
       await cancelOrder(id, cancellationReason);
       setOrderStatus("Cancelled" as any);
       setShowCancelModal(false);
-      alert("Order cancelled successfully");
+      showToast("Order cancelled successfully", "success");
       // Refresh order to get updated status
       handleRefresh();
     } catch (error) {
       console.error("Error cancelling order:", error);
-      alert("Failed to cancel order");
+      showToast("Failed to cancel order", "error");
     }
   };
 
@@ -817,11 +819,11 @@ export default function OrderDetail() {
       if (!id) return;
       await updateOrderNotes(id, { deliveryInstructions });
       setShowInstructionsModal(false);
-      // alert("Delivery instructions saved!");
+      showToast("Delivery instructions saved!", "success");
       handleRefresh();
     } catch (error) {
       console.error("Failed to save instructions:", error);
-      alert("Failed to save instructions");
+      showToast("Failed to save instructions", "error");
     }
   };
 
@@ -830,11 +832,11 @@ export default function OrderDetail() {
       if (!id) return;
       await updateOrderNotes(id, { specialRequests });
       setShowSpecialRequestsModal(false);
-      // alert("Special requests saved!");
+      showToast("Special requests saved!", "success");
       handleRefresh();
     } catch (error) {
       console.error("Failed to save special requests:", error);
-      alert("Failed to save special requests");
+      showToast("Failed to save special requests", "error");
     }
   };
 
@@ -1102,7 +1104,7 @@ export default function OrderDetail() {
       {/* Scrollable Content */}
       <div className="px-4 py-4 space-y-4 pb-24">
         {/* Payment Pending */}
-        {order?.paymentStatus !== "Paid" && (
+        {order?.paymentStatus !== "Paid" && order?.paymentStatus !== "Completed" && order?.paymentStatus !== "Refunded" && (
           <motion.div
             className="bg-white rounded-xl p-4 shadow-sm"
             initial={{ opacity: 0, y: 20 }}
@@ -1799,7 +1801,7 @@ export default function OrderDetail() {
             console.error("Payment failed:", error);
             setShowRazorpayCheckout(false);
             if (error !== "Payment cancelled by user") {
-              alert(`Payment note: ${error}`);
+              showToast(`Payment note: ${error}`, "info");
             }
           }}
         />

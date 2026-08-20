@@ -11,6 +11,7 @@ import {
 import { getCategories, type Category } from "../../../services/api/categoryService";
 import { getHeaderCategoriesAdmin, type HeaderCategory } from "../../../services/api/headerCategoryService";
 import { getProducts as getAdminProducts, type Product } from "../../../services/api/admin/adminProductService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminPromoStrip() {
   // Form state
@@ -36,6 +37,7 @@ export default function AdminPromoStrip() {
   const [loading, setLoading] = useState(false);
   const [loadingPromoStrips, setLoadingPromoStrips] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -212,20 +214,21 @@ export default function AdminPromoStrip() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this PromoStrip?")) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
 
     try {
       await deletePromoStrip(id);
       setSuccess("PromoStrip deleted successfully!");
+      setDeleteId(null);
       fetchPromoStrips();
       if (editingId === id) {
         resetForm();
       }
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to delete PromoStrip");
+      setDeleteId(null);
     }
   };
 
@@ -676,9 +679,8 @@ export default function AdminPromoStrip() {
                                 className="text-blue-600 hover:text-blue-700"
                               >
                                 Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(promoStrip._id)}
+                              </button>                               <button
+                                onClick={() => setDeleteId(promoStrip._id)}
                                 className="text-red-600 hover:text-red-700"
                               >
                                 Delete
@@ -720,6 +722,16 @@ export default function AdminPromoStrip() {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete PromoStrip"
+        message="Are you sure you want to delete this PromoStrip?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

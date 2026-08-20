@@ -8,6 +8,7 @@ import {
     type LowestPricesProductFormData,
 } from "../../../services/api/admin/adminLowestPricesService";
 import { getProducts, type Product } from "../../../services/api/admin/adminProductService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminLowestPrices() {
     // Form state
@@ -24,6 +25,7 @@ export default function AdminLowestPrices() {
     const [loading, setLoading] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -145,15 +147,15 @@ export default function AdminLowestPrices() {
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you sure you want to remove this product from lowest prices section?")) {
-            return;
-        }
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        const id = deleteId;
 
         try {
             const response = await deleteLowestPricesProduct(id);
             if (response.success) {
                 setSuccess("Product removed successfully!");
+                setDeleteId(null);
                 fetchLowestPricesProducts();
                 fetchAvailableProducts(); // Refresh to update filtered list
                 if (editingId === id) {
@@ -161,9 +163,11 @@ export default function AdminLowestPrices() {
                 }
             } else {
                 setError(response.message || "Failed to remove product");
+                setDeleteId(null);
             }
         } catch (err: any) {
             setError(err.response?.data?.message || "Failed to remove product");
+            setDeleteId(null);
         }
     };
 
@@ -462,7 +466,7 @@ export default function AdminLowestPrices() {
                                                                 </svg>
                                                             </button>
                                                             <button
-                                                                onClick={() => handleDelete(item._id)}
+                                                                onClick={() => setDeleteId(item._id)}
                                                                 className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
                                                                 title="Delete"
                                                             >
@@ -529,6 +533,16 @@ export default function AdminLowestPrices() {
                     </div>
                 </div>
             </div>
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                title="Remove Lowest Price Product"
+                message="Are you sure you want to remove this product from lowest prices section?"
+                confirmText="Remove"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div>
     );
 }

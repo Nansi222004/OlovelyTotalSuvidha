@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getProducts, updateStock, Product } from '../../../services/api/productService';
 import { getCategories } from '../../../services/api/categoryService';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 
 interface StockItem {
     variationId: string;
@@ -16,6 +17,7 @@ interface StockItem {
 }
 
 export default function SellerStockManagement() {
+    const { showToast } = useToast();
     const [stockItems, setStockItems] = useState<StockItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
@@ -137,11 +139,12 @@ export default function SellerStockManagement() {
                         ? { ...item, stock: newStock }
                         : item
                 ));
+                showToast('Stock updated successfully', 'success');
             } else {
-                alert(response.message || 'Failed to update stock');
+                showToast(response.message || 'Failed to update stock', 'error');
             }
         } catch (err: any) {
-            alert(err.response?.data?.message || err.message || 'Failed to update stock');
+            showToast(err.response?.data?.message || err.message || 'Failed to update stock', 'error');
         } finally {
             setUpdatingStock(null);
         }

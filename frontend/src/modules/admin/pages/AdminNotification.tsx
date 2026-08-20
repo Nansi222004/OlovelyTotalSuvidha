@@ -6,8 +6,10 @@ import {
   Notification as NotificationType,
   CreateNotificationData,
 } from '../../../services/api/admin/adminNotificationService';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 export default function AdminNotification() {
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     recipientType: 'All' as 'All' | 'Admin' | 'Seller' | 'Customer' | 'Delivery',
     title: '',
@@ -125,10 +127,9 @@ export default function AdminNotification() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this notification?')) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const id = deleteId;
 
     setLoading(true);
     setError('');
@@ -137,6 +138,7 @@ export default function AdminNotification() {
       const response = await deleteNotification(id);
       if (response.success) {
         setSuccessMessage('Notification deleted successfully!');
+        setDeleteId(null);
         fetchNotifications();
       } else {
         setError(response.message || 'Failed to delete notification');
@@ -477,7 +479,7 @@ export default function AdminNotification() {
                           <td className="p-4 align-middle">{formatDate(notification.createdAt)}</td>
                           <td className="p-4 align-middle">
                             <button
-                              onClick={() => handleDelete(notification._id)}
+                              onClick={() => setDeleteId(notification._id)}
                               disabled={loading}
                               className="p-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
                               title="Delete"
@@ -607,6 +609,17 @@ export default function AdminNotification() {
           Olovely Total Suvidha
         </a>
       </footer>
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Notification"
+        message="Are you sure you want to delete this notification?"
+        confirmText="Delete Notification"
+        variant="danger"
+        isLoading={loading}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

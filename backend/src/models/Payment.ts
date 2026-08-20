@@ -40,6 +40,7 @@ export interface IPayment extends Document {
   };
 
   // Refund Info
+  refundId?: string;
   refundAmount?: number;
   refundedAt?: Date;
   refundReason?: string;
@@ -142,6 +143,10 @@ const PaymentSchema = new Schema<IPayment>(
     },
 
     // Refund Info
+    refundId: {
+      type: String,
+      trim: true,
+    },
     refundAmount: {
       type: Number,
       min: [0, "Refund amount cannot be negative"],

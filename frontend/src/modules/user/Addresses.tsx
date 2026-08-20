@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { getAddresses, deleteAddress, Address } from '../../services/api/customerAddressService';
 import Button from '../../components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '../../context/ToastContext';
+import ConfirmationModal from '../../components/ConfirmationModal';
 
 export default function Addresses() {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [addresses, setAddresses] = useState<Address[]>([]);
     const [loading, setLoading] = useState(true);
+    const [addressToDelete, setAddressToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchAddresses = async () => {
         try {
@@ -27,15 +32,24 @@ export default function Addresses() {
         fetchAddresses();
     }, []);
 
-    const handleDelete = async (id: string | undefined) => {
+    const handleDeleteClick = (id: string | undefined) => {
         if (!id) return;
-        if (!window.confirm('Are you sure you want to delete this address?')) return;
+        setAddressToDelete(id);
+    };
 
+    const confirmDeleteAddress = async () => {
+        if (!addressToDelete) return;
         try {
-            await deleteAddress(id);
-            setAddresses(addresses.filter(a => a._id !== id));
+            setIsDeleting(true);
+            await deleteAddress(addressToDelete);
+            setAddresses(prev => prev.filter(a => a._id !== addressToDelete));
+            showToast('Address deleted successfully', 'success');
+            setAddressToDelete(null);
         } catch (error) {
             console.error('Failed to delete address:', error);
+            showToast('Failed to delete address', 'error');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -94,7 +108,7 @@ export default function Addresses() {
 
                                 <div className="mt-4 pt-4 border-t border-neutral-100 flex gap-4">
                                     <button
-                                        onClick={() => handleDelete(addr._id)}
+                                        onClick={() => handleDeleteClick(addr._id)}
                                         className="text-xs font-bold text-red-500 hover:text-red-600 uppercase tracking-wider"
                                     >
                                         Delete
@@ -117,6 +131,17 @@ export default function Addresses() {
                     </div>
                 )}
             </div>
+
+            <ConfirmationModal
+                isOpen={!!addressToDelete}
+                title="Delete Address"
+                message="Are you sure you want to delete this address? This action cannot be undone."
+                confirmText="Delete"
+                variant="danger"
+                isLoading={isDeleting}
+                onConfirm={confirmDeleteAddress}
+                onCancel={() => setAddressToDelete(null)}
+            />
         </div>
     );
 }

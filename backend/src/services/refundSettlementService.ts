@@ -58,11 +58,16 @@ export const handleOnlineOrderCancellation = async (
 
   while (attempt < maxRetries) {
     attempt++;
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    let session: mongoose.ClientSession | null = null;
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    } catch (txErr) {
+      session = null;
+    }
 
     try {
-      const order = await Order.findById(orderId).session(session);
+      const order = session ? await Order.findById(orderId).session(session) : await Order.findById(orderId);
       if (!order) {
         throw new Error("Order not found");
       }
@@ -73,7 +78,7 @@ export const handleOnlineOrderCancellation = async (
       }
 
       if (order.paymentStatus === "Refunded") {
-        await session.commitTransaction();
+        if (session) await session.commitTransaction();
         return { success: true, message: "Order is already marked Refunded (Idempotent)." };
       }
 
@@ -89,7 +94,7 @@ export const handleOnlineOrderCancellation = async (
           `Order cancellation refund for #${order.orderNumber}`,
           order._id.toString(),
           undefined,
-          session,
+          session || undefined,
           `CANCEL_REFUND_WALLET_${order._id.toString()}`,
           "ORDER_CANCELLATION_REFUND"
         );
@@ -104,16 +109,19 @@ export const handleOnlineOrderCancellation = async (
       let refundResultData: any = null;
 
       if (onlineAmountToRefund > 0) {
-        const payment = await Payment.findOne({
-          $or: [{ order: order._id }, { razorpayPaymentId: order.paymentId }]
-        }).session(session);
+        const queryOrs: any[] = [{ order: order._id }];
+        if (order.paymentId) queryOrs.push({ razorpayPaymentId: order.paymentId });
+
+        let payment = session 
+          ? await Payment.findOne({ $or: queryOrs }).session(session)
+          : await Payment.findOne({ $or: queryOrs });
 
         if (payment && payment.status !== "Refunded") {
           const refundResult = await processRefund(
             payment._id.toString(),
             onlineAmountToRefund,
             cancellationReason || "Order cancelled before delivery",
-            session
+            session || undefined
           );
 
           if (!refundResult.success) {
@@ -124,25 +132,118 @@ export const handleOnlineOrderCancellation = async (
           payment.refundAmount = onlineAmountToRefund;
           payment.refundedAt = new Date();
           payment.refundReason = cancellationReason || "Order cancelled before delivery";
-          await payment.save({ session });
+          if (session) {
+            await payment.save({ session });
+          } else {
+            await payment.save();
+          }
+          refundResultData = refundResult.data;
+          onlineRefundExecuted = true;
+        } else if (!payment && order.paymentId) {
+          console.warn(`⚠️ Payment document missing for order ${order.orderNumber}, but paymentId ${order.paymentId} exists. Creating payment doc to process refund.`);
+          const newPay = new Payment({
+            order: order._id,
+            customer: order.customer,
+            paymentMethod: "Online",
+            paymentGateway: "Razorpay",
+            razorpayPaymentId: order.paymentId,
+            amount: order.total,
+            currency: "INR",
+            status: "Completed",
+            paidAt: new Date(),
+          });
+          if (session) await newPay.save({ session }); else await newPay.save();
+
+          const refundResult = await processRefund(
+            newPay._id.toString(),
+            onlineAmountToRefund,
+            cancellationReason || "Order cancelled before delivery",
+            session || undefined
+          );
+          if (!refundResult.success) {
+            throw new Error(refundResult.message || "Failed to process Razorpay online refund");
+          }
           refundResultData = refundResult.data;
           onlineRefundExecuted = true;
         }
       }
 
-      // Mark order payment status refunded
+      // 3. RESTORE INVENTORY STOCK (ONCE for non-cancelled items)
+      if (Array.isArray(order.items) && order.items.length > 0) {
+        const Product = (await import("../models/Product")).default;
+        for (const itemRef of order.items) {
+          const orderItem = await OrderItem.findById(itemRef).session(session);
+          if (orderItem && orderItem.status !== "Cancelled") {
+            const product = await Product.findById(orderItem.product).session(session);
+            if (product) {
+              if (orderItem.variation) {
+                const variationIndex = product.variations?.findIndex(
+                  (v: any) =>
+                    v.value === orderItem.variation ||
+                    v.title === orderItem.variation ||
+                    v.pack === orderItem.variation
+                );
+                if (
+                  variationIndex !== undefined &&
+                  variationIndex !== -1 &&
+                  product.variations &&
+                  product.variations[variationIndex]
+                ) {
+                  const currentStock = product.variations[variationIndex].stock || 0;
+                  product.variations[variationIndex].stock = currentStock + orderItem.quantity;
+                } else if (product.variations && product.variations.length > 0) {
+                  const currentStock = product.variations[0].stock || 0;
+                  product.variations[0].stock = currentStock + orderItem.quantity;
+                }
+              }
+              product.stock += orderItem.quantity;
+              await product.save({ session });
+            }
+            orderItem.status = "Cancelled";
+            await orderItem.save({ session });
+          }
+        }
+      }
+
+      // 4. CLEANUP DELIVERY ASSIGNMENT
+      if (order.deliveryBoy) {
+        const DeliveryAssignment = (await import("../models/DeliveryAssignment")).default;
+        await DeliveryAssignment.findOneAndUpdate(
+          { order: order._id },
+          { status: "Cancelled", failedAt: new Date(), failureReason: cancellationReason || "Order cancelled" },
+          { session }
+        );
+        order.deliveryBoyStatus = "Failed";
+      }
+
+      const prevStatus = order.status;
+      const prevPayStatus = order.paymentStatus;
+
+      // Mark order payment status refunded & order status cancelled
       order.paymentStatus = "Refunded";
       order.status = "Cancelled";
-      await order.save({ session });
 
-      // Cancel all commission records for this order
-      await Commission.updateMany(
-        { order: order._id },
-        { $set: { status: "Cancelled" } },
-        { session }
-      );
+      console.log(`\n[REFUND ORDER UPDATE]\nOrder ID: ${order._id}\nPrevious status: ${prevStatus}\nNew status: Cancelled\nPrevious paymentStatus: ${prevPayStatus}\nNew paymentStatus: Refunded`);
 
-      await session.commitTransaction();
+      if (session) {
+        await order.save({ session });
+        await Commission.updateMany(
+          { order: order._id, status: { $in: ["Pending", "OnHold"] } },
+          { $set: { status: "Cancelled" } },
+          { session }
+        );
+        await session.commitTransaction();
+      } else {
+        await order.save();
+        await Commission.updateMany(
+          { order: order._id, status: { $in: ["Pending", "OnHold"] } },
+          { $set: { status: "Cancelled" } }
+        );
+      }
+
+      // Immediately re-fetch from MongoDB to verify DB persistence
+      const verifyOrder = await Order.findById(order._id).lean();
+      console.log(`\n[REFUND ORDER DB VERIFY]\nOrder ID: ${verifyOrder?._id}\nstatus: ${verifyOrder?.status}\npaymentStatus: ${verifyOrder?.paymentStatus}\npaymentId: ${verifyOrder?.paymentId}`);
 
       return {
         success: true,
@@ -155,7 +256,7 @@ export const handleOnlineOrderCancellation = async (
         },
       };
     } catch (error: any) {
-      await session.abortTransaction();
+      if (session) await session.abortTransaction();
       const isWriteConflict =
         error?.message?.includes('Write conflict') ||
         error?.message?.includes('WriteConflict') ||
@@ -174,7 +275,7 @@ export const handleOnlineOrderCancellation = async (
         message: error.message || "Failed to handle order cancellation refund",
       };
     } finally {
-      session.endSession();
+      if (session) session.endSession();
     }
   }
 

@@ -19,6 +19,8 @@ import {
   searchCategories,
   filterCategoriesByStatus,
 } from "../../../utils/categoryUtils";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 // Flatten tree structure for filtering (works for both tree and list view)
 const flattenTree = (cats: Category[]): Category[] => {
@@ -60,6 +62,7 @@ const flattenTree = (cats: Category[]): Category[] => {
 
 export default function AdminCategory() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,6 +81,17 @@ export default function AdminCategory() {
   const [error, setError] = useState<string | null>(null);
   const [listPage, setListPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: async () => {},
+  });
 
   // Fetch categories
   useEffect(() => {
@@ -190,103 +204,119 @@ export default function AdminCategory() {
   };
 
   // Handle delete category
-  const handleDelete = async (category: Category) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete "${category.name}"? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await deleteCategory(category._id);
-      if (response.success) {
-        alert("Category deleted successfully!");
-        fetchCategories();
-      }
-    } catch (error: unknown) {
-      const errorMessage =
-        error && typeof error === "object" && "response" in error
-          ? (error as { response?: { data?: { message?: string } } }).response
-              ?.data?.message
-          : "Failed to delete category. Please try again.";
-      alert(errorMessage || "Failed to delete category. Please try again.");
-    }
+  const handleDelete = (category: Category) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Category",
+      message: `Are you sure you want to delete "${category.name}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const response = await deleteCategory(category._id);
+          if (response.success) {
+            showToast("Category deleted successfully!", "success");
+            setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+            fetchCategories();
+          }
+        } catch (error: unknown) {
+          const errorMessage =
+            error && typeof error === "object" && "response" in error
+              ? (error as { response?: { data?: { message?: string } } }).response
+                  ?.data?.message
+              : "Failed to delete category. Please try again.";
+          showToast(errorMessage || "Failed to delete category. Please try again.", "error");
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   // Handle bulk delete
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedIds.size === 0) {
-      alert("Please select at least one category to delete.");
+      showToast("Please select at least one category to delete.", "info");
       return;
     }
 
-    if (
-      !window.confirm(
-        `Are you sure you want to delete ${selectedIds.size} selected category(ies)? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await bulkDeleteCategories(Array.from(selectedIds));
-      if (response.success) {
-        const deletedCount = response.data.deleted.length;
-        const failedCount = response.data.failed.length;
-        if (failedCount > 0) {
-          alert(
-            `Deleted ${deletedCount} category(ies). ${failedCount} failed. Check console for details.`
-          );
-          console.log("Failed deletions:", response.data.failed);
-        } else {
-          alert(`Successfully deleted ${deletedCount} category(ies).`);
+    setConfirmModal({
+      isOpen: true,
+      title: "Bulk Delete Categories",
+      message: `Are you sure you want to delete ${selectedIds.size} selected category(ies)? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const response = await bulkDeleteCategories(Array.from(selectedIds));
+          if (response.success) {
+            const deletedCount = response.data.deleted.length;
+            const failedCount = response.data.failed.length;
+            if (failedCount > 0) {
+              showToast(
+                `Deleted ${deletedCount} category(ies). ${failedCount} failed. Check console for details.`,
+                "info"
+              );
+              console.log("Failed deletions:", response.data.failed);
+            } else {
+              showToast(`Successfully deleted ${deletedCount} category(ies).`, "success");
+            }
+            setSelectedIds(new Set());
+            setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+            fetchCategories();
+          }
+        } catch (error: unknown) {
+          const errorMessage =
+            error && typeof error === "object" && "response" in error
+              ? (error as { response?: { data?: { message?: string } } }).response
+                  ?.data?.message
+              : "Failed to delete categories. Please try again.";
+          showToast(errorMessage || "Failed to delete categories. Please try again.", "error");
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         }
-        setSelectedIds(new Set());
-        fetchCategories();
-      }
-    } catch (error: unknown) {
-      const errorMessage =
-        error && typeof error === "object" && "response" in error
-          ? (error as { response?: { data?: { message?: string } } }).response
-              ?.data?.message
-          : "Failed to delete categories. Please try again.";
-      alert(errorMessage || "Failed to delete categories. Please try again.");
-    }
+      },
+    });
   };
 
   // Handle toggle status
   const handleToggleStatus = async (category: Category) => {
     const newStatus = category.status === "Active" ? "Inactive" : "Active";
-    const cascade =
-      category.childrenCount && category.childrenCount > 0
-        ? window.confirm(
-            `This category has subcategories. Do you want to ${
-              newStatus === "Inactive" ? "deactivate" : "activate"
-            } all subcategories as well?`
-          )
-        : false;
+    const hasChildren = category.childrenCount && category.childrenCount > 0;
 
-    try {
-      const response = await toggleCategoryStatus(
-        category._id,
-        newStatus,
-        cascade
-      );
-      if (response.success) {
-        alert(`Category status updated to ${newStatus}`);
-        fetchCategories();
+    const performToggle = async (cascade: boolean) => {
+      try {
+        const response = await toggleCategoryStatus(
+          category._id,
+          newStatus,
+          cascade
+        );
+        if (response.success) {
+          showToast(`Category status updated to ${newStatus}`, "success");
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          fetchCategories();
+        }
+      } catch (error: unknown) {
+        const errorMessage =
+          error && typeof error === "object" && "response" in error
+            ? (error as { response?: { data?: { message?: string } } }).response
+                ?.data?.message
+            : "Failed to update category status. Please try again.";
+        showToast(
+          errorMessage || "Failed to update category status. Please try again.",
+          "error"
+        );
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
       }
-    } catch (error: unknown) {
-      const errorMessage =
-        error && typeof error === "object" && "response" in error
-          ? (error as { response?: { data?: { message?: string } } }).response
-              ?.data?.message
-          : "Failed to update category status. Please try again.";
-      alert(
-        errorMessage || "Failed to update category status. Please try again."
-      );
+    };
+
+    if (hasChildren) {
+      setConfirmModal({
+        isOpen: true,
+        title: "Toggle Subcategories Status",
+        message: `This category has subcategories. Do you want to ${
+          newStatus === "Inactive" ? "deactivate" : "activate"
+        } all subcategories as well?`,
+        onConfirm: async () => {
+          await performToggle(true);
+        },
+      });
+    } else {
+      await performToggle(false);
     }
   };
 
@@ -297,13 +327,13 @@ export default function AdminCategory() {
     if (modalMode === "edit" && editingCategory) {
       const response = await updateCategory(editingCategory._id, data);
       if (response.success) {
-        alert("Category updated successfully!");
+        showToast("Category updated successfully!", "success");
         fetchCategories();
       }
     } else {
       const response = await createCategory(data as CreateCategoryData);
       if (response.success) {
-        alert("Category created successfully!");
+        showToast("Category created successfully!", "success");
 
         // If creating a subcategory, expand the parent category after refresh
         if (modalMode === "create-subcategory" && parentCategory) {
@@ -415,7 +445,7 @@ export default function AdminCategory() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header Section */}
       <div className="bg-white border-b border-neutral-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -632,6 +662,14 @@ export default function AdminCategory() {
           allCategories={categories}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

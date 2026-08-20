@@ -7,9 +7,12 @@ import {
   type MiscReturnRequest as ReturnRequest,
 } from "../../../services/api/admin/adminMiscService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import PromptModal from "../../../components/PromptModal";
 
 export default function AdminReturnRequest() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedSeller, setSelectedSeller] = useState("all");
@@ -23,6 +26,9 @@ export default function AdminReturnRequest() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Reject modal state ──
+  const [rejectModal, setRejectModal] = useState<{ isOpen: boolean; requestId: string | null }>({ isOpen: false, requestId: null });
 
   // ── Assign DP modal state ──
   const [assignModal, setAssignModal] = useState<{ returnId: string; returnNum: string } | null>(null);
@@ -116,27 +122,29 @@ export default function AdminReturnRequest() {
             req._id === requestId ? { ...req, status: "Approved" } : req
           )
         );
-        alert("Return request approved successfully!");
+        showToast("Return request approved successfully!", "success");
       } else {
-        alert(
+        showToast(
           "Failed to approve return request: " +
-          (response.message || "Unknown error")
+          (response.message || "Unknown error"),
+          "error"
         );
       }
     } catch (err: any) {
       console.error("Error approving return request:", err);
-      alert(
+      showToast(
         "Failed to approve return request: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     } finally {
       setUpdating(null);
     }
   };
 
-  const handleRejectReturn = async (requestId: string) => {
-    const reason = prompt("Enter rejection reason:");
-    if (!reason) return;
+  const handleRejectSubmit = async (reason: string) => {
+    if (!rejectModal.requestId) return;
+    const requestId = rejectModal.requestId;
 
     try {
       setUpdating(requestId);
@@ -152,18 +160,21 @@ export default function AdminReturnRequest() {
             req._id === requestId ? { ...req, status: "Rejected" } : req
           )
         );
-        alert("Return request rejected successfully!");
+        showToast("Return request rejected successfully!", "success");
+        setRejectModal({ isOpen: false, requestId: null });
       } else {
-        alert(
+        showToast(
           "Failed to reject return request: " +
-          (response.message || "Unknown error")
+          (response.message || "Unknown error"),
+          "error"
         );
       }
     } catch (err: any) {
       console.error("Error rejecting return request:", err);
-      alert(
+      showToast(
         "Failed to reject return request: " +
-        (err.response?.data?.message || "Please try again.")
+        (err.response?.data?.message || "Please try again."),
+        "error"
       );
     } finally {
       setUpdating(null);
@@ -171,7 +182,7 @@ export default function AdminReturnRequest() {
   };
 
   const handleExport = () => {
-    alert("Export functionality will be implemented here");
+    showToast("Export functionality will be implemented here", "info");
   };
 
   const handleClearDate = () => {
@@ -238,7 +249,7 @@ export default function AdminReturnRequest() {
           )
         );
         setAssignModal(null);
-        alert('✅ Delivery partner assigned! They will receive a notification.');
+        showToast('✅ Delivery partner assigned! They will receive a notification.', 'success');
       } else {
         setAssignError(res.message || 'Assignment failed');
       }
@@ -764,7 +775,7 @@ export default function AdminReturnRequest() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleRejectReturn(request._id)}
+                              onClick={() => setRejectModal({ isOpen: true, requestId: request._id })}
                               disabled={updating === request._id}
                               className="p-1.5 bg-red-100 hover:bg-red-200 disabled:bg-neutral-100 disabled:text-neutral-400 text-red-700 rounded transition-colors"
                               title="Reject">
@@ -918,6 +929,17 @@ export default function AdminReturnRequest() {
           </div>
         </div>
       )}
+
+      <PromptModal
+        isOpen={rejectModal.isOpen}
+        title="Reject Return Request"
+        message="Please enter the reason for rejecting this return request:"
+        placeholder="Rejection reason..."
+        confirmText="Reject Request"
+        required
+        onConfirm={handleRejectSubmit}
+        onCancel={() => setRejectModal({ isOpen: false, requestId: null })}
+      />
     </div>
   );
 }

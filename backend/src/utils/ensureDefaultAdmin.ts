@@ -14,8 +14,18 @@ const DEFAULT_ADMIN_ROLE = (process.env.DEFAULT_ADMIN_ROLE as 'Super Admin' | 'A
  * Password: Admin@123 (not used for OTP login but stored for completeness)
  */
 export async function ensureDefaultAdmin() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const mobile = process.env.DEFAULT_ADMIN_MOBILE || (isProduction ? '' : '9876543210');
+  const email = process.env.DEFAULT_ADMIN_EMAIL || (isProduction ? '' : 'admin@olovely.com');
+  const password = process.env.DEFAULT_ADMIN_PASSWORD || (isProduction ? '' : 'Admin@123');
+
+  if (isProduction && (!mobile || !email)) {
+    console.log('ℹ️ [Admin Seeding] Default admin auto-creation skipped in production (configure DEFAULT_ADMIN_MOBILE and DEFAULT_ADMIN_EMAIL to enable)');
+    return null;
+  }
+
   const existing = await Admin.findOne({
-    $or: [{ mobile: DEFAULT_ADMIN_MOBILE }, { email: DEFAULT_ADMIN_EMAIL }],
+    $or: [{ mobile }, { email }],
   });
 
   if (existing) {

@@ -8,9 +8,13 @@ import {
 } from "../../../services/api/admin/adminDeliveryService";
 import { getDeliveryBoys } from "../../../services/api/admin/adminDeliveryService";
 import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function AdminCashCollection() {
   const { isAuthenticated, token } = useAuth();
+  const { showToast } = useToast();
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [cashCollections, setCashCollections] = useState<CashCollection[]>([]);
   const [deliveryBoys, setDeliveryBoys] = useState<any[]>([]);
   const [fromDate, setFromDate] = useState("");
@@ -171,13 +175,16 @@ export default function AdminCashCollection() {
     }
   };
 
-  const handleConfirmCollection = async (id: string) => {
-    if (!window.confirm("Are you sure you have received this cash from the delivery boy?")) return;
+  const confirmAction = async () => {
+    if (!confirmId) return;
+    const id = confirmId;
 
     try {
       setLoading(true);
       const response = await confirmCashCollection(id);
       if (response.success) {
+        showToast("Cash collection confirmed successfully!", "success");
+        setConfirmId(null);
         // Refresh current view
         const params: any = {
           page: currentPage,
@@ -193,11 +200,13 @@ export default function AdminCashCollection() {
           }
         }
       } else {
-        alert("Failed to confirm collection");
+        showToast("Failed to confirm collection", "error");
+        setConfirmId(null);
       }
     } catch (err: any) {
       console.error("Error confirming collection:", err);
-      alert(err.response?.data?.message || "Failed to confirm collection");
+      showToast(err.response?.data?.message || "Failed to confirm collection", "error");
+      setConfirmId(null);
     } finally {
       setLoading(false);
     }
@@ -440,7 +449,7 @@ export default function AdminCashCollection() {
                       <td className="px-6 py-4 text-sm">
                         {collection.status === 'Pending' ? (
                           <button
-                            onClick={() => handleConfirmCollection(collection._id)}
+                            onClick={() => setConfirmId(collection._id)}
                             className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors"
                           >
                             Mark Collected
@@ -549,6 +558,16 @@ export default function AdminCashCollection() {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={!!confirmId}
+        title="Confirm Cash Collection"
+        message="Are you sure you have received this cash from the delivery boy?"
+        confirmText="Confirm Received"
+        isLoading={loading}
+        onConfirm={confirmAction}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

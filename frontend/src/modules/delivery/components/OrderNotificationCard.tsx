@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OrderNotificationData } from '../../../services/api/delivery/deliveryOrderNotificationService';
+import { useToast } from '../../../context/ToastContext';
 
 interface OrderNotificationCardProps {
     notification: OrderNotificationData;
@@ -13,6 +14,7 @@ export default function OrderNotificationCard({
     onAccept,
     onReject,
 }: OrderNotificationCardProps) {
+    const { showToast } = useToast();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [hasUserInteracted, setHasUserInteracted] = useState(false);
@@ -88,7 +90,7 @@ export default function OrderNotificationCard({
             if (!result.success) {
                 // Suppress alert for "Order notification not found" as it's handled by the hook clearing the notification
                 if (result.message !== 'Order notification not found') {
-                    alert(result.message || 'Failed to accept order');
+                    showToast(result.message || 'Failed to accept order', 'error');
                 }
                 setIsProcessing(false);
                 // Resume audio if accept failed
@@ -99,7 +101,7 @@ export default function OrderNotificationCard({
             }
         } catch (error) {
             console.error('Error accepting order:', error);
-            alert('Failed to accept order');
+            showToast('Failed to accept order', 'error');
             setIsProcessing(false);
             // Resume audio if accept failed
             if (audioRef.current && hasUserInteracted) {
@@ -128,7 +130,7 @@ export default function OrderNotificationCard({
             if (!result.success) {
                 // Suppress alert for "Order notification not found"
                 if (result.message !== 'Order notification not found') {
-                    alert(result.message || 'Failed to reject order');
+                    showToast(result.message || 'Failed to reject order', 'error');
                 }
                 // Resume audio if reject failed
                 if (audioRef.current && hasUserInteracted) {
@@ -138,7 +140,7 @@ export default function OrderNotificationCard({
             }
         } catch (error) {
             console.error('Error rejecting order:', error);
-            alert('Failed to reject order');
+            showToast('Failed to reject order', 'error');
             // Resume audio if reject failed
             if (audioRef.current && hasUserInteracted) {
                 audioRef.current.play().catch(console.error);

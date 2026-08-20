@@ -8,6 +8,7 @@ import {
     type BestsellerCardFormData,
 } from "../../../services/api/admin/adminBestsellerCardService";
 import { getCategories, type Category } from "../../../services/api/categoryService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 const MAX_ACTIVE_CARDS = 6;
 
@@ -26,6 +27,7 @@ export default function AdminBestsellerCards() {
     const [loading, setLoading] = useState(false);
     const [loadingCards, setLoadingCards] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -149,24 +151,26 @@ export default function AdminBestsellerCards() {
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this bestseller card?")) {
-            return;
-        }
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        const id = deleteId;
 
         try {
             const response = await deleteBestsellerCard(id);
             if (response.success) {
                 setSuccess("Bestseller card deleted successfully!");
+                setDeleteId(null);
                 fetchCards();
                 if (editingId === id) {
                     resetForm();
                 }
             } else {
                 setError(response.message || "Failed to delete card");
+                setDeleteId(null);
             }
         } catch (err: any) {
             setError(err.response?.data?.message || "Failed to delete bestseller card");
+            setDeleteId(null);
         }
     };
 
@@ -436,7 +440,7 @@ export default function AdminBestsellerCards() {
                                                             </svg>
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDelete(card._id)}
+                                                            onClick={() => setDeleteId(card._id)}
                                                             className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
                                                             title="Delete"
                                                         >
@@ -501,6 +505,16 @@ export default function AdminBestsellerCards() {
                     </div>
                 </div>
             </div>
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                title="Delete Bestseller Card"
+                message="Are you sure you want to delete this bestseller card?"
+                confirmText="Delete"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div>
     );
 }

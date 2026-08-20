@@ -11,14 +11,15 @@ export default function AdminOutForDeliveryOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState('');
   const [seller, setSeller] = useState('All Sellers');
-  const [status, setStatus] = useState('Out for Delivery');
+  const [status, setStatus] = useState('Out For Delivery');
   const [entriesPerPage, setEntriesPerPage] = useState('10');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [sortField, setSortField] = useState<SortField | null>('orderDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
@@ -53,8 +54,10 @@ export default function AdminOutForDeliveryOrders() {
         }
 
         const response = await getOrdersByStatus('Out for Delivery', params);
-        if (response.success) {
+        if (response.success && Array.isArray(response.data)) {
           setOrders(response.data);
+        } else {
+          setOrders([]);
         }
       } catch (err) {
         console.error('Error fetching orders:', err);
@@ -86,20 +89,28 @@ export default function AdminOutForDeliveryOrders() {
     }
   };
 
+  const handleCopyId = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const handleExport = () => {
-    const headers = ['O. Id', 'Customer Details', 'Address', 'D. Date', 'O. Date', 'Status', 'Delivery Boy Assign Status', 'Amount'];
+    const headers = ['Order ID', 'Customer Name', 'Phone', 'Address', 'Order Date', 'Status', 'Delivery Status', 'Total Amount'];
     const csvContent = [
       headers.join(','),
       ...filteredAndSortedOrders.map(order =>
         [
-          order.orderNumber || '',
-          order.customerName || '',
-          order.deliveryAddress?.address || '',
-          order.status === 'Delivered' && order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString() : '',
-          order.orderDate ? new Date(order.orderDate).toLocaleDateString() : '',
-          order.status || '',
-          order.deliveryBoyStatus || 'Not Assigned',
-          `₹${order.total?.toFixed(2) || '0.00'}`
+          `"${order.orderNumber || ''}"`,
+          `"${order.customerName || (typeof order.customer === 'object' ? order.customer?.name : '') || ''}"`,
+          `"${order.customerPhone || (typeof order.customer === 'object' ? order.customer?.phone : '') || ''}"`,
+          `"${(order.deliveryAddress?.address || '').replace(/"/g, '""')}"`,
+          `"${order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-IN') : ''}"`,
+          `"${order.status || ''}"`,
+          `"${order.deliveryBoyStatus || 'Not Assigned'}"`,
+          `"${order.total?.toFixed(2) || '0.00'}"`
         ].join(',')
       )
     ].join('\n');
@@ -120,8 +131,8 @@ export default function AdminOutForDeliveryOrders() {
 
     if (sortField) {
       filtered.sort((a, b) => {
-        let aValue: string | number;
-        let bValue: string | number;
+        let aValue: any = '';
+        let bValue: any = '';
 
         switch (sortField) {
           case 'orderId':
@@ -129,8 +140,8 @@ export default function AdminOutForDeliveryOrders() {
             bValue = b.orderNumber || '';
             break;
           case 'customerDetails':
-            aValue = a.customerName || '';
-            bValue = b.customerName || '';
+            aValue = a.customerName || (typeof a.customer === 'object' ? a.customer?.name : '') || '';
+            bValue = b.customerName || (typeof b.customer === 'object' ? b.customer?.name : '') || '';
             break;
           case 'address':
             aValue = a.deliveryAddress?.address || '';
@@ -141,8 +152,8 @@ export default function AdminOutForDeliveryOrders() {
             bValue = b.estimatedDeliveryDate || '';
             break;
           case 'orderDate':
-            aValue = a.orderDate || '';
-            bValue = b.orderDate || '';
+            aValue = a.orderDate || a.createdAt || '';
+            bValue = b.orderDate || b.createdAt || '';
             break;
           case 'status':
             aValue = a.status || '';
@@ -174,7 +185,16 @@ export default function AdminOutForDeliveryOrders() {
     return filtered;
   }, [orders, sortField, sortDirection]);
 
-  const totalPages = Math.ceil(filteredAndSortedOrders.length / parseInt(entriesPerPage));
+  // Statistics calculation
+  const stats = useMemo(() => {
+    const totalCount = orders.length;
+    const totalAmount = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const assignedCount = orders.filter(o => o.deliveryBoyStatus === 'Assigned').length;
+    const unassignedCount = totalCount - assignedCount;
+    return { totalCount, totalAmount, assignedCount, unassignedCount };
+  }, [orders]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedOrders.length / parseInt(entriesPerPage)));
   const startIndex = (currentPage - 1) * parseInt(entriesPerPage);
   const endIndex = startIndex + parseInt(entriesPerPage);
   const paginatedOrders = filteredAndSortedOrders.slice(startIndex, endIndex);
@@ -187,532 +207,469 @@ export default function AdminOutForDeliveryOrders() {
     setCurrentPage(prev => Math.min(totalPages, prev + 1));
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Payment Pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Received':
-        return 'bg-blue-100 text-blue-800';
-      case 'Processed':
-        return 'bg-purple-100 text-purple-800';
-      case 'Shipped':
-        return 'bg-indigo-100 text-indigo-800';
-      case 'Out For Delivery':
-        return 'bg-orange-100 text-orange-800';
-      case 'Delivered':
-        return 'bg-green-100 text-green-800';
-      case 'Cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-neutral-100 text-neutral-800';
-    }
-  };
-
-  const getDeliveryBoyStatusColor = (status: string) => {
-    switch (status) {
-      case 'Assigned':
-        return 'bg-green-100 text-green-800';
-      case 'Not Assigned':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-neutral-100 text-neutral-800';
-    }
-  };
-
   return (
-    <div className="space-y-4 sm:space-y-6 -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6">
-      {/* Header Section */}
-      <div className="bg-white border-b border-neutral-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-          {/* Page Title */}
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">Orders List</h1>
+    <div className="space-y-6 pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-neutral-500 mb-1">
+            <Link to="/admin" className="hover:text-emerald-600 transition-colors">Dashboard</Link>
+            <span>/</span>
+            <span className="text-neutral-800 font-medium">Orders</span>
+            <span>/</span>
+            <span className="text-orange-600 font-medium">Out For Delivery</span>
+          </div>
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight flex items-center gap-2">
+            Out For Delivery Orders
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">
+              {stats.totalCount}
+            </span>
+          </h1>
+        </div>
 
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-xs sm:text-sm">
-            <Link to="/admin" className="text-blue-600 hover:text-blue-700">
-              Dashboard
-            </Link>
-            <span className="text-neutral-500">/</span>
-            <span className="text-neutral-700">Orders List</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/admin/delivery-boy/manual-assign"
+            className="px-3.5 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all border border-blue-200 flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <polyline points="16 11 18 13 22 9" />
+            </svg>
+            Manual Assign
+          </Link>
+
+          <button
+            onClick={() => {
+              setCurrentPage(1);
+              setLoading(true);
+              getOrdersByStatus('Out for Delivery', { page: 1, limit: parseInt(entriesPerPage) })
+                .then(res => { if (res.success) setOrders(res.data); })
+                .finally(() => setLoading(false));
+            }}
+            className="px-3.5 py-2 text-xs font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200/80 rounded-xl transition-all flex items-center gap-1.5"
+            title="Refresh list"
+          >
+            <svg className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+
+          <button
+            onClick={handleExport}
+            className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Analytics KPI Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold text-lg">
+            🛵
+          </div>
+          <div>
+            <p className="text-xs font-medium text-neutral-500">Out For Delivery</p>
+            <h3 className="text-xl font-extrabold text-neutral-900">{stats.totalCount}</h3>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
+            ₹
+          </div>
+          <div>
+            <p className="text-xs font-medium text-neutral-500">Total Value</p>
+            <h3 className="text-xl font-extrabold text-neutral-900">₹{stats.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-lg">
+            ✅
+          </div>
+          <div>
+            <p className="text-xs font-medium text-neutral-500">Assigned Delivery</p>
+            <h3 className="text-xl font-extrabold text-neutral-900">{stats.assignedCount}</h3>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+            ⏳
+          </div>
+          <div>
+            <p className="text-xs font-medium text-neutral-500">Unassigned</p>
+            <h3 className="text-xl font-extrabold text-neutral-900">{stats.unassignedCount}</h3>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="px-3 sm:px-4 md:px-6">
-        {/* White Card Container */}
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
-          {/* Green Banner */}
-          <div className="bg-green-600 text-white px-4 sm:px-6 py-2 sm:py-3">
-            <h2 className="text-base sm:text-lg font-semibold">View Order List</h2>
+      {/* Filters & Control Card */}
+      <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-sm overflow-hidden">
+        <div className="p-4 bg-neutral-50/80 border-b border-neutral-200/80 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[240px]">
+            <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by Order ID, Customer, Address..."
+              className="w-full pl-10 pr-9 py-2 text-xs sm:text-sm bg-white border border-neutral-300/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-neutral-800 transition-all placeholder:text-neutral-400"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          {/* Filter and Action Bar */}
-          <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-neutral-200 bg-neutral-50">
-            <div className="flex flex-col lg:flex-row flex-wrap items-start lg:items-center gap-3 sm:gap-4">
-              {/* Date Range Filter */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
-                <label className="text-xs sm:text-sm font-medium text-neutral-700 whitespace-nowrap">
-                  From - To Order Date
-                </label>
-                <div className="flex items-center gap-2 bg-white border border-neutral-300 rounded px-2 sm:px-3 py-1.5 sm:py-2 w-full sm:w-auto">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="text-neutral-500 flex-shrink-0"
-                  >
-                    <path
-                      d="M8 2V6M16 2V6M3 10H21M5 4H19C20.1046 4 21 4.89543 21 6V20C21 21.1046 20.1046 22 19 22H5C3.89543 22 3 21.1046 3 20V6C3 4.89543 3.89543 4 5 4Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <input
-                    type="text"
-                    value={dateRange}
-                    onChange={(e) => {
-                      setDateRange(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="flex-1 sm:w-48 text-xs sm:text-sm text-neutral-600 bg-transparent focus:outline-none placeholder:text-neutral-400"
-                    placeholder="MM/DD/YYYY - MM/DD/YYYY"
-                  />
-                  {dateRange && (
-                    <button
-                      onClick={handleClearDate}
-                      className="ml-2 px-2 py-1 text-xs font-medium text-neutral-700 bg-neutral-200 hover:bg-neutral-300 rounded transition-colors flex-shrink-0"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Sellers Filter */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
-                <label className="text-xs sm:text-sm font-medium text-neutral-700 whitespace-nowrap">
-                  Sellers
-                </label>
-                <select
-                  value={seller}
-                  onChange={(e) => {
-                    setSeller(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full sm:w-auto px-3 py-2 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-900 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          {/* Filter Group */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Date Range Input */}
+            <div className="flex items-center gap-2 bg-white border border-neutral-300/80 rounded-xl px-3 py-1.5 text-xs">
+              <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <input
+                type="text"
+                value={dateRange}
+                onChange={(e) => {
+                  setDateRange(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-40 text-neutral-700 bg-transparent focus:outline-none placeholder:text-neutral-400"
+                placeholder="MM/DD/YYYY - MM/DD/YYYY"
+              />
+              {dateRange && (
+                <button
+                  onClick={handleClearDate}
+                  className="text-xs text-red-600 hover:underline font-medium"
                 >
-                  <option>All Sellers</option>
-                  <option>Seller 1</option>
-                  <option>Seller 2</option>
-                  <option>Seller 3</option>
-                </select>
-              </div>
+                  Clear
+                </button>
+              )}
+            </div>
 
-              {/* Status Filter */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
-                <label className="text-xs sm:text-sm font-medium text-neutral-700 whitespace-nowrap">
-                  Status
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full sm:w-auto px-3 py-2 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-900 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option>Out For Delivery</option>
-                  <option>All Status</option>
-                  <option>Payment Pending</option>
-                  <option>Received</option>
-                  <option>Processed</option>
-                  <option>Shipped</option>
-                  <option>Delivered</option>
-                  <option>Cancelled</option>
-                </select>
-              </div>
+            {/* Seller Filter */}
+            <select
+              value={seller}
+              onChange={(e) => {
+                setSeller(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+            >
+              <option value="All Sellers">All Sellers</option>
+            </select>
 
-              {/* Entries Per Page */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
-                <select
-                  value={entriesPerPage}
-                  onChange={(e) => {
-                    setEntriesPerPage(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full sm:w-auto px-3 py-2 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-900 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option>10</option>
-                  <option>25</option>
-                  <option>50</option>
-                  <option>100</option>
-                </select>
-              </div>
+            {/* Status Filter */}
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer font-medium"
+            >
+              <option value="Out For Delivery">Out For Delivery</option>
+            </select>
 
-              {/* Export Button */}
-              <div className="flex items-center gap-2 w-full lg:w-auto lg:ml-auto">
-                <div className="relative">
-                  <button
-                    onClick={handleExport}
-                    className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded text-xs sm:text-sm font-medium transition-colors w-full sm:w-auto"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="flex-shrink-0"
-                    >
-                      <path
-                        d="M21 15V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V15M7 10L12 15M12 15L17 10M12 15V3"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Export
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M6 9L12 15L18 9"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Search Bar */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto lg:flex-1">
-                <label className="text-xs sm:text-sm font-medium text-neutral-700 whitespace-nowrap">
-                  Search:
-                </label>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="flex-1 w-full sm:w-auto px-3 py-2 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-900 bg-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Search by Order ID, Customer, or Amount"
-                />
-              </div>
+            {/* Entries Limit Dropdown */}
+            <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <span>Show</span>
+              <select
+                value={entriesPerPage}
+                onChange={(e) => {
+                  setEntriesPerPage(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-2.5 py-1.5 bg-white border border-neutral-300/80 rounded-xl text-neutral-700 font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
             </div>
           </div>
+        </div>
 
-          {/* Table Section */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-neutral-200">
-              <thead className="bg-neutral-50">
+        {/* Orders Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-100/60 border-b border-neutral-200 text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+                <th
+                  onClick={() => handleSort('orderId')}
+                  className="px-4 py-3.5 cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center gap-1">
+                    Order ID
+                    {sortField === 'orderId' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th
+                  onClick={() => handleSort('customerDetails')}
+                  className="px-4 py-3.5 cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center gap-1">
+                    Customer
+                    {sortField === 'customerDetails' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th
+                  onClick={() => handleSort('address')}
+                  className="px-4 py-3.5 cursor-pointer hover:text-neutral-900 transition-colors max-w-[240px]"
+                >
+                  <div className="flex items-center gap-1">
+                    Delivery Address
+                    {sortField === 'address' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th
+                  onClick={() => handleSort('orderDate')}
+                  className="px-4 py-3.5 cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center gap-1">
+                    Order Date
+                    {sortField === 'orderDate' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th className="px-4 py-3.5 text-center whitespace-nowrap">Payment</th>
+
+                <th
+                  onClick={() => handleSort('status')}
+                  className="px-4 py-3.5 text-center cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Order Status
+                    {sortField === 'status' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th
+                  onClick={() => handleSort('deliveryBoyStatus')}
+                  className="px-4 py-3.5 text-center cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Delivery Status
+                    {sortField === 'deliveryBoyStatus' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th
+                  onClick={() => handleSort('amount')}
+                  className="px-4 py-3.5 text-right cursor-pointer hover:text-neutral-900 transition-colors whitespace-nowrap"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    Amount
+                    {sortField === 'amount' && (<span>{sortDirection === 'asc' ? '↑' : '↓'}</span>)}
+                  </div>
+                </th>
+
+                <th className="px-4 py-3.5 text-center whitespace-nowrap">Action</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-neutral-200/80 text-xs text-neutral-700 bg-white">
+              {loading ? (
                 <tr>
-                  <th
-                    onClick={() => handleSort('orderId')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      O. Id
-                      {sortField === 'orderId' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
+                  <td colSpan={9} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-sm font-medium text-neutral-500">Loading out for delivery orders...</p>
                     </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('customerDetails')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Customer Details
-                      {sortField === 'customerDetails' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('address')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Address
-                      {sortField === 'address' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('deliveryDate')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      D. Date
-                      {sortField === 'deliveryDate' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('orderDate')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      O. Date
-                      {sortField === 'orderDate' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('status')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Status
-                      {sortField === 'status' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('deliveryBoyStatus')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Delivery Boy Assign Status
-                      {sortField === 'deliveryBoyStatus' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('amount')}
-                    className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:bg-neutral-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Amount
-                      {sortField === 'amount' && (
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          {sortDirection === 'asc' ? (
-                            <path d="M7 14L12 9L17 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          ) : (
-                            <path d="M17 10L12 15L7 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Action
-                  </th>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-neutral-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 sm:px-6 py-8 text-center text-sm text-neutral-500">
-                      Loading orders...
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 sm:px-6 py-8 text-center text-sm text-red-600">
-                      {error}
-                    </td>
-                  </tr>
-                ) : paginatedOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 sm:px-6 py-8 text-center text-sm text-neutral-500">
-                      No data available in table
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedOrders.map((order) => (
-                    <tr key={order._id} className="hover:bg-neutral-50">
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-900">{order.orderNumber}</td>
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">
-                        {order.customerName || (typeof order.customer === 'object' ? order.customer.name : '')}
+              ) : error ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center text-red-600">
+                    <p className="font-semibold">{error}</p>
+                  </td>
+                </tr>
+              ) : paginatedOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2 text-neutral-400">
+                      <span className="text-4xl">🛵</span>
+                      <p className="text-base font-semibold text-neutral-700">No Out For Delivery Orders Found</p>
+                      <p className="text-xs text-neutral-500">No out for delivery orders match your active filter parameters.</p>
+                      {(searchQuery || dateRange) && (
+                        <button
+                          onClick={() => { setSearchQuery(''); setDateRange(''); }}
+                          className="mt-2 text-xs font-semibold text-emerald-600 hover:underline"
+                        >
+                          Clear Filters
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const custName = order.customerName || (typeof order.customer === 'object' ? order.customer?.name : '') || 'Guest';
+                  const custPhone = order.customerPhone || (typeof order.customer === 'object' ? order.customer?.phone : '');
+                  const fullAddress = order.deliveryAddress?.address || 'No address provided';
+
+                  return (
+                    <tr key={order._id} className="hover:bg-neutral-50/80 transition-colors group">
+                      
+                      {/* Order ID & Copy */}
+                      <td className="px-4 py-3.5 font-mono font-semibold text-neutral-900 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            to={`/admin/orders/${order._id}`}
+                            className="text-emerald-700 hover:text-emerald-800 hover:underline font-mono"
+                          >
+                            {order.orderNumber}
+                          </Link>
+                          <button
+                            onClick={(e) => handleCopyId(order.orderNumber, e)}
+                            className="text-neutral-400 hover:text-neutral-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy Order ID"
+                          >
+                            {copiedId === order.orderNumber ? '✓' : '📋'}
+                          </button>
+                        </div>
                       </td>
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">
-                        {order.deliveryAddress?.address || '-'}
+
+                      {/* Customer Info */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="font-medium text-neutral-900">{custName}</div>
+                        {custPhone && <div className="text-[11px] text-neutral-400 font-mono">{custPhone}</div>}
                       </td>
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">
-                        {order.status === 'Delivered' && order.estimatedDeliveryDate ? new Date(order.estimatedDeliveryDate).toLocaleDateString() : '-'}
+
+                      {/* Compact Address with Truncation & Hover Tooltip */}
+                      <td className="px-4 py-3.5 max-w-[240px]" title={fullAddress}>
+                        <p className="line-clamp-2 text-neutral-600 leading-snug">
+                          {fullAddress}
+                        </p>
                       </td>
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">
-                        {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : '-'}
+
+                      {/* Order Date */}
+                      <td className="px-4 py-3.5 text-neutral-600 whitespace-nowrap font-medium">
+                        {order.orderDate
+                          ? new Date(order.orderDate).toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            })
+                          : '-'}
                       </td>
-                      <td className="px-4 sm:px-6 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                          {order.status}
+
+                      {/* Payment Method & Status */}
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="font-semibold text-xs text-neutral-800">
+                            {order.paymentMethod || 'COD'}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            order.paymentStatus === 'Refunded'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : order.paymentStatus === 'Paid'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {order.paymentStatus || 'Pending'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Order Status Badge */}
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                          Out For Delivery
                         </span>
                       </td>
-                      <td className="px-4 sm:px-6 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDeliveryBoyStatusColor(order.deliveryBoyStatus || 'Not Assigned')}`}>
+
+                      {/* Delivery Boy Assign Status */}
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          order.deliveryBoyStatus === 'Assigned'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-600 border border-red-100'
+                        }`}>
                           {order.deliveryBoyStatus || 'Not Assigned'}
                         </span>
                       </td>
-                      <td className="px-4 sm:px-6 py-3 text-sm text-neutral-900 font-medium">₹{order.total?.toFixed(2) || '0.00'}</td>
-                      <td className="px-4 sm:px-6 py-3">
+
+                      {/* Amount */}
+                      <td className="px-4 py-3.5 text-right font-extrabold text-neutral-900 whitespace-nowrap text-sm">
+                        ₹{order.total?.toFixed(2) || '0.00'}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
                         <Link to={`/admin/orders/${order._id}`}>
-                          <button className="bg-teal-600 hover:bg-teal-700 text-white p-2 rounded transition-colors" aria-label="View order">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          <button
+                            className="p-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-all border border-emerald-200"
+                            title="View Order Details"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
                           </button>
                         </Link>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-4 py-3.5 bg-neutral-50/80 border-t border-neutral-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-600">
+          <div>
+            Showing <span className="font-semibold text-neutral-900">{filteredAndSortedOrders.length === 0 ? 0 : startIndex + 1}</span> to <span className="font-semibold text-neutral-900">{Math.min(endIndex, filteredAndSortedOrders.length)}</span> of <span className="font-semibold text-neutral-900">{filteredAndSortedOrders.length}</span> entries
           </div>
 
-          {/* Pagination Footer */}
-          <div className="px-4 sm:px-6 py-3 bg-neutral-50 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="text-xs sm:text-sm text-neutral-700">
-              Showing {filteredAndSortedOrders.length === 0 ? 0 : startIndex + 1} to {Math.min(endIndex, filteredAndSortedOrders.length)} of {filteredAndSortedOrders.length} entries
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handlePreviousPage}
-                disabled={currentPage === 1}
-                className="px-2 py-1 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                aria-label="Previous page"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <button
-                onClick={handleNextPage}
-                disabled={currentPage === totalPages || totalPages === 0}
-                className="px-2 py-1 border border-neutral-300 rounded text-xs sm:text-sm text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                aria-label="Next page"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handlePreviousPage}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 border border-neutral-300/80 rounded-xl text-neutral-700 bg-white hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-medium"
+            >
+              Previous
+            </button>
+            <span className="px-2 font-semibold text-neutral-800">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="px-3 py-1.5 border border-neutral-300/80 rounded-xl text-neutral-700 bg-white hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-medium"
+            >
+              Next
+            </button>
           </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="text-center py-4 text-xs sm:text-sm text-neutral-600">
-        Copyright © 2025. Developed By{' '}
-        <Link to="/" className="text-blue-600 hover:text-blue-700">
-          Olovely Total Suvidha
-        </Link>
       </div>
     </div>
   );
 }
-
-

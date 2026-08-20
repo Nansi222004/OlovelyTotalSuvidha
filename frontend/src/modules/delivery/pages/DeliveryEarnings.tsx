@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import DeliveryHeader from "../components/DeliveryHeader";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
 import { useToast } from "../../../context/ToastContext";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 import {
   getDashboardStats,
   getEarningsHistory,
@@ -19,6 +20,7 @@ export default function DeliveryEarnings() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<string>("");
   const [error, setError] = useState("");
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,27 +64,29 @@ export default function DeliveryEarnings() {
     0,
   );
 
-  const handleWithdraw = async () => {
+  const handleWithdrawClick = () => {
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount <= 0) {
+      showToast("Please enter a valid amount", "error");
+      return;
+    }
+
+    if (stats?.walletBalance !== undefined && amount > stats.walletBalance) {
+      showToast("Withdrawal amount cannot exceed available balance", "error");
+      return;
+    }
+
+    setShowWithdrawModal(true);
+  };
+
+  const confirmWithdraw = async () => {
     try {
       const amount = parseFloat(withdrawAmount);
-      if (!amount || amount <= 0) {
-        showToast("Please enter a valid amount", "error");
-        return;
-      }
-
-      if (stats?.walletBalance !== undefined && amount > stats.walletBalance) {
-        showToast("Withdrawal amount cannot exceed available balance", "error");
-        return;
-      }
-
-      if (!window.confirm(`Are you sure you want to withdraw ₹${amount}?`)) {
-        return;
-      }
-
       setIsWithdrawing(true);
       await requestWithdrawal(amount);
       showToast("Withdrawal request submitted successfully", "success");
       setWithdrawAmount("");
+      setShowWithdrawModal(false);
       // Refresh data
       const statsData = await getDashboardStats();
       setStats(statsData);
@@ -247,13 +251,25 @@ export default function DeliveryEarnings() {
             />
           </div>
           <button
-            onClick={handleWithdraw}
+            onClick={handleWithdrawClick}
             disabled={isWithdrawing || !withdrawAmount}
             className="w-full bg-orange-500 text-white rounded-xl py-3 font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {isWithdrawing ? "Processing..." : "Withdraw Amount"}
           </button>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showWithdrawModal}
+        title="Withdraw Funds"
+        message={`Are you sure you want to withdraw ₹${withdrawAmount}?`}
+        confirmText="Confirm Withdrawal"
+        variant="primary"
+        isLoading={isWithdrawing}
+        onConfirm={confirmWithdraw}
+        onCancel={() => setShowWithdrawModal(false)}
+      />
+
       <DeliveryBottomNav />
     </div>
   );

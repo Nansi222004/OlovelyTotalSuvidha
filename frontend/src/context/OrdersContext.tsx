@@ -177,9 +177,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ...response.data,
           id: response.data._id || response.data.id,
         };
-        // Optionally update the orders list
+        // Update the orders list with fresh data from backend
         setOrders((prev) => {
-          if (prev.find((o) => o.id === mappedOrder.id)) return prev;
+          const exists = prev.find((o) => o.id === mappedOrder.id);
+          if (exists) {
+            return prev.map((o) => (o.id === mappedOrder.id ? mappedOrder : o));
+          }
           return [...prev, mappedOrder];
         });
         return mappedOrder;

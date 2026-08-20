@@ -326,14 +326,18 @@ export const updateOrderStatus = asyncHandler(
       "Returned",
     ];
 
-    if (!validStatuses.includes(status)) {
+    const matchedStatus = validStatuses.find(
+      (s) => s.toLowerCase() === status.toLowerCase()
+    );
+
+    if (!matchedStatus) {
       return res.status(400).json({
         success: false,
         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
       });
     }
 
-    const updateData: any = { status };
+    const updateData: any = { status: matchedStatus };
     if (adminNotes) updateData.adminNotes = adminNotes;
 
     if (status === "Delivered") {
@@ -341,6 +345,36 @@ export const updateOrderStatus = asyncHandler(
     }
 
     if (status === "Cancelled") {
+      const existingOrder = await Order.findById(id);
+      if (!existingOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      if (["Delivered", "Cancelled", "Returned"].includes(existingOrder.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Order cannot be cancelled as it is already ${existingOrder.status}`,
+        });
+      }
+
+      const { handleOnlineOrderCancellation } = await import(
+        "../../../services/refundSettlementService"
+      );
+      const refundRes = await handleOnlineOrderCancellation(
+        existingOrder._id.toString(),
+        adminNotes || "Order cancelled by Admin"
+      );
+
+      if (!refundRes.success) {
+        return res.status(400).json({
+          success: false,
+          message: `Admin cancellation failed: ${refundRes.message}`,
+        });
+      }
+
       updateData.cancelledAt = new Date();
       updateData.cancelledBy = req.user?.userId;
     }
@@ -512,7 +546,11 @@ export const getOrdersByStatus = asyncHandler(
       "Returned",
     ];
 
-    if (!validStatuses.includes(status)) {
+    const matchedStatus = validStatuses.find(
+      (s) => s.toLowerCase() === status.toLowerCase()
+    );
+
+    if (!matchedStatus) {
       return res.status(400).json({
         success: false,
         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
@@ -521,15 +559,20 @@ export const getOrdersByStatus = asyncHandler(
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
+    // Support both 'Out for Delivery' and 'Out For Delivery' in query
+    const statusQuery = matchedStatus === "Out for Delivery"
+      ? { $in: ["Out for Delivery", "Out For Delivery"] }
+      : matchedStatus;
+
     const [orders, total] = await Promise.all([
-      Order.find({ status })
+      Order.find({ status: statusQuery })
         .populate("customer", "name email phone")
         .populate("deliveryBoy", "name mobile")
         .populate("items")
         .sort({ orderDate: -1 })
         .skip(skip)
         .limit(parseInt(limit as string)),
-      Order.countDocuments({ status }),
+      Order.countDocuments({ status: statusQuery }),
     ]);
 
     return res.status(200).json({

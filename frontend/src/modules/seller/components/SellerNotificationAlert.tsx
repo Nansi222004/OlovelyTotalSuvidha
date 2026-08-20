@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SellerNotification } from '../hooks/useSellerSocket';
 import { updateOrderStatus } from '../../../services/api/orderService';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 
 interface SellerNotificationAlertProps {
   notification: SellerNotification | null;
@@ -10,11 +12,13 @@ interface SellerNotificationAlertProps {
 }
 
 const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notification, onClose, onResolved }) => {
+  const { showToast } = useToast();
   const [volume, setVolume] = useState(0.8);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
   const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin' | 'Auto'>('Admin');
 
   const handleStatusUpdate = async (status: string, pref?: 'Self' | 'Admin' | 'Auto') => {
@@ -38,7 +42,7 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      alert('Failed to update order status');
+      showToast('Failed to update order status', 'error');
     } finally {
       setLoading(false);
     }
@@ -205,11 +209,7 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
                 {loading ? 'Please wait...' : 'Accept Order'}
               </button>
               <button
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to reject this order?')) {
-                    handleStatusUpdate('Rejected');
-                  }
-                }}
+                onClick={() => setShowRejectModal(true)}
                 disabled={loading}
                 className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg bg-red-600 hover:bg-red-700 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -309,6 +309,20 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={showRejectModal}
+        title="Reject Order"
+        message="Are you sure you want to reject this order?"
+        confirmText="Reject Order"
+        variant="danger"
+        isLoading={loading}
+        onConfirm={async () => {
+          setShowRejectModal(false);
+          await handleStatusUpdate('Rejected');
+        }}
+        onCancel={() => setShowRejectModal(false)}
+      />
     </div>
   );
 };

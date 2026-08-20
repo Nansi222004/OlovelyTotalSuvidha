@@ -9,6 +9,7 @@ import {
 } from "../../../services/api/admin/adminHomeSectionService";
 import { getCategories, getSubcategories, type Category, type SubCategory } from "../../../services/api/categoryService";
 import { getHeaderCategoriesAdmin, type HeaderCategory } from "../../../services/api/headerCategoryService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 const DISPLAY_TYPE_OPTIONS = [
     { value: "subcategories", label: "Subcategories" },
@@ -45,6 +46,7 @@ export default function AdminHomeSection() {
     const [loading, setLoading] = useState(false);
     const [loadingSections, setLoadingSections] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -291,22 +293,25 @@ export default function AdminHomeSection() {
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this section?")) {
-            return;
-        }
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        const id = deleteId;
 
         try {
             const response = await deleteHomeSection(id);
             if (response.success) {
                 setSuccess("Section deleted successfully!");
+                setDeleteId(null);
                 fetchSections();
                 if (editingId === id) {
                     resetForm();
                 }
+            } else {
+                setDeleteId(null);
             }
         } catch (err: any) {
             setError(err.response?.data?.message || "Failed to delete section");
+            setDeleteId(null);
         }
     };
 
@@ -790,7 +795,7 @@ export default function AdminHomeSection() {
                                                             </svg>
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDelete(section._id)}
+                                                            onClick={() => setDeleteId(section._id)}
                                                             className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
                                                             title="Delete"
                                                         >
@@ -893,7 +898,16 @@ export default function AdminHomeSection() {
                     Olovely Total Suvidha
                 </a>
             </footer>
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                title="Delete Home Section"
+                message="Are you sure you want to delete this section?"
+                confirmText="Delete"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div >
     );
 }
-

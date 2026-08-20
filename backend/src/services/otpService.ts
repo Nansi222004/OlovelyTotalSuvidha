@@ -614,7 +614,9 @@ export async function sendSmsOtp(
     // Real mode - deliver via configured provider; rollback saved OTP if send fails
     const normalizedMobile10 = normalizeMobileTo10(mobileStr);
     await saveOtpToDb(mobileStr, otp, userType);
-    console.log(`🔑 [SMS DEBUG] Generated OTP for ${mobileStr}: ${otp}`);
+    if (process.env.NODE_ENV !== "production" || DEBUG_SMS) {
+      console.log(`🔑 [SMS DEBUG] Generated OTP for ${mobileStr}: ${otp}`);
+    }
     try {
       await deliverOtp(mobileStr, otp);
     } catch (sendErr) {

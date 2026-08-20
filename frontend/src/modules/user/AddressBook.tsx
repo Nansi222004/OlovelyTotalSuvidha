@@ -6,6 +6,8 @@ import {
   getAddresses,
   updateAddress,
 } from "../../services/api/customerAddressService";
+import { useToast } from "../../context/ToastContext";
+import ConfirmationModal from "../../components/ConfirmationModal";
 
 const iconStyle = "w-5 h-5 text-amber-600 flex-shrink-0";
 
@@ -22,10 +24,12 @@ function buildAddressLine(address: Address) {
 
 export default function AddressBook() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [addressToDelete, setAddressToDelete] = useState<string | null>(null);
 
   const loadAddresses = async () => {
     try {
@@ -64,21 +68,27 @@ export default function AddressBook() {
       }
     } else if (navigator.clipboard) {
       await navigator.clipboard.writeText(text);
-      alert("Address copied to clipboard");
+      showToast("Address copied to clipboard", "info");
     }
   };
 
-  const handleDelete = async (id?: string) => {
+  const handleDeleteClick = (id?: string) => {
     if (!id) return;
-    if (!confirm("Remove this address?")) return;
+    setAddressToDelete(id);
+  };
+
+  const confirmDeleteAddress = async () => {
+    if (!addressToDelete) return;
     try {
-      setBusyId(id);
-      await deleteAddress(id);
-      setAddresses((prev) => prev.filter((a) => a._id !== id));
+      setBusyId(addressToDelete);
+      await deleteAddress(addressToDelete);
+      setAddresses((prev) => prev.filter((a) => a._id !== addressToDelete));
+      showToast("Address removed successfully", "success");
+      setAddressToDelete(null);
     } catch (err: any) {
-      setError(
-        err.response?.data?.message || err.message || "Failed to delete address"
-      );
+      const msg = err.response?.data?.message || err.message || "Failed to delete address";
+      setError(msg);
+      showToast(msg, "error");
     } finally {
       setBusyId(null);
     }
@@ -254,7 +264,7 @@ export default function AddressBook() {
                           {addr.isDefault ? "Default" : "Set default"}
                         </button>
                         <button
-                          onClick={() => handleDelete(addr._id)}
+                          onClick={() => handleDeleteClick(addr._id)}
                           className="flex items-center gap-1 text-sm font-semibold text-red-600 hover:text-red-700 disabled:text-neutral-400"
                           disabled={isBusy}
                         >
@@ -283,6 +293,17 @@ export default function AddressBook() {
           </div>
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={!!addressToDelete}
+        title="Remove Address"
+        message="Are you sure you want to remove this address?"
+        confirmText="Remove"
+        variant="danger"
+        isLoading={busyId === addressToDelete}
+        onConfirm={confirmDeleteAddress}
+        onCancel={() => setAddressToDelete(null)}
+      />
     </div>
   );
 }
