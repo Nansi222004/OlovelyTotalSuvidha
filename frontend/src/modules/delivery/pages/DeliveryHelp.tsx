@@ -71,15 +71,36 @@ export default function DeliveryHelp() {
             <h3 className="text-neutral-900 font-semibold">Contact Us</h3>
           </div>
           <div className="divide-y divide-neutral-200">
-            {contacts.map((option, index) => (
-              <div key={index} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-neutral-900 text-sm font-medium mb-1">{option.label}</p>
-                  <p className="text-neutral-500 text-xs">{option.value}</p>
+            {contacts.map((option, index) => {
+              const isPhone = option.icon === "phone" || option.label.toLowerCase().includes("call");
+              const isEmail = option.icon === "email" || option.label.toLowerCase().includes("email");
+              const href = isPhone
+                ? `tel:${option.value.replace(/\s+/g, "")}`
+                : isEmail
+                ? `mailto:${option.value}`
+                : undefined;
+
+              return href ? (
+                <a
+                  key={index}
+                  href={href}
+                  className="p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors block">
+                  <div>
+                    <p className="text-neutral-900 text-sm font-medium mb-1">{option.label}</p>
+                    <p className="text-orange-600 text-xs font-semibold hover:underline">{option.value}</p>
+                  </div>
+                  <div className="text-2xl">{getIcon(option.icon)}</div>
+                </a>
+              ) : (
+                <div key={index} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-neutral-900 text-sm font-medium mb-1">{option.label}</p>
+                    <p className="text-neutral-500 text-xs">{option.value}</p>
+                  </div>
+                  <div className="text-2xl">{getIcon(option.icon)}</div>
                 </div>
-                <div className="text-2xl">{getIcon(option.icon)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

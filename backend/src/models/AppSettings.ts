@@ -119,6 +119,20 @@ export interface IAppSettings extends Document {
   maintenanceMode: boolean;
   maintenanceMessage?: string;
 
+  // About Us Content
+  aboutUs?: {
+    missionText?: string;
+    whatWeDoText?: string;
+    stats?: Array<{
+      label: string;
+      value: string;
+    }>;
+    whyChooseUs?: Array<{
+      title: string;
+      description: string;
+    }>;
+  };
+
   // Updated By
   updatedBy?: mongoose.Types.ObjectId;
 
@@ -421,6 +435,24 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       trim: true,
     },
 
+    // About Us Content
+    aboutUs: {
+      missionText: { type: String, trim: true },
+      whatWeDoText: { type: String, trim: true },
+      stats: [
+        {
+          label: { type: String, trim: true },
+          value: { type: String, trim: true },
+        },
+      ],
+      whyChooseUs: [
+        {
+          title: { type: String, trim: true },
+          description: { type: String, trim: true },
+        },
+      ],
+    },
+
     // Updated By
     updatedBy: {
       type: Schema.Types.ObjectId,
@@ -450,7 +482,11 @@ AppSettingsSchema.statics.getSettings = async function () {
 // Indexes
 AppSettingsSchema.index({ appName: 1 });
 
-const AppSettings = (mongoose.models.AppSettings as IAppSettingsModel) || mongoose.model<IAppSettings, IAppSettingsModel>(
+if (mongoose.models.AppSettings) {
+  delete mongoose.models.AppSettings;
+}
+
+const AppSettings = mongoose.model<IAppSettings, IAppSettingsModel>(
   "AppSettings",
   AppSettingsSchema,
 );

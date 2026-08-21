@@ -109,6 +109,18 @@ export interface AppSettings {
   };
   maintenanceMode: boolean;
   maintenanceMessage?: string;
+  aboutUs?: {
+    missionText?: string;
+    whatWeDoText?: string;
+    stats?: Array<{
+      label: string;
+      value: string;
+    }>;
+    whyChooseUs?: Array<{
+      title: string;
+      description: string;
+    }>;
+  };
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;

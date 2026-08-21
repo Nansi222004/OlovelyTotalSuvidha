@@ -29,6 +29,8 @@ export default function AdminTaxes() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalTaxes, setTotalTaxes] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Fetch taxes on component mount
   useEffect(() => {
@@ -51,6 +53,10 @@ export default function AdminTaxes() {
 
         if (response.success) {
           setTaxes(response.data);
+          if (response.pagination) {
+            setTotalTaxes(response.pagination.total);
+            setTotalPages(response.pagination.pages || 1);
+          }
         } else {
           setError("Failed to load taxes");
         }
@@ -79,8 +85,6 @@ export default function AdminTaxes() {
   // Note: Filtering is done server-side, so we just use the taxes as is
   const displayedTaxes = taxes;
 
-  // For pagination display (simplified - in real app, this would come from API)
-  const totalPages = Math.ceil(displayedTaxes.length / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
 
@@ -501,15 +505,6 @@ export default function AdminTaxes() {
                       </tr>
                     ))
                   )}
-                  {displayedTaxes.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="p-8 text-center text-neutral-400 border border-neutral-200">
-                        No taxes found.
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -517,9 +512,9 @@ export default function AdminTaxes() {
             {/* Pagination Footer */}
             <div className="px-4 sm:px-6 py-3 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
               <div className="text-xs sm:text-sm text-neutral-700">
-                Showing {startIndex + 1} to{" "}
-                {Math.min(endIndex, displayedTaxes.length)} of{" "}
-                {displayedTaxes.length} entries
+                Showing {totalTaxes > 0 ? startIndex + 1 : 0} to{" "}
+                {Math.min(currentPage * rowsPerPage, totalTaxes)} of{" "}
+                {totalTaxes} entries
               </div>
               <div className="flex items-center gap-2">
                 <button

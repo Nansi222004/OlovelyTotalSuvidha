@@ -55,10 +55,9 @@ export default function AboutUs() {
                         </svg>
                         Our Mission
                     </h3>
-                    <p className="text-sm text-neutral-700 leading-relaxed">
-                        At Olovely, we're committed to revolutionizing the way you shop and receive your products.
-                        Our mission is to provide lightning-fast delivery services while maintaining the highest
-                        standards of quality and customer satisfaction.
+                    <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-wrap">
+                        {appSettings?.aboutUs?.missionText ||
+                            "At Olovely, we're committed to revolutionizing the way you shop and receive your products. Our mission is to provide lightning-fast delivery services while maintaining the highest standards of quality and customer satisfaction."}
                     </p>
                 </div>
 
@@ -72,28 +71,25 @@ export default function AboutUs() {
                         </svg>
                         What We Do
                     </h3>
-                    <p className="text-sm text-neutral-700 leading-relaxed mb-4">
-                        Olovely Total Suvidha is a comprehensive e-commerce platform that connects customers with a wide range
-                        of products across multiple categories including groceries, fashion, electronics, pharmacy,
-                        and much more.
+                    <p className="text-sm text-neutral-700 leading-relaxed mb-4 whitespace-pre-wrap">
+                        {appSettings?.aboutUs?.whatWeDoText ||
+                            "Olovely Total Suvidha is a comprehensive e-commerce platform that connects customers with a wide range of products across multiple categories including groceries, fashion, electronics, pharmacy, and much more."}
                     </p>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
-                            <div className="text-2xl font-bold text-teal-600 mb-1">10K+</div>
-                            <div className="text-xs text-neutral-700">Products</div>
-                        </div>
-                        <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
-                            <div className="text-2xl font-bold text-teal-600 mb-1">500+</div>
-                            <div className="text-xs text-neutral-700">Sellers</div>
-                        </div>
-                        <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
-                            <div className="text-2xl font-bold text-teal-600 mb-1">50K+</div>
-                            <div className="text-xs text-neutral-700">Happy Customers</div>
-                        </div>
-                        <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
-                            <div className="text-2xl font-bold text-teal-600 mb-1">24/7</div>
-                            <div className="text-xs text-neutral-700">Support</div>
-                        </div>
+                        {(appSettings?.aboutUs?.stats && appSettings.aboutUs.stats.length > 0
+                            ? appSettings.aboutUs.stats
+                            : [
+                                { value: "10K+", label: "Products" },
+                                { value: "500+", label: "Sellers" },
+                                { value: "50K+", label: "Happy Customers" },
+                                { value: "24/7", label: "Support" },
+                            ]
+                        ).map((stat, idx) => (
+                            <div key={idx} className="bg-teal-50 rounded-lg p-3 border border-teal-100">
+                                <div className="text-2xl font-bold text-teal-600 mb-1">{stat.value}</div>
+                                <div className="text-xs text-neutral-700">{stat.label}</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
@@ -107,50 +103,28 @@ export default function AboutUs() {
                         Why Choose Us
                     </h3>
                     <div className="space-y-3">
-                        <div className="flex gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600">
-                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" />
-                                </svg>
+                        {(appSettings?.aboutUs?.whyChooseUs && appSettings.aboutUs.whyChooseUs.length > 0
+                            ? appSettings.aboutUs.whyChooseUs
+                            : [
+                                { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                                { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                                { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                                { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+                            ]
+                        ).map((item, idx) => (
+                            <div key={idx} className="flex gap-3">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                        <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-semibold text-neutral-900 mb-1">{item.title}</h4>
+                                    <p className="text-xs text-neutral-600">{item.description}</p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="text-sm font-semibold text-neutral-900 mb-1">Fast Delivery</h4>
-                                <p className="text-xs text-neutral-600">Get your orders delivered at lightning speed with our efficient delivery network.</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600">
-                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-semibold text-neutral-900 mb-1">Secure Payments</h4>
-                                <p className="text-xs text-neutral-600">Your transactions are protected with industry-standard encryption and security.</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600">
-                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-semibold text-neutral-900 mb-1">Quality Products</h4>
-                                <p className="text-xs text-neutral-600">We partner with trusted sellers to ensure you receive only the best quality products.</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-teal-600">
-                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-semibold text-neutral-900 mb-1">24/7 Support</h4>
-                                <p className="text-xs text-neutral-600">Our dedicated support team is always ready to help you with any queries.</p>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
 

@@ -119,7 +119,7 @@ export default function DeliveryAbout() {
         </div>
 
         {/* App Details */}
-        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-4">
           <div className="p-4 border-b border-neutral-200">
             <h3 className="text-neutral-900 font-semibold">App Information</h3>
           </div>
@@ -129,19 +129,36 @@ export default function DeliveryAbout() {
               <p className="text-neutral-900 text-sm font-medium">1.0.0</p>
             </div>
             <div className="p-4 flex justify-between items-center">
-              <p className="text-neutral-500 text-sm">Build</p>
-              <p className="text-neutral-900 text-sm font-medium">2025.12.05</p>
-            </div>
-            <div className="p-4 flex justify-between items-center">
               <p className="text-neutral-500 text-sm">Platform</p>
-              <p className="text-neutral-900 text-sm font-medium">Mobile</p>
+              <p className="text-neutral-900 text-sm font-medium">Web / PWA</p>
             </div>
+          </div>
+        </div>
+
+        {/* Legal Policies */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="p-4 border-b border-neutral-200">
+            <h3 className="text-neutral-900 font-semibold">Legal & Policies</h3>
+          </div>
+          <div className="divide-y divide-neutral-200">
+            <button
+              onClick={() => navigate('/delivery/privacy-policy')}
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors text-left">
+              <span className="text-neutral-900 text-sm font-medium">Privacy Policy</span>
+              <span className="text-orange-600 text-xs font-semibold">View &rarr;</span>
+            </button>
+            <button
+              onClick={() => navigate('/delivery/terms-and-conditions')}
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors text-left">
+              <span className="text-neutral-900 text-sm font-medium">Terms & Conditions</span>
+              <span className="text-orange-600 text-xs font-semibold">View &rarr;</span>
+            </button>
           </div>
         </div>
 
         {/* Copyright */}
         <div className="mt-6 text-center">
-          <p className="text-neutral-400 text-xs">© 2025 Olovely Total Suvidha. All rights reserved.</p>
+          <p className="text-neutral-400 text-xs">© 2026 Olovely Total Suvidha. All rights reserved.</p>
         </div>
       </div>
       <DeliveryBottomNav />

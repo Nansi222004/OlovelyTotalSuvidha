@@ -1100,7 +1100,7 @@ export const approveProductRequest = asyncHandler(
 
     const updateData: any = {
       status,
-      approvedBy: req.user?.userId,
+      approvedBy: (req as any).user?.userId,
       approvedAt: new Date(),
     };
 

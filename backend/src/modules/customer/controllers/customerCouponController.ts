@@ -88,7 +88,7 @@ export const validateCoupon = async (req: Request, res: Response) => {
                 discountAmount = coupon.maximumDiscount;
             }
         } else {
-            discountAmount = coupon.discountValue;
+            discountAmount = Math.min(coupon.discountValue, orderTotal);
         }
 
         return res.status(200).json({

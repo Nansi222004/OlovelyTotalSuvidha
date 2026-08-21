@@ -12,7 +12,7 @@ import { getCommissionSummary } from '../../../services/commissionService';
  */
 export const getBalance = async (req: Request, res: Response) => {
     try {
-        const sellerId = req.user!.userId;
+        const sellerId = (req as any).user!.userId;
         
         // Auto-release expired escrows
         const { releaseExpiredEscrow } = await import('../../../services/commissionService');
@@ -42,7 +42,7 @@ export const getBalance = async (req: Request, res: Response) => {
  */
 export const getTransactions = async (req: Request, res: Response) => {
     try {
-        const sellerId = req.user!.userId;
+        const sellerId = (req as any).user!.userId;
         const { page = 1, limit = 20 } = req.query;
 
         const result = await getWalletTransactions(
@@ -71,7 +71,7 @@ export const getTransactions = async (req: Request, res: Response) => {
  */
 export const requestWithdrawal = async (req: Request, res: Response) => {
     try {
-        const sellerId = req.user!.userId;
+        const sellerId = (req as any).user!.userId;
         const { amount, paymentMethod } = req.body;
 
         if (!amount || amount <= 0) {
@@ -114,7 +114,7 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
  */
 export const getWithdrawals = async (req: Request, res: Response) => {
     try {
-        const sellerId = req.user!.userId;
+        const sellerId = (req as any).user!.userId;
         const { status } = req.query;
 
         const result = await getWithdrawalRequests(
@@ -142,7 +142,7 @@ export const getWithdrawals = async (req: Request, res: Response) => {
  */
 export const getCommissions = async (req: Request, res: Response) => {
     try {
-        const sellerId = req.user!.userId;
+        const sellerId = (req as any).user!.userId;
 
         const result = await getCommissionSummary(sellerId, 'SELLER');
 

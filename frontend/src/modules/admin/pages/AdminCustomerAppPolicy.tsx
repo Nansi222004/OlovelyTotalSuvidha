@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import { getPolicies, createPolicy, updatePolicy, Policy } from '../../../services/api/admin/adminContentService';
 
 export default function AdminCustomerAppPolicy() {
   const { showToast } = useToast();
+  const [policyId, setPolicyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [policyContent, setPolicyContent] = useState(`Welcome to Olovely Total Suvidha - 10 Minute App!
 
 By using our customer app, you agree to the following terms and conditions:
@@ -48,10 +52,66 @@ For any questions or concerns, please contact our customer support team.
 
 Last updated: December 2025`);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchPolicy = async () => {
+      try {
+        setLoading(true);
+        const response = await getPolicies({ type: 'customer' });
+        if (response.success && response.data && response.data.length > 0) {
+          const fetchedPolicy: Policy = response.data[0];
+          setPolicyId(fetchedPolicy._id);
+          setPolicyContent(fetchedPolicy.content);
+        }
+      } catch (err) {
+        console.error("Failed to fetch customer policy:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPolicy();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    showToast('Customer App Policy updated successfully!', 'success');
+    if (!policyContent.trim()) {
+      showToast('Policy text cannot be empty', 'error');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      if (policyId) {
+        const response = await updatePolicy(policyId, {
+          title: "Customer App Policy",
+          content: policyContent.trim(),
+          version: "1.0",
+          isActive: true,
+        });
+        if (response.success) {
+          showToast('Customer App Policy updated successfully!', 'success');
+        } else {
+          showToast(response.message || 'Failed to update policy', 'error');
+        }
+      } else {
+        const response = await createPolicy({
+          type: "customer",
+          title: "Customer App Policy",
+          content: policyContent.trim(),
+          version: "1.0",
+          isActive: true,
+        });
+        if (response.success && response.data) {
+          setPolicyId(response.data._id);
+          showToast('Customer App Policy created successfully!', 'success');
+        } else {
+          showToast(response.message || 'Failed to create policy', 'error');
+        }
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error updating policy', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

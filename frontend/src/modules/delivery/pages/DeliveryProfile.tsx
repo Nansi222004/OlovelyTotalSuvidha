@@ -26,6 +26,7 @@ export default function DeliveryProfile() {
     bankName: '',
     accountNumber: '',
     ifscCode: '',
+    upiId: '',
   });
 
   // Fetch profile data on mount
@@ -47,6 +48,7 @@ export default function DeliveryProfile() {
           bankName: data.bankName || '',
           accountNumber: data.accountNumber || '',
           ifscCode: data.ifscCode || '',
+          upiId: data.upiId || '',
         });
         setUserName(data.name);
       } catch (error) {
@@ -77,6 +79,7 @@ export default function DeliveryProfile() {
         bankName: profileData.bankName,
         accountNumber: profileData.accountNumber,
         ifscCode: profileData.ifscCode,
+        upiId: profileData.upiId,
       });
       setUserName(profileData.name);
       setIsEditing(false);
@@ -284,6 +287,30 @@ export default function DeliveryProfile() {
                 <p className="text-neutral-900 text-sm">{profileData.ifscCode || 'Not Set'}</p>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* UPI Details */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mt-4">
+          <div className="p-4 border-b border-neutral-200">
+            <h3 className="text-neutral-900 font-semibold">UPI Details</h3>
+          </div>
+          <div className="p-4">
+            <p className="text-neutral-500 text-xs mb-1">UPI ID</p>
+            {isEditing ? (
+              <div>
+                <input
+                  type="text"
+                  value={profileData.upiId}
+                  onChange={(e) => handleInputChange('upiId', e.target.value)}
+                  className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                  placeholder="username@bank"
+                />
+                <p className="text-xs text-neutral-400 mt-1">Example: username@bank</p>
+              </div>
+            ) : (
+              <p className="text-neutral-900 text-sm font-mono">{profileData.upiId || 'Not Set'}</p>
+            )}
           </div>
         </div>
 

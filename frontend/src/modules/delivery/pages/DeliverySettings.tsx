@@ -10,6 +10,10 @@ export default function DeliverySettings() {
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  const [appVersion, setAppVersion] = useState("1.0.0");
+  const [currentLang, setCurrentLang] = useState(() => localStorage.getItem("delivery_lang") || "en");
+  const [showLangModal, setShowLangModal] = useState(false);
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -36,8 +40,13 @@ export default function DeliverySettings() {
       await updateSettings({ [key]: value });
     } catch (error) {
       console.error("Failed to update settings", error);
-      // Revert if needed (optional)
     }
+  };
+
+  const handleSelectLanguage = (lang: string) => {
+    setCurrentLang(lang);
+    localStorage.setItem("delivery_lang", lang);
+    setShowLangModal(false);
   };
 
   const settingsOptions = [
@@ -119,10 +128,14 @@ export default function DeliverySettings() {
             <h3 className="text-neutral-900 font-semibold">Other</h3>
           </div>
           <div className="divide-y divide-neutral-200">
-            <button className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+            <button
+              onClick={() => setShowLangModal(true)}
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
                 <p className="text-neutral-900 text-sm font-medium">Language</p>
-                <p className="text-neutral-500 text-xs mt-1">English</p>
+                <p className="text-neutral-500 text-xs mt-1">
+                  {currentLang === "hi" ? "हिंदी (Hindi)" : "English"}
+                </p>
               </div>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -135,7 +148,9 @@ export default function DeliverySettings() {
                 />
               </svg>
             </button>
-            <button className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+            <button
+              onClick={() => navigate('/delivery/privacy-policy')}
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
                 <p className="text-neutral-900 text-sm font-medium">Privacy Policy</p>
               </div>
@@ -150,7 +165,9 @@ export default function DeliverySettings() {
                 />
               </svg>
             </button>
-            <button className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+            <button
+              onClick={() => navigate('/delivery/terms-and-conditions')}
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
                 <p className="text-neutral-900 text-sm font-medium">Terms & Conditions</p>
               </div>
@@ -170,9 +187,38 @@ export default function DeliverySettings() {
 
         {/* App Version */}
         <div className="mt-4 text-center">
-          <p className="text-neutral-400 text-xs">App Version 1.0.0</p>
+          <p className="text-neutral-400 text-xs">App Version {appVersion}</p>
         </div>
       </div>
+
+      {/* Language Selection Modal */}
+      {showLangModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold mb-4">Select Language</h3>
+            <div className="space-y-2 mb-6">
+              <button
+                onClick={() => handleSelectLanguage("en")}
+                className={`w-full p-3 rounded-xl border text-left font-medium flex justify-between items-center ${currentLang === "en" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-neutral-200"}`}>
+                <span>English</span>
+                {currentLang === "en" && <span>✓</span>}
+              </button>
+              <button
+                onClick={() => handleSelectLanguage("hi")}
+                className={`w-full p-3 rounded-xl border text-left font-medium flex justify-between items-center ${currentLang === "hi" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-neutral-200"}`}>
+                <span>हिंदी (Hindi)</span>
+                {currentLang === "hi" && <span>✓</span>}
+              </button>
+            </div>
+            <button
+              onClick={() => setShowLangModal(false)}
+              className="w-full bg-neutral-200 text-neutral-800 rounded-xl py-2.5 font-semibold">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <DeliveryBottomNav />
     </div>
   );

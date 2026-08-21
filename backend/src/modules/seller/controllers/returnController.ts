@@ -44,7 +44,7 @@ async function assertReturnBelongsToSeller(
  */
 export const getReturnRequests = asyncHandler(
   async (req: Request, res: Response) => {
-    const sellerId = req.user?.userId;
+    const sellerId = (req as any).user?.userId;
     const { status, page = 1, limit = 10 } = req.query;
 
     // Find this seller's OrderItem IDs
@@ -117,7 +117,7 @@ export const getReturnRequests = asyncHandler(
 export const getReturnRequestById = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const sellerId = req.user?.userId;
+    const sellerId = (req as any).user?.userId;
 
     let returnReq: any;
     let orderItem: any;
@@ -204,7 +204,7 @@ export const updateReturnStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const { status } = req.body;
-    const sellerId = req.user?.userId;
+    const sellerId = (req as any).user?.userId;
 
     // Seller can only set these statuses
     const sellerAllowedStatuses = ["Approved", "Rejected"];
@@ -307,7 +307,7 @@ export const updateReturnStatus = asyncHandler(
 export const confirmSellerReceipt = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const sellerId = req.user?.userId;
+    const sellerId = (req as any).user?.userId;
 
     // Authorization
     let returnReq: any;

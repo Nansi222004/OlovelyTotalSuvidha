@@ -25,9 +25,6 @@ const BrandSchema = new Schema<IBrand>(
   }
 );
 
-// Index for faster queries
-BrandSchema.index({ name: 1 });
-
 const Brand = (mongoose.models.Brand as mongoose.Model<IBrand>) || mongoose.model<IBrand>("Brand", BrandSchema);
 
 export default Brand;

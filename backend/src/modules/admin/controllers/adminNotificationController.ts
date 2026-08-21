@@ -24,7 +24,7 @@ export const createNotification = asyncHandler(
       expiresAt,
     } = req.body;
 
-    if (!recipientType || !title || !message) {
+    if (!recipientType || !title || typeof title !== "string" || !title.trim() || !message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({
         success: false,
         message: "Recipient type, title, and message are required",
@@ -57,7 +57,7 @@ export const createNotification = asyncHandler(
             expiresAt: notificationExpiresAt,
             broadcastBatchId,
             broadcastRecipientType: recipientType,
-            createdBy: req.user?.userId,
+            createdBy: (req as any).user?.userId,
           }))
         );
         createdNotifications.push(
@@ -69,7 +69,7 @@ export const createNotification = asyncHandler(
             expiresAt: notificationExpiresAt,
             broadcastBatchId,
             broadcastRecipientType: recipientType,
-            createdBy: req.user?.userId,
+            createdBy: (req as any).user?.userId,
           }))
         );
         createdNotifications.push(
@@ -81,7 +81,7 @@ export const createNotification = asyncHandler(
             expiresAt: notificationExpiresAt,
             broadcastBatchId,
             broadcastRecipientType: recipientType,
-            createdBy: req.user?.userId,
+            createdBy: (req as any).user?.userId,
           }))
         );
         createdNotifications.push(
@@ -93,7 +93,7 @@ export const createNotification = asyncHandler(
             expiresAt: notificationExpiresAt,
             broadcastBatchId,
             broadcastRecipientType: recipientType,
-            createdBy: req.user?.userId,
+            createdBy: (req as any).user?.userId,
           }))
         );
       } else {
@@ -107,7 +107,7 @@ export const createNotification = asyncHandler(
             expiresAt: notificationExpiresAt,
             broadcastBatchId,
             broadcastRecipientType: recipientType,
-            createdBy: req.user?.userId,
+            createdBy: (req as any).user?.userId,
           }))
         );
       }
@@ -129,8 +129,8 @@ export const createNotification = asyncHandler(
         },
       );
 
-      if (req.user?.userId && !notification.createdBy) {
-        notification.createdBy = req.user.userId;
+      if ((req as any).user?.userId && !notification.createdBy) {
+        notification.createdBy = (req as any).user.userId;
         await notification.save();
       }
     }

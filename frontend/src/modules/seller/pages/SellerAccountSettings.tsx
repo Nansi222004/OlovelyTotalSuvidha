@@ -37,6 +37,7 @@ const SellerAccountSettings = () => {
         branch: '',
         accountNumber: '',
         ifsc: '',
+        upiId: '',
         profile: '',
         logo: '',
         storeBanner: '',
@@ -576,6 +577,21 @@ const SellerAccountSettings = () => {
                                                         <InputGroup label="Bank Name" name="bankName" value={sellerData.bankName} onChange={handleInputChange} disabled={!isEditing} />
                                                         <InputGroup label="Account Number" name="accountNumber" value={sellerData.accountNumber} onChange={handleInputChange} disabled={!isEditing} />
                                                         <InputGroup label="IFSC Code" name="ifsc" value={sellerData.ifsc} onChange={handleInputChange} disabled={!isEditing} />
+                                                    </div>
+                                                </section>
+
+                                                <section>
+                                                    <div className="flex items-center gap-3 mb-6">
+                                                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                                                        </div>
+                                                        <h4 className="text-lg font-bold text-gray-900">UPI Details</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-gray-50/50 p-6 rounded-xl border border-gray-100">
+                                                        <div>
+                                                            <InputGroup label="UPI ID" name="upiId" value={sellerData.upiId || ''} onChange={handleInputChange} disabled={!isEditing} placeholder="username@bank" />
+                                                            <p className="text-xs text-gray-500 mt-1 ml-1">Example: username@bank</p>
+                                                        </div>
                                                     </div>
                                                 </section>
 

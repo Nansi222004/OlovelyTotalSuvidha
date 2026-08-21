@@ -262,6 +262,16 @@ export const capturePayment = async (
                 await order.save();
             }
 
+            // Commit coupon usage if order has an uncommitted coupon
+            if (order.couponCode && !order.couponUsageCommitted) {
+                try {
+                    const { commitCouponUsage } = await import('./couponService');
+                    await commitCouponUsage(order);
+                } catch (couponErr) {
+                    console.error("Failed to commit coupon usage after payment capture:", couponErr);
+                }
+            }
+
             console.log(`\n[ORDER PAYMENT UPDATE]\nOrder ID: ${orderId}\nPayment Method: ${order.paymentMethod}\nPayment Status: ${order.paymentStatus}`);
 
             // Notify sellers after successful payment capture
@@ -572,6 +582,16 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
             order.status = 'Received';
         }
         await order.save();
+
+        // Commit coupon usage if order has an uncommitted coupon
+        if (order.couponCode && !order.couponUsageCommitted) {
+            try {
+                const { commitCouponUsage } = await import('./couponService');
+                await commitCouponUsage(order);
+            } catch (couponErr) {
+                console.error("Failed to commit coupon usage after webhook capture:", couponErr);
+            }
+        }
 
         // Execute side-effects ONLY IF transitioning into Paid for the first time
         if (prevPaymentStatus !== 'Paid') {

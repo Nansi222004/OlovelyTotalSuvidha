@@ -8,6 +8,7 @@ import {
   getSellerWithdrawals,
   getSellerCommissions,
 } from '../../../services/api/sellerWalletService';
+import { getSellerProfile } from '../../../services/api/auth/sellerAuthService';
 
 type Tab = 'transactions' | 'withdrawals' | 'commissions';
 
@@ -23,6 +24,7 @@ export default function SellerWallet() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'UPI'>('Bank Transfer');
+  const [sellerProfile, setSellerProfile] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -32,11 +34,12 @@ export default function SellerWallet() {
   const fetchWalletData = async () => {
     try {
       setLoading(true);
-      const [balanceRes, transactionsRes, withdrawalsRes, commissionsRes] = await Promise.all([
+      const [balanceRes, transactionsRes, withdrawalsRes, commissionsRes, profileRes] = await Promise.all([
         getSellerWalletBalance(),
         getSellerWalletTransactions(),
         getSellerWithdrawals(),
         getSellerCommissions(),
+        getSellerProfile().catch(() => null),
       ]);
 
       if (balanceRes.success) {
@@ -46,6 +49,7 @@ export default function SellerWallet() {
       if (transactionsRes.success) setTransactions(transactionsRes.data.transactions || []);
       if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data || []);
       if (commissionsRes.success) setCommissions(commissionsRes.data);
+      if (profileRes?.success) setSellerProfile(profileRes.data);
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Failed to load wallet data', 'error');
     } finally {
@@ -226,6 +230,11 @@ export default function SellerWallet() {
                       <div>
                         <p className="font-bold text-gray-900">₹{withdrawal.amount.toFixed(2)}</p>
                         <p className="text-xs text-gray-600">{withdrawal.paymentMethod}</p>
+                        {withdrawal.paymentMethod === 'UPI' && (
+                          <p className="text-xs font-mono text-blue-600 font-medium mt-0.5">
+                            {withdrawal.accountDetails || withdrawal.upiId || 'N/A'}
+                          </p>
+                        )}
                       </div>
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-semibold ${withdrawal.status === 'Completed'
@@ -320,6 +329,26 @@ export default function SellerWallet() {
                   <option value="UPI">UPI</option>
                 </select>
               </div>
+
+              {paymentMethod === 'UPI' && (
+                sellerProfile?.upiId ? (
+                  <div className="mb-6 p-3.5 bg-blue-50 border border-blue-100 rounded-xl text-sm">
+                    <p className="text-xs text-blue-700 font-semibold uppercase tracking-wider mb-1">Withdrawal will be sent to:</p>
+                    <p className="font-mono font-semibold text-blue-950">{sellerProfile.upiId}</p>
+                  </div>
+                ) : (
+                  <div className="mb-6 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+                    <p className="font-bold text-amber-900 mb-1">UPI ID Missing</p>
+                    <p className="text-xs text-amber-800 mb-2">Please add your UPI ID in Account Settings before requesting a UPI withdrawal.</p>
+                    <a
+                      href="/seller/account-settings"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      Go to Account Settings &rarr;
+                    </a>
+                  </div>
+                )
+              )}
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -334,7 +363,7 @@ export default function SellerWallet() {
                 <button
                   onClick={handleWithdrawRequest}
                   className="flex-1 bg-blue-600 text-white rounded-lg py-2.5 font-semibold hover:bg-blue-700 transition disabled:opacity-50"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentMethod === 'UPI' && !sellerProfile?.upiId)}
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>

@@ -15,15 +15,19 @@ export interface IItemRefundCalculation {
   returnedCommissionAmount: number;
   sellerNetReversal: number;
   customerRefundAmount: number;
+  allocatedCouponDiscount?: number;
 }
 
 /**
   * Calculate exact refund and reversal breakdown for a returned item/quantity.
-  * Handles partial quantity returns (e.g., returning 1 unit out of 3).
+  * Handles partial quantity returns and coupon discount allocations.
+  * Ensures customer never receives a refund higher than actual paid amount for the item.
   */
 export const calculateItemRefundAmount = (
   orderItem: any,
-  quantityToReturn: number
+  quantityToReturn: number,
+  orderSubtotal: number = 0,
+  orderDiscount: number = 0
 ): IItemRefundCalculation => {
   const returnQty = Math.min(quantityToReturn, orderItem.quantity);
   const proportion = returnQty / orderItem.quantity;
@@ -35,12 +39,36 @@ export const calculateItemRefundAmount = (
   const returnedCommissionAmount = Math.round((returnedItemTotal * returnedCommissionRate) / 100 * 100) / 100;
   const sellerNetReversal = Math.round((returnedItemTotal - returnedCommissionAmount) * 100) / 100;
 
+  // Coupon-Aware Customer Refund Calculation:
+  // Allocate order-level coupon discount proportionally to the returned item/quantity value.
+  let allocatedCouponDiscount = 0;
+  if (orderDiscount > 0 && orderSubtotal > 0) {
+    const itemProportion = returnedItemTotal / orderSubtotal;
+    allocatedCouponDiscount = Math.round(orderDiscount * itemProportion * 100) / 100;
+    // Cap allocated coupon discount to never exceed total order discount or returned item total
+    allocatedCouponDiscount = Math.min(allocatedCouponDiscount, orderDiscount);
+    allocatedCouponDiscount = Math.min(allocatedCouponDiscount, returnedItemTotal);
+  }
+
+  const customerRefundAmount = Math.max(0, Math.round((returnedItemTotal - allocatedCouponDiscount) * 100) / 100);
+
+  if (orderDiscount > 0) {
+    console.log(`[COUPON REFUND CALCULATION]
+Order ID: ${orderItem.order || "N/A"}
+Order Subtotal: ₹${orderSubtotal}
+Order Discount: ₹${orderDiscount}
+Returned Item Value: ₹${returnedItemTotal}
+Allocated Coupon Discount: ₹${allocatedCouponDiscount}
+Customer Refund Amount: ₹${customerRefundAmount}`);
+  }
+
   return {
     returnedItemTotal,
     returnedCommissionRate,
     returnedCommissionAmount,
     sellerNetReversal,
-    customerRefundAmount: returnedItemTotal,
+    customerRefundAmount,
+    allocatedCouponDiscount,
   };
 };
 
@@ -326,9 +354,24 @@ export const executeReturnRefundAndReversal = async (
         throw new Error("Associated order item not found");
       }
 
-      // Calculate exact refund & reversal values (Product Price Only)
-      const breakdown = calculateItemRefundAmount(orderItem, returnReq.quantity);
-      const productRefundTotal = breakdown.customerRefundAmount;
+      // Calculate exact refund & reversal values (Product Price Only & Coupon-Aware)
+      const breakdown = calculateItemRefundAmount(
+        orderItem,
+        returnReq.quantity,
+        order.subtotal,
+        order.discount || 0
+      );
+      let productRefundTotal = breakdown.customerRefundAmount;
+
+      // Cumulative Refund Cap Safety Check:
+      // Ensure cumulative customer refunds for this order never exceed order.total
+      const existingRefunds = await Refund.find({ order: order._id, status: "Completed" }).session(session);
+      const totalAlreadyRefunded = existingRefunds.reduce((sum, r) => sum + (r.amount || 0), 0);
+      const remainingMaxRefundable = Math.max(0, Math.round((order.total - totalAlreadyRefunded) * 100) / 100);
+
+      if (productRefundTotal > remainingMaxRefundable) {
+        productRefundTotal = remainingMaxRefundable;
+      }
 
       // 1. REVERSE SELLER EARNING (If order was delivered & settled)
       const existingCommission = await Commission.findOne({

@@ -201,7 +201,7 @@ export default function SellerTaxes() {
                 {/* Pagination Footer */}
                 <div className="px-4 sm:px-6 py-3 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
                     <div className="text-xs sm:text-sm text-neutral-700">
-                        Showing {startIndex + 1} to {Math.min(endIndex, filteredTaxes.length)} of {filteredTaxes.length} entries
+                        Showing {filteredTaxes.length > 0 ? startIndex + 1 : 0} to {Math.min(endIndex, filteredTaxes.length)} of {filteredTaxes.length} entries
                     </div>
                     <div className="flex items-center gap-2">
                         <button

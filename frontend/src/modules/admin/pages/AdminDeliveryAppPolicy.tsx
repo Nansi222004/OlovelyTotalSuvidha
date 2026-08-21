@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import { getPolicies, createPolicy, updatePolicy, Policy } from '../../../services/api/admin/adminContentService';
 
 export default function AdminDeliveryAppPolicy() {
   const { showToast } = useToast();
+  const [policyId, setPolicyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [policyContent, setPolicyContent] = useState(`Welcome to Olovely Total Suvidha - 10 Minute App Delivery Partner Program!
 
 By using our delivery app, you agree to the following terms and conditions:
@@ -79,10 +83,66 @@ For any questions or concerns, please contact our delivery partner support team.
 
 Last updated: January 2025`);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchPolicy = async () => {
+      try {
+        setLoading(true);
+        const response = await getPolicies({ type: 'delivery' });
+        if (response.success && response.data && response.data.length > 0) {
+          const fetchedPolicy: Policy = response.data[0];
+          setPolicyId(fetchedPolicy._id);
+          setPolicyContent(fetchedPolicy.content);
+        }
+      } catch (err) {
+        console.error("Failed to fetch delivery policy:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPolicy();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    showToast('Delivery App Policy updated successfully!', 'success');
+    if (!policyContent.trim()) {
+      showToast('Policy text cannot be empty', 'error');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      if (policyId) {
+        const response = await updatePolicy(policyId, {
+          title: "Delivery App Policy",
+          content: policyContent.trim(),
+          version: "1.0",
+          isActive: true,
+        });
+        if (response.success) {
+          showToast('Delivery App Policy updated successfully!', 'success');
+        } else {
+          showToast(response.message || 'Failed to update policy', 'error');
+        }
+      } else {
+        const response = await createPolicy({
+          type: "delivery",
+          title: "Delivery App Policy",
+          content: policyContent.trim(),
+          version: "1.0",
+          isActive: true,
+        });
+        if (response.success && response.data) {
+          setPolicyId(response.data._id);
+          showToast('Delivery App Policy created successfully!', 'success');
+        } else {
+          showToast(response.message || 'Failed to create policy', 'error');
+        }
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Error updating policy', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

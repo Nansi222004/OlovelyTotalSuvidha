@@ -305,7 +305,7 @@ export const deleteSystemUser = asyncHandler(
     const { id } = req.params;
 
     // Prevent deleting yourself
-    const currentUserId = req.user!.userId;
+    const currentUserId = (req as any).user?.userId;
     if (id === currentUserId) {
       return res.status(400).json({
         success: false,

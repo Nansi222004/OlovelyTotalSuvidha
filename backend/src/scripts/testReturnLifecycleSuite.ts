@@ -307,7 +307,8 @@ async function testRouteRegistration() {
 
   // Import route files and check exports exist (lightweight, no server start needed)
   try {
-    const deliveryReturnCtrl = await import("../modules/delivery/controllers/deliveryReturnController");
+    const reqModule = eval('require');
+    const deliveryReturnCtrl = reqModule("../modules/delivery/controllers/deliveryReturnController");
     assert("R01 - getAssignedReturns exported", typeof deliveryReturnCtrl.getAssignedReturns === "function");
     assert("R02 - getReturnDetails exported", typeof deliveryReturnCtrl.getReturnDetails === "function");
     assert("R03 - acceptReturnAssignment exported", typeof deliveryReturnCtrl.acceptReturnAssignment === "function");
@@ -320,7 +321,8 @@ async function testRouteRegistration() {
   }
 
   try {
-    const adminReturnCtrl = await import("../modules/admin/controllers/adminReturnController");
+    const reqModule = eval('require');
+    const adminReturnCtrl = reqModule("../modules/admin/controllers/adminReturnController");
     assert("R08 - getAdminReturns exported", typeof adminReturnCtrl.getAdminReturns === "function");
     assert("R09 - assignDeliveryPartnerToReturn exported", typeof adminReturnCtrl.assignDeliveryPartnerToReturn === "function");
     assert("R10 - getAvailableDeliveryPartnersForReturn exported", typeof adminReturnCtrl.getAvailableDeliveryPartnersForReturn === "function");
@@ -329,7 +331,8 @@ async function testRouteRegistration() {
   }
 
   try {
-    const sellerReturnCtrl = await import("../modules/seller/controllers/returnController");
+    const reqModule = eval('require');
+    const sellerReturnCtrl = reqModule("../modules/seller/controllers/returnController");
     assert("R11 - seller getReturnRequests exported", typeof sellerReturnCtrl.getReturnRequests === "function");
     assert("R12 - seller updateReturnStatus exported", typeof sellerReturnCtrl.updateReturnStatus === "function");
     assert("R13 - seller confirmSellerReceipt exported", typeof sellerReturnCtrl.confirmSellerReceipt === "function");
@@ -643,7 +646,7 @@ async function testCustomerWalletReturnRefundFlow() {
     assert("W499-04 - Customer wallet balance credited with ₹499", updatedCust?.walletAmount === 499);
 
     // 7. Verify WalletTransaction is created with correct details
-    const txn = await WalletTransaction.findOne({ userId: custId, type: "Credit" }).lean();
+    const txn: any = await WalletTransaction.findOne({ userId: custId, type: "Credit" }).lean();
     assert("W499-05 - Wallet transaction record created", txn !== null);
     assert("W499-06 - Wallet transaction amount is 499", txn?.amount === 499);
     assert("W499-07 - Wallet transaction userType is CUSTOMER", txn?.userType === "CUSTOMER");

@@ -35,7 +35,7 @@ export const getAppSettings = asyncHandler(
 export const updateAppSettings = asyncHandler(
   async (req: Request, res: Response) => {
     const updateData = req.body;
-    updateData.updatedBy = req.user?.userId;
+    updateData.updatedBy = (req as any).user?.userId;
 
     console.log(`[DEBUG Settings] Incoming update payload:`, JSON.stringify(updateData.deliveryConfig, null, 2));
 
@@ -44,7 +44,7 @@ export const updateAppSettings = asyncHandler(
     if (!settings) {
       settings = await AppSettings.create(updateData);
     } else {
-      settings = await AppSettings.findOneAndUpdate({}, updateData, {
+      settings = await AppSettings.findOneAndUpdate({ _id: settings._id }, updateData, {
         new: true,
         runValidators: true,
       });
@@ -143,7 +143,7 @@ export const updateSMSGatewaySettings = asyncHandler(
       });
     } else {
       settings.smsGateway = smsGateway;
-      settings.updatedBy = req.user?.userId as any;
+      settings.updatedBy = (req as any).user?.userId as any;
       await settings.save();
     }
 

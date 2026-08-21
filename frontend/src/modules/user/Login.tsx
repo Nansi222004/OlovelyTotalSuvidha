@@ -255,8 +255,18 @@ export default function Login() {
           {/* Legal / Trust Copy */}
           <p className="text-[11px] text-slate-400 text-center leading-relaxed mt-4 pt-3 border-t border-slate-100">
             By continuing, you agree to Olovely Total Suvidha's{' '}
-            <span className="text-blue-700 font-medium hover:underline cursor-pointer">Terms of Service</span> &{' '}
-            <span className="text-blue-700 font-medium hover:underline cursor-pointer">Privacy Policy</span>.
+            <span
+              onClick={() => navigate('/privacy-policy')}
+              className="text-blue-700 font-medium hover:underline cursor-pointer"
+            >
+              Terms of Service
+            </span> &{' '}
+            <span
+              onClick={() => navigate('/privacy-policy')}
+              className="text-blue-700 font-medium hover:underline cursor-pointer"
+            >
+              Privacy Policy
+            </span>.
           </p>
         </div>
       </div>

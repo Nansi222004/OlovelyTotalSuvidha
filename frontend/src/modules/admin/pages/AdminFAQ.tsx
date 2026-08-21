@@ -255,9 +255,9 @@ export default function AdminFAQ() {
 
       {/* Page Content */}
       <div className="flex-1 px-6 pb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Panel: Add FAQ */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
+          <div className="lg:col-span-5 min-w-0 bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
             <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
               <h2 className="text-lg font-semibold">Add FAQ</h2>
             </div>
@@ -320,7 +320,7 @@ export default function AdminFAQ() {
           </div>
 
           {/* Right Panel: View FAQ */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
+          <div className="lg:col-span-7 min-w-0 bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
             <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
               <h2 className="text-lg font-semibold">View FAQ</h2>
             </div>

@@ -55,5 +55,40 @@ const optionalAuthenticate = (req: any, res: any, next: any) => {
 
 router.post("/support/contact", optionalAuthenticate, supportController.submitCustomerSupport);
 
+import FAQ from "../models/FAQ";
+import Policy from "../models/Policy";
+
+// Get active FAQs for customer app
+router.get("/faqs", async (_req, res) => {
+  try {
+    const faqs = await FAQ.find({ status: "Active" }).sort({ order: 1, createdAt: -1 });
+    return res.status(200).json({
+      success: true,
+      data: faqs,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
+// Get active Customer App Policy
+router.get("/policy", async (_req, res) => {
+  try {
+    const policy = await Policy.findOne({ type: "customer", isActive: true }).sort({ createdAt: -1 });
+    return res.status(200).json({
+      success: true,
+      data: policy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
 export default router;
 

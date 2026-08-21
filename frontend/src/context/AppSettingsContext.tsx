@@ -18,6 +18,35 @@ export interface AppSettingsData {
   platformFee?: number;
   deliveryCharges?: number;
   freeDeliveryThreshold?: number;
+  minimumOrderValue?: number;
+  deliveryConfig?: {
+    isDistanceBased?: boolean;
+    baseCharge?: number;
+    baseDistance?: number;
+    kmRate?: number;
+    deliveryBoyKmRate?: number;
+    googleMapsKey?: string;
+  };
+  features?: {
+    showSellerDetails?: boolean;
+    sellerRegistration?: boolean;
+    productApproval?: boolean;
+    orderTracking?: boolean;
+    wallet?: boolean;
+    coupons?: boolean;
+  };
+  aboutUs?: {
+    missionText?: string;
+    whatWeDoText?: string;
+    stats?: Array<{
+      label: string;
+      value: string;
+    }>;
+    whyChooseUs?: Array<{
+      title: string;
+      description: string;
+    }>;
+  };
 }
 
 interface AppSettingsContextType {

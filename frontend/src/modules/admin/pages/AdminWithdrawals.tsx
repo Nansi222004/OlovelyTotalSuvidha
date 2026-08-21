@@ -190,9 +190,34 @@ export default function AdminWithdrawals() {
                                     <p className="font-medium text-sm">{withdrawal.paymentMethod}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Bank Details</p>
-                                    <p className="font-medium text-sm break-all">
-                                        {withdrawal.accountDetails || (withdrawal.userId?.accountNumber ? `****${withdrawal.userId.accountNumber.slice(-4)}` : 'N/A')}
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                                        {withdrawal.paymentMethod === 'UPI' ? 'UPI ID' : 'Bank Details'}
+                                    </p>
+                                    <p className="font-medium text-sm break-all font-mono">
+                                        {(() => {
+                                            if (withdrawal.paymentMethod === 'UPI') {
+                                                const directUpi = withdrawal.upiId;
+                                                if (directUpi) return directUpi;
+                                                const details = withdrawal.accountDetails;
+                                                if (details && !details.includes(' - ') && !details.includes('(undefined)')) {
+                                                    return details;
+                                                }
+                                                return withdrawal.userId?.upiId || 'N/A';
+                                            }
+
+                                            const details = withdrawal.accountDetails;
+                                            if (details && !details.includes('(undefined)')) {
+                                                return details;
+                                            }
+                                            const u = withdrawal.userId || {};
+                                            const bank = u.bankName || '';
+                                            const acc = u.accountNumber || '';
+                                            const ifsc = u.ifsc || u.ifscCode || '';
+                                            if (bank || acc) {
+                                                return ifsc ? `${bank ? bank + ' - ' : ''}${acc} (${ifsc})` : `${bank ? bank + ' - ' : ''}${acc}`;
+                                            }
+                                            return details && details !== '(undefined)' ? details : 'N/A';
+                                        })()}
                                     </p>
                                 </div>
                                 {withdrawal.transactionReference && (

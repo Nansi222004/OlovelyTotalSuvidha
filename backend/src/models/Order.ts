@@ -34,6 +34,7 @@ export interface IOrder extends Document {
   platformFee: number;
   discount: number;
   couponCode?: string;
+  couponUsageCommitted?: boolean;
   total: number;
   grandTotal?: number; // Alias or computed total used in some controllers
 
@@ -254,6 +255,10 @@ const OrderSchema = new Schema<IOrder>(
     couponCode: {
       type: String,
       trim: true,
+    },
+    couponUsageCommitted: {
+      type: Boolean,
+      default: false,
     },
     total: {
       type: Number,

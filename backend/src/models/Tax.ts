@@ -36,7 +36,6 @@ const taxSchema = new Schema<ITax>(
 
 // Index for faster queries
 taxSchema.index({ status: 1 });
-taxSchema.index({ name: 1 });
 
 const Tax = mongoose.models.Tax || model<ITax>("Tax", taxSchema);
 

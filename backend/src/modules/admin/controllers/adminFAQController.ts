@@ -89,7 +89,7 @@ export const getFAQById = asyncHandler(async (req: Request, res: Response) => {
 export const createFAQ = asyncHandler(async (req: Request, res: Response) => {
     const { question, answer, category, order } = req.body;
 
-    if (!question || !answer) {
+    if (!question || typeof question !== "string" || !question.trim() || !answer || typeof answer !== "string" || !answer.trim()) {
         return res.status(400).json({
             success: false,
             message: "Question and answer are required",

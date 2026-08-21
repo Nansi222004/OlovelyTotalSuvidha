@@ -104,8 +104,7 @@ export default function Checkout() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [validatedDiscount, setValidatedDiscount] = useState<number>(0);
   const [similarProducts, setSimilarProducts] = useState<any[]>([]);
-  const [showGstinSheet, setShowGstinSheet] = useState(false);
-  const [gstin, setGstin] = useState<string>("");
+
   const [showCancellationPolicy, setShowCancellationPolicy] = useState(false);
   const [giftPackaging, setGiftPackaging] = useState<boolean>(false);
 
@@ -441,8 +440,9 @@ export default function Checkout() {
   // Recalculate or use validated discount
   // If we have a selected coupon, we should re-validate if cart total changes,
   // but for simplicity, we'll re-calculate locally if possible or trust the previous validation if acceptable (better to re-validate)
-  const subtotalBeforeCoupon =
-    discountedTotal + handlingCharge + deliveryCharge;
+  // BUSINESS RULE: Coupon applies strictly to PRODUCT SUBTOTAL (discountedTotal)
+  // Delivery fee, handling/platform fee, tip, and gift packaging fees are NOT eligible for coupon discount.
+  const productSubtotalForCoupon = discountedTotal;
 
   // Local calculation for immediate feedback, relying on backend validation on Apply
   let currentCouponDiscount = 0;
@@ -450,13 +450,13 @@ export default function Checkout() {
     // Logic mirrors backend for UI update purposes
     if (
       selectedCoupon.minOrderValue &&
-      subtotalBeforeCoupon < selectedCoupon.minOrderValue
+      productSubtotalForCoupon < selectedCoupon.minOrderValue
     ) {
       // Invalid now
     } else {
       if (selectedCoupon.discountType === "percentage") {
         currentCouponDiscount = Math.round(
-          (subtotalBeforeCoupon * selectedCoupon.discountValue) / 100,
+          (productSubtotalForCoupon * selectedCoupon.discountValue) / 100,
         );
         if (
           selectedCoupon.maxDiscountAmount &&
@@ -465,7 +465,10 @@ export default function Checkout() {
           currentCouponDiscount = selectedCoupon.maxDiscountAmount;
         }
       } else {
-        currentCouponDiscount = selectedCoupon.discountValue;
+        currentCouponDiscount = Math.min(
+          selectedCoupon.discountValue,
+          productSubtotalForCoupon,
+        );
       }
     }
   }
@@ -475,12 +478,12 @@ export default function Checkout() {
   const giftPackagingFee = giftPackaging ? 30 : 0;
   const grandTotal = Math.max(
     0,
-    discountedTotal +
+    discountedTotal -
+      currentCouponDiscount +
       handlingCharge +
       deliveryCharge +
       finalTipAmount +
-      giftPackagingFee -
-      currentCouponDiscount,
+      giftPackagingFee,
   );
   const walletDeduction = useWallet ? Math.min(walletBalance, grandTotal) : 0;
   const finalPayable = Math.max(0, grandTotal - walletDeduction);
@@ -489,7 +492,7 @@ export default function Checkout() {
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
-      const result = await validateCoupon(coupon.code, subtotalBeforeCoupon);
+      const result = await validateCoupon(coupon.code, productSubtotalForCoupon);
       if (result.success && result.data?.isValid) {
         const isFirstTime = !hasAppliedCouponBefore;
         setSelectedCoupon(coupon);
@@ -622,7 +625,7 @@ export default function Checkout() {
       status: (paymentMethod === "COD" || walletDeduction === grandTotal) ? "Received" : "Pending",
       createdAt: new Date().toISOString(),
       tipAmount: finalTipAmount,
-      gstin: gstin || undefined,
+
       couponCode: selectedCoupon?.code || undefined,
       giftPackaging: giftPackaging,
       deliveryOption: deliveryOption,
@@ -2072,42 +2075,7 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Add GSTIN */}
-      <div className="px-4 py-2 border-b border-neutral-200">
-        <button
-          onClick={() => setShowGstinSheet(true)}
-          className="w-full flex items-center justify-between bg-neutral-50 rounded-lg p-2 hover:bg-neutral-100 transition-colors">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <span className="text-blue-600 font-bold text-sm">%</span>
-            </div>
-            <div className="text-left">
-              <p className="text-xs font-semibold text-neutral-900">
-                Add GSTIN
-              </p>
-              <p className="text-[10px] text-neutral-600">
-                {gstin
-                  ? `GSTIN: ${gstin}`
-                  : "Claim GST input credit up to 18% on your order"}
-              </p>
-            </div>
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M9 18l6-6-6-6"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
+
 
       {/* Tip your delivery partner */}
       <div className="px-4 py-2 border-b border-neutral-200">
@@ -2298,81 +2266,7 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* GSTIN Sheet Modal */}
-      <Sheet open={showGstinSheet} onOpenChange={setShowGstinSheet}>
-        <SheetContent side="bottom" className="max-h-[50vh]">
-          <SheetHeader className="text-left">
-            <div className="flex items-center justify-between mb-2">
-              <SheetTitle className="text-base font-bold text-neutral-900">
-                Add GSTIN
-              </SheetTitle>
-              <SheetClose onClick={() => setShowGstinSheet(false)}>
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M18 6L6 18M6 6l12 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </SheetClose>
-            </div>
-          </SheetHeader>
 
-          <div className="px-4 pb-4 mt-4">
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-neutral-900 mb-2">
-                GSTIN Number
-              </label>
-              <input
-                type="text"
-                value={gstin}
-                onChange={(e) => {
-                  const value = e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, "");
-                  if (value.length <= 15) {
-                    setGstin(value);
-                  }
-                }}
-                placeholder="Enter 15-character GSTIN"
-                className="w-full px-4 py-3 bg-white border-2 border-neutral-300 rounded-lg text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                maxLength={15}
-              />
-              <p className="text-xs text-neutral-500 mt-1">
-                Format: 15 characters (e.g., 27AAAAA0000A1Z5)
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                if (gstin.length === 15) {
-                  setShowGstinSheet(false);
-                } else {
-                  showGlobalToast("Please enter a valid 15-character GSTIN", "error");
-                }
-              }}
-              className="w-full bg-green-600 text-white py-3 px-4 font-bold text-sm uppercase tracking-wide hover:bg-green-700 transition-colors rounded-lg">
-              Save GSTIN
-            </button>
-            {gstin && (
-              <button
-                onClick={() => {
-                  setGstin("");
-                  setShowGstinSheet(false);
-                }}
-                className="w-full mt-2 bg-neutral-100 text-neutral-700 py-2 px-4 font-medium text-sm hover:bg-neutral-200 transition-colors rounded-lg">
-                Remove GSTIN
-              </button>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Cancellation Policy Sheet Modal */}
       <Sheet
@@ -2495,11 +2389,10 @@ export default function Checkout() {
                 </div>
               ) : (
                 availableCoupons.map((coupon, index) => {
-                  const subtotalBeforeCoupon =
-                    discountedTotal + handlingCharge + deliveryCharge;
+                  const subtotalForCoupon = discountedTotal;
                   const meetsMinOrder =
                     !coupon.minOrderValue ||
-                    subtotalBeforeCoupon >= coupon.minOrderValue;
+                    subtotalForCoupon >= coupon.minOrderValue;
                   const isApplied = selectedCoupon?.code === coupon.code;
 
                   return (

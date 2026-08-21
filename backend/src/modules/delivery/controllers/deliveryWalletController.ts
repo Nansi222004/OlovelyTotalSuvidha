@@ -182,6 +182,18 @@ export const verifyAdminPayout = async (req: Request, res: Response) => {
     deliveryBoy.pendingAdminPayout = Math.max(0, currentPending - amount);
     await deliveryBoy.save({ session });
 
+    // Sync CashCollection status to Received
+    try {
+      const CashCollection = (await import("../../../models/CashCollection")).default;
+      await CashCollection.updateMany(
+        { deliveryBoy: deliveryBoyId, status: "Pending" },
+        { status: "Received", receivedAt: new Date() },
+        { session }
+      );
+    } catch (ccErr) {
+      console.error("Warning: Failed to update CashCollection status:", ccErr);
+    }
+
     await session.commitTransaction();
 
     console.log(`[Pay to Admin] Delivery boy ${deliveryBoyId} paid ${amount}:`, {

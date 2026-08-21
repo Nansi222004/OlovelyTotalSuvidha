@@ -312,6 +312,7 @@ export const validateWithdrawal = async (
   userId: string,
   userType: "SELLER" | "DELIVERY_BOY",
   amount: number,
+  paymentMethod: "Bank Transfer" | "UPI" = "Bank Transfer",
 ) => {
   try {
     // Check minimum withdrawal amount
@@ -349,7 +350,7 @@ export const validateWithdrawal = async (
       };
     }
 
-    // Check bank details
+    // Check user profile details according to payment method
     const Model: any = userType === "SELLER" ? Seller : Delivery;
     const user = await Model.findById(userId);
 
@@ -360,13 +361,30 @@ export const validateWithdrawal = async (
       };
     }
 
-    const ifsc = (user as any).ifsc || (user as any).ifscCode;
-    if (!user.accountNumber || !ifsc || !user.bankName) {
-      return {
-        success: false,
-        message:
-          "Please complete your bank account details before requesting withdrawal",
-      };
+    if (paymentMethod === "UPI") {
+      const upiId = (user as any).upiId;
+      if (!upiId || typeof upiId !== "string" || !upiId.trim()) {
+        return {
+          success: false,
+          message: "Please complete your UPI details before requesting a UPI withdrawal.",
+        };
+      }
+      const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      if (!upiRegex.test(upiId.trim())) {
+        return {
+          success: false,
+          message: "Invalid UPI ID format. Please update your UPI ID in Account Settings.",
+        };
+      }
+    } else {
+      const ifsc = (user as any).ifsc || (user as any).ifscCode;
+      if (!user.accountNumber || !ifsc || !user.bankName) {
+        return {
+          success: false,
+          message:
+            "Please complete your bank account details before requesting withdrawal",
+        };
+      }
     }
 
     return {
@@ -393,7 +411,7 @@ export const createWithdrawalRequest = async (
 ) => {
   try {
     // Validate withdrawal
-    const validation = await validateWithdrawal(userId, userType, amount);
+    const validation = await validateWithdrawal(userId, userType, amount, paymentMethod);
     if (!validation.success) {
       return validation;
     }
@@ -406,8 +424,16 @@ export const createWithdrawalRequest = async (
       throw new Error("User not found");
     }
 
-    // Create account details string
-    const accountDetails = `${user.bankName} - ${user.accountNumber} (${user.ifscCode})`;
+    let accountDetails = "";
+    let upiIdSnapshot: string | undefined = undefined;
+
+    if (paymentMethod === "UPI") {
+      upiIdSnapshot = (user as any).upiId?.trim();
+      accountDetails = upiIdSnapshot || "";
+    } else {
+      const ifsc = user.ifsc || user.ifscCode || "";
+      accountDetails = `${user.bankName || 'Bank'} - ${user.accountNumber || ''} (${ifsc})`;
+    }
 
     // Create withdrawal request
     const withdrawRequest = new WithdrawRequest({
@@ -417,9 +443,44 @@ export const createWithdrawalRequest = async (
       status: "Pending",
       paymentMethod,
       accountDetails,
+      upiId: upiIdSnapshot,
     });
 
     await withdrawRequest.save();
+
+    // Notify Admin about new withdrawal request (wrapped safely in try/catch)
+    try {
+      const { sendBroadcastNotification } = await import("./notificationService");
+      const userName = (user as any).sellerName || (user as any).name || (user as any).storeName || "Seller";
+      const formattedAmount = `₹${amount.toLocaleString("en-IN")}`;
+      const batchKey = `${withdrawRequest._id}_REQUESTED`;
+
+      const Notification = (await import("../models/Notification")).default;
+      const existingNotif = await Notification.findOne({ broadcastBatchId: batchKey });
+
+      if (!existingNotif) {
+        const title = userType === "DELIVERY_BOY" ? "New Delivery Withdrawal Request" : "New Withdrawal Request";
+        await sendBroadcastNotification(
+          "Admin",
+          title,
+          `${userName} has requested a withdrawal of ${formattedAmount} via ${paymentMethod}.`,
+          {
+            type: "Payment",
+            link: "/admin/wallet",
+            priority: "High",
+            broadcastBatchId: batchKey,
+            data: {
+              withdrawalId: withdrawRequest._id.toString(),
+              amount: amount.toString(),
+              paymentMethod,
+              userType,
+            },
+          }
+        );
+      }
+    } catch (notifErr) {
+      console.error("Warning: Failed to dispatch Admin withdrawal notification:", notifErr);
+    }
 
     return {
       success: true,

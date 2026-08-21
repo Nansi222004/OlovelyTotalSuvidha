@@ -36,7 +36,6 @@ export interface Order {
   createdAt: string;
   tipAmount?: number;
   donationAmount?: number;
-  gstin?: string;
   couponCode?: string;
   giftPackaging?: boolean;
   deliveryOption?: 'Instant' | 'Standard';

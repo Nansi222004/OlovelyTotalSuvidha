@@ -19,7 +19,7 @@ export const getSalesReport = asyncHandler(
         } = req.query;
 
         // Build query - filter by authenticated seller
-        const query: any = { sellerId };
+        const query: any = { seller: sellerId };
 
         // Date range filter
         if (fromDate || toDate) {

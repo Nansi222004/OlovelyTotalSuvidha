@@ -276,54 +276,75 @@ export const getDashboardStats = asyncHandler(
 );
 
 /**
- * Get Help & Support Data
+ * Get Help & Support Data (Dynamic from MongoDB FAQ & AppSettings)
  */
 export const getHelpSupport = asyncHandler(
   async (_req: Request, res: Response) => {
-    const faqItems = [
-      {
-        question: "How do I accept a new order?",
-        answer:
-          'When you receive a new order notification, tap on it to view order details. Click "Accept Order" to confirm.',
-      },
-      {
-        question: "What should I do if I cannot deliver an order?",
-        answer:
-          'Contact the customer first. If unable to reach them, mark the order as "Unable to Deliver" and contact support.',
-      },
-      {
-        question: "How are my earnings calculated?",
-        answer:
-          "You earn ₹25 per successful delivery. Additional bonuses may apply for special orders or peak hours.",
-      },
-      {
-        question: "How do I update my profile information?",
-        answer:
-          'Go to Menu > Profile and tap "Edit Profile" to update your personal details, vehicle information, etc.',
-      },
-      {
-        question: "What if I have a complaint or issue?",
-        answer:
-          "You can contact our support team through the Help & Support section or call our helpline at +91 7846940429.",
-      },
-      {
-        question: "What are the delivery timings?",
-        answer:
-          "You can deliver orders between 8 AM and 10 PM. Peak hours are usually during lunch (12-3 PM) and dinner (7-10 PM).",
-      },
-    ];
+    let faqItems: any[] = [];
+    try {
+      const { default: FAQ } = await import("../../../models/FAQ");
+      const dbFaqs = await FAQ.find({ status: "Active" }).sort({ order: 1, createdAt: -1 });
+      if (dbFaqs.length > 0) {
+        faqItems = dbFaqs.map((f) => ({
+          question: f.question,
+          answer: f.answer,
+          category: f.category || "General",
+        }));
+      }
+    } catch (faqErr) {
+      console.error("Error fetching FAQs for delivery support:", faqErr);
+    }
+
+    if (faqItems.length === 0) {
+      faqItems = [
+        {
+          question: "How do I accept a new order?",
+          answer:
+            'When you receive a new order notification, tap on it to view order details. Click "Accept Order" to confirm.',
+        },
+        {
+          question: "What should I do if I cannot deliver an order?",
+          answer:
+            'Contact the customer first. If unable to reach them, mark the order as "Unable to Deliver" and contact support.',
+        },
+        {
+          question: "How are my earnings calculated?",
+          answer:
+            "You earn delivery commissions based on configured distance or percentage rates. View details in Wallet.",
+        },
+        {
+          question: "How do I update my profile information?",
+          answer:
+            'Go to Menu > Profile and tap "Edit Profile" to update your personal details, vehicle information, and UPI ID.',
+        },
+      ];
+    }
+
+    let phone = "+91 7846940429";
+    let email = "support@dhakadsnazzy.com";
+
+    try {
+      const { default: AppSettings } = await import("../../../models/AppSettings");
+      const settings = await AppSettings.findOne();
+      if (settings) {
+        if (settings.supportPhone || settings.contactPhone) {
+          phone = settings.supportPhone || settings.contactPhone;
+        }
+        if (settings.supportEmail || settings.contactEmail) {
+          email = settings.supportEmail || settings.contactEmail;
+        }
+      }
+    } catch (settingsErr) {
+      console.error("Error fetching AppSettings for delivery support:", settingsErr);
+    }
 
     const contactOptions = [
-      { label: "Call Support", value: "+91 7846940429", icon: "phone" },
-      {
-        label: "Email Support",
-        value: "support@dhakadsnazzy.com",
-        icon: "email",
-      },
+      { label: "Call Support", value: phone, icon: "phone" },
+      { label: "Email Support", value: email, icon: "email" },
       { label: "Live Chat", value: "Available 24/7", icon: "chat" },
     ];
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         faqs: faqItems,

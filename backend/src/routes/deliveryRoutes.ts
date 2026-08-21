@@ -19,6 +19,58 @@ router.put("/settings", deliveryProfileController.updateSettings);
 // Help & Support
 router.get("/help", deliveryDashboardController.getHelpSupport);
 
+import Policy from "../models/Policy";
+import AppSettings from "../models/AppSettings";
+
+router.get("/policy", async (req, res) => {
+  try {
+    const docType = (req.query.type || req.query.docType || "").toString().toLowerCase();
+    let query: any = { type: "delivery", isActive: true };
+    if (docType === "privacy") {
+      query.title = { $regex: /privacy/i };
+    } else if (docType === "terms") {
+      query.title = { $regex: /terms|condition/i };
+    }
+
+    let policy = await Policy.findOne(query).sort({ createdAt: -1 });
+    if (!policy && docType) {
+      policy = await Policy.findOne({ type: "delivery", isActive: true }).sort({ createdAt: -1 });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: policy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
+router.get("/app-info", async (_req, res) => {
+  try {
+    const settings = await AppSettings.findOne();
+    return res.status(200).json({
+      success: true,
+      data: {
+        appName: settings?.appName || "Olovely Total Suvidha Delivery",
+        appLogo: settings?.appLogo || "",
+        version: "1.0.0",
+        contactEmail: settings?.supportEmail || settings?.contactEmail || "support@dhakadsnazzy.com",
+        contactPhone: settings?.supportPhone || settings?.contactPhone || "+91 7846940429",
+        address: `${settings?.companyAddress || 'Jaipur'}, ${settings?.companyCity || 'Jaipur'}`,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
 // Notifications
 router.get("/notifications", deliveryNotificationController.getNotifications);
 router.put("/notifications/:id/read", deliveryNotificationController.markNotificationRead);

@@ -274,7 +274,7 @@ export const validateCoupon = asyncHandler(
         discount = coupon.maximumDiscount;
       }
     } else {
-      discount = coupon.discountValue;
+      discount = Math.min(coupon.discountValue, amount);
     }
 
     return res.status(200).json({
@@ -283,7 +283,7 @@ export const validateCoupon = asyncHandler(
       data: {
         coupon: coupon.toObject(),
         discount,
-        finalAmount: amount - discount,
+        finalAmount: Math.max(0, amount - discount),
       },
     });
   }

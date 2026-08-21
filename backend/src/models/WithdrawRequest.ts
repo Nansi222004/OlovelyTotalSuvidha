@@ -7,6 +7,7 @@ export interface IWithdrawRequest extends Document {
     status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
     paymentMethod: 'Bank Transfer' | 'UPI';
     accountDetails: string;
+    upiId?: string;
     remarks?: string;
     processedBy?: mongoose.Types.ObjectId; // Admin who processed the request
     processedAt?: Date; // When the request was processed
@@ -45,6 +46,10 @@ const WithdrawRequestSchema = new Schema<IWithdrawRequest>(
         accountDetails: {
             type: String,
             required: [true, 'Account details are required'],
+            trim: true,
+        },
+        upiId: {
+            type: String,
             trim: true,
         },
         remarks: {

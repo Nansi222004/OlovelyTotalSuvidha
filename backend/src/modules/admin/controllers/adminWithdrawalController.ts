@@ -18,7 +18,7 @@ export const getAllWithdrawals = async (req: Request, res: Response) => {
         const skip = (Number(page) - 1) * Number(limit);
 
         const requests = await WithdrawRequest.find(query)
-            .populate('userId', 'sellerName storeName name email mobile accountNumber bankName ifscCode')
+            .populate('userId', 'sellerName storeName name email mobile accountNumber bankName ifsc ifscCode upiId')
             .populate('processedBy', 'name email')
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -53,7 +53,7 @@ export const getAllWithdrawals = async (req: Request, res: Response) => {
 export const approveWithdrawal = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const adminId = req.user!.userId;
+        const adminId = (req as any).user!.userId;
 
         const request = await WithdrawRequest.findById(id);
         if (!request) {
@@ -74,6 +74,40 @@ export const approveWithdrawal = async (req: Request, res: Response) => {
         request.processedBy = new mongoose.Types.ObjectId(adminId);
         request.processedAt = new Date();
         await request.save();
+
+        // Notify Seller (safely wrapped in try/catch with idempotency check)
+        try {
+            const batchKey = `${request._id}_APPROVED`;
+            const Notification = (await import('../../../models/Notification')).default;
+            const existingNotif = await Notification.findOne({ broadcastBatchId: batchKey });
+
+            if (!existingNotif) {
+                const { sendNotification } = await import('../../../services/notificationService');
+                const recipientType = request.userType === 'SELLER' ? 'Seller' : 'Delivery';
+                const formattedAmount = `₹${request.amount.toLocaleString('en-IN')}`;
+
+                await sendNotification(
+                    recipientType,
+                    request.userId.toString(),
+                    'Withdrawal Approved',
+                    `Your withdrawal request of ${formattedAmount} has been approved and is being processed.`,
+                    {
+                        type: 'Success',
+                        link: recipientType === 'Seller' ? '/seller/wallet' : '/delivery/wallet',
+                        priority: 'High',
+                        broadcastBatchId: batchKey,
+                        data: {
+                            withdrawalId: request._id.toString(),
+                            amount: request.amount.toString(),
+                            paymentMethod: request.paymentMethod,
+                            status: 'Approved',
+                        },
+                    }
+                );
+            }
+        } catch (notifErr) {
+            console.error('Warning: Failed to dispatch Approved withdrawal notification:', notifErr);
+        }
 
         return res.status(200).json({
             success: true,
@@ -96,7 +130,7 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { remarks } = req.body;
-        const adminId = req.user!.userId;
+        const adminId = (req as any).user!.userId;
 
         const request = await WithdrawRequest.findById(id);
         if (!request) {
@@ -118,6 +152,45 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
         request.processedAt = new Date();
         if (remarks) request.remarks = remarks;
         await request.save();
+
+        // Notify Seller (safely wrapped in try/catch with idempotency check)
+        try {
+            const batchKey = `${request._id}_REJECTED`;
+            const Notification = (await import('../../../models/Notification')).default;
+            const existingNotif = await Notification.findOne({ broadcastBatchId: batchKey });
+
+            if (!existingNotif) {
+                const { sendNotification } = await import('../../../services/notificationService');
+                const recipientType = request.userType === 'SELLER' ? 'Seller' : 'Delivery';
+                const formattedAmount = `₹${request.amount.toLocaleString('en-IN')}`;
+                let message = `Your withdrawal request of ${formattedAmount} has been rejected.`;
+                if (remarks && remarks.trim()) {
+                    message += ` Reason: ${remarks.trim()}`;
+                }
+
+                await sendNotification(
+                    recipientType,
+                    request.userId.toString(),
+                    'Withdrawal Rejected',
+                    message,
+                    {
+                        type: 'Warning',
+                        link: recipientType === 'Seller' ? '/seller/wallet' : '/delivery/wallet',
+                        priority: 'High',
+                        broadcastBatchId: batchKey,
+                        data: {
+                            withdrawalId: request._id.toString(),
+                            amount: request.amount.toString(),
+                            paymentMethod: request.paymentMethod,
+                            status: 'Rejected',
+                            ...(remarks ? { remarks } : {}),
+                        },
+                    }
+                );
+            }
+        } catch (notifErr) {
+            console.error('Warning: Failed to dispatch Rejected withdrawal notification:', notifErr);
+        }
 
         return res.status(200).json({
             success: true,
@@ -143,7 +216,7 @@ export const completeWithdrawal = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { transactionReference } = req.body;
-        const adminId = req.user!.userId;
+        const adminId = (req as any).user!.userId;
 
         if (!transactionReference) {
             return res.status(400).json({
@@ -203,6 +276,51 @@ export const completeWithdrawal = async (req: Request, res: Response) => {
         await request.save({ session });
 
         await session.commitTransaction();
+
+        // Notify Seller after transaction is committed (safely wrapped in try/catch)
+        try {
+            const batchKey = `${request._id}_COMPLETED`;
+            const Notification = (await import('../../../models/Notification')).default;
+            const existingNotif = await Notification.findOne({ broadcastBatchId: batchKey });
+
+            if (!existingNotif) {
+                const { sendNotification } = await import('../../../services/notificationService');
+                const recipientType = request.userType === 'SELLER' ? 'Seller' : 'Delivery';
+                const formattedAmount = `₹${request.amount.toLocaleString('en-IN')}`;
+
+                let destinationText = 'your bank account.';
+                if (request.paymentMethod === 'UPI') {
+                    destinationText = 'your UPI ID.';
+                }
+
+                let message = `Your withdrawal of ${formattedAmount} has been successfully transferred to ${destinationText}`;
+                if (transactionReference && transactionReference.trim()) {
+                    message += ` Transaction Reference: ${transactionReference.trim()}`;
+                }
+
+                await sendNotification(
+                    recipientType,
+                    request.userId.toString(),
+                    'Withdrawal Completed',
+                    message,
+                    {
+                        type: 'Success',
+                        link: recipientType === 'Seller' ? '/seller/wallet' : '/delivery/wallet',
+                        priority: 'High',
+                        broadcastBatchId: batchKey,
+                        data: {
+                            withdrawalId: request._id.toString(),
+                            amount: request.amount.toString(),
+                            paymentMethod: request.paymentMethod,
+                            status: 'Completed',
+                            ...(transactionReference ? { transactionReference } : {}),
+                        },
+                    }
+                );
+            }
+        } catch (notifErr) {
+            console.error('Warning: Failed to dispatch Completed withdrawal notification:', notifErr);
+        }
 
         return res.status(200).json({
             success: true,

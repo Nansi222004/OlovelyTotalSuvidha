@@ -11,6 +11,7 @@ import {
   createAdminPayoutOrder,
   verifyAdminPayout,
 } from "../../../services/api/deliveryWalletService";
+import { getDeliveryProfile } from "../../../services/api/delivery/deliveryService";
 
 type Tab = "transactions" | "withdrawals" | "commissions";
 
@@ -34,6 +35,7 @@ export default function DeliveryWallet() {
   const [paymentMethod, setPaymentMethod] = useState<"Bank Transfer" | "UPI">(
     "Bank Transfer",
   );
+  const [deliveryProfile, setDeliveryProfile] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -54,12 +56,13 @@ export default function DeliveryWallet() {
   const fetchWalletData = async () => {
     try {
       setLoading(true);
-      const [balanceRes, transactionsRes, withdrawalsRes, commissionsRes] =
+      const [balanceRes, transactionsRes, withdrawalsRes, commissionsRes, profileRes] =
         await Promise.all([
           getDeliveryWalletBalance(),
           getDeliveryWalletTransactions(),
           getDeliveryWithdrawals(),
           getDeliveryCommissions(),
+          getDeliveryProfile().catch(() => null),
         ]);
 
       if (balanceRes.success) {
@@ -70,6 +73,7 @@ export default function DeliveryWallet() {
         setTransactions(transactionsRes.data.transactions || []);
       if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data || []);
       if (commissionsRes.success) setCommissions(commissionsRes.data);
+      if (profileRes) setDeliveryProfile(profileRes);
     } catch (error: any) {
       showToast(
         error.response?.data?.message || "Failed to load wallet data",
@@ -216,9 +220,14 @@ export default function DeliveryWallet() {
         className="m-4 bg-gradient-to-br from-green-500 to-green-700 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-green-100 text-sm font-medium">
-              Available Balance
-            </p>
+            <div>
+              <p className="text-green-100 text-sm font-medium">
+                Available Balance
+              </p>
+              <p className="text-xs text-green-200 mt-0.5">
+                Your withdrawable delivery earnings
+              </p>
+            </div>
             <div className="bg-green-400/30 p-2 rounded-xl">
               <svg
                 width="24"
@@ -261,7 +270,7 @@ export default function DeliveryWallet() {
                 Admin's Payout (COD)
               </p>
               <p className="text-xs text-red-500 font-medium mt-0.5">
-                Pending amount to pay to admin
+                Cash collected from customers that is pending submission to Admin
               </p>
             </div>
             <div className="bg-red-50 p-2 rounded-xl text-red-600">
@@ -412,6 +421,11 @@ export default function DeliveryWallet() {
                         <p className="text-xs text-gray-600">
                           {withdrawal.paymentMethod}
                         </p>
+                        {withdrawal.paymentMethod === "UPI" && (
+                          <p className="text-xs font-mono text-green-600 font-medium mt-0.5">
+                            {withdrawal.accountDetails || withdrawal.upiId || "N/A"}
+                          </p>
+                        )}
                       </div>
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -526,6 +540,31 @@ export default function DeliveryWallet() {
                 <option value="UPI">UPI</option>
               </select>
             </div>
+
+            {paymentMethod === "UPI" && (
+              deliveryProfile?.upiId ? (
+                <div className="mb-6 p-3.5 bg-blue-50 border border-blue-100 rounded-xl text-sm">
+                  <p className="text-xs text-blue-700 font-semibold uppercase tracking-wider mb-1">
+                    Withdrawal will be sent to:
+                  </p>
+                  <p className="font-mono font-semibold text-blue-950">
+                    {deliveryProfile.upiId}
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-6 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+                  <p className="font-bold text-amber-900 mb-1">UPI ID Missing</p>
+                  <p className="text-xs text-amber-800 mb-2">
+                    Please add your UPI ID in Account Settings before requesting a UPI withdrawal.
+                  </p>
+                  <a
+                    href="/delivery/profile"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                    Go to Account Settings &rarr;
+                  </a>
+                </div>
+              )
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => {
@@ -539,7 +578,7 @@ export default function DeliveryWallet() {
               <button
                 onClick={handleWithdrawRequest}
                 className="flex-1 bg-green-600 text-white rounded-lg py-2.5 font-semibold hover:bg-green-700 transition disabled:opacity-50"
-                disabled={isSubmitting}>
+                disabled={isSubmitting || (paymentMethod === "UPI" && !deliveryProfile?.upiId)}>
                 {isSubmitting ? "Submitting..." : "Submit Request"}
               </button>
             </div>

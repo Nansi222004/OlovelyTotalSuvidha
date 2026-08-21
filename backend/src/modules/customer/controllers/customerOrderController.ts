@@ -16,6 +16,7 @@ import DeliveryAssignment from "../../../models/DeliveryAssignment";
 import Coupon from "../../../models/Coupon";
 import Return from "../../../models/Return";
 import { debitWallet } from "../../../services/walletManagementService";
+import { commitCouponUsage } from "../../../services/couponService";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -538,9 +539,9 @@ export const createOrder = async (req: Request, res: Response) => {
     const finalTipAmount = Number(tipAmount) || 0;
     const giftPackagingFee = giftPackaging ? 30 : 0;
 
-    // The base amount for coupon eligibility and calculation
-    // Matches frontend's subtotalBeforeCoupon (calculatedSubtotal is essentially discountedTotal)
-    const baseForCoupon = calculatedSubtotal + platformFee + deliveryFee;
+    // BUSINESS RULE: Coupon applies strictly to PRODUCT SUBTOTAL (calculatedSubtotal)
+    // Delivery fees, platform fees, tips, and gift packaging fees are NOT eligible for coupon discount.
+    const productSubtotalForCoupon = calculatedSubtotal;
     let discountAmount = 0;
 
     // Validate and Apply Coupon
@@ -564,15 +565,15 @@ export const createOrder = async (req: Request, res: Response) => {
               !coupon.usageLimit ||
               coupon.usageCount < coupon.usageLimit
             ) {
-              // Check minimum purchase (on baseForCoupon)
+              // Check minimum purchase (strictly on product subtotal)
               if (
                 !coupon.minimumPurchase ||
-                baseForCoupon >= coupon.minimumPurchase
+                productSubtotalForCoupon >= coupon.minimumPurchase
               ) {
-                // Calculate discount
+                // Calculate discount strictly on product subtotal
                 if (coupon.discountType === "Percentage") {
                   discountAmount =
-                    (baseForCoupon * coupon.discountValue) / 100;
+                    (productSubtotalForCoupon * coupon.discountValue) / 100;
                   if (
                     coupon.maximumDiscount &&
                     discountAmount > coupon.maximumDiscount
@@ -580,22 +581,40 @@ export const createOrder = async (req: Request, res: Response) => {
                     discountAmount = coupon.maximumDiscount;
                   }
                 } else {
-                  discountAmount = coupon.discountValue;
+                  // Fixed discount cannot exceed product subtotal
+                  discountAmount = Math.min(
+                    coupon.discountValue,
+                    productSubtotalForCoupon
+                  );
                 }
-
-                // Increment usage count
-                await Coupon.findByIdAndUpdate(coupon._id, {
-                  $inc: { usageCount: 1 },
-                });
 
                 newOrder.couponCode = normalizedCode;
                 newOrder.discount = Number(discountAmount.toFixed(2));
-                console.log(
-                  `📢 Applied coupon ${normalizedCode}: ₹${discountAmount.toFixed(2)} discount`,
+
+                const computedFinalTotal = Math.max(
+                  0,
+                  productSubtotalForCoupon -
+                    discountAmount +
+                    platformFee +
+                    deliveryFee +
+                    finalTipAmount +
+                    giftPackagingFee
                 );
+
+                console.log(`[COUPON CALCULATION]
+Coupon Code: ${normalizedCode}
+Product Subtotal: ₹${productSubtotalForCoupon}
+Discount Type: ${coupon.discountType}
+Discount Value: ${coupon.discountValue}${coupon.discountType === "Percentage" ? "%" : ""}
+Coupon Discount: ₹${discountAmount.toFixed(2)}
+Delivery Fee: ₹${deliveryFee}
+Platform Fee: ₹${platformFee}
+Tip: ₹${finalTipAmount}
+Gift Packaging Fee: ₹${giftPackagingFee}
+Final Total: ₹${computedFinalTotal.toFixed(2)}`);
               } else {
                 console.warn(
-                  `⚠️ Coupon ${normalizedCode} rejected: min purchase ₹${coupon.minimumPurchase} not met (Base: ₹${baseForCoupon})`,
+                  `⚠️ Coupon ${normalizedCode} rejected: min purchase ₹${coupon.minimumPurchase} not met (Product Subtotal: ₹${productSubtotalForCoupon})`,
                 );
               }
             } else {
@@ -615,7 +634,15 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    const finalTotal = Math.max(0, baseForCoupon + finalTipAmount + giftPackagingFee - discountAmount);
+    const finalTotal = Math.max(
+      0,
+      productSubtotalForCoupon -
+        discountAmount +
+        platformFee +
+        deliveryFee +
+        finalTipAmount +
+        giftPackagingFee
+    );
 
     let walletAmountUsed = 0;
     if (useWallet) {
@@ -687,6 +714,11 @@ export const createOrder = async (req: Request, res: Response) => {
         throw validationError;
       }
       await newOrder.save();
+    }
+
+    // Commit coupon usage if order is confirmed at creation time (100% Wallet paid or COD)
+    if (newOrder.couponCode && (newOrder.paymentStatus === "Paid" || newOrder.paymentMethod === "COD")) {
+      await commitCouponUsage(newOrder);
     }
 
     // Emit notification to all involved sellers (non-blocking for performance)

@@ -8,7 +8,7 @@ import Policy from "../../../models/Policy";
 export const createPolicy = asyncHandler(async (req: Request, res: Response) => {
     const { type, title, content, version, isActive } = req.body;
 
-    if (!type || !title || !content || !version) {
+    if (!type || !title || typeof title !== "string" || !title.trim() || !content || typeof content !== "string" || !content.trim() || !version) {
         return res.status(400).json({
             success: false,
             message: "Type, title, content, and version are required",

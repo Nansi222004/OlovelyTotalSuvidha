@@ -397,6 +397,232 @@ export default function AdminAppSettings() {
           </div>
         </div>
 
+        {/* Card 4: About Us CMS Manager */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6 space-y-6">
+          <div className="border-b border-neutral-100 pb-3">
+            <h2 className="text-lg font-semibold text-neutral-800">About Us Page Content (CMS)</h2>
+            <p className="text-xs text-neutral-500">
+              Customize Mission, What We Do text, key statistics, and Why Choose Us cards displayed on the customer About Us page.
+            </p>
+          </div>
+
+          {/* Mission */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Our Mission</label>
+            <textarea
+              rows={3}
+              value={formData.aboutUs?.missionText || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  aboutUs: {
+                    ...prev.aboutUs,
+                    missionText: e.target.value,
+                  },
+                }))
+              }
+              placeholder="At Olovely, we're committed to revolutionizing the way you shop..."
+              className="w-full px-3.5 py-2.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+            />
+          </div>
+
+          {/* What We Do */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">What We Do</label>
+            <textarea
+              rows={3}
+              value={formData.aboutUs?.whatWeDoText || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  aboutUs: {
+                    ...prev.aboutUs,
+                    whatWeDoText: e.target.value,
+                  },
+                }))
+              }
+              placeholder="Olovely Total Suvidha is a comprehensive e-commerce platform..."
+              className="w-full px-3.5 py-2.5 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Statistics Grid Manager */}
+          <div className="pt-2 border-t border-neutral-100">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-neutral-700">Statistics Badges</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentStats = formData.aboutUs?.stats || [
+                    { value: "10K+", label: "Products" },
+                    { value: "500+", label: "Sellers" },
+                    { value: "50K+", label: "Happy Customers" },
+                    { value: "24/7", label: "Support" },
+                  ];
+                  setFormData((prev) => ({
+                    ...prev,
+                    aboutUs: {
+                      ...prev.aboutUs,
+                      stats: [...currentStats, { value: '', label: '' }],
+                    },
+                  }));
+                }}
+                className="px-3 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold rounded-lg border border-teal-200 transition-colors cursor-pointer"
+              >
+                + Add Statistic
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(formData.aboutUs?.stats || [
+                { value: "10K+", label: "Products" },
+                { value: "500+", label: "Sellers" },
+                { value: "50K+", label: "Happy Customers" },
+                { value: "24/7", label: "Support" },
+              ]).map((stat, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200">
+                  <input
+                    type="text"
+                    value={stat.value}
+                    onChange={(e) => {
+                      const updated = [...(formData.aboutUs?.stats || [
+                        { value: "10K+", label: "Products" },
+                        { value: "500+", label: "Sellers" },
+                        { value: "50K+", label: "Happy Customers" },
+                        { value: "24/7", label: "Support" },
+                      ])];
+                      updated[idx] = { ...updated[idx], value: e.target.value };
+                      setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, stats: updated } }));
+                    }}
+                    placeholder="Value (e.g. 10K+)"
+                    className="w-1/3 px-2.5 py-1.5 border border-neutral-300 rounded text-xs font-bold text-teal-600 focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={stat.label}
+                    onChange={(e) => {
+                      const updated = [...(formData.aboutUs?.stats || [
+                        { value: "10K+", label: "Products" },
+                        { value: "500+", label: "Sellers" },
+                        { value: "50K+", label: "Happy Customers" },
+                        { value: "24/7", label: "Support" },
+                      ])];
+                      updated[idx] = { ...updated[idx], label: e.target.value };
+                      setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, stats: updated } }));
+                    }}
+                    placeholder="Label (e.g. Products)"
+                    className="flex-1 px-2.5 py-1.5 border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = (formData.aboutUs?.stats || [
+                        { value: "10K+", label: "Products" },
+                        { value: "500+", label: "Sellers" },
+                        { value: "50K+", label: "Happy Customers" },
+                        { value: "24/7", label: "Support" },
+                      ]).filter((_, i) => i !== idx);
+                      setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, stats: updated } }));
+                    }}
+                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Why Choose Us Cards Manager */}
+          <div className="pt-2 border-t border-neutral-100">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-neutral-700">Why Choose Us Cards</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentItems = formData.aboutUs?.whyChooseUs || [
+                    { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                    { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                    { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                    { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+                  ];
+                  setFormData((prev) => ({
+                    ...prev,
+                    aboutUs: {
+                      ...prev.aboutUs,
+                      whyChooseUs: [...currentItems, { title: '', description: '' }],
+                    },
+                  }));
+                }}
+                className="px-3 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold rounded-lg border border-teal-200 transition-colors cursor-pointer"
+              >
+                + Add Feature Card
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {(formData.aboutUs?.whyChooseUs || [
+                { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+              ]).map((item, idx) => (
+                <div key={idx} className="bg-neutral-50 p-3 rounded-lg border border-neutral-200 space-y-2 relative">
+                  <div className="flex items-center justify-between">
+                    <input
+                      type="text"
+                      value={item.title}
+                      onChange={(e) => {
+                        const updated = [...(formData.aboutUs?.whyChooseUs || [
+                          { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                          { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                          { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                          { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+                        ])];
+                        updated[idx] = { ...updated[idx], title: e.target.value };
+                        setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, whyChooseUs: updated } }));
+                      }}
+                      placeholder="Title (e.g. Fast Delivery)"
+                      className="w-full max-w-sm px-2.5 py-1.5 border border-neutral-300 rounded text-xs font-bold text-neutral-900 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (formData.aboutUs?.whyChooseUs || [
+                          { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                          { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                          { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                          { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+                        ]).filter((_, i) => i !== idx);
+                        setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, whyChooseUs: updated } }));
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => {
+                      const updated = [...(formData.aboutUs?.whyChooseUs || [
+                        { title: "Fast Delivery", description: "Get your orders delivered at lightning speed with our efficient delivery network." },
+                        { title: "Secure Payments", description: "Your transactions are protected with industry-standard encryption and security." },
+                        { title: "Quality Products", description: "We partner with trusted sellers to ensure you receive only the best quality products." },
+                        { title: "24/7 Support", description: "Our dedicated support team is always ready to help you with any queries." },
+                      ])];
+                      updated[idx] = { ...updated[idx], description: e.target.value };
+                      setFormData((prev) => ({ ...prev, aboutUs: { ...prev.aboutUs, whyChooseUs: updated } }));
+                    }}
+                    placeholder="Description..."
+                    className="w-full px-2.5 py-1.5 border border-neutral-300 rounded text-xs text-neutral-700 focus:outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Bottom Save Button */}
         <div className="flex justify-end pt-2">
           <button

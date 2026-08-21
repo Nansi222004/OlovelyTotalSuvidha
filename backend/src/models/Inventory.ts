@@ -99,7 +99,6 @@ InventorySchema.pre("save", function (next) {
 });
 
 // Indexes for faster queries
-InventorySchema.index({ product: 1 });
 InventorySchema.index({ seller: 1 });
 InventorySchema.index({ currentStock: 1 });
 

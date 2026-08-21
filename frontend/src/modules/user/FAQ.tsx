@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppSettings } from '../../context/AppSettingsContext';
 import SupportModal from '../../components/SupportModal';
-
+import api from '../../services/api/config';
 
 interface FAQItem {
   id: string;
@@ -10,7 +10,7 @@ interface FAQItem {
   answer: string;
 }
 
-const faqData: FAQItem[] = [
+const defaultFaqData: FAQItem[] = [
   {
     id: '1',
     question: 'How do I place an order?',
@@ -36,41 +36,6 @@ const faqData: FAQItem[] = [
     question: 'What payment methods do you accept?',
     answer: 'We accept various payment methods including credit/debit cards, UPI, net banking, and digital wallets. Cash on delivery (COD) is also available for select locations.',
   },
-  {
-    id: '6',
-    question: 'How do I track my order?',
-    answer: 'You can track your order in real-time through the Orders section in your account. We also send SMS and email notifications with order updates. For detailed tracking, visit the order details page.',
-  },
-  {
-    id: '7',
-    question: 'What is your return policy?',
-    answer: 'Most products are returnable within 2 days of delivery. Some items like perishables may not be returnable. Please check the product details for specific return policies. Returns are subject to our terms and conditions.',
-  },
-  {
-    id: '8',
-    question: 'How do I apply a coupon code?',
-    answer: 'During checkout, you\'ll see an option to "See all coupons". Click on it, browse available coupons, and click "Apply" on the coupon you want to use. The discount will be automatically applied to your order.',
-  },
-  {
-    id: '9',
-    question: 'Can I modify my delivery address?',
-    answer: 'Yes, you can modify your delivery address before placing the order. You can also save multiple addresses in your Address Book for quick selection during checkout.',
-  },
-  {
-    id: '10',
-    question: 'What if I receive a damaged or wrong item?',
-    answer: 'If you receive a damaged or incorrect item, please contact our customer support immediately. We offer 48-hour replacement guarantee. You can report the issue through the order details page or contact us at help@olovely.com.',
-  },
-  {
-    id: '11',
-    question: 'How do I add items to my wishlist?',
-    answer: 'Simply click the heart icon on any product to add it to your wishlist. You can access your wishlist from the Account page. Items in your wishlist can be easily added to cart when you\'re ready to purchase.',
-  },
-  {
-    id: '12',
-    question: 'Is my personal information secure?',
-    answer: 'Yes, we take your privacy seriously. All personal information is encrypted and stored securely. We never share your data with third parties without your consent. Please review our Privacy Policy for more details.',
-  },
 ];
 
 export default function FAQ() {
@@ -78,6 +43,26 @@ export default function FAQ() {
   const { settings: appSettings } = useAppSettings();
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [faqs, setFaqs] = useState<FAQItem[]>(defaultFaqData);
+
+  useEffect(() => {
+    const fetchFaqs = async () => {
+      try {
+        const response = await api.get('/customer/faqs');
+        if (response.data && response.data.success && Array.isArray(response.data.data) && response.data.data.length > 0) {
+          const mappedFaqs = response.data.data.map((f: any) => ({
+            id: f._id,
+            question: f.question,
+            answer: f.answer,
+          }));
+          setFaqs(mappedFaqs);
+        }
+      } catch (err) {
+        console.error("Failed to fetch customer FAQs:", err);
+      }
+    };
+    fetchFaqs();
+  }, []);
 
   const toggleItem = (id: string) => {
     const newOpenItems = new Set(openItems);
@@ -141,7 +126,7 @@ export default function FAQ() {
       <div className="px-4 md:px-6 lg:px-8 py-6">
         <div className="max-w-3xl mx-auto">
           <div className="space-y-3">
-            {faqData.map((item) => {
+            {faqs.map((item) => {
               const isOpen = openItems.has(item.id);
               return (
                 <div

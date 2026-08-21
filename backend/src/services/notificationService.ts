@@ -136,12 +136,14 @@ export const sendNotification = async (
     actionLabel?: string;
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
+    broadcastBatchId?: string;
     data?: Record<string, string>;
   },
 ) => {
   const notification = await Notification.create({
     recipientType,
     recipientId,
+    broadcastBatchId: options?.broadcastBatchId,
     title,
     message,
     type: options?.type || "Info",

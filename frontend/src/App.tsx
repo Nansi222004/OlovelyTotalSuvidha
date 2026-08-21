@@ -44,6 +44,7 @@ const Invoice = lazyWithRetry(() => import("./modules/user/Invoice"), "Invoice")
 const Login = lazyWithRetry(() => import("./modules/user/Login"), "Login");
 
 const AboutUs = lazyWithRetry(() => import("./modules/user/AboutUs"), "AboutUs");
+const CustomerPolicy = lazyWithRetry(() => import("./modules/user/CustomerPolicy"), "CustomerPolicy");
 const FAQ = lazyWithRetry(() => import("./modules/user/FAQ"), "FAQ");
 const Wishlist = lazyWithRetry(() => import("./modules/user/Wishlist"), "Wishlist");
 const Addresses = lazyWithRetry(() => import("./modules/user/Addresses"), "Addresses");
@@ -105,6 +106,9 @@ const DeliveryHelp = lazyWithRetry(
 );
 const DeliveryAbout = lazyWithRetry(
   () => import("./modules/delivery/pages/DeliveryAbout"), "DeliveryAbout"
+);
+const DeliveryPolicy = lazyWithRetry(
+  () => import("./modules/delivery/pages/DeliveryPolicy"), "DeliveryPolicy"
 );
 const DeliverySellersInRange = lazyWithRetry(
   () => import("./modules/delivery/pages/DeliverySellersInRange"), "DeliverySellersInRange"
@@ -550,10 +554,18 @@ function App() {
                                         path="help"
                                         element={<DeliveryHelp />}
                                       />
-                                      <Route
-                                        path="about"
-                                        element={<DeliveryAbout />}
-                                      />
+                                       <Route
+                                         path="about"
+                                         element={<DeliveryAbout />}
+                                       />
+                                       <Route
+                                         path="privacy-policy"
+                                         element={<DeliveryPolicy />}
+                                       />
+                                       <Route
+                                         path="terms-and-conditions"
+                                         element={<DeliveryPolicy />}
+                                       />
                                       <Route
                                         path="sellers-in-range"
                                         element={<DeliverySellersInRange />}
@@ -933,6 +945,14 @@ function App() {
                                     <Route
                                       path="/about-us"
                                       element={<AboutUs />}
+                                    />
+                                    <Route
+                                      path="/privacy-policy"
+                                      element={<CustomerPolicy />}
+                                    />
+                                    <Route
+                                      path="/customer-policy"
+                                      element={<CustomerPolicy />}
                                     />
                                     <Route path="/faq" element={<FAQ />} />
                                     <Route
