@@ -344,8 +344,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       // Google Maps API disabled/commented out - use free OpenStreetMap Nominatim fallback
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-          { headers: { 'Accept-Language': 'en' }, signal }
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=en`,
+          { signal }
         );
         if (response.ok) {
           const data = await response.json();

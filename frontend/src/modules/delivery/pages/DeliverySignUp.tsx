@@ -99,7 +99,7 @@ export default function DeliverySignUp() {
 
           // OpenStreetMap Nominatim fallback
           const osmRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1&accept-language=en`
           );
           if (osmRes.ok) {
             const osmData = await osmRes.json();
