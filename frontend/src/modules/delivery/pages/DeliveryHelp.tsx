@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { getHelpSupport } from '../../../services/api/delivery/deliveryService';
+import { useLanguage } from '../../../context/LanguageContext';
 
 // Icon mapping helper
 const getIcon = (iconName: string) => {
@@ -15,6 +16,7 @@ const getIcon = (iconName: string) => {
 
 export default function DeliveryHelp() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [faqs, setFaqs] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ export default function DeliveryHelp() {
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center pb-20">
-        <p className="text-neutral-500">Loading help content...</p>
+        <p className="text-neutral-500">{t("common.loading", "Loading help content...")}</p>
         <DeliveryBottomNav />
       </div>
     );
@@ -62,13 +64,13 @@ export default function DeliveryHelp() {
               />
             </svg>
           </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Help & Support</h2>
+          <h2 className="text-neutral-900 text-xl font-semibold">{t("delivery.helpSupport", "Help & Support")}</h2>
         </div>
 
         {/* Contact Options */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Contact Us</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.contactUs", "Contact Us")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             {contacts.map((option, index) => {
@@ -107,7 +109,7 @@ export default function DeliveryHelp() {
         {/* FAQ Section */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Frequently Asked Questions</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.frequentlyAskedQuestions", "Frequently Asked Questions")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             {faqs.map((item, index) => (
@@ -121,7 +123,7 @@ export default function DeliveryHelp() {
 
         {/* Support Button */}
         <button className="w-full mt-4 bg-orange-500 text-white rounded-xl py-3 font-semibold hover:bg-orange-600 transition-colors shadow-md active:scale-[0.98]">
-          Contact Support
+          {t("delivery.contactSupport", "Contact Support")}
         </button>
       </div>
       <DeliveryBottomNav />

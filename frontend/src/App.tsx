@@ -8,6 +8,7 @@ import { LocationProvider } from "./context/LocationContext";
 import { ToastProvider } from "./context/ToastContext";
 import { WishlistProvider } from "./context/WishlistContext";
 import { AppSettingsProvider } from "./context/AppSettingsContext";
+import { LanguageProvider } from "./context/LanguageContext";
 
 import { LoadingProvider } from "./context/LoadingContext";
 import { AxiosLoadingInterceptor } from "./context/AxiosLoadingInterceptor";
@@ -42,6 +43,7 @@ const Categories = lazyWithRetry(() => import("./modules/user/Categories"), "Cat
 const Category = lazyWithRetry(() => import("./modules/user/Category"), "Category");
 const Invoice = lazyWithRetry(() => import("./modules/user/Invoice"), "Invoice");
 const Login = lazyWithRetry(() => import("./modules/user/Login"), "Login");
+const LanguageSelection = lazyWithRetry(() => import("./modules/user/pages/LanguageSelection"), "LanguageSelection");
 
 const AboutUs = lazyWithRetry(() => import("./modules/user/AboutUs"), "AboutUs");
 const CustomerPolicy = lazyWithRetry(() => import("./modules/user/CustomerPolicy"), "CustomerPolicy");
@@ -229,12 +231,6 @@ const AdminCashCollection = lazyWithRetry(
 const AdminReturnRequest = lazyWithRetry(
   () => import("./modules/admin/pages/AdminReturnRequest"), "AdminReturnRequest"
 );
-const AdminPaymentList = lazyWithRetry(
-  () => import("./modules/admin/pages/AdminPaymentList"), "AdminPaymentList"
-);
-const AdminSmsGateway = lazyWithRetry(
-  () => import("./modules/admin/pages/AdminSmsGateway"), "AdminSmsGateway"
-);
 const AdminSystemUser = lazyWithRetry(
   () => import("./modules/admin/pages/AdminSystemUser"), "AdminSystemUser"
 );
@@ -307,6 +303,9 @@ const AdminBillingSettings = lazyWithRetry(
 );
 const AdminAppSettings = lazyWithRetry(
   () => import("./modules/admin/pages/AdminAppSettings"), "AdminAppSettings"
+);
+const AdminLanguages = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminLanguages"), "AdminLanguages"
 );
 
 function App() {
@@ -386,7 +385,8 @@ function App() {
         <AxiosLoadingInterceptor>
           <IconLoader />
           <AuthProvider>
-            <AppSettingsProvider>
+            <LanguageProvider>
+              <AppSettingsProvider>
               <ThemeProvider>
                 <LocationProvider>
                   <ToastProvider>
@@ -409,6 +409,18 @@ function App() {
                                   <Login />
                                 </Suspense>
                               </PublicRoute>
+                            }
+                          />
+
+                          {/* First-Login Language Selection (Standalone Onboarding Route - OUTSIDE AppLayout) */}
+                          <Route
+                            path="/language-selection"
+                            element={
+                              <ProtectedRoute requiredUserType="Customer" redirectTo="/login">
+                                <Suspense fallback={<PageLoader />}>
+                                  <LanguageSelection />
+                                </Suspense>
+                              </ProtectedRoute>
                             }
                           />
 
@@ -770,14 +782,6 @@ function App() {
                                         element={<AdminCashCollection />}
                                       />
                                       <Route
-                                        path="payment-list"
-                                        element={<AdminPaymentList />}
-                                      />
-                                      <Route
-                                        path="sms-gateway"
-                                        element={<AdminSmsGateway />}
-                                      />
-                                      <Route
                                         path="system-user"
                                         element={<AdminSystemUser />}
                                       />
@@ -885,6 +889,10 @@ function App() {
                                       <Route
                                         path="settings"
                                         element={<AdminAppSettings />}
+                                      />
+                                      <Route
+                                        path="languages"
+                                        element={<AdminLanguages />}
                                       />
                                     </Routes>
                                   </AdminLayout>
@@ -1042,6 +1050,7 @@ function App() {
               </LocationProvider>
             </ThemeProvider>
           </AppSettingsProvider>
+            </LanguageProvider>
         </AuthProvider>
         </AxiosLoadingInterceptor>
       </LoadingProvider>

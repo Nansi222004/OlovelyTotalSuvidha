@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../services/api/auth/customerAuthService';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import OTPInput from '../../components/OTPInput';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { setLanguage } = useLanguage();
   const [mobileNumber, setMobileNumber] = useState('');
   const [showOTP, setShowOTP] = useState(false);
   const [sessionId, setSessionId] = useState('');
@@ -39,8 +41,7 @@ export default function Login() {
     try {
       const response = await verifyOTP(mobileNumber, otp, sessionId);
       if (response.success && response.data) {
-        // Update auth context with user data
-        login(response.data.token, {
+        const userData = {
           id: response.data.user.id,
           name: response.data.user.name,
           phone: response.data.user.phone,
@@ -48,8 +49,21 @@ export default function Login() {
           walletAmount: response.data.user.walletAmount,
           refCode: response.data.user.refCode,
           status: response.data.user.status,
-        });
-        navigate('/');
+          preferredLanguage: response.data.user.preferredLanguage,
+        };
+
+        // Update auth context with user data
+        login(response.data.token, userData);
+
+        const languageSelected = response.data.languageSelected;
+        const userLang = response.data.user.preferredLanguage;
+
+        if (languageSelected && userLang) {
+          setLanguage(userLang);
+          navigate('/', { replace: true });
+        } else {
+          navigate('/language-selection', { replace: true });
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Invalid OTP. Please try again.');

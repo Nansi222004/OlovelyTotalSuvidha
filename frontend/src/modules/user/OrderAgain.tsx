@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOrders } from '../../hooks/useOrders';
 import { useCart } from '../../context/CartContext';
+import { useTranslation } from '../../hooks/useTranslation';
 import { getProducts } from '../../services/api/customerProductService';
 import WishlistButton from '../../components/WishlistButton';
 import { calculateProductPrice } from '../../utils/priceUtils';
@@ -36,6 +37,7 @@ const getStatusColor = (status: string) => {
 export default function OrderAgain() {
   const { orders } = useOrders();
   const { cart, addToCart, updateQuantity } = useCart();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [addedOrders, setAddedOrders] = useState<Set<string>>(new Set());
 
@@ -120,8 +122,8 @@ export default function OrderAgain() {
               </svg>
             </button>
             <div>
-              <h1 className="text-base md:text-lg font-bold text-neutral-900 leading-tight">Order Again</h1>
-              <p className="text-[11px] text-neutral-500">Quickly reorder your past purchases</p>
+              <h1 className="text-base md:text-lg font-bold text-neutral-900 leading-tight">{t("common.orderAgain", "Order Again")}</h1>
+              <p className="text-[11px] text-neutral-500">{t("customer.quickReorderPrompt", "Quickly reorder your past purchases")}</p>
             </div>
           </div>
           <button
@@ -140,7 +142,7 @@ export default function OrderAgain() {
       {/* Orders Section - Show when orders exist */}
       {hasOrders && (
         <div className="px-4 mt-2 mb-2">
-          <h2 className="text-sm font-semibold text-neutral-900 mb-2">Your Previous Orders</h2>
+          <h2 className="text-sm font-semibold text-neutral-900 mb-2">{t("customer.previousOrders", "Your Previous Orders")}</h2>
           <div className="space-y-1.5">
             {orders.map((order) => {
               const shortId = order.id.split('-').slice(-1)[0];
@@ -156,14 +158,14 @@ export default function OrderAgain() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <div className="text-xs font-semibold text-neutral-900">
-                          Order #{shortId}
+                          {t("common.order", "Order")} #{shortId}
                         </div>
                         <span
                           className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${getStatusColor(
                             order.status
                           )}`}
                         >
-                          {order.status}
+                          {t(`status.${order.status.toLowerCase().replace(/\s+/g, '')}`, order.status)}
                         </span>
                       </div>
                       <div className="text-[10px] text-neutral-500 mb-1">{formatDate(order.createdAt)}</div>
@@ -204,7 +206,7 @@ export default function OrderAgain() {
                         ₹{order.totalAmount.toFixed(0)}
                       </div>
                       <div className="text-[10px] text-neutral-500">
-                        {order.totalItems} {order.totalItems === 1 ? 'item' : 'items'}
+                        {order.totalItems} {order.totalItems === 1 ? t("common.item", "item") : t("common.items", "items")}
                       </div>
                       {/* Order Again Button */}
                       <button
@@ -215,7 +217,7 @@ export default function OrderAgain() {
                           : 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
                           }`}
                       >
-                        {addedOrders.has(order.id) ? 'Added to Cart!' : 'Order Again'}
+                        {addedOrders.has(order.id) ? t("customer.addedToCart", "Added to Cart!") : t("common.orderAgain", "Order Again")}
                       </button>
                     </div>
                   </div>
@@ -228,7 +230,7 @@ export default function OrderAgain() {
 
       {/* Bestsellers Section - Using checkout-style cards */}
       <div className="px-4 py-2.5 border-b border-neutral-200">
-        <h2 className="text-sm font-semibold text-neutral-900 mb-2">Bestsellers</h2>
+        <h2 className="text-sm font-semibold text-neutral-900 mb-2">{t("customer.bestSellers", "Bestsellers")}</h2>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-3" style={{ scrollSnapType: 'x mandatory' }}>
           {bestsellerProducts.map((product) => {
             // Get Price and MRP using utility
@@ -295,7 +297,7 @@ export default function OrderAgain() {
                               }}
                               className="bg-white/95 backdrop-blur-sm text-green-600 border-2 border-green-600 text-[10px] font-semibold px-2 py-1 rounded shadow-md hover:bg-white transition-colors"
                             >
-                              ADD
+                              {t("common.add", "ADD")}
                             </motion.button>
                           ) : (
                             <motion.div
@@ -358,7 +360,6 @@ export default function OrderAgain() {
                     >
                       <h3 className="text-[10px] font-bold text-neutral-900 line-clamp-2 leading-tight">
                         {(() => {
-                          // Remove description suffixes like " - Fresh & Quality Assured", " - Premium Quality", etc.
                           const productName = product.name || product.productName || '';
                           return productName.replace(/\s*-\s*(Fresh|Quality|Assured|Premium|Best|Top|Hygienic|Carefully|Selected).*$/i, '').trim();
                         })()}
@@ -415,7 +416,7 @@ export default function OrderAgain() {
                       onClick={() => navigate(`/category/${product.categoryId || 'all'}`)}
                       className="w-full bg-green-100 text-green-700 text-[8px] font-medium py-0.5 rounded-lg flex items-center justify-between px-1 hover:bg-green-200 transition-colors mt-auto cursor-pointer"
                     >
-                      <span>See more like this</span>
+                      <span>{t("customer.seeMoreLikeThis", "See more like this")}</span>
                       <div className="flex items-center gap-0.5">
                         <div className="w-px h-2 bg-green-300"></div>
                         <svg width="6" height="6" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -440,19 +441,15 @@ export default function OrderAgain() {
               <div className="relative flex items-center justify-center">
                 {/* Yellow Shopping Bag */}
                 <div className="relative w-40 h-48 bg-gradient-to-b from-yellow-400 via-yellow-300 to-yellow-500 rounded-b-2xl rounded-t-lg shadow-xl border-2 border-yellow-500/30 flex items-center justify-center">
-                  {/* Enhanced bag opening/top with depth */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-8 bg-gradient-to-b from-yellow-500 to-yellow-400 rounded-t-lg shadow-inner"></div>
 
-                  {/* Enhanced bag handle with 3D effect */}
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-20 h-7 border-[4px] border-yellow-600 rounded-full border-b-transparent shadow-lg">
                     <div className="absolute top-1 left-1/2 -translate-x-1/2 w-12 h-4 border-[2px] border-yellow-500/50 rounded-full border-b-transparent"></div>
                   </div>
 
-                  {/* Decorative pattern/stitching on bag */}
                   <div className="absolute top-12 left-1/2 -translate-x-1/2 w-32 h-0.5 bg-yellow-600/30"></div>
                   <div className="absolute top-20 left-1/2 -translate-x-1/2 w-28 h-0.5 bg-yellow-600/20"></div>
 
-                  {/* Olovely text inside basket */}
                   <div className="relative z-10 text-center px-4">
                     <span className="text-2xl font-extrabold text-neutral-900 tracking-tight drop-shadow-sm">Olovely</span>
                     <span className="inline-block w-2.5 h-2.5 bg-green-500 rounded-full ml-1.5 shadow-sm"></span>
@@ -463,10 +460,10 @@ export default function OrderAgain() {
 
             {/* Reordering Message */}
             <h2 className="text-xl font-bold text-neutral-900 mb-1.5 text-center">
-              Reordering will be easy
+              {t("customer.reorderingEasy", "Reordering will be easy")}
             </h2>
             <p className="text-xs text-neutral-600 text-center max-w-xs leading-snug">
-              Items you order will show up here so you can buy them again easily
+              {t("customer.reorderHelpText", "Items you order will show up here so you can buy them again easily")}
             </p>
           </div>
         </div>

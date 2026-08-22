@@ -39,6 +39,7 @@ export interface ICustomer extends Document {
   // FCM Push Notification Tokens
   fcmTokens?: string[];        // Web push notification tokens
   fcmTokenMobile?: string[];   // Mobile push notification tokens
+  preferredLanguage?: string;
 }
 
 
@@ -161,6 +162,12 @@ const CustomerSchema = new Schema<ICustomer>(
     fcmTokenMobile: {
       type: [String],
       default: []
+    },
+    preferredLanguage: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      default: null,
     },
   },
 

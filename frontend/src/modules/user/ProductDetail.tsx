@@ -22,6 +22,7 @@ import {
   Review,
   ReviewStats,
 } from '../../services/api/customerReviewService';
+import { useTranslation } from '../../hooks/useTranslation';
 import PageLoader from '../../components/PageLoader';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
@@ -30,6 +31,7 @@ export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
+  const { t, getTranslatedField } = useTranslation();
   const { cart, addToCart, updateQuantity } = useCart();
   const { showToast } = useToast();
   const { location } = useLocation();
@@ -638,7 +640,7 @@ export default function ProductDetail() {
 
           {/* Product name */}
           <h2 className="text-lg md:text-2xl font-bold text-neutral-900 mb-0 leading-tight">
-            {product.name}
+            {getTranslatedField(product, "name")}
           </h2>
 
           {/* Aggregate rating */}
@@ -944,10 +946,10 @@ export default function ProductDetail() {
                     {product.description && (
                       <div className="flex items-start">
                         <span className="text-xs font-semibold text-neutral-800 w-[180px] flex-shrink-0">
-                          Description:
+                          {t("common.description", "Description:")}
                         </span>
                         <span className="text-xs text-neutral-600 leading-relaxed flex-1">
-                          {product.description}
+                          {getTranslatedField(product, "description")}
                         </span>
                       </div>
                     )}
@@ -1068,7 +1070,7 @@ export default function ProductDetail() {
           <div className="bg-white rounded-xl border border-neutral-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base md:text-lg font-semibold text-neutral-900">
-                Ratings & Reviews
+                {t("product.ratingsAndReviews", "Ratings & Reviews")}
               </h3>
               {(reviewStats.totalReviews > 0 || product.rating > 0) && (
                 <StarRating
@@ -1086,11 +1088,11 @@ export default function ProductDetail() {
 
             {reviewsLoading && reviews.length === 0 ? (
               <p className="text-sm text-neutral-500 py-4 text-center">
-                Loading reviews...
+                {t("product.loadingReviews", "Loading reviews...")}
               </p>
             ) : reviews.length === 0 ? (
               <p className="text-sm text-neutral-500 py-4 text-center">
-                No reviews yet. Be the first to review after your order is delivered.
+                {t("product.noReviewsYet", "No reviews yet. Be the first to review after your order is delivered.")}
               </p>
             ) : (
               <div className="space-y-4">
@@ -1365,7 +1367,7 @@ export default function ProductDetail() {
             </div>
             {/* Third line - Inclusive of all taxes */}
             <p className="text-[11px] text-neutral-500 leading-none">
-              Inclusive of all taxes
+              {t("customer.inclusiveOfAllTaxes", "Inclusive of all taxes")}
             </p>
           </div>
 
@@ -1375,13 +1377,13 @@ export default function ProductDetail() {
               <Button
                 disabled
                 className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
-                Unavailable
+                {t("customer.unavailable", "Unavailable")}
               </Button>
             ) : !isVariantAvailable ? (
               <Button
                 disabled
                 className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
-                Out of Stock
+                {t("customer.outOfStock", "Out of Stock")}
               </Button>
             ) : (
               <>
@@ -1400,7 +1402,7 @@ export default function ProductDetail() {
                         size="default"
                         onClick={handleAddToCart}
                         className="px-4 py-2 text-sm font-semibold h-[38px] border-2 border-green-600 text-green-600 hover:bg-green-50 rounded-lg transition-colors whitespace-nowrap">
-                        Add to Cart
+                        {t("customer.addToCart", "Add to Cart")}
                       </Button>
                     </motion.div>
                   ) : (
@@ -1448,7 +1450,7 @@ export default function ProductDetail() {
                 <Button
                   onClick={handleBuyNow}
                   className="px-5 py-2 text-sm font-semibold h-[38px] bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-sm whitespace-nowrap">
-                  Buy Now
+                  {t("customer.buyNow", "Buy Now")}
                 </Button>
               </>
             )}

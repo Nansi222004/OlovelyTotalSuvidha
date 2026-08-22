@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import api from "../../../services/api/config";
 
 export default function AdminFAQ() {
   const { isAuthenticated, token } = useAuth();
@@ -18,6 +19,13 @@ export default function AdminFAQ() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
+  const [translations, setTranslations] = useState<Record<string, Record<string, string>>>({
+    hi: { question: "", answer: "" },
+    mr: { question: "", answer: "" },
+    gu: { question: "", answer: "" },
+  });
+  const [activeTab, setActiveTab] = useState<"en" | "hi" | "mr" | "gu">("en");
+  const [translating, setTranslating] = useState(false);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -94,9 +102,39 @@ export default function AdminFAQ() {
 
   const SortIcon = ({ column }: { column: string }) => (
     <span className="text-neutral-300 text-[10px]">
-      {sortColumn === column ? (sortDirection === "asc" ? "â†‘" : "â†“") : "â‡…"}
+      {sortColumn === column ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
     </span>
   );
+
+  const handleAutoTranslate = async () => {
+    if (!faqQuestion.trim() && !faqAnswer.trim()) {
+      showToast("Please enter English question or answer first", "error");
+      return;
+    }
+
+    try {
+      setTranslating(true);
+      const res = await api.post("/admin/translation/batch", {
+        fields: {
+          question: faqQuestion.trim(),
+          answer: faqAnswer.trim(),
+        },
+      });
+
+      if (res.data && res.data.success && res.data.translations) {
+        setTranslations((prev) => ({
+          ...prev,
+          ...res.data.translations,
+        }));
+        showToast("Auto-translation generated successfully!", "success");
+      }
+    } catch (err: any) {
+      console.error("Auto translate error:", err);
+      showToast("Auto-translation failed: " + (err.response?.data?.message || err.message), "error");
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const handleAddFAQ = async () => {
     if (!faqQuestion.trim() || !faqAnswer.trim()) {
@@ -109,12 +147,13 @@ export default function AdminFAQ() {
 
       if (editingFAQ !== null) {
         // Update existing FAQ
-        const updateData: UpdateFAQData = {
+        const updateData: UpdateFAQData & { translations?: any } = {
           question: faqQuestion.trim(),
           answer: faqAnswer.trim(),
+          translations,
         };
 
-        const response = await updateFAQ(editingFAQ._id, updateData);
+        const response = await updateFAQ(editingFAQ._id, updateData as any);
 
         if (response.success) {
           // Update local state
@@ -125,6 +164,7 @@ export default function AdminFAQ() {
                   ...faq,
                   question: faqQuestion.trim(),
                   answer: faqAnswer.trim(),
+                  translations,
                 }
                 : faq
             )
@@ -139,13 +179,14 @@ export default function AdminFAQ() {
         }
       } else {
         // Add new FAQ
-        const faqData: CreateFAQData = {
+        const faqData: CreateFAQData & { translations?: any } = {
           question: faqQuestion.trim(),
           answer: faqAnswer.trim(),
           isActive: true,
+          translations,
         };
 
-        const response = await createFAQ(faqData);
+        const response = await createFAQ(faqData as any);
 
         if (response.success) {
           // Add to local state
@@ -258,35 +299,100 @@ export default function AdminFAQ() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Panel: Add FAQ */}
           <div className="lg:col-span-5 min-w-0 bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
-            <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
-              <h2 className="text-lg font-semibold">Add FAQ</h2>
+            <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+              <h2 className="text-lg font-semibold">{editingFAQ ? "Edit FAQ" : "Add FAQ"}</h2>
+              <button
+                type="button"
+                onClick={handleAutoTranslate}
+                disabled={translating || !faqQuestion.trim()}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors disabled:opacity-50">
+                {translating ? "Translating..." : "🌐 Auto-Translate"}
+              </button>
             </div>
             <div className="p-6 flex-1 flex flex-col">
+              {/* Language Tabs */}
+              <div className="flex border-b border-neutral-200 mb-4 gap-2">
+                {(["en", "hi", "mr", "gu"] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setActiveTab(lang)}
+                    className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors ${
+                      activeTab === lang
+                        ? "border-teal-600 text-teal-700 font-bold"
+                        : "border-transparent text-neutral-500 hover:text-neutral-700"
+                    }`}>
+                    {lang === "en" ? "English" : lang === "hi" ? "हिंदी" : lang === "mr" ? "मराठी" : "ગુજરાતી"}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-4 flex-1">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    FAQ Question
-                  </label>
-                  <input
-                    type="text"
-                    value={faqQuestion}
-                    onChange={(e) => setFaqQuestion(e.target.value)}
-                    placeholder="Enter FAQ Question"
-                    className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    FAQ Answer
-                  </label>
-                  <textarea
-                    value={faqAnswer}
-                    onChange={(e) => setFaqAnswer(e.target.value)}
-                    placeholder="Enter FAQ Answer"
-                    rows={6}
-                    className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
-                  />
-                </div>
+                {activeTab === "en" ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">
+                        FAQ Question (English) *
+                      </label>
+                      <input
+                        type="text"
+                        value={faqQuestion}
+                        onChange={(e) => setFaqQuestion(e.target.value)}
+                        placeholder="Enter FAQ Question"
+                        className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">
+                        FAQ Answer (English) *
+                      </label>
+                      <textarea
+                        value={faqAnswer}
+                        onChange={(e) => setFaqAnswer(e.target.value)}
+                        placeholder="Enter FAQ Answer"
+                        rows={6}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">
+                        FAQ Question ({activeTab.toUpperCase()})
+                      </label>
+                      <input
+                        type="text"
+                        value={translations[activeTab]?.question || ""}
+                        onChange={(e) =>
+                          setTranslations((prev) => ({
+                            ...prev,
+                            [activeTab]: { ...prev[activeTab], question: e.target.value },
+                          }))
+                        }
+                        placeholder={`Enter question in ${activeTab.toUpperCase()}`}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">
+                        FAQ Answer ({activeTab.toUpperCase()})
+                      </label>
+                      <textarea
+                        value={translations[activeTab]?.answer || ""}
+                        onChange={(e) =>
+                          setTranslations((prev) => ({
+                            ...prev,
+                            [activeTab]: { ...prev[activeTab], answer: e.target.value },
+                          }))
+                        }
+                        placeholder={`Enter answer in ${activeTab.toUpperCase()}`}
+                        rows={6}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="mt-6">
                 <button

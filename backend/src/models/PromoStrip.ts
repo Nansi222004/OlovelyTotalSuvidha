@@ -17,6 +17,7 @@ export interface IPromoStrip extends Document {
   crazyDealsTitle?: string; // Custom title for the CRAZY DEALS section (e.g., "CRAZY DEALS", "SPECIAL OFFERS")
   isActive: boolean; // Enable/disable the PromoStrip
   order: number; // For sorting if multiple PromoStrips per category
+  translations?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +29,10 @@ const PromoStripSchema = new Schema<IPromoStrip>(
       required: [true, "Header category slug is required"],
       trim: true,
       lowercase: true,
+    },
+    translations: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
     heading: {
       type: String,

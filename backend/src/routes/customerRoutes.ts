@@ -39,6 +39,9 @@ router.put("/profile", authenticate, customerController.updateProfile);
 // Update customer location (protected route)
 router.post("/location", authenticate, customerController.updateLocation);
 
+// Update customer language preference (protected route)
+router.put("/language", authenticate, customerController.updateLanguagePreference);
+
 import * as walletController from "../modules/customer/controllers/customerWalletController";
 import * as supportController from "../modules/customer/controllers/customerSupportController";
 

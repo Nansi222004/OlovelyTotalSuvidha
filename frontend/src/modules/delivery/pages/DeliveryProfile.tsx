@@ -5,10 +5,12 @@ import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { useDeliveryUser } from '../context/DeliveryUserContext';
 import { getDeliveryProfile, updateProfile } from '../../../services/api/delivery/deliveryService';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function DeliveryProfile() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const { userName, setUserName } = useDeliveryUser();
 
@@ -116,7 +118,7 @@ export default function DeliveryProfile() {
               />
             </svg>
           </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Profile</h2>
+          <h2 className="text-neutral-900 text-xl font-semibold">{t("delivery.profile", "Profile")}</h2>
         </div>
 
         {/* Profile Card */}
@@ -163,11 +165,11 @@ export default function DeliveryProfile() {
         {/* Profile Details */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Personal Information</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.personalInformation", "Personal Information")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Email</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.email", "Email")}</p>
               {isEditing ? (
                 <input
                   type="email"
@@ -180,7 +182,7 @@ export default function DeliveryProfile() {
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Address</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.address", "Address")}</p>
               {isEditing ? (
                 <textarea
                   value={profileData.address}
@@ -193,7 +195,7 @@ export default function DeliveryProfile() {
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Vehicle Number</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.vehicleNumber", "Vehicle Number")}</p>
               {isEditing ? (
                 <input
                   type="text"
@@ -206,20 +208,26 @@ export default function DeliveryProfile() {
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Vehicle Type</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.vehicleType", "Vehicle Type")}</p>
               {isEditing ? (
                 <select
                   value={profileData.vehicleType}
                   onChange={(e) => handleInputChange('vehicleType', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
-                  <option value="Bike">Bike</option>
-                  <option value="Scooter">Scooter</option>
-                  <option value="Car">Car</option>
-                  <option value="Cycle">Cycle</option>
+                  <option value="Bike">{t("delivery.bike", "Bike")}</option>
+                  <option value="Scooter">{t("delivery.scooter", "Scooter")}</option>
+                  <option value="Car">{t("delivery.car", "Car")}</option>
+                  <option value="Cycle">{t("delivery.cycle", "Cycle")}</option>
                 </select>
               ) : (
-                <p className="text-neutral-900 text-sm">{profileData.vehicleType}</p>
+                <p className="text-neutral-900 text-sm">
+                  {profileData.vehicleType === 'Bike' ? t("delivery.bike", "Bike") :
+                   profileData.vehicleType === 'Scooter' ? t("delivery.scooter", "Scooter") :
+                   profileData.vehicleType === 'Car' ? t("delivery.car", "Car") :
+                   profileData.vehicleType === 'Cycle' ? t("delivery.cycle", "Cycle") :
+                   profileData.vehicleType}
+                </p>
               )}
             </div>
           </div>
@@ -228,63 +236,59 @@ export default function DeliveryProfile() {
         {/* Bank Details */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mt-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Bank Details</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.bankDetails", "Bank Details")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Account Holder Name</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.accountHolderName", "Account Holder Name")}</p>
               {isEditing ? (
                 <input
                   type="text"
                   value={profileData.accountName}
                   onChange={(e) => handleInputChange('accountName', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="Enter account holder name"
                 />
               ) : (
-                <p className="text-neutral-900 text-sm">{profileData.accountName || 'Not Set'}</p>
+                <p className="text-neutral-900 text-sm">{profileData.accountName || t("delivery.notSet", "Not Set")}</p>
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Bank Name</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.bankName", "Bank Name")}</p>
               {isEditing ? (
                 <input
                   type="text"
                   value={profileData.bankName}
                   onChange={(e) => handleInputChange('bankName', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="e.g. HDFC Bank"
                 />
               ) : (
-                <p className="text-neutral-900 text-sm">{profileData.bankName || 'Not Set'}</p>
+                <p className="text-neutral-900 text-sm">{profileData.bankName || t("delivery.notSet", "Not Set")}</p>
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">Account Number</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.accountNumber", "Account Number")}</p>
               {isEditing ? (
                 <input
                   type="text"
                   value={profileData.accountNumber}
                   onChange={(e) => handleInputChange('accountNumber', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="Enter account number"
                 />
               ) : (
-                <p className="text-neutral-900 text-sm">{profileData.accountNumber ? `XXXX${profileData.accountNumber.slice(-4)}` : 'Not Set'}</p>
+                <p className="text-neutral-900 text-sm">{profileData.accountNumber ? `XXXX${profileData.accountNumber.slice(-4)}` : t("delivery.notSet", "Not Set")}</p>
               )}
             </div>
             <div className="p-4">
-              <p className="text-neutral-500 text-xs mb-1">IFSC Code</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.ifscCode", "IFSC Code")}</p>
               {isEditing ? (
                 <input
                   type="text"
                   value={profileData.ifscCode}
                   onChange={(e) => handleInputChange('ifscCode', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="e.g. HDFC0001234"
                 />
               ) : (
-                <p className="text-neutral-900 text-sm">{profileData.ifscCode || 'Not Set'}</p>
+                <p className="text-neutral-900 text-sm">{profileData.ifscCode || t("delivery.notSet", "Not Set")}</p>
               )}
             </div>
           </div>
@@ -293,10 +297,10 @@ export default function DeliveryProfile() {
         {/* UPI Details */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mt-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">UPI Details</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.upiDetails", "UPI Details")}</h3>
           </div>
           <div className="p-4">
-            <p className="text-neutral-500 text-xs mb-1">UPI ID</p>
+            <p className="text-neutral-500 text-xs mb-1">{t("delivery.upiId", "UPI ID")}</p>
             {isEditing ? (
               <div>
                 <input
@@ -304,12 +308,10 @@ export default function DeliveryProfile() {
                   value={profileData.upiId}
                   onChange={(e) => handleInputChange('upiId', e.target.value)}
                   className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
-                  placeholder="username@bank"
                 />
-                <p className="text-xs text-neutral-400 mt-1">Example: username@bank</p>
               </div>
             ) : (
-              <p className="text-neutral-900 text-sm font-mono">{profileData.upiId || 'Not Set'}</p>
+              <p className="text-neutral-900 text-sm font-mono">{profileData.upiId || t("delivery.notSet", "Not Set")}</p>
             )}
           </div>
         </div>
@@ -318,11 +320,11 @@ export default function DeliveryProfile() {
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 mt-4 p-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
-              <p className="text-neutral-500 text-xs mb-1">Total Deliveries</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.totalDeliveries", "Total Deliveries")}</p>
               <p className="text-neutral-900 text-2xl font-bold">{profileData.totalDeliveries}</p>
             </div>
             <div className="text-center">
-              <p className="text-neutral-500 text-xs mb-1">Joined On</p>
+              <p className="text-neutral-500 text-xs mb-1">{t("delivery.joinedOn", "Joined On")}</p>
               <p className="text-neutral-900 text-sm font-semibold">{profileData.joinDate}</p>
             </div>
           </div>
@@ -335,13 +337,13 @@ export default function DeliveryProfile() {
               onClick={handleCancel}
               className="flex-1 bg-neutral-200 text-neutral-900 rounded-xl py-3 font-semibold hover:bg-neutral-300 transition-colors"
             >
-              Cancel
+              {t("delivery.cancel", "Cancel")}
             </button>
             <button
               onClick={handleSave}
               className="flex-1 bg-orange-500 text-white rounded-xl py-3 font-semibold hover:bg-orange-600 transition-colors"
             >
-              Save Changes
+              {t("delivery.saveChanges", "Save Changes")}
             </button>
           </div>
         ) : (
@@ -349,7 +351,7 @@ export default function DeliveryProfile() {
             onClick={handleEdit}
             className="w-full mt-4 bg-orange-500 text-white rounded-xl py-3 font-semibold hover:bg-orange-600 transition-colors"
           >
-            Edit Profile
+            {t("delivery.editProfile", "Edit Profile")}
           </button>
         )}
       </div>

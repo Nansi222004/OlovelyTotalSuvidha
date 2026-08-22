@@ -5,6 +5,7 @@ import SalesLineChart from "../components/SalesLineChart";
 import GaugeChart from "../components/GaugeChart";
 import ErrorBoundary from "../../../components/ErrorBoundary";
 import { useAuth } from "../../../context/AuthContext";
+import { useLanguage } from "../../../context/LanguageContext";
 import {
   getDashboardStats,
   getSalesAnalytics,
@@ -24,6 +25,7 @@ import { getFinancialDashboard, WalletStats } from "../../../services/api/admin/
 
 export default function AdminDashboard() {
   const { isAuthenticated, token } = useAuth();
+  const { t } = useLanguage();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [newOrders, setNewOrders] = useState<RecentOrder[]>([]);
   const [topSellers, setTopSellers] = useState<TopSeller[]>([]);
@@ -484,61 +486,61 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         <DashboardCard
           icon={userIcon}
-          title="Total User"
+          title={t("admin.totalUser", "Total User")}
           value={stats.totalUser}
           accentColor="#3b82f6"
         />
         <DashboardCard
           icon={categoryIcon}
-          title="Total Category"
+          title={t("admin.totalCategory", "Total Category")}
           value={stats.totalCategory}
           accentColor="#eab308"
         />
         <DashboardCard
           icon={subcategoryIcon}
-          title="Total Subcategory"
+          title={t("admin.totalSubcategory", "Total Subcategory")}
           value={stats.totalSubcategory ?? 0}
           accentColor="#ec4899"
         />
         <DashboardCard
           icon={productIcon}
-          title="Total Product"
+          title={t("admin.totalProduct", "Total Product")}
           value={stats.totalProduct}
           accentColor="#ef4444"
         />
         <DashboardCard
           icon={ordersIcon}
-          title="Total Orders"
+          title={t("admin.totalOrders", "Total Orders")}
           value={stats.totalOrders}
           accentColor="#3b82f6"
         />
         <DashboardCard
           icon={completedOrdersIcon}
-          title="Completed Orders"
+          title={t("admin.completedOrders", "Completed Orders")}
           value={stats.completedOrders}
           accentColor="#16a34a"
         />
         <DashboardCard
           icon={pendingOrdersIcon}
-          title="Pending Orders"
+          title={t("admin.pendingOrders", "Pending Orders")}
           value={stats.pendingOrders}
           accentColor="#a855f7"
         />
         <DashboardCard
           icon={cancelledOrdersIcon}
-          title="Cancelled Orders"
+          title={t("admin.cancelledOrders", "Cancelled Orders")}
           value={stats.cancelledOrders}
           accentColor="#ef4444"
         />
         <DashboardCard
           icon={soldOutIcon}
-          title="Product Sold Out"
+          title={t("admin.productSoldOut", "Product Sold Out")}
           value={stats.soldOutProducts}
           accentColor="#ec4899"
         />
         <DashboardCard
           icon={lowStockIcon}
-          title="Product low on Stock"
+          title={t("admin.productLowStock", "Product low on Stock")}
           value={stats.lowStockProducts}
           accentColor="#eab308"
         />
@@ -548,25 +550,25 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <DashboardCard
           icon={<DollarSignIcon />}
-          title="Total Revenue"
+          title={t("admin.totalRevenue", "Total Revenue")}
           value={`₹${financeStats?.totalGMV?.toLocaleString("en-IN") || "0"}`}
           accentColor="#3b82f6"
         />
         <DashboardCard
           icon={<TrendingUpIcon />}
-          title="Admin Profit"
+          title={t("admin.adminProfit", "Admin Profit")}
           value={`₹${financeStats?.totalAdminEarnings?.toLocaleString("en-IN") || "0"}`}
           accentColor="#16a34a"
         />
         <DashboardCard
           icon={<ClockIcon />}
-          title="Seller Owed"
+          title={t("admin.sellerOwed", "Seller Owed")}
           value={`₹${financeStats?.sellerPendingPayouts?.toLocaleString("en-IN") || "0"}`}
           accentColor="#f59e0b"
         />
         <DashboardCard
           icon={<DeliveryIcon />}
-          title="Delivery Owed"
+          title={t("admin.deliveryOwed", "Delivery Owed")}
           value={`₹${financeStats?.deliveryPendingPayouts?.toLocaleString("en-IN") || "0"}`}
           accentColor="#ef4444"
         />
@@ -577,7 +579,7 @@ export default function AdminDashboard() {
         {/* Total Sales Today */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-neutral-200 p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-            Total Sales Today
+            {t("admin.salesToday", "Total Sales Today")}
           </h3>
           <div className="mb-4">
             <p className="text-3xl font-bold text-neutral-900">
@@ -607,7 +609,7 @@ export default function AdminDashboard() {
           {/* Sales by Location */}
           <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-neutral-900 mb-4">
-              Sales by Location
+              {t("admin.salesByLocation", "Sales by Location")}
             </h3>
             <div className="space-y-3">
               {salesByLocation.length > 0 ? (
@@ -634,7 +636,7 @@ export default function AdminDashboard() {
           {/* Avg. Completed Order Value */}
           <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-neutral-900 mb-4">
-              Avg. Completed Order Value
+              {t("admin.avgCompletedOrderValue", "Avg. Completed Order Value")}
             </h3>
             <GaugeChart
               value={stats.avgCompletedOrderValue}

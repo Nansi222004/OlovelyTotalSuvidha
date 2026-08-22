@@ -10,6 +10,7 @@ import { Category } from '../../../types/domain';
 import { getHeaderCategoriesPublic } from '../../../services/api/headerCategoryService';
 import { getIconByName } from '../../../utils/iconLibrary';
 import { useAppSettings } from '../../../context/AppSettingsContext';
+import { useTranslation } from '../../../hooks/useTranslation';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -37,6 +38,7 @@ const ALL_TAB: Tab = {
 
 export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroProps) {
   const { settings: appSettings } = useAppSettings();
+  const { t, getTranslatedField } = useTranslation();
   const [tabs, setTabs] = useState<Tab[]>([ALL_TAB]);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
             .filter(c => c.slug !== 'all') // Filter out any category with slug 'all' to prevent duplicate keys
             .map(c => ({
               id: c.slug,
-              label: c.name,
+              label: getTranslatedField(c, "name") || c.name,
               icon: getIconByName(c.iconName)
             }));
           setTabs([ALL_TAB, ...mapped]);
@@ -58,7 +60,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
       }
     };
     fetchHeaderCategories();
-  }, []);
+  }, [getTranslatedField]);
   const navigate = useNavigate();
   const { location: userLocation } = useLocation();
   const heroRef = useRef<HTMLDivElement>(null);
@@ -456,7 +458,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
                       transition: 'font-weight 0.3s ease-out',
                     }}
                   >
-                    {tab.label}
+                    {tab.id === 'all' ? t('common.all', 'All') : tab.label}
                   </span>
                 </button>
               )

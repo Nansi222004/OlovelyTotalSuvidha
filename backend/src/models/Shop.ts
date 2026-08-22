@@ -12,6 +12,7 @@ export interface IShop extends Document {
   products: mongoose.Types.ObjectId[];
   order: number; // For sorting/ordering
   isActive: boolean;
+  translations?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +23,10 @@ const ShopSchema = new Schema<IShop>(
       type: String,
       required: [true, 'Shop name is required'],
       trim: true,
+    },
+    translations: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
     storeId: {
       type: String,

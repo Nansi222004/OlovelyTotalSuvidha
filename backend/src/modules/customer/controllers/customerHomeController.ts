@@ -55,7 +55,7 @@ async function fetchSectionData(
       // 1. Fetch from SubCategory collection
       if (Object.keys(subcategoryQuery).length > 0) {
         const subcategories = await SubCategory.find(subcategoryQuery)
-          .select("name image order category")
+          .select("name image order category translations")
           .sort({ order: 1 })
           .limit(limit || 10)
           .lean();
@@ -68,6 +68,7 @@ async function fetchSectionData(
           image: sub.image || "",
           slug: sub.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
           type: "subcategory",
+          translations: sub.translations || {},
         }));
 
         results.push(...mappedSubs);
@@ -75,7 +76,6 @@ async function fetchSectionData(
 
       // 2. Fallback or Specific ID check in Category Collection
 
-      // Case A: Specific IDs were provided but not found in SubCategory
       // Case A: Specific IDs were provided but not found in SubCategory
       if (specificIds.length > 0) {
         const foundSubIds = results.map((r) => r.id);
@@ -88,7 +88,7 @@ async function fetchSectionData(
             _id: { $in: missingIds },
             status: "Active",
           })
-            .select("name image slug parentId")
+            .select("name image slug parentId translations")
             .lean();
 
           const mappedCats = foundCategories.map((c: any) => {
@@ -103,6 +103,7 @@ async function fetchSectionData(
               image: c.image,
               slug: c.slug,
               type: hasParent ? "subcategory" : "category",
+              translations: c.translations || {},
             };
           });
 
@@ -117,7 +118,7 @@ async function fetchSectionData(
           parentId: { $in: parentCategoryIds },
           status: "Active",
         })
-          .select("name image slug parentId")
+          .select("name image slug parentId translations")
           .sort({ order: 1 })
           .limit(limit || 10)
           .lean();
@@ -130,6 +131,7 @@ async function fetchSectionData(
           image: c.image,
           slug: c.slug,
           type: "subcategory",
+          translations: c.translations || {},
         }));
 
         results.push(...mappedChildCats);
@@ -181,7 +183,7 @@ async function fetchSectionData(
       const products = await Product.find(query)
         .sort({ createdAt: -1 }) // Show newest items first
         .limit(limit || 8)
-        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId")
+        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations")
         .populate("seller", "storeName sellerName viewCustomerDetails")
         .populate("shopId", "name")
         .lean();
@@ -228,6 +230,7 @@ async function fetchSectionData(
           seller: p.seller,
           storeName,
           shopName,
+          translations: p.translations || {},
         };
       });
 
@@ -243,7 +246,7 @@ async function fetchSectionData(
           _id: { $in: categoryIds },
           status: "Active",
         })
-          .select("name image slug")
+          .select("name image slug translations")
           .sort({ order: 1 })
           .limit(limit || 8)
           .lean();
@@ -255,6 +258,7 @@ async function fetchSectionData(
           image: c.image,
           slug: c.slug,
           type: "category",
+          translations: c.translations || {},
         }));
       } else {
         // If no categories specified, return empty array
@@ -296,7 +300,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
     const bestsellerCards = await BestsellerCard.find({
       isActive: true,
     })
-      .populate("category", "name slug image")
+      .populate("category", "name slug image translations")
       .sort({ order: 1 })
       .limit(6)
       .lean();
@@ -327,7 +331,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
         // Fetch 4 active products from the category for preview images
         // We fetch these irrespective of location radius to show category preview
         const categoryProducts = await Product.find(productQuery)
-          .select("productName mainImage galleryImages")
+          .select("productName mainImage galleryImages translations")
           .sort({ createdAt: -1 })
           .limit(4)
           .lean();
@@ -364,6 +368,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           name: card.name,
           productImages: productImages.slice(0, 4),
           productCount: categoryProducts.length,
+          translations: card.translations || {},
         };
       })
     );
@@ -384,7 +389,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .populate({
         path: "product",
         select:
-          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId",
+          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId translations",
         populate: [
           { path: "seller", select: "storeName sellerName" },
           { path: "shopId", select: "name" },
@@ -435,6 +440,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           seller: product.seller,
           storeName,
           shopName,
+          translations: product.translations || {},
         };
       })
 
@@ -445,12 +451,12 @@ export const getHomeContent = async (req: Request, res: Response) => {
     const categories = await Category.find({
       status: "Active",
     })
-      .select("name image icon color slug")
+      .select("name image icon color slug translations")
       .sort({ order: 1 });
 
     // 4. Shop By Store - Fetch from database
     const shopDocuments = await Shop.find({ isActive: true })
-      .populate("category", "name slug")
+      .populate("category", "name slug translations")
       .sort({ order: 1, createdAt: -1 })
       .lean();
 
@@ -481,6 +487,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           category: shop.category,
           productIds: shop.products?.map((p: any) => p.toString()) || [],
           bgColor: shop.bgColor || "bg-neutral-50",
+          translations: shop.translations || {},
         };
       })
     );
@@ -495,13 +502,14 @@ export const getHomeContent = async (req: Request, res: Response) => {
       status: "Active",
     })
       .limit(5)
-      .select("name image slug");
+      .select("name image slug translations");
 
-    const trending = trendingCategories.map((c) => ({
+    const trending = trendingCategories.map((c: any) => ({
       id: c._id,
       name: c.name,
       image: c.image || `/assets/categories/${c.slug}.jpg`,
       type: "category",
+      translations: c.translations || {},
     }));
 
     // 6. Personal Care Subcategories - Now handled by dynamic sections
@@ -520,13 +528,14 @@ export const getHomeContent = async (req: Request, res: Response) => {
 
     const foodProducts = await Product.find(foodProductsQuery)
       .limit(3)
-      .select("productName mainImage");
+      .select("productName mainImage translations");
 
-    const cookingIdeas = foodProducts.map((p) => ({
+    const cookingIdeas = foodProducts.map((p: any) => ({
       id: p._id,
       title: p.productName,
       image: p.mainImage,
       productId: p._id,
+      translations: p.translations || {},
     }));
 
     // 8. Promo Cards (Dynamic - Categories with headerCategoryId)
@@ -554,7 +563,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
     }
 
     const categoriesWithHeaderCategory = await Category.find(categoryQuery)
-      .populate("headerCategoryId", "name status")
+      .populate("headerCategoryId", "name status translations")
       .sort({ order: 1 })
       .limit(4) // Limit to 4 promo cards
       .lean();
@@ -566,7 +575,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           parentId: category._id,
           status: "Active",
         })
-          .select("name image _id")
+          .select("name image _id translations")
           .sort({ order: 1 })
           .limit(4) // Limit to 4 subcategory images
           .lean();
@@ -584,6 +593,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           slug: category.slug || category._id.toString(),
           bgColor: "bg-yellow-50",
           subcategoryImages: subcategoryImages.slice(0, 4), // Max 4 images
+          translations: category.translations || {},
         };
       })
     );
@@ -651,7 +661,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
     }
 
     const homeSections = await HomeSection.find(homeSectionQuery)
-      .populate("categories", "name slug image")
+      .populate("categories", "name slug image translations")
       .sort({ order: 1 })
       .lean();
 
@@ -671,6 +681,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
           displayType: section.displayType,
           columns: section.columns,
           data: sectionData,
+          translations: section.translations || {},
         };
       })
     );
@@ -690,8 +701,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
         startDate: { $lte: now },
         endDate: { $gte: now },
       })
-        .populate("categoryCards.categoryId", "name slug image")
-        .populate("featuredProducts", "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller variations")
+        .populate("categoryCards.categoryId", "name slug image translations")
+        .populate("featuredProducts", "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller variations translations")
         .sort({ order: 1 })
         .lean();
 

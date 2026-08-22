@@ -13,6 +13,7 @@ export interface ICategory extends Document {
   status: "Active" | "Inactive";
   parentId?: mongoose.Types.ObjectId;
   headerCategoryId?: mongoose.Types.ObjectId;
+  translations?: Record<string, Record<string, string>>;
   createdAt: Date;
   updatedAt: Date;
   getAllDescendants(): Promise<ICategory[]>;
@@ -85,6 +86,10 @@ const CategorySchema = new Schema<ICategory>(
       type: Schema.Types.ObjectId,
       ref: "HeaderCategory",
       default: null,
+    },
+    translations: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
   },
   {

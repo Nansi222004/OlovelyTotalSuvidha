@@ -36,9 +36,12 @@ import paymentRoutes from "./paymentRoutes";
 import sellerWalletRoutes from "./sellerWalletRoutes";
 import deliveryWalletRoutes from "./deliveryWalletRoutes";
 import adminWithdrawalRoutes from "./adminWithdrawalRoutes";
+import adminTranslationRoutes from "./adminTranslationRoutes";
 import sellerNotificationRoutes from "./sellerNotificationRoutes";
 import customerNotificationRoutes from "./customerNotificationRoutes";
 import migrationRoutes from "./migrationRoutes";
+import languageRoutes from "./languageRoutes";
+import adminLanguageRoutes from "./adminLanguageRoutes";
 
 import {
   createOrder,
@@ -60,6 +63,9 @@ router.get("/health", (_req, res) => {
   });
 });
 
+// Public Language routes (languages list & UI translations)
+router.use("/languages", languageRoutes);
+
 // Authentication routes
 router.use("/auth/admin", adminAuthRoutes);
 router.use("/auth/seller", sellerAuthRoutes);
@@ -68,6 +74,9 @@ router.use("/auth/delivery", deliveryAuthRoutes);
 
 // FCM Token routes (protected - requires authentication)
 router.use("/fcm-tokens", authenticate, fcmTokenRoutes);
+
+// Admin language management routes
+router.use("/admin/languages", adminLanguageRoutes);
 
 // Delivery routes (protected)
 router.use(
@@ -175,6 +184,9 @@ router.use("/delivery/wallet", authenticate, requireUserType("Delivery"), delive
 
 // Admin withdrawal management routes (protected, admin only)
 router.use("/admin/withdrawals", authenticate, requireUserType("Admin"), adminWithdrawalRoutes);
+
+// Admin translation routes (protected, admin only)
+router.use("/admin/translation", adminTranslationRoutes);
 
 // Admin commission management routes (protected, admin only)
 

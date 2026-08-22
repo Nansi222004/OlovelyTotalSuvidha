@@ -6,10 +6,12 @@ import AlertCard from '../components/AlertCard';
 import { getSellerDashboardStats, DashboardStats, NewOrder } from '../../../services/api/dashboardService';
 import { getSellerProfile, toggleShopStatus } from '../../../services/api/auth/sellerAuthService';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function SellerDashboard() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [newOrders, setNewOrders] = useState<NewOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,9 +38,7 @@ export default function SellerDashboard() {
         }
 
         if (profileResponse.success) {
-          // Use nullish coalescing to default to true if isShopOpen is undefined
           const shopStatus = profileResponse.data.isShopOpen ?? true;
-          console.log('Initial shop status from profile:', shopStatus, 'Raw value:', profileResponse.data.isShopOpen);
           setIsShopOpen(shopStatus);
         }
       } catch (err: any) {
@@ -54,24 +54,15 @@ export default function SellerDashboard() {
   const handleToggleShop = async () => {
     try {
       setStatusLoading(true);
-      console.log('Toggle shop status - current state:', isShopOpen);
       const response = await toggleShopStatus();
-      console.log('Toggle shop status - API response:', response);
 
       if (response.success) {
         setIsShopOpen(response.data.isShopOpen);
         showToast(`Shop is now ${response.data.isShopOpen ? 'Open' : 'Closed'}`, 'success');
       } else {
-        console.error('Toggle failed - response not successful:', response);
         showToast('Failed to toggle shop status: ' + (response.message || 'Unknown error'), 'error');
       }
     } catch (error: any) {
-      console.error('Failed to toggle shop status - error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
       showToast('Error toggling shop status: ' + (error.response?.data?.message || error.message || 'Unknown error'), 'error');
     } finally {
       setStatusLoading(false);
@@ -256,12 +247,12 @@ export default function SellerDashboard() {
       {/* Header with Shop Status Toggle */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-lg shadow-sm border border-neutral-200 gap-4 sm:gap-0">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-sm text-gray-500">Overview of your store performance</p>
+          <h1 className="text-xl font-bold text-gray-800">{t("seller.dashboard", "Dashboard")}</h1>
+          <p className="text-sm text-gray-500">{t("seller.overview", "Overview of your store performance")}</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
           <span className={`text-sm font-medium ${isShopOpen ? 'text-green-600' : 'text-red-500'}`}>
-            {isShopOpen ? 'Shop is Live' : 'Shop is Closed'}
+            {isShopOpen ? t("seller.shopIsLive", "Shop is Live") : t("seller.shopIsClosed", "Shop is Closed")}
           </span>
           <button
             onClick={handleToggleShop}
@@ -280,14 +271,14 @@ export default function SellerDashboard() {
       </div>
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <DashboardCard icon={userIcon} title="Total Customers" value={stats.totalUser} accentColor="#3b82f6" />
-        <DashboardCard icon={categoryIcon} title="Selling Categories" value={stats.sellingCategories ?? stats.totalCategory} accentColor="#eab308" />
-        <DashboardCard icon={subcategoryIcon} title="Total Subcategory" value={stats.totalSubcategory} accentColor="#ec4899" />
-        <DashboardCard icon={productIcon} title="Total Product" value={stats.totalProduct} accentColor="#f97316" />
-        <DashboardCard icon={ordersIcon} title="Total Orders" value={stats.totalOrders} accentColor="#3b82f6" />
-        <DashboardCard icon={completedOrdersIcon} title="Completed Orders" value={stats.completedOrders} accentColor="#16a34a" />
-        <DashboardCard icon={pendingOrdersIcon} title="Pending Orders" value={stats.pendingOrders} accentColor="#a855f7" />
-        <DashboardCard icon={cancelledOrdersIcon} title="Cancelled Orders" value={stats.cancelledOrders} accentColor="#ef4444" />
+        <DashboardCard icon={userIcon} title={t("seller.totalCustomers", "Total Customers")} value={stats.totalUser} accentColor="#3b82f6" />
+        <DashboardCard icon={categoryIcon} title={t("seller.sellingCategories", "Selling Categories")} value={stats.sellingCategories ?? stats.totalCategory} accentColor="#eab308" />
+        <DashboardCard icon={subcategoryIcon} title={t("seller.totalSubcategory", "Total Subcategory")} value={stats.totalSubcategory} accentColor="#ec4899" />
+        <DashboardCard icon={productIcon} title={t("seller.totalProduct", "Total Product")} value={stats.totalProduct} accentColor="#f97316" />
+        <DashboardCard icon={ordersIcon} title={t("seller.totalOrders", "Total Orders")} value={stats.totalOrders} accentColor="#3b82f6" />
+        <DashboardCard icon={completedOrdersIcon} title={t("seller.completedOrders", "Completed Orders")} value={stats.completedOrders} accentColor="#16a34a" />
+        <DashboardCard icon={pendingOrdersIcon} title={t("seller.pendingOrders", "Pending Orders")} value={stats.pendingOrders} accentColor="#a855f7" />
+        <DashboardCard icon={cancelledOrdersIcon} title={t("seller.cancelledOrders", "Cancelled Orders")} value={stats.cancelledOrders} accentColor="#ef4444" />
       </div>
 
       {/* Charts Row */}
@@ -299,15 +290,15 @@ export default function SellerDashboard() {
       {/* Alerts and Button Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Alert Cards - Side by Side */}
-        <AlertCard icon={soldOutIcon} title="Product Sold Out" value={stats.soldOutProducts} accentColor="#ec4899" />
-        <AlertCard icon={lowStockIcon} title="Product low on Stock" value={stats.lowStockProducts} accentColor="#eab308" />
+        <AlertCard icon={soldOutIcon} title={t("seller.productSoldOut", "Product Sold Out")} value={stats.soldOutProducts} accentColor="#ec4899" />
+        <AlertCard icon={lowStockIcon} title={t("seller.productLowStock", "Product low on Stock")} value={stats.lowStockProducts} accentColor="#eab308" />
       </div>
 
       {/* View New Orders Table Section */}
       <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
         {/* Teal Header Bar */}
         <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
-          <h2 className="text-base sm:text-lg font-semibold">View New Orders</h2>
+          <h2 className="text-base sm:text-lg font-semibold">{t("seller.viewNewOrders", "View New Orders")}</h2>
         </div>
 
         {/* Show Entries Control */}

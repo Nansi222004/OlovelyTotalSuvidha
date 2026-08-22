@@ -75,5 +75,16 @@ export default function ProtectedRoute({
     }
   }
 
+  // Check customer language preference onboarding requirement
+  if (user) {
+    const userType = (user as any).userType || inferUserType(user);
+    if (userType === "Customer" && location.pathname !== "/language-selection") {
+      const preferredLanguage = (user as any).preferredLanguage;
+      if (!preferredLanguage || typeof preferredLanguage !== "string" || !preferredLanguage.trim()) {
+        return <Navigate to="/language-selection" state={{ from: location }} replace />;
+      }
+    }
+  }
+
   return <>{children}</>;
 }

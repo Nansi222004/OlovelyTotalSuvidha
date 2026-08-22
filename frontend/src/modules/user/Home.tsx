@@ -9,11 +9,13 @@ import { getHomeContent } from "../../services/api/customerHomeService";
 import { useLocation } from "../../hooks/useLocation";
 import PageLoader from "../../components/PageLoader";
 import { useThemeContext } from "../../context/ThemeContext";
+import { useTranslation } from "../../hooks/useTranslation";
 
 export default function Home() {
   const navigate = useNavigate();
   const { location } = useLocation();
   const { activeCategory, setActiveCategory } = useThemeContext();
+  const { t, getTranslatedField } = useTranslation();
   const activeTab = activeCategory; // mapping for existing code compatibility
   const setActiveTab = setActiveCategory;
   const contentRef = useRef<HTMLDivElement>(null);
@@ -209,6 +211,7 @@ export default function Home() {
           <>
             {homeData.homeSections.map((section: any) => {
               const columnCount = Number(section.columns) || 4;
+              const sectionTitle = getTranslatedField(section, "title") || section.title;
 
               if (section.displayType === "products" && section.data && section.data.length > 0) {
                 // Strict column mapping as requested - applies to ALL screen sizes including mobile
@@ -226,9 +229,9 @@ export default function Home() {
 
                 return (
                   <div key={section.id} className="mt-6 mb-6 md:mt-8 md:mb-8">
-                    {section.title && (
+                    {sectionTitle && (
                       <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 mb-3 md:mb-6 px-4 md:px-6 lg:px-8 tracking-tight capitalize">
-                        {section.title}
+                        {sectionTitle}
                       </h2>
                     )}
                     <div className="px-4 md:px-6 lg:px-8">
@@ -253,7 +256,7 @@ export default function Home() {
               return (
                 <CategoryTileSection
                   key={section.id}
-                  title={section.title}
+                  title={sectionTitle}
                   tiles={section.data || []}
                   columns={columnCount as 2 | 3 | 4 | 6 | 8}
                   showProductCount={false}
@@ -264,11 +267,10 @@ export default function Home() {
         )}
 
         {/* Filtered Products Section */}
-        {/* Filtered Products Section */}
         {activeTab !== "all" && filteredProducts.length > 0 && (
           <div data-products-section className="mt-6 mb-6 md:mt-8 md:mb-8">
             <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 mb-3 md:mb-6 px-4 md:px-6 lg:px-8 tracking-tight capitalize">
-              {activeTab === "grocery" ? "Grocery Items" : activeTab}
+              {activeTab === "grocery" ? t("home.groceryItems", "Grocery Items") : activeTab}
             </h2>
             <div className="px-4 md:px-6 lg:px-8">
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
@@ -289,15 +291,13 @@ export default function Home() {
 
         {activeTab === "all" && (
           <>
-
-
             {/* Featured this week Section */}
             <FeaturedThisWeek />
 
             {/* Shop by Store Section */}
             <div className="mb-6 mt-6 md:mb-8 md:mt-8">
               <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 mb-3 md:mb-6 px-4 md:px-6 lg:px-8 tracking-tight">
-                Shop by Store
+                {t("home.shopByStore", "Shop by Store")}
               </h2>
               <div className="px-4 md:px-6 lg:px-8">
                 <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4">
@@ -306,6 +306,7 @@ export default function Home() {
                       tile.image ||
                       (tile.productImages &&
                         tile.productImages.filter(Boolean).length > 0);
+                    const storeName = getTranslatedField(tile, "name") || tile.name;
 
                     return (
                       <div key={tile.id} className="flex flex-col">
@@ -325,7 +326,7 @@ export default function Home() {
                                   ? tile.productImages[0]
                                   : "")
                               }
-                              alt={tile.name}
+                              alt={storeName}
                               className="w-full h-16 object-cover"
                               loading="lazy"
                             />
@@ -333,7 +334,7 @@ export default function Home() {
                             <div
                               className={`w-full h-16 flex items-center justify-center text-3xl text-neutral-300 ${tile.bgColor || "bg-neutral-50"
                                 }`}>
-                              {tile.name.charAt(0)}
+                              {storeName.charAt(0)}
                             </div>
                           )}
                         </div>
@@ -341,7 +342,7 @@ export default function Home() {
                         {/* Tile name - outside card */}
                         <div className="mt-1.5 text-center">
                           <span className="text-xs font-semibold text-neutral-900 line-clamp-2 leading-tight">
-                            {tile.name}
+                            {storeName}
                           </span>
                         </div>
                       </div>

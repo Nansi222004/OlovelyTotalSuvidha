@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { getProducts } from '../../../services/api/customerProductService';
+import { useTranslation } from '../../../hooks/useTranslation';
 
 interface FeaturedCard {
   id: string;
@@ -29,6 +30,7 @@ const featuredCards: FeaturedCard[] = [
 ];
 
 export default function FeaturedThisWeek() {
+  const { t, getTranslatedField } = useTranslation();
   const [currentProductIndex, setCurrentProductIndex] = useState(0);
   const [newlyLaunchedProducts, setNewlyLaunchedProducts] = useState<any[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -70,7 +72,7 @@ export default function FeaturedThisWeek() {
   return (
     <div className="mb-6 mt-6">
       <h2 className="text-lg font-semibold text-neutral-900 mb-3 px-4 tracking-tight">
-        Featured this week
+        {t("home.featuredThisWeek", "Featured this week")}
       </h2>
       <div className="px-4">
         <div className="flex gap-2.5 overflow-x-auto scrollbar-hide -mx-4 px-4 scroll-smooth">
@@ -80,8 +82,8 @@ export default function FeaturedThisWeek() {
                 <div className="bg-gradient-to-r from-red-600 via-orange-500 to-red-600 rounded-b-3xl px-3 py-2 text-center shadow-lg relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
                   <div className="text-white text-[9px] font-black uppercase leading-tight tracking-wider relative z-10">
-                    <div>NEWLY</div>
-                    <div>LAUNCHED</div>
+                    <div>{t("home.newly", "NEWLY")}</div>
+                    <div>{t("home.launched", "LAUNCHED")}</div>
                   </div>
                 </div>
               </div>
@@ -97,7 +99,7 @@ export default function FeaturedThisWeek() {
                     {product.imageUrl ? (
                       <img
                         src={product.imageUrl}
-                        alt={product.name || 'Product'}
+                        alt={getTranslatedField(product, "name") || product.name || 'Product'}
                         className="w-full h-full object-contain p-2 drop-shadow-lg"
                         loading="lazy"
                       />
@@ -112,7 +114,7 @@ export default function FeaturedThisWeek() {
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20">
                 <div className="bg-gradient-to-r from-amber-700 via-amber-800 to-amber-700 px-3 py-1 rounded-full flex items-center gap-1 shadow-lg border border-amber-900/30">
                   <div className="w-1 h-1 bg-white rounded-sm rotate-45 shadow-sm"></div>
-                  <span className="text-white text-[8px] font-black tracking-wide">For You</span>
+                  <span className="text-white text-[8px] font-black tracking-wide">{t("home.forYou", "For You")}</span>
                   <div className="w-1 h-1 bg-white rounded-sm rotate-45 shadow-sm"></div>
                 </div>
               </div>
@@ -129,12 +131,12 @@ export default function FeaturedThisWeek() {
               </div>
               <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
                 <div className="bg-gradient-to-r from-green-700 to-green-600 px-3 py-1 rounded-full shadow-lg border border-green-400/50">
-                  <span className="text-white text-[9px] font-black tracking-wide">Featured</span>
+                  <span className="text-white text-[9px] font-black tracking-wide">{t("home.featured", "Featured")}</span>
                 </div>
               </div>
               <div className="absolute top-8 left-0 right-0 z-20 text-center px-2">
                 <h3 className="text-white text-sm font-black tracking-wide drop-shadow-lg" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
-                  Fresh Arrivals
+                  {t("home.freshArrivals", "Fresh Arrivals")}
                 </h3>
               </div>
               <div className="absolute top-14 right-2 w-8 h-8 bg-white/20 rounded-full blur-md"></div>

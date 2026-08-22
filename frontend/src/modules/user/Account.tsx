@@ -2,10 +2,13 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getProfile, CustomerProfile } from '../../services/api/customerService';
+import LanguageSelector from '../../components/LanguageSelector';
+import { useTranslation } from '../../hooks/useTranslation';
 
 export default function Account() {
   const navigate = useNavigate();
   const { user, logout: authLogout } = useAuth();
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -66,9 +69,9 @@ export default function Account() {
                   <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <h1 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">Welcome!</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">{t("account.welcome", "Welcome!")}</h1>
               <p className="text-sm md:text-base text-neutral-600 text-center px-4">
-                Login to access your profile, orders, and more
+                {t("account.loginPrompt", "Login to access your profile, orders, and more")}
               </p>
             </div>
           </div>
@@ -80,7 +83,7 @@ export default function Account() {
               onClick={() => navigate('/login')}
               className="w-full py-3.5 rounded-lg font-semibold text-base bg-teal-600 text-white hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
             >
-              Login
+              {t("common.login", "Login")}
             </button>
           </div>
         </div>
@@ -93,7 +96,7 @@ export default function Account() {
       <div className="pb-24 md:pb-8 bg-white min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
-          <p className="text-neutral-600">Loading profile...</p>
+          <p className="text-neutral-600">{t("account.loadingProfile", "Loading profile...")}</p>
         </div>
       </div>
     );
@@ -105,7 +108,7 @@ export default function Account() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button onClick={() => navigate(-1)} className="px-4 py-2 bg-teal-600 text-white rounded">
-            Go Back
+            {t("common.back", "Go Back")}
           </button>
         </div>
       </div>
@@ -153,43 +156,52 @@ export default function Account() {
         <div className="grid grid-cols-2 md:grid-cols-2 gap-2.5 md:gap-6 max-w-2xl md:mx-auto">
           <button onClick={() => navigate('/orders')} className="bg-white rounded-lg border border-neutral-200 p-3 md:p-4 hover:shadow-md transition-shadow text-center outline-none">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto mb-1.5 md:mb-2 text-neutral-700 md:w-6 md:h-6"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M16 10a4 4 0 0 1-8 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">Your orders</div>
+            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">{t("account.yourOrders", "Your orders")}</div>
           </button>
           <button onClick={() => navigate('/notifications')} className="bg-white rounded-lg border border-neutral-200 p-3 md:p-4 hover:shadow-md transition-shadow text-center outline-none">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto mb-1.5 md:mb-2 text-neutral-700 md:w-6 md:h-6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">Notifications</div>
+            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">{t("account.notifications", "Notifications")}</div>
           </button>
           <button
             onClick={() => navigate('/faq')}
             className="bg-white rounded-lg border border-neutral-200 p-3 md:p-4 hover:shadow-md transition-shadow text-center outline-none"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mx-auto mb-1.5 md:mb-2 text-neutral-700 md:w-6 md:h-6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">Need help?</div>
+            <div className="text-[10px] md:text-xs font-semibold text-neutral-900">{t("account.needHelp", "Need help?")}</div>
           </button>
         </div>
       </div>
 
       <div className="px-4 py-2.5">
-        <h2 className="text-xs font-bold text-neutral-900 mb-2 uppercase tracking-wide">Your information</h2>
+        <h2 className="text-xs font-bold text-neutral-900 mb-2 uppercase tracking-wide">{t("account.yourInformation", "Your information")}</h2>
         <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden divide-y divide-neutral-100">
+          {/* Language Selection Row */}
+          <div className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">🌐</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.appLanguage", "App Language / भाषा")}</span>
+            </div>
+            <LanguageSelector variant="dropdown" />
+          </div>
+
           <button onClick={() => navigate('/address-book')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span className="text-[13px] font-medium text-neutral-900">Address Book</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.addressBook", "Address Book")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>
           <button onClick={() => navigate('/wishlist')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span className="text-[13px] font-medium text-neutral-900">Your Wishlist</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.yourWishlist", "Your Wishlist")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>
           <button onClick={() => navigate('/account/wallet')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-emerald-600"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="2" /></svg>
-              <span className="text-[13px] font-medium text-neutral-900">My Wallet</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.myWallet", "My Wallet")}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -201,21 +213,21 @@ export default function Account() {
           <button onClick={() => navigate('/privacy-policy')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span className="text-[13px] font-medium text-neutral-900">Privacy & Terms Policy</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.privacyPolicy", "Privacy & Terms Policy")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>
           <button onClick={() => navigate('/about-us')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" /><line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" strokeWidth="2" /><line x1="12" y1="8" x2="12.01" y2="8" stroke="currentColor" strokeWidth="2" /></svg>
-              <span className="text-[13px] font-medium text-neutral-900">About Us</span>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.aboutUs", "About Us")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>
           <button onClick={handleLogout} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-red-500"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              <span className="text-[13px] font-medium text-red-500">Log Out</span>
+              <span className="text-[13px] font-medium text-red-500">{t("account.logOut", "Log Out")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>

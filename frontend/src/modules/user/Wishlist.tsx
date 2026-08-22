@@ -4,6 +4,7 @@ import { Product } from '../../types/domain';
 import { useCart } from '../../context/CartContext';
 import { useToast } from '../../context/ToastContext';
 import { useWishlistContext } from '../../context/WishlistContext';
+import { useTranslation } from '../../hooks/useTranslation';
 import Button from '../../components/ui/button';
 import LazyImage from '../../components/LazyImage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +14,7 @@ export default function Wishlist() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const { wishlistProducts, loading, removeWishlistProduct } = useWishlistContext();
   const products = useMemo(() => wishlistProducts as Product[], [wishlistProducts]);
 
@@ -31,7 +33,7 @@ export default function Wishlist() {
         <button onClick={() => navigate(-1)} className="p-1">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <h1 className="text-xl font-bold text-neutral-900">My Wishlist</h1>
+        <h1 className="text-xl font-bold text-neutral-900">{t("account.yourWishlist", "My Wishlist")}</h1>
       </div>
 
       <div className="px-4">
@@ -93,7 +95,7 @@ export default function Wishlist() {
                       onClick={() => addToCart(product)}
                       className="w-full border-green-600 text-green-600 hover:bg-green-50 rounded-lg h-8 text-xs font-bold"
                     >
-                      ADD TO CART
+                      {t("customer.addToCart", "ADD TO CART")}
                     </Button>
                   </div>
                 </div>
@@ -105,10 +107,10 @@ export default function Wishlist() {
         ) : (
           <div className="text-center py-20 text-neutral-500">
             <div className="text-6xl mb-4">❤️</div>
-            <h2 className="text-lg font-bold text-neutral-900 mb-2">Your wishlist is empty</h2>
-            <p className="text-sm mb-6">Explore more and shortlist some items</p>
+            <h2 className="text-lg font-bold text-neutral-900 mb-2">{t("customer.emptyWishlist", "Your wishlist is empty")}</h2>
+            <p className="text-sm mb-6">{t("customer.wishlistEmptyPrompt", "Explore more and shortlist some items")}</p>
             <Button onClick={() => navigate('/')} className="bg-green-600 text-white rounded-full px-8">
-              Start Shopping
+              {t("customer.startShopping", "Start Shopping")}
             </Button>
           </div>
         )}

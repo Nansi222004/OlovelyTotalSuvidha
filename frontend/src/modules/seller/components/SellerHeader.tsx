@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import olovelyLogo from '@assets/olovelylogo.jpeg';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import LanguageSelector from '../../../components/LanguageSelector';
 
 interface SellerHeaderProps {
   onMenuClick: () => void;
@@ -11,6 +13,7 @@ interface SellerHeaderProps {
 export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const { user, logout } = useAuth();
@@ -128,21 +131,21 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
             className={`relative px-3 lg:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${isActive('/seller/orders') ? 'text-neutral-900' : 'text-neutral-600 hover:text-neutral-900'
               }`}
           >
-            Orders
+            {t("common.orders", "Orders")}
           </button>
           <button
             onClick={() => navigate('/seller/return-order')}
             className={`px-3 lg:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${isActive('/seller/return-order') ? 'text-neutral-900' : 'text-neutral-600 hover:text-neutral-900'
               }`}
           >
-            Return Order
+            {t("seller.returnOrder", "Return Order")}
           </button>
           <button
             onClick={() => navigate('/seller/wallet')}
             className={`px-3 lg:px-4 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${isActive('/seller/wallet') ? 'text-neutral-900' : 'text-neutral-600 hover:text-neutral-900'
               }`}
           >
-            Wallet
+            {t("seller.wallet", "Wallet")}
           </button>
         </div>
 
@@ -224,6 +227,9 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
               </div>
             )}
           </div>
+
+          {/* Language Selector */}
+          <LanguageSelector variant="dropdown" />
 
           {/* Logout Button */}
           <button

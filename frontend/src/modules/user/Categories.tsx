@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { getHeaderCategoriesPublic, HeaderCategory } from "../../services/api/headerCategoryService";
 import { getCategories, Category as ApiCategory } from "../../services/api/customerProductService";
 import { getIconByName } from "../../utils/iconLibrary";
+import { useTranslation } from "../../hooks/useTranslation";
 import PageLoader from "../../components/PageLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import "./styles/Categories.css";
 
 export default function Categories() {
   const navigate = useNavigate();
+  const { t, getTranslatedField } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -78,13 +80,13 @@ export default function Categories() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Oops!</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{t("common.oops", "Oops!")}</h3>
         <p className="text-gray-600 mb-6">{error}</p>
         <button 
           onClick={() => window.location.reload()} 
           className="px-8 py-3 bg-green-600 text-white rounded-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-700 transition-all"
         >
-          Retry
+          {t("common.retry", "Retry")}
         </button>
       </div>
     );
@@ -100,7 +102,7 @@ export default function Categories() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-1"
         >
-          Categories
+          {t("common.categories", "Categories")}
         </motion.h1>
         <motion.p
           initial={{ opacity: 0, y: -10 }}
@@ -108,7 +110,7 @@ export default function Categories() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[9px] md:text-[10px]"
         >
-          Discover products by category
+          {t("customer.discoverProductsByCategory", "DISCOVER PRODUCTS BY CATEGORY")}
         </motion.p>
       </div>
 
@@ -127,7 +129,7 @@ export default function Categories() {
                 <div className="header-category-icon">
                   {getIconByName(group.iconName)}
                 </div>
-                <h2 className="header-category-name">{group.name}</h2>
+                <h2 className="header-category-name">{getTranslatedField(group, "name")}</h2>
               </div>
 
               {/* Grid of Categories */}
@@ -144,7 +146,7 @@ export default function Categories() {
                       {category.image ? (
                         <img 
                           src={category.image} 
-                          alt={category.name} 
+                          alt={getTranslatedField(category, "name")} 
                           className="category-image"
                           loading="lazy"
                         />
@@ -154,7 +156,7 @@ export default function Categories() {
                         </span>
                       )}
                     </div>
-                    <span className="category-label">{category.name}</span>
+                    <span className="category-label">{getTranslatedField(category, "name")}</span>
                   </motion.div>
                 ))}
               </div>
@@ -170,8 +172,8 @@ export default function Categories() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
             </div>
-            <h3 className="text-slate-900 font-bold text-lg mb-1">No Categories Found</h3>
-            <p className="text-slate-400 text-sm">We couldn't find any registered categories at the moment.</p>
+            <h3 className="text-slate-900 font-bold text-lg mb-1">{t("customer.noCategoriesFound", "No Categories Found")}</h3>
+            <p className="text-slate-400 text-sm">{t("customer.noCategoriesPrompt", "We couldn't find any registered categories at the moment.")}</p>
           </div>
         )}
       </div>

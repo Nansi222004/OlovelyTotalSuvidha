@@ -10,7 +10,6 @@ export * from "./adminCouponService";
 export * from "./adminNotificationService";
 export * from "./adminWalletService";
 export * from "./adminTaxService";
-export * from "./adminPaymentService";
 export * from "./adminRoleService";
 export * from "./adminContentService";
 export * from "./adminMiscService";

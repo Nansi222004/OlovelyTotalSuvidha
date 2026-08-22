@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import LazyImage from "../../../components/LazyImage";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 interface CategoryTile {
   id: string;
@@ -33,6 +34,7 @@ export default function CategoryTileSection({
   onTileClick,
 }: CategoryTileSectionProps) {
   const navigate = useNavigate();
+  const { t, getTranslatedField } = useTranslation();
 
   const handleTileClick = (tile: CategoryTile) => {
     if (onTileClick) {
@@ -103,6 +105,7 @@ export default function CategoryTileSection({
             const images =
               tile.productImages || (tile.image ? [tile.image] : []);
             const hasImages = images.filter(Boolean).length > 0;
+            const tileName = getTranslatedField(tile, "name") || tile.name;
 
             return (
               <motion.div
@@ -189,7 +192,7 @@ export default function CategoryTileSection({
                         // Other sections: Single image - use contain to show full image without cropping
                         <LazyImage
                           src={images[0] || ""}
-                          alt={tile.name}
+                          alt={tileName}
                           className="w-full h-full object-contain rounded-lg"
                           onError={(e) => {
                             // Hide broken image and show fallback
@@ -197,14 +200,14 @@ export default function CategoryTileSection({
                             target.style.display = 'none';
                             const parent = target.parentElement;
                             if (parent) {
-                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center text-3xl text-neutral-300">${tile.name.charAt(0)}</div>`;
+                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center text-3xl text-neutral-300">${tileName.charAt(0)}</div>`;
                             }
                           }}
                         />
                       )
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-3xl text-neutral-300">
-                        {tile.name.charAt(0)}
+                        {tileName.charAt(0)}
                       </div>
                     )}
                   </div>
@@ -213,7 +216,7 @@ export default function CategoryTileSection({
                   {showProductCount && tile.productCount && (
                     <div className="mb-1.5 flex justify-center">
                       <span className="inline-block bg-neutral-100 text-neutral-600 text-[10px] font-medium px-2 py-0.5 rounded-full leading-tight">
-                        +{tile.productCount} more
+                        +{tile.productCount} {t("common.more", "more")}
                       </span>
                     </div>
                   )}
@@ -221,7 +224,7 @@ export default function CategoryTileSection({
                   {/* Tile name - inside card only for bestsellers */}
                   {showProductCount && (
                     <div className="text-[11px] font-semibold text-neutral-900 line-clamp-2 leading-tight text-center w-full block">
-                      {tile.name}
+                      {tileName}
                     </div>
                   )}
                 </Link>
@@ -230,7 +233,7 @@ export default function CategoryTileSection({
                 {!showProductCount && (
                   <div className="mt-1.5 text-center">
                     <span className="text-xs font-semibold text-neutral-900 line-clamp-2 leading-tight">
-                      {tile.name}
+                      {tileName}
                     </span>
                   </div>
                 )}

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useTranslation } from "../../hooks/useTranslation";
 import { getCustomerNotifications, markCustomerNotificationRead, CustomerNotification } from "../../services/api/customerNotificationService";
 
 export default function Notifications() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [notifications, setNotifications] = useState<CustomerNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +43,7 @@ export default function Notifications() {
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
 
-    if (diffInMinutes < 1) return "Just now";
+    if (diffInMinutes < 1) return t("common.justNow", "Just now");
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
@@ -52,13 +54,13 @@ export default function Notifications() {
       <div className="min-h-screen bg-white flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-6xl mb-4">🔔</div>
-          <h2 className="text-xl font-semibold text-neutral-900 mb-2">Login required</h2>
-          <p className="text-neutral-600 mb-6">Please login to view notifications.</p>
+          <h2 className="text-xl font-semibold text-neutral-900 mb-2">{t("customer.loginRequired", "Login required")}</h2>
+          <p className="text-neutral-600 mb-6">{t("customer.loginToViewNotifications", "Please login to view notifications.")}</p>
           <button
             onClick={() => navigate("/login")}
             className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
           >
-            Go to Login
+            {t("customer.goToLogin", "Go to Login")}
           </button>
         </div>
       </div>
@@ -70,13 +72,13 @@ export default function Notifications() {
       <div className="min-h-screen bg-white flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-6xl mb-4">🚫</div>
-          <h2 className="text-xl font-semibold text-neutral-900 mb-2">Access denied</h2>
-          <p className="text-neutral-600 mb-6">Notifications are only available for customers.</p>
+          <h2 className="text-xl font-semibold text-neutral-900 mb-2">{t("common.accessDenied", "Access denied")}</h2>
+          <p className="text-neutral-600 mb-6">{t("customer.notificationsCustomerOnly", "Notifications are only available for customers.")}</p>
           <button
             onClick={() => navigate("/")}
             className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
           >
-            Go Home
+            {t("common.goHome", "Go Home")}
           </button>
         </div>
       </div>
@@ -86,10 +88,10 @@ export default function Notifications() {
   return (
     <div className="min-h-screen bg-neutral-100 pb-20">
       <div className="px-4 py-4">
-        <h2 className="text-neutral-900 text-xl font-semibold mb-4">Notifications</h2>
+        <h2 className="text-neutral-900 text-xl font-semibold mb-4">{t("common.notifications", "Notifications")}</h2>
 
         {loading ? (
-          <p className="text-center text-neutral-500 py-10">Loading...</p>
+          <p className="text-center text-neutral-500 py-10">{t("common.loading", "Loading...")}</p>
         ) : notifications.length > 0 ? (
           <div className="space-y-3">
             {notifications.map((notification) => (
@@ -119,7 +121,7 @@ export default function Notifications() {
           </div>
         ) : (
           <div className="bg-white rounded-xl p-8 min-h-[250px] flex items-center justify-center shadow-sm border border-neutral-200">
-            <p className="text-neutral-500 text-sm">No notifications</p>
+            <p className="text-neutral-500 text-sm">{t("customer.noNotifications", "No notifications")}</p>
           </div>
         )}
       </div>

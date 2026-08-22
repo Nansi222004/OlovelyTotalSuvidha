@@ -4,9 +4,11 @@ import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { getSellersInRadius } from '../../../services/api/delivery/deliveryService';
 import { useDeliveryStatus } from '../context/DeliveryStatusContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function DeliverySellersInRange() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const { isOnline, sellersInRange, isLoadingSellers, locationError } = useDeliveryStatus();
   const [error, setError] = useState('');
 
@@ -26,13 +28,13 @@ export default function DeliverySellersInRange() {
               <circle cx="12" cy="10" r="3" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-neutral-900 mb-2">You are Offline</h2>
-          <p className="text-neutral-500 mb-6">Go online to see sellers in your current service area.</p>
+          <h2 className="text-xl font-bold text-neutral-900 mb-2">{t("delivery.youAreOffline", "You are Offline")}</h2>
+          <p className="text-neutral-500 mb-6">{t("delivery.goOnlineToSeeSellers", "Go online to see sellers in your current service area.")}</p>
           <button
             onClick={() => navigate('/delivery')}
             className="w-full bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-colors"
           >
-            Go to Dashboard
+            {t("delivery.goToDashboard", "Go to Dashboard")}
           </button>
         </div>
         <DeliveryBottomNav />
@@ -55,15 +57,15 @@ export default function DeliverySellersInRange() {
             </svg>
           </button>
           <div>
-            <h2 className="text-neutral-900 text-xl font-bold">Sellers in Range</h2>
-            <p className="text-xs text-neutral-500">Showing stores that include your current location</p>
+            <h2 className="text-neutral-900 text-xl font-bold">{t("delivery.sellersInRange", "Sellers in Range")}</h2>
+            <p className="text-xs text-neutral-500">{t("delivery.showingStoresInRange", "Showing stores that include your current location")}</p>
           </div>
         </div>
 
         {isLoadingSellers ? (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-neutral-500 text-sm">Updating sellers in range...</p>
+            <p className="text-neutral-500 text-sm">{t("delivery.updatingSellersInRange", "Updating sellers in range...")}</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-100 p-4 rounded-xl text-red-600 text-sm">
@@ -81,7 +83,7 @@ export default function DeliverySellersInRange() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-neutral-900 font-bold text-base">{seller.storeName}</h3>
                       <span className="px-2 py-0.5 bg-teal-50 text-teal-600 text-[10px] font-bold rounded-full border border-teal-100">
-                        IN RANGE
+                        {t("delivery.inRange", "IN RANGE")}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-neutral-500 text-xs mb-2">
@@ -94,13 +96,13 @@ export default function DeliverySellersInRange() {
 
                     <div className="flex items-center gap-4 mt-3 pt-3 border-t border-neutral-50">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">Distance</span>
+                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">{t("delivery.distance", "Distance")}</span>
                         <span className="text-sm font-bold text-neutral-700">
                           {(seller.distanceFromDeliveryBoy / 1000).toFixed(2)} km
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">Service Radius</span>
+                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">{t("delivery.serviceRadius", "Service Radius")}</span>
                         <span className="text-sm font-bold text-neutral-700">
                           {seller.serviceRadiusKm} km
                         </span>
@@ -128,8 +130,8 @@ export default function DeliverySellersInRange() {
                 <line x1="8" y1="12" x2="16" y2="12" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-neutral-900 mb-1">No Sellers Found</h3>
-            <p className="text-neutral-500 text-sm">You are not currently within any seller's service radius.</p>
+            <h3 className="text-lg font-bold text-neutral-900 mb-1">{t("delivery.noSellersFound", "No Sellers Found")}</h3>
+            <p className="text-neutral-500 text-sm">{t("delivery.notInServiceRadius", "You are not currently within any seller's service radius.")}</p>
           </div>
         )}
       </div>

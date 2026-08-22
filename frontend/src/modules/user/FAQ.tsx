@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react';
 import { useAppSettings } from '../../context/AppSettingsContext';
 import SupportModal from '../../components/SupportModal';
 import api from '../../services/api/config';
+import { useTranslation } from '../../hooks/useTranslation';
 
 interface FAQItem {
   id: string;
   question: string;
   answer: string;
+  translations?: Record<string, Record<string, string>>;
 }
 
 const defaultFaqData: FAQItem[] = [
@@ -40,6 +42,7 @@ const defaultFaqData: FAQItem[] = [
 
 export default function FAQ() {
   const navigate = useNavigate();
+  const { t, getTranslatedField } = useTranslation();
   const { settings: appSettings } = useAppSettings();
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
@@ -54,6 +57,7 @@ export default function FAQ() {
             id: f._id,
             question: f.question,
             answer: f.answer,
+            translations: f.translations,
           }));
           setFaqs(mappedFaqs);
         }
@@ -138,7 +142,7 @@ export default function FAQ() {
                     className="w-full flex items-center justify-between px-4 py-4 hover:bg-neutral-50 transition-colors text-left"
                   >
                     <span className="text-sm md:text-base font-semibold text-neutral-900 pr-4">
-                      {item.question}
+                      {getTranslatedField(item, 'question')}
                     </span>
                     <svg
                       width="20"
@@ -161,7 +165,7 @@ export default function FAQ() {
                   {isOpen && (
                     <div className="px-4 pb-4 pt-0">
                       <p className="text-sm md:text-base text-neutral-600 leading-relaxed">
-                        {item.answer}
+                        {getTranslatedField(item, 'answer')}
                       </p>
                     </div>
                   )}

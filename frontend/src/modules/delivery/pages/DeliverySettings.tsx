@@ -3,15 +3,17 @@ import { useEffect, useState } from 'react';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { updateSettings, getDeliveryProfile } from '../../../services/api/delivery/deliveryService';
+import { useLanguage } from '../../../context/LanguageContext';
+import LanguageSelector from '../../../components/LanguageSelector';
 
 export default function DeliverySettings() {
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const [appVersion, setAppVersion] = useState("1.0.0");
-  const [currentLang, setCurrentLang] = useState(() => localStorage.getItem("delivery_lang") || "en");
   const [showLangModal, setShowLangModal] = useState(false);
 
   useEffect(() => {
@@ -43,31 +45,25 @@ export default function DeliverySettings() {
     }
   };
 
-  const handleSelectLanguage = (lang: string) => {
-    setCurrentLang(lang);
-    localStorage.setItem("delivery_lang", lang);
-    setShowLangModal(false);
-  };
-
   const settingsOptions = [
     {
       id: 'notifications',
-      title: 'Push Notifications',
-      description: 'Receive notifications for new orders',
+      title: t("account.notifications", "Push Notifications"),
+      description: t("delivery.newOrder", "Receive notifications for new orders"),
       value: notificationsEnabled,
       onChange: (val: boolean) => handleSettingChange('notifications', val),
     },
     {
       id: 'location',
-      title: 'Location Services',
-      description: 'Allow app to access your location',
+      title: t("delivery.currentLocation", "Location Services"),
+      description: t("delivery.locationAccessRequired", "Allow app to access your location"),
       value: locationEnabled,
       onChange: (val: boolean) => handleSettingChange('location', val),
     },
     {
       id: 'sound',
-      title: 'Sound Alerts',
-      description: 'Play sound for new order alerts',
+      title: t("delivery.notifications", "Sound Alerts"),
+      description: t("delivery.newOrder", "Play sound for new order alerts"),
       value: soundEnabled,
       onChange: (val: boolean) => handleSettingChange('sound', val),
     },
@@ -92,13 +88,13 @@ export default function DeliverySettings() {
               />
             </svg>
           </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Settings</h2>
+          <h2 className="text-neutral-900 text-xl font-semibold">{t("delivery.settings", "Settings")}</h2>
         </div>
 
         {/* Settings Options */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Preferences</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("common.settings", "Preferences")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             {settingsOptions.map((option) => (
@@ -132,9 +128,9 @@ export default function DeliverySettings() {
               onClick={() => setShowLangModal(true)}
               className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
-                <p className="text-neutral-900 text-sm font-medium">Language</p>
-                <p className="text-neutral-500 text-xs mt-1">
-                  {currentLang === "hi" ? "हिंदी (Hindi)" : "English"}
+                <p className="text-neutral-900 text-sm font-medium">{t("common.language", "Language")}</p>
+                <p className="text-neutral-500 text-xs mt-1 uppercase">
+                  {language}
                 </p>
               </div>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -152,7 +148,7 @@ export default function DeliverySettings() {
               onClick={() => navigate('/delivery/privacy-policy')}
               className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
-                <p className="text-neutral-900 text-sm font-medium">Privacy Policy</p>
+                <p className="text-neutral-900 text-sm font-medium">{t("common.privacyPolicy", "Privacy Policy")}</p>
               </div>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -169,7 +165,7 @@ export default function DeliverySettings() {
               onClick={() => navigate('/delivery/terms-and-conditions')}
               className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
               <div className="flex-1 text-left">
-                <p className="text-neutral-900 text-sm font-medium">Terms & Conditions</p>
+                <p className="text-neutral-900 text-sm font-medium">{t("common.termsConditions", "Terms & Conditions")}</p>
               </div>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -192,32 +188,7 @@ export default function DeliverySettings() {
       </div>
 
       {/* Language Selection Modal */}
-      {showLangModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
-            <h3 className="text-lg font-bold mb-4">Select Language</h3>
-            <div className="space-y-2 mb-6">
-              <button
-                onClick={() => handleSelectLanguage("en")}
-                className={`w-full p-3 rounded-xl border text-left font-medium flex justify-between items-center ${currentLang === "en" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-neutral-200"}`}>
-                <span>English</span>
-                {currentLang === "en" && <span>✓</span>}
-              </button>
-              <button
-                onClick={() => handleSelectLanguage("hi")}
-                className={`w-full p-3 rounded-xl border text-left font-medium flex justify-between items-center ${currentLang === "hi" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-neutral-200"}`}>
-                <span>हिंदी (Hindi)</span>
-                {currentLang === "hi" && <span>✓</span>}
-              </button>
-            </div>
-            <button
-              onClick={() => setShowLangModal(false)}
-              className="w-full bg-neutral-200 text-neutral-800 rounded-xl py-2.5 font-semibold">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <LanguageSelector variant="modal" isOpen={showLangModal} onClose={() => setShowLangModal(false)} />
 
       <DeliveryBottomNav />
     </div>

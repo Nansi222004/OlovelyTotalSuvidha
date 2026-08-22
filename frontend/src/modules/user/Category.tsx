@@ -8,6 +8,7 @@ import {
   Category as ApiCategory,
 } from "../../services/api/customerProductService";
 import { useLocation as useLocationContext } from "../../hooks/useLocation";
+import { useTranslation } from "../../hooks/useTranslation";
 import PageLoader from "../../components/PageLoader";
 
 export default function CategoryPage() {
@@ -15,6 +16,7 @@ export default function CategoryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { location: userLocation } = useLocationContext();
+  const { t, getTranslatedField } = useTranslation();
 
   const [category, setCategory] = useState<ApiCategory | null>(null);
   const [subcategories, setSubcategories] = useState<ApiCategory[]>([]);
@@ -459,7 +461,7 @@ export default function CategoryPage() {
                     WebkitBoxOrient: "vertical",
                     overflow: "hidden"
                   }}>
-                  {subcat.name}
+                  {subcat.id === "all" || subcat._id === "all" ? t("common.all", "All") : getTranslatedField(subcat, "name")}
                 </span>
               </button>
             );
@@ -494,7 +496,7 @@ export default function CategoryPage() {
                   </svg>
                 </button>
                 <h1 className="text-base md:text-xl font-bold text-neutral-900">
-                  {category?.name}
+                  {getTranslatedField(category, "name")}
                 </h1>
               </div>
             </div>
@@ -527,7 +529,7 @@ export default function CategoryPage() {
                   strokeLinecap="round"
                 />
               </svg>
-              <span>Filters</span>
+              <span>{t("common.filters", "Filters")}</span>
               {(appliedFilters.length > 0 || appliedPriceRange[1] < 10000) && (
                 <span className="ml-1 bg-green-600 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
                   {appliedFilters.length + (appliedPriceRange[1] < 10000 ? 1 : 0)}
@@ -558,7 +560,7 @@ export default function CategoryPage() {
                   strokeLinejoin="round"
                 />
               </svg>
-              <span>Sort</span>
+              <span>{t("common.sort", "Sort")}</span>
               {sortBy !== "default" && (
                 <span className="ml-1 text-[10px] text-green-600 font-bold">•</span>
               )}
@@ -590,7 +592,7 @@ export default function CategoryPage() {
                         subcat.icon || "📦"
                       )}
                     </span>
-                    <span>{subcat.name}</span>
+                    <span>{getTranslatedField(subcat, "name")}</span>
                   </button>
                 );
               })}

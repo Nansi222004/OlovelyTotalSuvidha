@@ -6,6 +6,7 @@ export interface IPolicy extends Document {
     content: string;
     version: string;
     isActive: boolean;
+    translations?: Record<string, Record<string, string>>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -34,6 +35,10 @@ const PolicySchema = new Schema<IPolicy>(
         isActive: {
             type: Boolean,
             default: true,
+        },
+        translations: {
+            type: Schema.Types.Mixed,
+            default: {},
         },
     },
     {

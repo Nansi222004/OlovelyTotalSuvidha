@@ -13,6 +13,7 @@ export interface IHomeSection extends Document {
     targetHeaderCategory?: mongoose.Types.ObjectId;
     order: number;
     isActive: boolean;
+    translations?: Record<string, any>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -24,6 +25,10 @@ const HomeSectionSchema = new Schema<IHomeSection>(
             required: [true, "Section title is required"],
             trim: true,
             maxlength: [100, "Title cannot exceed 100 characters"],
+        },
+        translations: {
+            type: Schema.Types.Mixed,
+            default: {},
         },
         slug: {
             type: String,

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useLanguage } from "../../../context/LanguageContext";
 
 interface SubMenuItem {
   label: string;
@@ -868,6 +869,25 @@ const menuSections: MenuSection[] = [
     title: "Setting",
     items: [
       {
+        label: "Language Management",
+        path: "/admin/languages",
+        icon: (
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+        ),
+      },
+      {
         label: "App Settings & Logo",
         path: "/admin/app-settings",
         icon: (
@@ -901,44 +921,6 @@ const menuSections: MenuSection[] = [
             <rect x="2" y="5" width="20" height="14" rx="2"></rect>
             <line x1="2" y1="10" x2="22" y2="10"></line>
             <line x1="12" y1="15" x2="12" y2="15"></line>
-          </svg>
-        ),
-      },
-      {
-        label: "Payment List",
-        path: "/admin/payment-list",
-        icon: (
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-            <path d="M8 7H16M8 11H16M8 15H12"></path>
-            <circle cx="18" cy="6" r="1.5" fill="currentColor"></circle>
-            <rect x="16" y="4" width="4" height="4" rx="0.5"></rect>
-          </svg>
-        ),
-      },
-      {
-        label: "SMS Gateway",
-        path: "/admin/sms-gateway",
-        icon: (
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round">
-            <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z"></path>
-            <path d="M8 9H16M8 13H12"></path>
           </svg>
         ),
       },
@@ -1007,6 +989,7 @@ const menuSections: MenuSection[] = [
 export default function AdminSidebar({ onClose }: AdminSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -1064,6 +1047,66 @@ export default function AdminSidebar({ onClose }: AdminSidebarProps) {
       ),
     }))
     .filter((section) => section.items && section.items.length > 0);
+
+  const getSidebarTranslation = (label: string) => {
+    const keyMap: Record<string, string> = {
+      "Product Section": "admin.productSection",
+      "Delivery Section": "admin.deliverySection",
+      "Miscellaneous": "admin.miscellaneousSection",
+      "Order Section": "admin.orderSection",
+      "Finance": "admin.financeSection",
+      "Promotion": "admin.promotionSection",
+      "Category": "admin.manageCategories",
+      "Brand": "common.brand",
+      "Product": "admin.manageProducts",
+      "Product List": "seller.productList",
+      "Taxes": "seller.taxes",
+      "Manage Seller": "admin.manageSellers",
+      "Manage Seller List": "admin.manageSellers",
+      "Seller Transaction": "seller.transaction",
+      "Manage Location": "admin.manageLocation",
+      "Seller Location": "admin.sellerLocation",
+      "Coupon": "admin.coupon",
+      "Delivery Boy": "admin.deliveryBoy",
+      "Manage Delivery Boy": "admin.deliveryBoy",
+      "Manual Assignment": "admin.manualAssign",
+      "Fund Transfer": "admin.fundTransfer",
+      "Cash Collection": "admin.cashCollection",
+      "Delivery Tracking": "seller.deliveryTracking",
+      "Users": "admin.users",
+      "Notification": "common.notifications",
+      "FAQ": "common.faqs",
+      "Order List": "seller.orders",
+      "All Order": "delivery.allOrders",
+      "Pending Order": "delivery.pendingOrders",
+      "Received Order": "seller.ordersReceived",
+      "Processed Order": "admin.processedOrders",
+      "Shipped Order": "admin.shippedOrders",
+      "Out For Delivery": "delivery.outForDelivery",
+      "Delivered Order": "delivery.delivered",
+      "Cancelled Order": "seller.cancelledOrders",
+      "Settlement": "seller.settlement",
+      "Return": "seller.return",
+      "Wallet & Earnings": "seller.totalEarnings",
+      "Home Section": "admin.homeSection",
+      "Bestseller Cards": "admin.bestsellerCards",
+      "SETTING": "admin.settingSection",
+      "Promo Strip": "admin.promoStrip",
+      "Lowest Prices": "admin.lowestPrices",
+      "Shop by Store": "admin.shopByStore",
+      "Language Management": "admin.languageManagement",
+      "App Settings & Logo": "admin.appSettings",
+      "Billing & Charges": "admin.billingSettings",
+      "System User": "admin.systemUser",
+      "Customer App Policy": "admin.customerAppPolicy",
+      "Delivery App Policy": "admin.deliveryAppPolicy"
+    };
+
+    if (keyMap[label]) {
+      return t(keyMap[label], label);
+    }
+    return t(`admin.${label.replace(/\s+/g, '')}`, label);
+  };
 
   return (
     <aside className="w-64 bg-teal-700 h-screen flex flex-col">
@@ -1138,7 +1181,7 @@ export default function AdminSidebar({ onClose }: AdminSidebarProps) {
             <circle cx="12" cy="12" r="1"></circle>
             <path d="M12 6V12M12 18V12M6 12H12M18 12H12"></path>
           </svg>
-          <span className="text-sm font-medium">Dashboard</span>
+          <span className="text-sm font-medium">{t("admin.dashboard", "Dashboard")}</span>
         </button>
       </div>
 
@@ -1154,7 +1197,7 @@ export default function AdminSidebar({ onClose }: AdminSidebarProps) {
         {filteredSections.map((section, sectionIndex) => (
           <div key={sectionIndex} className="mb-6">
             <h3 className="px-4 mb-2 text-xs font-bold text-teal-200 uppercase tracking-wider">
-              {section.title}
+              {getSidebarTranslation(section.title)}
             </h3>
             <ul className="space-y-1 px-2">
               {section.items.map((item) => {
@@ -1179,7 +1222,7 @@ export default function AdminSidebar({ onClose }: AdminSidebarProps) {
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <span className="flex-shrink-0">{item.icon}</span>
                         <span className="text-sm font-medium truncate">
-                          {item.label}
+                          {getSidebarTranslation(item.label)}
                         </span>
                       </div>
                       {item.hasSubmenu && (
@@ -1219,7 +1262,7 @@ export default function AdminSidebar({ onClose }: AdminSidebarProps) {
                                       {subItem.icon}
                                     </span>
                                     <span className="text-sm font-medium truncate">
-                                      {subItem.label}
+                                      {getSidebarTranslation(subItem.label)}
                                     </span>
                                   </div>
                                 </button>

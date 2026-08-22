@@ -8,6 +8,7 @@ export interface IHeaderCategory extends Document {
     relatedCategory?: string; // Links to a product category
     order: number;
     status: 'Published' | 'Unpublished';
+    translations?: Record<string, Record<string, string>>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -21,6 +22,7 @@ const HeaderCategorySchema: Schema = new Schema(
         relatedCategory: { type: String, required: false },
         order: { type: Number, default: 0 },
         status: { type: String, enum: ['Published', 'Unpublished'], default: 'Published' },
+        translations: { type: Schema.Types.Mixed, default: {} },
     },
     { timestamps: true }
 );

@@ -12,6 +12,7 @@ export interface CustomerProfile {
   walletAmount: number;
   totalOrders: number;
   totalSpent: number;
+  preferredLanguage?: string;
 }
 
 export interface GetProfileResponse {
@@ -32,6 +33,14 @@ export interface UpdateProfileResponse {
   data: CustomerProfile;
 }
 
+export interface UpdateLanguageResponse {
+  success: boolean;
+  message: string;
+  data: {
+    preferredLanguage: string;
+  };
+}
+
 /**
  * Get customer profile
  */
@@ -45,6 +54,14 @@ export const getProfile = async (): Promise<GetProfileResponse> => {
  */
 export const updateProfile = async (data: UpdateProfileData): Promise<UpdateProfileResponse> => {
   const response = await api.put<UpdateProfileResponse>('/customer/profile', data);
+  return response.data;
+};
+
+/**
+ * Update customer preferred language in MongoDB
+ */
+export const updateCustomerLanguage = async (language: string): Promise<UpdateLanguageResponse> => {
+  const response = await api.put<UpdateLanguageResponse>('/customer/language', { language });
   return response.data;
 };
 

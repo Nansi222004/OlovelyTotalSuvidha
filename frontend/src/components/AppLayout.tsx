@@ -8,12 +8,15 @@ import { useThemeContext } from '../context/ThemeContext';
 import ServiceNotAvailable from './ServiceNotAvailable';
 import { checkServiceability } from '../services/api/customerHomeService';
 import { useAppSettings } from '../context/AppSettingsContext';
+import LanguageSelector from './LanguageSelector';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -57,8 +60,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Check if location is required for current route
   const requiresLocation = () => {
-    const publicRoutes = ['/login', '/signup', '/seller/login', '/seller/signup', '/delivery/login', '/delivery/signup', '/admin/login'];
-    // Don't require location on login/signup pages
+    const publicRoutes = ['/login', '/signup', '/seller/login', '/seller/signup', '/delivery/login', '/delivery/signup', '/admin/login', '/language-selection'];
+    // Don't require location on login/signup/language-selection pages
     if (publicRoutes.includes(location.pathname)) {
       return false;
     }
@@ -181,6 +184,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const showSearchBar = false;
   const showFooter = !isCheckoutPage && !isProductDetailPage && !isAuthPage;
 
+  // Standalone onboarding routes bypass AppLayout chrome completely
+  if (location.pathname === "/language-selection") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex flex-col min-h-screen w-full overflow-x-hidden">
       {/* Desktop Container Wrapper */}
@@ -239,7 +247,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">Home</span>
+                <span className="font-medium text-sm">{t("common.home", "Home")}</span>
               </Link>
 
               {/* Order Again */}
@@ -260,7 +268,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     <path d="M5 8V6C5 4.34315 6.34315 3 8 3H16C17.6569 3 19 4.34315 19 6V8H21C21.5523 8 22 8.44772 22 9V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V9C2 8.44772 2.44772 8 3 8H5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
                   )}
                 </svg>
-                <span className="font-medium text-sm">Order Again</span>
+                <span className="font-medium text-sm">{t("common.orderAgain", "Order Again")}</span>
               </Link>
 
               {/* Categories */}
@@ -291,20 +299,25 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">Categories</span>
+                <span className="font-medium text-sm">{t("common.categories", "Categories")}</span>
               </Link>
 
-              {/* Profile */}
-              <Link
-                to="/account"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/account')
-                  ? 'bg-white shadow-md font-semibold'
-                  : 'hover:bg-white/20'
-                  }`}
-                style={{
-                  color: isActive('/account') ? currentTheme.accentColor : currentTheme.headerTextColor
-                }}
-              >
+                {/* Language Selector */}
+                <div className="flex items-center">
+                  <LanguageSelector variant="dropdown" />
+                </div>
+
+                {/* Profile */}
+                <Link
+                  to="/account"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/account')
+                    ? 'bg-white shadow-md font-semibold'
+                    : 'hover:bg-white/20'
+                    }`}
+                  style={{
+                    color: isActive('/account') ? currentTheme.accentColor : currentTheme.headerTextColor
+                  }}
+                >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   {isActive('/account') ? (
                     <>
@@ -318,7 +331,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">Profile</span>
+                <span className="font-medium text-sm">{t("common.profile", "Profile")}</span>
               </Link>
             </div>
           </nav>
@@ -341,7 +354,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   color: currentTheme.headerTextColor || '#ffffff'
                 }}
               >
-                Delivering in 10–15 mins
+                {t("customer.deliveringIn", "Delivering in 10–15 mins")}
               </div>
 
               {/* Location line - only show if user has provided location */}
@@ -507,7 +520,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       </motion.svg>
                     </div>
                     <span className={`text-xs mt-0.5 relative z-10 ${isActive('/') ? 'font-medium text-neutral-700' : 'font-medium text-neutral-500'}`}>
-                      Home
+                      {t("common.home", "Home")}
                     </span>
                   </Link>
                 </motion.div>
@@ -572,7 +585,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       </motion.svg>
                     </div>
                     <span className={`text-xs mt-0.5 relative z-10 ${isActive('/order-again') ? 'font-medium text-neutral-700' : 'font-medium text-neutral-500'}`}>
-                      Order Again
+                      {t("common.orderAgain", "Order Again")}
                     </span>
                   </Link>
                 </motion.div>
@@ -622,7 +635,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       </motion.svg>
                     </div>
                     <span className={`text-xs mt-0.5 relative z-10 ${(isActive('/categories') || location.pathname.startsWith('/category/')) ? 'font-medium text-neutral-700' : 'font-medium text-neutral-500'}`}>
-                      Categories
+                      {t("common.categories", "Categories")}
                     </span>
                   </Link>
                 </motion.div>
@@ -688,7 +701,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       </motion.svg>
                     </div>
                     <span className={`text-xs mt-0.5 relative z-10 ${isActive('/account') ? 'font-medium text-neutral-700' : 'font-medium text-neutral-500'}`}>
-                      Profile
+                      {t("common.profile", "Profile")}
                     </span>
                   </Link>
                 </motion.div>

@@ -2,19 +2,21 @@ import { useNavigate } from "react-router-dom";
 import DeliveryHeader from "../components/DeliveryHeader";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
 import { removeAuthToken } from "../../../services/api/config";
+import { useLanguage } from "../../../context/LanguageContext";
 
 export default function DeliveryMenu() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const menuItems = [
-    { id: "menu-1", title: "Profile", route: "/delivery/profile" },
-    { id: "menu-w", title: "Wallet", route: "/delivery/wallet" },
-    { id: "menu-history", title: "Delivery History", route: "/delivery/orders/all" },
-    { id: "menu-2", title: "Earnings", route: "/delivery/earnings" },
-    { id: "menu-3", title: "Settings", route: "/delivery/settings" },
-    { id: "menu-4", title: "Help & Support", route: "/delivery/help" },
-    { id: "menu-5", title: "About", route: "/delivery/about" },
-    { id: "menu-6", title: "Logout", route: "/delivery/login" },
+    { id: "menu-1", title: t("delivery.profile", "Profile"), route: "/delivery/profile" },
+    { id: "menu-w", title: t("delivery.wallet", "Wallet"), route: "/delivery/wallet" },
+    { id: "menu-history", title: t("delivery.deliveryHistory", "Delivery History"), route: "/delivery/orders/all" },
+    { id: "menu-2", title: t("delivery.earnings", "Earnings"), route: "/delivery/earnings" },
+    { id: "menu-3", title: t("delivery.settings", "Settings"), route: "/delivery/settings" },
+    { id: "menu-4", title: t("delivery.helpSupport", "Help & Support"), route: "/delivery/help" },
+    { id: "menu-5", title: t("delivery.about", "About"), route: "/delivery/about" },
+    { id: "menu-6", title: t("delivery.logout", "Logout"), route: "/delivery/login" },
   ];
 
   const getMenuIcon = (menuId: string) => {
@@ -252,7 +254,7 @@ export default function DeliveryMenu() {
     <div className="min-h-screen bg-neutral-100 pb-20">
       <DeliveryHeader />
       <div className="px-4 py-4">
-        <h2 className="text-neutral-900 text-xl font-semibold mb-4">Menu</h2>
+        <h2 className="text-neutral-900 text-xl font-semibold mb-4">{t("delivery.menu", "Menu")}</h2>
         {menuItems.length > 0 ? (
           <div className="space-y-2">
             {menuItems.map((item) => (

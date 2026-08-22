@@ -6,6 +6,7 @@ export interface IFAQ extends Document {
     category?: string;
     order: number;
     status: "Active" | "Inactive";
+    translations?: Record<string, Record<string, string>>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -35,6 +36,10 @@ const faqSchema = new Schema<IFAQ>(
             type: String,
             enum: ["Active", "Inactive"],
             default: "Active",
+        },
+        translations: {
+            type: Schema.Types.Mixed,
+            default: {},
         },
     },
     {

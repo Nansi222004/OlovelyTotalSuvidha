@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { getAllOrdersHistory } from '../../../services/api/delivery/deliveryService';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getTranslatedDeliveryStatus } from '../utils/deliveryStatusHelper';
 
 export default function DeliveryAllOrders() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,7 +50,7 @@ export default function DeliveryAllOrders() {
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center pb-20">
-        <p className="text-neutral-500">Loading orders...</p>
+        <p className="text-neutral-500">{t("common.loading", "Loading...")}</p>
         <DeliveryBottomNav />
       </div>
     );
@@ -72,7 +75,7 @@ export default function DeliveryAllOrders() {
               />
             </svg>
           </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Delivery History</h2>
+          <h2 className="text-neutral-900 text-xl font-semibold">{t("delivery.deliveryHistory", "Delivery History")}</h2>
         </div>
 
         {error && <div className="p-4 mb-4 text-red-600 bg-red-50 rounded-lg">{error}</div>}
@@ -94,14 +97,14 @@ export default function DeliveryAllOrders() {
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}
                   >
-                    {order.status}
+                    {getTranslatedDeliveryStatus(order.status, t)}
                   </span>
                 </div>
                 <div className="border-t border-neutral-200 pt-3 mt-3">
                   <p className="text-neutral-600 text-xs mb-2 line-clamp-2">{order.address}</p>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-neutral-500 text-xs">
-                      {order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}
+                      {order.items?.length || 0} {(order.items?.length || 0) === 1 ? t("delivery.item", "item") : t("delivery.items", "items")}
                     </p>
                     <div className="text-right">
                       <p className="text-neutral-900 font-bold">₹ {order.totalAmount}</p>
@@ -112,7 +115,7 @@ export default function DeliveryAllOrders() {
                   </div>
                   {order.estimatedDeliveryTime && (
                     <p className="text-neutral-500 text-xs">
-                      ETA: {order.estimatedDeliveryTime} {order.distance ? `• ${order.distance}` : ''}
+                      {t("delivery.eta", "ETA")}: {order.estimatedDeliveryTime} {order.distance ? `• ${order.distance}` : ''}
                     </p>
                   )}
                   <p className="text-neutral-400 text-xs mt-2">
@@ -129,7 +132,7 @@ export default function DeliveryAllOrders() {
           </div>
         ) : (
           <div className="bg-white rounded-xl p-8 min-h-[400px] flex items-center justify-center shadow-sm border border-neutral-200">
-            <p className="text-neutral-500 text-sm">No orders for today</p>
+            <p className="text-neutral-500 text-sm">{t("delivery.noOrdersFound", "No orders found")}</p>
           </div>
         )}
       </div>

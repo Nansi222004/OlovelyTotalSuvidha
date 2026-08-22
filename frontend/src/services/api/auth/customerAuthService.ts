@@ -19,8 +19,10 @@ export interface VerifyOTPResponse {
       walletAmount: number;
       refCode: string;
       status: string;
+      preferredLanguage?: string | null;
     };
     isNewUser?: boolean;
+    languageSelected?: boolean;
   };
 }
 

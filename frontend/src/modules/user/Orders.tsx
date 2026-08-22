@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useOrders } from '../../hooks/useOrders';
+import { useTranslation } from '../../hooks/useTranslation';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -29,6 +30,7 @@ const formatDate = (dateString: string) => {
 
 export default function Orders() {
   const { orders } = useOrders();
+  const { t } = useTranslation();
 
   console.log('📋 Orders component - orders:', orders);
   console.log('📋 Orders count:', orders.length);
@@ -37,13 +39,13 @@ export default function Orders() {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-12 md:py-16 text-center">
         <div className="text-6xl md:text-8xl mb-4">📦</div>
-        <h2 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">No orders yet</h2>
-        <p className="text-neutral-600 mb-6 md:mb-8 md:text-lg">Start shopping to see your orders here!</p>
+        <h2 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">{t("customer.noOrdersYet", "No orders yet")}</h2>
+        <p className="text-neutral-600 mb-6 md:mb-8 md:text-lg">{t("customer.startShoppingPrompt", "Start shopping to see your orders here!")}</p>
         <Link
           to="/"
           className="inline-block bg-green-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-semibold hover:bg-green-700 transition-colors md:text-lg"
         >
-          Start Shopping
+          {t("customer.startShopping", "Start Shopping")}
         </Link>
       </div>
     );
@@ -52,7 +54,7 @@ export default function Orders() {
   return (
     <div className="pb-4 md:pb-8">
       <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6 bg-white border-b border-neutral-200 mb-4 md:mb-6 sticky top-0 z-10">
-        <h1 className="text-xl md:text-2xl font-bold text-neutral-900">My Orders</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-neutral-900">{t("customer.myOrders", "My Orders")}</h1>
       </div>
 
       <div className="px-4 md:px-6 lg:px-8 space-y-4 md:space-y-6">
@@ -67,7 +69,7 @@ export default function Orders() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="text-sm font-semibold text-neutral-900 mb-1">
-                    Order #{shortId}
+                    {t("common.order", "Order")} #{shortId}
                   </div>
                   <div className="text-xs text-neutral-500">{formatDate(order.createdAt)}</div>
                 </div>
@@ -76,12 +78,12 @@ export default function Orders() {
                     order.status
                   )}`}
                 >
-                  {order.status}
+                  {t(`status.${order.status.toLowerCase().replace(/\s+/g, '')}`, order.status)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-neutral-600">
-                  {order.totalItems} {order.totalItems === 1 ? 'item' : 'items'}
+                  {order.totalItems} {order.totalItems === 1 ? t("common.item", "item") : t("common.items", "items")}
                 </div>
                 <div className="text-lg font-bold text-neutral-900">
                   ₹{order.totalAmount.toFixed(0)}

@@ -7,6 +7,7 @@ import { getSubcategories } from "../../../services/api/categoryService";
 import { apiCache } from "../../../utils/apiCache";
 import { useLocation } from "../../../hooks/useLocation";
 import { calculateProductPrice } from "../../../utils/priceUtils";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 interface PromoCard {
   id: string;
@@ -43,6 +44,7 @@ interface PromoStripProps {
 
 export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
   const { location } = useLocation();
+  const { t, getTranslatedField } = useTranslation();
   const theme = getTheme(activeTab);
   const navigate = useNavigate();
   const [categoryCards, setCategoryCards] = useState<PromoCard[]>([]);
@@ -756,8 +758,8 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                 ref={productNameRef}
                 onClick={handleProductClick}
                 className="text-neutral-900 font-black text-[9px] text-center mb-0.5 cursor-pointer hover:underline line-clamp-2"
-                title={displayProduct.productName || displayProduct.name}>
-                {displayProduct.productName || displayProduct.name}
+                title={getTranslatedField(displayProduct, "name") || displayProduct.productName || displayProduct.name}>
+                {getTranslatedField(displayProduct, "name") || displayProduct.productName || displayProduct.name}
               </div>
 
               {/* Product Thumbnail - Bottom Center, sized to container */}
@@ -850,7 +852,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                           lineHeight: "1.2",
                           marginBottom: "6px",
                         }}>
-                        {card.title}
+                        {getTranslatedField(card, "title") || card.title}
                       </div>
 
                       {/* Subcategory Images or Emoji Icons - Horizontal Layout */}

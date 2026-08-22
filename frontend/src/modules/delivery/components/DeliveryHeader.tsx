@@ -1,5 +1,7 @@
 import { useDeliveryStatus } from '../context/DeliveryStatusContext';
 import { useDeliveryUser } from '../context/DeliveryUserContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import LanguageSelector from '../../../components/LanguageSelector';
 
 interface DeliveryHeaderProps {
   userName?: string;
@@ -8,6 +10,7 @@ interface DeliveryHeaderProps {
 export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
   const { isOnline, setIsOnline } = useDeliveryStatus();
   const { userName: contextUserName } = useDeliveryUser();
+  const { t } = useLanguage();
   const displayName = userName || contextUserName;
 
   return (
@@ -15,18 +18,22 @@ export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
       {/* Offline Banner */}
       {!isOnline && (
         <div className="px-4 py-2 bg-neutral-500 text-white text-xs font-medium text-center">
-          Offline
+          {t("delivery.offDuty", "Offline")}
         </div>
       )}
       
       {/* Header Content */}
       <div className="px-4 py-3">
-        {/* App Title */}
-        <h1 className={`text-xl font-bold text-center mb-3 transition-colors ${
-          isOnline ? 'text-green-600' : 'text-neutral-500'
-        }`}>
-          Delivery App
-        </h1>
+        {/* App Title and Language Selector */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="w-10"></div>
+          <h1 className={`text-xl font-bold transition-colors ${
+            isOnline ? 'text-green-600' : 'text-neutral-500'
+          }`}>
+            Olovely Delivery
+          </h1>
+          <LanguageSelector variant="dropdown" />
+        </div>
         
         {/* User Info Bar */}
         <div className="flex items-center justify-between">
@@ -41,7 +48,7 @@ export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
               </svg>
             </div>
             <div className="flex flex-col">
-              <span className="text-neutral-700 text-sm">Hello</span>
+              <span className="text-neutral-700 text-sm">{t("common.welcome", "Hello")}</span>
               <span className="text-neutral-900 text-xs font-medium">{displayName}</span>
             </div>
           </div>

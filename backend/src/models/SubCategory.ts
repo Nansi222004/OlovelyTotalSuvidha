@@ -6,6 +6,7 @@ export interface ISubCategory extends Document {
   image?: string;
   order: number;
   commissionRate?: number;
+  translations?: Record<string, Record<string, string>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +37,10 @@ const SubCategorySchema = new Schema<ISubCategory>(
       default: 0,
       min: [0, "Commission rate cannot be negative"],
       max: [100, "Commission rate cannot exceed 100%"],
+    },
+    translations: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
   },
   {

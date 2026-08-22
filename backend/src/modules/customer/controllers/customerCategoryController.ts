@@ -18,7 +18,7 @@ export const getCategories = async (_req: Request, res: Response) => {
         status: "Active", // Only return active categories
       })
         .sort({ order: 1 })
-        .select("name image icon description color slug _id headerCategoryId order")
+        .select("name image icon description color slug _id headerCategoryId order translations")
         .lean(); // Use lean() for better performance
 
       // Cache for 10 minutes
@@ -261,7 +261,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
           parentId: { $in: [parentCatId, parentCatId.toString()] },
           status: "Active",
         })
-          .select("name image order slug icon")
+          .select("name image order slug icon translations")
           .sort({
             order: 1,
           });
@@ -303,7 +303,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
       parentId: { $in: [catId, catId.toString()] },
       status: "Active",
     })
-      .select("name image order slug icon")
+      .select("name image order slug icon translations")
       .sort({
         order: 1,
       });

@@ -90,6 +90,9 @@ export interface IProduct extends Document {
   isShopByStoreOnly?: boolean;
   shopId?: mongoose.Types.ObjectId;
 
+  // Multilingual Translations (hi, mr, gu)
+  translations?: Record<string, Record<string, string>>;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -326,6 +329,11 @@ const ProductSchema = new Schema<IProduct>(
     shopId: {
       type: Schema.Types.ObjectId,
       ref: "Shop",
+    },
+    // Multilingual Translations
+    translations: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
   },
   {

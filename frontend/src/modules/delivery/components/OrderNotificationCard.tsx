@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OrderNotificationData } from '../../../services/api/delivery/deliveryOrderNotificationService';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 interface OrderNotificationCardProps {
     notification: OrderNotificationData;
@@ -15,6 +16,7 @@ export default function OrderNotificationCard({
     onReject,
 }: OrderNotificationCardProps) {
     const { showToast } = useToast();
+    const { t } = useLanguage();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [hasUserInteracted, setHasUserInteracted] = useState(false);
@@ -179,7 +181,7 @@ export default function OrderNotificationCard({
                             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                             <div className="absolute inset-0 w-3 h-3 bg-red-500 rounded-full animate-ping opacity-75"></div>
                         </div>
-                        <h3 className="text-base sm:text-lg font-bold text-neutral-900">New Order!</h3>
+                        <h3 className="text-base sm:text-lg font-bold text-neutral-900">{t("delivery.newOrder", "New Order!")}</h3>
                     </div>
                     {(audioError || !hasUserInteracted) && (
                         <div className="text-xs text-neutral-500 bg-neutral-100 px-2 py-1 rounded whitespace-nowrap">
@@ -191,30 +193,30 @@ export default function OrderNotificationCard({
                 {/* Order Information */}
                 <div className="space-y-3 mb-4">
                     <div>
-                        <p className="text-xs sm:text-sm text-neutral-600">Order Number</p>
+                        <p className="text-xs sm:text-sm text-neutral-600">{t("delivery.orderNumber", "Order Number")}</p>
                         <p className="text-base sm:text-lg font-semibold text-neutral-900 break-all">{notification.orderNumber}</p>
                     </div>
 
                     <div>
-                        <p className="text-xs sm:text-sm text-neutral-600">Customer</p>
+                        <p className="text-xs sm:text-sm text-neutral-600">{t("delivery.customer", "Customer")}</p>
                         <p className="text-sm sm:text-base font-medium text-neutral-900 break-words">{notification.customerName}</p>
                         <p className="text-xs sm:text-sm text-neutral-500 break-all">{notification.customerPhone}</p>
                     </div>
 
                     <div>
-                        <p className="text-xs sm:text-sm text-neutral-600">Delivery Address</p>
+                        <p className="text-xs sm:text-sm text-neutral-600">{t("delivery.address", "Delivery Address")}</p>
                         <p className="text-xs sm:text-sm text-neutral-900 break-words leading-relaxed">{formatAddress()}</p>
                     </div>
 
                     <div>
-                        <p className="text-xs sm:text-sm text-neutral-600">Order Amount</p>
+                        <p className="text-xs sm:text-sm text-neutral-600">{t("delivery.orderAmount", "Order Amount")}</p>
                         <p className="text-lg sm:text-xl font-bold text-teal-600">₹{notification.total.toFixed(2)}</p>
                     </div>
 
                     {/* Delivery Boy Earning - Highlighted Section */}
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3 -mx-1">
                         <p className="text-xs sm:text-sm text-green-700 font-medium flex items-center gap-1">
-                            <span className="text-green-600">💰</span> Your Earning
+                            <span className="text-green-600">💰</span> {t("delivery.yourEarning", "Your Earning")}
                         </p>
                         <p className="text-xl sm:text-2xl font-bold text-green-600">
                             ₹{notification.deliveryBoyEarning?.toFixed(2) || '0.00'}
@@ -230,7 +232,7 @@ export default function OrderNotificationCard({
                         className="flex-1 px-4 py-3 sm:py-3 bg-neutral-100 active:bg-neutral-200 text-neutral-700 font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                         style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
-                        {isProcessing ? 'Processing...' : 'Reject'}
+                        {isProcessing ? t("common.loading", "Processing...") : t("delivery.reject", "Reject")}
                     </button>
                     <button
                         onClick={handleAccept}
@@ -238,7 +240,7 @@ export default function OrderNotificationCard({
                         className="flex-1 px-4 py-3 sm:py-3 bg-teal-600 active:bg-teal-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                         style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
-                        {isProcessing ? 'Processing...' : 'Accept'}
+                        {isProcessing ? t("common.loading", "Processing...") : t("delivery.accept", "Accept")}
                     </button>
                 </div>
             </div>

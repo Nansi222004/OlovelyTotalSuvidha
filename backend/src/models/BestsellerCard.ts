@@ -5,6 +5,7 @@ export interface IBestsellerCard extends Document {
     category: mongoose.Types.ObjectId;
     order: number;
     isActive: boolean;
+    translations?: Record<string, any>;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -16,6 +17,10 @@ const BestsellerCardSchema = new Schema<IBestsellerCard>(
             required: [true, "Bestseller card name is required"],
             trim: true,
             maxlength: [100, "Name cannot exceed 100 characters"],
+        },
+        translations: {
+            type: Schema.Types.Mixed,
+            default: {},
         },
         category: {
             type: Schema.Types.ObjectId,

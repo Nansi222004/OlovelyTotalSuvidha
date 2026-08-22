@@ -264,10 +264,6 @@ export default function AdminBillingSettings() {
                             animate={{ opacity: 1 }}
                             className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6"
                         >
-                            <div className="col-span-full bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800 mb-2">
-                                <strong>Note:</strong> Distance calculation requires Google Maps API Key. Without a key, it may fallback to straight line distance.
-                            </div>
-
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Base Charge (₹)
@@ -339,20 +335,6 @@ export default function AdminBillingSettings() {
                                     />
                                 </div>
                                 <p className="mt-1 text-xs text-gray-500">Amount paid to delivery partner per km.</p>
-                            </div>
-
-                            <div className="col-span-full">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Google Maps API Key (Optional)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={googleMapsKey}
-                                    onChange={(e) => setGoogleMapsKey(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
-                                    placeholder="AIza..."
-                                />
-                                <p className="mt-1 text-xs text-gray-500">Required for accurate road distance calculation.</p>
                             </div>
                         </motion.div>
                     )}

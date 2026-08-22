@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useLanguage } from "../../../context/LanguageContext";
 
 interface SubMenuItem {
+  keyPath: string;
   label: string;
   path: string;
   icon: JSX.Element;
 }
 
 interface MenuItem {
+  keyPath: string;
   label: string;
   path: string;
   hasSubmenu?: boolean;
@@ -20,10 +23,11 @@ interface SellerSidebarProps {
 }
 
 const menuItems: MenuItem[] = [
-  { label: "Dashboard", path: "/seller" },
-  { label: "Orders", path: "/seller/orders" },
-  { label: "Reviews", path: "/seller/reviews" },
+  { keyPath: "seller.dashboard", label: "Dashboard", path: "/seller" },
+  { keyPath: "common.orders", label: "Orders", path: "/seller/orders" },
+  { keyPath: "seller.reviews", label: "Reviews", path: "/seller/reviews" },
   {
+    keyPath: "seller.notifications",
     label: "Notifications",
     path: "/seller/notifications",
     icon: (
@@ -42,8 +46,9 @@ const menuItems: MenuItem[] = [
       </svg>
     ),
   },
-  { label: "Settlement", path: "/seller/settlement" },
+  { keyPath: "seller.settlement", label: "Settlement", path: "/seller/settlement" },
   {
+    keyPath: "seller.deliveryTracking",
     label: "Delivery Tracking",
     path: "/seller/delivery-tracking",
     icon: (
@@ -61,14 +66,16 @@ const menuItems: MenuItem[] = [
       </svg>
     ),
   },
-  { label: "Category", path: "/seller/category" },
-  { label: "SubCategory", path: "/seller/subcategory" },
+  { keyPath: "seller.category", label: "Category", path: "/seller/category" },
+  { keyPath: "seller.subCategory", label: "SubCategory", path: "/seller/subcategory" },
   {
+    keyPath: "seller.product",
     label: "Product",
     path: "/seller/product",
     hasSubmenu: true,
     submenuItems: [
       {
+        keyPath: "seller.addNewProduct",
         label: "Add new Product",
         path: "/seller/product/add",
         icon: (
@@ -90,6 +97,7 @@ const menuItems: MenuItem[] = [
         ),
       },
       {
+        keyPath: "seller.taxes",
         label: "Taxes",
         path: "/seller/product/taxes",
         icon: (
@@ -102,11 +110,9 @@ const menuItems: MenuItem[] = [
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round">
-            {/* Three stacked coin piles */}
             <ellipse cx="12" cy="18" rx="4" ry="2"></ellipse>
             <ellipse cx="12" cy="14" rx="3.5" ry="1.8"></ellipse>
             <ellipse cx="12" cy="10" rx="3" ry="1.5"></ellipse>
-            {/* Percentage sign on top pile */}
             <circle cx="9" cy="9" r="1" fill="currentColor"></circle>
             <line x1="7" y1="7" x2="11" y2="11" strokeWidth="2"></line>
             <circle cx="15" cy="11" r="1" fill="currentColor"></circle>
@@ -114,6 +120,7 @@ const menuItems: MenuItem[] = [
         ),
       },
       {
+        keyPath: "seller.productList",
         label: "Product List",
         path: "/seller/product/list",
         icon: (
@@ -128,13 +135,13 @@ const menuItems: MenuItem[] = [
             strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
-            {/* Two checkmarks */}
             <polyline points="9 12 11 14 15 10"></polyline>
             <polyline points="9 16 11 18 15 14"></polyline>
           </svg>
         ),
       },
       {
+        keyPath: "seller.stockManagement",
         label: "Stock Management",
         path: "/seller/product/stock",
         icon: (
@@ -156,15 +163,18 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
+    keyPath: "seller.wallet",
     label: "Wallet",
     path: "/seller/wallet",
   },
   {
+    keyPath: "seller.reports",
     label: "Reports",
     path: "/seller/reports",
     hasSubmenu: true,
     submenuItems: [
       {
+        keyPath: "seller.salesReport",
         label: "Sales Report",
         path: "/seller/reports/sales",
         icon: (
@@ -185,12 +195,13 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  { label: "Return", path: "/seller/return" },
+  { keyPath: "seller.return", label: "Return", path: "/seller/return" },
 ];
 
 export default function SellerSidebar({ onClose }: SellerSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
 
   const isActive = (path: string) => {
@@ -213,7 +224,6 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
 
   const handleNavigation = (path: string) => {
     navigate(path);
-    // Close sidebar on mobile after navigation
     if (onClose && window.innerWidth < 1024) {
       onClose();
     }
@@ -242,7 +252,6 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
 
   return (
     <aside className="w-64 bg-teal-700 h-screen flex flex-col">
-      {/* Close button - only show on mobile */}
       <div className="flex justify-end p-4 border-b border-teal-600 lg:hidden">
         <button
           onClick={onClose}
@@ -290,7 +299,7 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
                       <span className="flex-shrink-0">{item.icon}</span>
                     )}
                     <span className="text-xs sm:text-sm font-medium">
-                      {item.label}
+                      {t(item.keyPath, item.label)}
                     </span>
                   </div>
                   {item.hasSubmenu && (
@@ -330,7 +339,7 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
                               {subItem.icon}
                             </span>
                             <span className="text-xs sm:text-sm font-medium">
-                              {subItem.label}
+                              {t(subItem.keyPath, subItem.label)}
                             </span>
                           </button>
                         </li>

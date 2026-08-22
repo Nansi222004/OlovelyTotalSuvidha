@@ -4,6 +4,7 @@ import { useRef, useMemo, useCallback } from 'react';
 import { Product } from '../../../types/domain';
 import { useCart } from '../../../context/CartContext';
 import { useWishlist } from '../../../hooks/useWishlist';
+import { useTranslation } from '../../../hooks/useTranslation';
 import Button from '../../../components/ui/button';
 import Badge from '../../../components/ui/badge';
 import StarRating from '../../../components/ui/StarRating';
@@ -40,6 +41,7 @@ export default function ProductCard({
   categoryStyle = false,
 }: ProductCardProps) {
   const navigate = useNavigate();
+  const { t, getTranslatedField } = useTranslation();
   const { cart, addToCart, updateQuantity } = useCart();
   const imageRef = useRef<HTMLImageElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
@@ -89,8 +91,8 @@ export default function ProductCard({
   }, [product]);
 
   const productName = useMemo(() => {
-    return product.name || product.productName || '';
-  }, [product]);
+    return getTranslatedField(product, "name") || getTranslatedField(product, "productName") || product.name || product.productName || '';
+  }, [product, getTranslatedField]);
 
   const isPackRedundant = useMemo(() => {
     if (!packText || !productName) return false;

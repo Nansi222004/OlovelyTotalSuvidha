@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { getDeliveryProfile } from '../../../services/api/delivery/deliveryService';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function DeliveryAbout() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,13 +45,13 @@ export default function DeliveryAbout() {
               />
             </svg>
           </button>
-          <h2 className="text-neutral-900 text-xl font-semibold">Profile & About</h2>
+          <h2 className="text-neutral-900 text-xl font-semibold">{t("delivery.about", "About")}</h2>
         </div>
 
         {/* Profile Card */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-neutral-200 mb-4">
           {loading ? (
-            <div className="text-center text-neutral-500 text-sm">Loading profile...</div>
+            <div className="text-center text-neutral-500 text-sm">{t("account.loadingProfile", "Loading profile...")}</div>
           ) : profile ? (
             <div className="flex flex-col items-center">
               <div className="w-20 h-20 rounded-full bg-teal-100 flex items-center justify-center mb-3 text-teal-600 font-bold text-2xl">
@@ -65,11 +67,11 @@ export default function DeliveryAbout() {
 
               <div className="w-full mt-4 pt-4 border-t border-neutral-100 grid grid-cols-2 gap-4 text-center">
                 <div>
-                  <p className="text-neutral-500 text-xs">City</p>
+                  <p className="text-neutral-500 text-xs">{t("delivery.address", "City")}</p>
                   <p className="text-neutral-800 text-sm font-medium">{profile.city}</p>
                 </div>
                 <div>
-                  <p className="text-neutral-500 text-xs">Joining Date</p>
+                  <p className="text-neutral-500 text-xs">{t("delivery.joinedOn", "Joining Date")}</p>
                   <p className="text-neutral-800 text-sm font-medium">
                     {new Date(profile.createdAt).toLocaleDateString()}
                   </p>
@@ -77,7 +79,7 @@ export default function DeliveryAbout() {
               </div>
             </div>
           ) : (
-            <div className="text-center text-red-500 text-sm">Failed to load profile</div>
+            <div className="text-center text-red-500 text-sm">{t("common.error", "Failed to load profile")}</div>
           )}
         </div>
 
@@ -96,7 +98,7 @@ export default function DeliveryAbout() {
                 />
               </svg>
             </div>
-            <h3 className="text-neutral-900 text-xl font-semibold mb-1">Delivery App</h3>
+            <h3 className="text-neutral-900 text-xl font-semibold mb-1">{t("delivery.dashboard", "Delivery App")}</h3>
             <p className="text-neutral-500 text-sm">Version 1.0.0</p>
           </div>
         </div>
@@ -104,16 +106,14 @@ export default function DeliveryAbout() {
         {/* About Content */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">About the App</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.aboutTheApp", "About the App")}</h3>
           </div>
           <div className="p-4">
             <p className="text-neutral-600 text-sm leading-relaxed mb-4">
-              Delivery App is a comprehensive platform designed to help delivery partners manage their orders efficiently,
-              track earnings, and provide excellent service to customers.
+              {t("delivery.aboutAppDesc1", "Delivery App is a comprehensive platform designed to help delivery partners manage their orders efficiently, track earnings, and provide excellent service to customers.")}
             </p>
             <p className="text-neutral-600 text-sm leading-relaxed">
-              Our mission is to empower delivery partners with the tools they need to succeed in the fast-growing
-              delivery industry.
+              {t("delivery.aboutAppDesc2", "Our mission is to empower delivery partners with the tools they need to succeed in the fast-growing delivery industry.")}
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function DeliveryAbout() {
         {/* App Details */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-4">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">App Information</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.appInformation", "App Information")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             <div className="p-4 flex justify-between items-center">
@@ -138,20 +138,20 @@ export default function DeliveryAbout() {
         {/* Legal Policies */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
           <div className="p-4 border-b border-neutral-200">
-            <h3 className="text-neutral-900 font-semibold">Legal & Policies</h3>
+            <h3 className="text-neutral-900 font-semibold">{t("delivery.legalPolicies", "Legal & Policies")}</h3>
           </div>
           <div className="divide-y divide-neutral-200">
             <button
               onClick={() => navigate('/delivery/privacy-policy')}
               className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors text-left">
-              <span className="text-neutral-900 text-sm font-medium">Privacy Policy</span>
-              <span className="text-orange-600 text-xs font-semibold">View &rarr;</span>
+              <span className="text-neutral-900 text-sm font-medium">{t("common.privacyPolicy", "Privacy Policy")}</span>
+              <span className="text-orange-600 text-xs font-semibold">{t("common.viewAll", "View")} &rarr;</span>
             </button>
             <button
               onClick={() => navigate('/delivery/terms-and-conditions')}
               className="w-full p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors text-left">
-              <span className="text-neutral-900 text-sm font-medium">Terms & Conditions</span>
-              <span className="text-orange-600 text-xs font-semibold">View &rarr;</span>
+              <span className="text-neutral-900 text-sm font-medium">{t("common.termsConditions", "Terms & Conditions")}</span>
+              <span className="text-orange-600 text-xs font-semibold">{t("common.viewAll", "View")} &rarr;</span>
             </button>
           </div>
         </div>

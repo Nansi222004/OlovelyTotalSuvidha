@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
+import { useTranslation } from '../../hooks/useTranslation';
 import Button from '../../components/ui/button';
 import { appConfig } from '../../services/configService';
 import { calculateProductPrice } from '../../utils/priceUtils';
 
 export default function Cart() {
   const { cart, updateQuantity, removeFromCart, clearCart } = useCart();
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,11 +35,11 @@ export default function Cart() {
     return (
       <div className="px-4 py-8 md:py-16 text-center">
         <div className="text-6xl md:text-8xl mb-4">🛒</div>
-        <h2 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">Your cart is empty</h2>
-        <p className="text-neutral-600 mb-6 md:mb-8 md:text-lg">Add some items to get started!</p>
+        <h2 className="text-xl md:text-2xl font-bold text-neutral-900 mb-2">{t("customer.emptyCart", "Your cart is empty")}</h2>
+        <p className="text-neutral-600 mb-6 md:mb-8 md:text-lg">{t("customer.emptyCartPrompt", "Add some items to get started!")}</p>
         <Link to="/">
           <Button variant="default" size="lg" className="md:px-8 md:py-3 md:text-lg">
-            Start Shopping
+            {t("customer.startShopping", "Start Shopping")}
           </Button>
         </Link>
       </div>
@@ -49,17 +51,17 @@ export default function Cart() {
       {/* Header */}
       <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6 bg-white border-b border-neutral-200 mb-4 md:mb-6 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-xl md:text-2xl font-bold text-neutral-900">Your Basket</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-neutral-900">{t("customer.yourBasket", "Your Basket")}</h1>
           {cart.items.length > 0 && (
             <button
               onClick={clearCart}
               className="text-sm md:text-base text-red-600 font-medium hover:text-red-700 transition-colors"
             >
-              Clear All
+              {t("common.clearAll", "Clear All")}
             </button>
           )}
         </div>
-        <p className="text-xs md:text-sm text-neutral-600">Delivered in {appConfig.estimatedDeliveryTime}</p>
+        <p className="text-xs md:text-sm text-neutral-600">{t("customer.deliveredIn", "Delivered in")} {appConfig.estimatedDeliveryTime}</p>
       </div>
 
       {/* Cart Items */}
@@ -150,36 +152,26 @@ export default function Cart() {
       {/* Order Summary */}
       <div className="px-4 md:px-6 lg:px-8 mb-24 md:mb-8">
         <div className="bg-white rounded-xl border border-neutral-200 p-4 md:p-6 shadow-sm md:max-w-md md:ml-auto">
-          <h2 className="text-lg md:text-xl font-bold text-neutral-900 mb-4 md:mb-6">Order Summary</h2>
+          <h2 className="text-lg md:text-xl font-bold text-neutral-900 mb-4 md:mb-6">{t("customer.orderSummary", "Order Summary")}</h2>
           <div className="space-y-3 md:space-y-4 mb-4 md:mb-6">
             <div className="flex justify-between text-neutral-700 md:text-base">
-              <span>Subtotal</span>
+              <span>{t("customer.subtotal", "Subtotal")}</span>
               <span className="font-medium">₹{cart.total.toLocaleString('en-IN')}</span>
             </div>
             <div className="flex justify-between text-neutral-700 md:text-base">
-              <span>Platform Fee</span>
+              <span>{t("customer.platformFee", "Platform Fee")}</span>
               <span className="font-medium">₹{platformFee.toLocaleString('en-IN')}</span>
             </div>
             <div className="flex justify-between text-neutral-700 md:text-base">
-              <span>Delivery Charges</span>
+              <span>{t("customer.deliveryCharges", "Delivery Charges")}</span>
               <span className={`font-medium ${deliveryFee === 0 ? 'text-green-600' : ''}`}>
-                {deliveryFee === 0 ? 'Free' : `₹${deliveryFee.toLocaleString('en-IN')}`}
+                {deliveryFee === 0 ? t("customer.free", "Free") : `₹${deliveryFee.toLocaleString('en-IN')}`}
               </span>
             </div>
-            {freeDeliveryThreshold > 0 && cart.total < freeDeliveryThreshold && (
-              <div className="text-xs md:text-sm text-green-600 bg-green-50 px-2 py-1 rounded">
-                Add ₹{(freeDeliveryThreshold - cart.total).toLocaleString('en-IN')} more for free delivery
-              </div>
-            )}
-            {minimumOrderValue > 0 && !meetsMinimumOrder && (
-              <div className="text-xs md:text-sm text-amber-700 bg-amber-50 px-2 py-1 rounded">
-                Minimum order ₹{minimumOrderValue.toLocaleString('en-IN')}. Add ₹{amountNeededForMinimumOrder.toLocaleString('en-IN')} more to checkout.
-              </div>
-            )}
           </div>
           <div className="border-t border-neutral-200 pt-4 md:pt-6">
             <div className="flex justify-between items-center mb-4 md:mb-6">
-              <span className="text-lg md:text-xl font-bold text-neutral-900">Total</span>
+              <span className="text-lg md:text-xl font-bold text-neutral-900">{t("common.total", "Total")}</span>
               <span className="text-xl md:text-2xl font-bold text-neutral-900">
                 ₹{totalAmount.toLocaleString('en-IN')}
               </span>
@@ -192,7 +184,7 @@ export default function Cart() {
               className="w-full md:py-3 md:text-lg"
             >
               {meetsMinimumOrder
-                ? 'Proceed to Checkout'
+                ? t("customer.proceedToCheckout", "Proceed to Checkout")
                 : `Add ₹${amountNeededForMinimumOrder.toLocaleString('en-IN')} more`}
             </Button>
           </div>

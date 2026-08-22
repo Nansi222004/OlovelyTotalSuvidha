@@ -3,14 +3,16 @@ import { useNavigate, useLocation } from "react-router-dom";
 import DeliveryHeader from "../components/DeliveryHeader";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
 import api from "../../../services/api/config";
+import { useLanguage } from "../../../context/LanguageContext";
 
 export default function DeliveryPolicy() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
 
   const isPrivacy = location.pathname.includes("privacy");
   const docType = isPrivacy ? "privacy" : "terms";
-  const title = isPrivacy ? "Privacy Policy" : "Terms & Conditions";
+  const title = isPrivacy ? t("common.privacyPolicy", "Privacy Policy") : t("common.termsConditions", "Terms & Conditions");
 
   const [policyData, setPolicyData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export default function DeliveryPolicy() {
         }
       } catch (err: any) {
         console.error(`Failed to fetch ${docType} policy:`, err);
-        setError(err.response?.data?.message || `Failed to load ${title}`);
+        setError(err.response?.data?.message || `${t("common.error", "Failed to load")} ${title}`);
       } finally {
         setLoading(false);
       }
@@ -67,7 +69,7 @@ export default function DeliveryPolicy() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mb-3"></div>
-              <p className="text-neutral-500 text-sm">Loading document...</p>
+              <p className="text-neutral-500 text-sm">{t("common.loading", "Loading document...")}</p>
             </div>
           ) : error ? (
             <div className="p-4 bg-red-50 border border-red-100 rounded-lg text-center">

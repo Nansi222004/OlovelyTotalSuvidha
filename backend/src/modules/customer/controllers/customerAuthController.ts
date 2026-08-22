@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Customer from "../../../models/Customer";
+import SupportedLanguage from "../../../models/SupportedLanguage";
 import {
   sendSmsOtp as sendSmsOtpService,
   verifySmsOtp as verifySmsOtpService,
@@ -104,6 +105,22 @@ export const verifySmsOtp = asyncHandler(
     // Generate JWT token
     const token = generateToken(customer._id.toString(), "Customer");
 
+    // Check preferred language active status
+    let languageSelected = false;
+    let preferredLanguage: string | null = customer.preferredLanguage || null;
+
+    if (preferredLanguage) {
+      const activeLang = await SupportedLanguage.findOne({
+        code: preferredLanguage.toLowerCase(),
+        isActive: true,
+      });
+      if (activeLang) {
+        languageSelected = true;
+      } else {
+        languageSelected = false;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: isNewUser
@@ -119,8 +136,10 @@ export const verifySmsOtp = asyncHandler(
           walletAmount: customer.walletAmount,
           refCode: customer.refCode,
           status: customer.status,
+          preferredLanguage,
         },
         isNewUser,
+        languageSelected,
       },
     });
   },

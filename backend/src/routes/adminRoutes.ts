@@ -46,7 +46,6 @@ import * as faqController from "../modules/admin/controllers/adminFAQController"
 // Role Controllers - Manage Roles functionality removed
 // import * as roleController from "../modules/admin/controllers/adminRoleController";
 
-import * as paymentController from "../modules/admin/controllers/adminPaymentController";
 import * as policyController from "../modules/admin/controllers/adminPolicyController";
 import * as sellerController from "../modules/admin/controllers/adminSellerController";
 
@@ -201,28 +200,9 @@ router.get(
   deliveryController.getDeliveryBoyCashCollections
 );
 
-// ==================== Payment Routes ====================
-router.get("/payment-methods", paymentController.getPaymentMethods);
-router.get("/payment-methods/:id", paymentController.getPaymentMethodById);
-router.put("/payment-methods/:id", paymentController.updatePaymentMethod);
-router.patch(
-  "/payment-methods/:id/status",
-  paymentController.updatePaymentMethodStatus
-);
-
 // ==================== Settings Routes ====================
 router.get("/settings", settingsController.getAppSettings);
 router.put("/settings", settingsController.updateAppSettings);
-router.get("/settings/payment-methods", settingsController.getPaymentMethods);
-router.put(
-  "/settings/payment-methods",
-  settingsController.updatePaymentMethods
-);
-router.get("/settings/sms-gateway", settingsController.getSMSGatewaySettings);
-router.put(
-  "/settings/sms-gateway",
-  settingsController.updateSMSGatewaySettings
-);
 
 // ==================== Coupon Routes ====================
 router.post("/coupons", couponController.createCoupon);

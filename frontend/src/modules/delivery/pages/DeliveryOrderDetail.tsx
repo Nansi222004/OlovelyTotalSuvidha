@@ -4,6 +4,8 @@ import { getOrderDetails, updateOrderStatus, getSellerLocationsForOrder, sendDel
 import deliveryIcon from '@assets/deliveryboy/deliveryIcon.png';
 import GoogleMapsTracking from '../../../components/GoogleMapsTracking';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getTranslatedDeliveryStatus } from '../utils/deliveryStatusHelper';
 
 // Helper to get delivery icon URL (works in both dev and production)
 const getDeliveryIconUrl = () => {
@@ -92,6 +94,7 @@ export default function DeliveryOrderDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { showToast } = useToast();
+    const { t } = useLanguage();
     const [order, setOrder] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -566,7 +569,7 @@ export default function DeliveryOrderDetail() {
                 >
                     <Icons.ChevronLeft size={24} />
                 </button>
-                <span className="ml-2 font-semibold text-lg text-neutral-800">Order Details</span>
+                <span className="ml-2 font-semibold text-lg text-neutral-800">{t("delivery.orderDetails", "Order Details")}</span>
 
                 <div className="ml-auto">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${order.status === 'Delivered' ? 'bg-green-100 text-green-700' :
@@ -575,7 +578,7 @@ export default function DeliveryOrderDetail() {
                                 order.status === 'Ready for pickup' ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-orange-100 text-orange-700'
                         }`}>
-                        {order.status}
+                        {getTranslatedDeliveryStatus(order.status, t)}
                     </span>
                 </div>
             </div>
@@ -663,7 +666,7 @@ export default function DeliveryOrderDetail() {
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
                         <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
                             <Icons.Store size={18} className="text-neutral-500" />
-                            Seller Pickup Locations
+                            {t("delivery.sellerPickupLocations", "Seller Pickup Locations")}
                         </h3>
                         <div className="space-y-3">
                             {sellerLocations.map((seller: any, idx: number) => {
@@ -684,7 +687,7 @@ export default function DeliveryOrderDetail() {
                                                     {isPickedUp && (
                                                         <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                                                             <Icons.CheckCircle size={12} />
-                                                            Picked Up
+                                                            {t("delivery.pickedUp", "Picked Up")}
                                                         </span>
                                                     )}
                                                 </div>
@@ -708,7 +711,7 @@ export default function DeliveryOrderDetail() {
                                                     : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                                                     }`}
                                             >
-                                                {isLoading ? 'Confirming...' : withinRange ? 'Confirm Pickup' : 'Move within 500m to pickup'}
+                                                {isLoading ? t("common.loading", "Confirming...") : withinRange ? t("delivery.confirmPickup", "Confirm Pickup") : 'Move within 500m to pickup'}
                                             </button>
                                         )}
                                     </div>
@@ -726,8 +729,8 @@ export default function DeliveryOrderDetail() {
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
                         <div className="flex justify-between items-start mb-6">
                             <div>
-                                <p className="text-neutral-500 text-xs font-medium uppercase tracking-wider mb-1">Process</p>
-                                <h2 className="text-lg font-bold text-neutral-900">Order Progress</h2>
+                                <p className="text-neutral-500 text-xs font-medium uppercase tracking-wider mb-1">{t("delivery.process", "Process")}</p>
+                                <h2 className="text-lg font-bold text-neutral-900">{t("delivery.orderProgress", "Order Progress")}</h2>
                             </div>
                         </div>
 
@@ -755,7 +758,7 @@ export default function DeliveryOrderDetail() {
                             <div className="flex justify-between text-[10px] text-neutral-500 font-medium mt-2">
                                 {statusFlow.map((step, idx) => (
                                     <span key={idx} className={`text-center flex-1 transition-colors ${idx === currentStatusIndex ? 'text-blue-600 font-bold' : ''}`}>
-                                        {step === 'Ready for pickup' ? 'Ready' : step}
+                                        {getTranslatedDeliveryStatus(step, t)}
                                     </span>
                                 ))}
                             </div>
@@ -768,7 +771,7 @@ export default function DeliveryOrderDetail() {
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
                     <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
                         <Icons.User size={18} className="text-neutral-500" />
-                        Customer Details
+                        {t("delivery.customerDetails", "Customer Details")}
                     </h3>
                     <div className="space-y-4">
                         <div className="flex items-start gap-3">
@@ -777,7 +780,7 @@ export default function DeliveryOrderDetail() {
                             </div>
                             <div>
                                 <p className="font-medium text-neutral-900">{order.customerName}</p>
-                                <p className="text-sm text-neutral-500">Customer</p>
+                                <p className="text-sm text-neutral-500">{t("delivery.customer", "Customer")}</p>
                             </div>
                             <button
                                 onClick={() => window.open(`tel:${order.customerPhone}`, '_system')}
@@ -807,7 +810,7 @@ export default function DeliveryOrderDetail() {
                     <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-5 shadow-sm text-white mb-4">
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="text-green-100 text-xs font-medium mb-1">Your Earning</p>
+                                <p className="text-green-100 text-xs font-medium mb-1">{t("delivery.yourEarning", "Your Earning")}</p>
                                 <h3 className="text-2xl font-bold">₹ {order.deliveryEarning?.toFixed(2) || '0.00'}</h3>
                             </div>
                             <div className="bg-white/20 p-2 rounded-lg">
@@ -824,10 +827,10 @@ export default function DeliveryOrderDetail() {
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold text-neutral-900 flex items-center gap-2">
                             <Icons.ShoppingBag size={18} className="text-neutral-500" />
-                            Order Summary
+                            {t("delivery.orderSummary", "Order Summary")}
                         </h3>
                         <span className="text-xs font-medium text-neutral-500 px-2 py-1 bg-neutral-100 rounded-md">
-                            {order.items?.length || 0} Items
+                            {order.items?.length || 0} {order.items?.length === 1 ? t("delivery.item", "item") : t("delivery.items", "items")}
                         </span>
                     </div>
 
@@ -843,7 +846,7 @@ export default function DeliveryOrderDetail() {
                         ))}
                     </div>
                     <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 flex justify-between items-center">
-                        <span className="font-semibold text-neutral-700">Total Amount</span>
+                        <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Total Amount")}</span>
                         <span className="text-xl font-bold text-neutral-900">₹{order.totalAmount}</span>
                     </div>
                 </div>
@@ -852,11 +855,11 @@ export default function DeliveryOrderDetail() {
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 mb-20">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="p-3 bg-neutral-50 rounded-lg">
-                            <p className="text-xs text-neutral-500 mb-1">Order ID</p>
+                            <p className="text-xs text-neutral-500 mb-1">{t("delivery.orderNumber", "Order Number")}</p>
                             <p className="text-sm font-bold text-neutral-900">{order.orderId}</p>
                         </div>
                         <div className="p-3 bg-neutral-50 rounded-lg">
-                            <p className="text-xs text-neutral-500 mb-1">Order Date</p>
+                            <p className="text-xs text-neutral-500 mb-1">{t("delivery.orderDate", "Order Date")}</p>
                             <p className="text-sm font-bold text-neutral-900">
                                 {new Date(order.createdAt).toLocaleDateString()}
                             </p>
@@ -876,7 +879,7 @@ export default function DeliveryOrderDetail() {
                                 <span className="text-[11px] text-amber-700">GPS verification bypassed</span>
                             </div>
                         )}
-                        <p className="text-sm font-semibold text-neutral-900 mb-3">Customer Delivery OTP</p>
+                        <p className="text-sm font-semibold text-neutral-900 mb-3">{t("delivery.customerDeliveryOtp", "Customer Delivery OTP")}</p>
 
                         {/* Distance indicator */}
                         {customerProximity && (
@@ -911,7 +914,7 @@ export default function DeliveryOrderDetail() {
                                         : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                                         }`}
                                 >
-                                    {otpSending ? 'Sending...' : getOtpEnabled ? 'Get OTP' : 'Move within 500m to get OTP'}
+                                    {otpSending ? t("delivery.sending", "Sending...") : getOtpEnabled ? t("delivery.getOtp", "Get OTP") : 'Move within 500m to get OTP'}
                                 </button>
                             ) : (
                                 <>
@@ -922,14 +925,14 @@ export default function DeliveryOrderDetail() {
                                         }}
                                         className="flex-1 py-3 rounded-xl bg-neutral-200 text-neutral-700 font-semibold hover:bg-neutral-300 transition-colors"
                                     >
-                                        Cancel
+                                        {t("delivery.cancel", "Cancel")}
                                     </button>
                                     <button
                                         onClick={handleVerifyOtp}
                                         className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
                                         disabled={otpVerifying || otpValue.length !== 4}
                                     >
-                                        {otpVerifying ? 'Verifying...' : 'Verify OTP'}
+                                        {otpVerifying ? t("delivery.verifying", "Verifying...") : t("delivery.verifyOtp", "Verify OTP")}
                                     </button>
                                 </>
                             )}
@@ -948,7 +951,7 @@ export default function DeliveryOrderDetail() {
                         disabled={loading}
                     >
                         <span className="relative z-10">
-                            {loading ? 'Updating...' : nextStatus === 'Picked up' ? 'Order Taken' : `Mark as ${nextStatus}`}
+                            {loading ? 'Updating...' : nextStatus === 'Picked up' ? t("delivery.orderTaken", "Order Taken") : `Mark as ${getTranslatedDeliveryStatus(nextStatus, t)}`}
                         </span>
                         {!loading && <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center relative z-10 group-hover:bg-white/30 transition-colors">
                             <Icons.ChevronLeft className="rotate-180" size={18} />

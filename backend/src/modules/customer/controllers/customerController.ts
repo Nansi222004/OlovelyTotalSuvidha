@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Customer from "../../../models/Customer";
+import SupportedLanguage from "../../../models/SupportedLanguage";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
 /**
@@ -46,9 +47,71 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
       state: customer.state,
       pincode: customer.pincode,
       locationUpdatedAt: customer.locationUpdatedAt,
+      preferredLanguage: customer.preferredLanguage || null,
     },
   });
 });
+
+/**
+ * Update customer language preference
+ * PUT /api/v1/customer/language
+ */
+export const updateLanguagePreference = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.userId;
+    const { language, preferredLanguage } = req.body;
+    const targetLang = language || preferredLanguage;
+
+    if (!userId || (req as any).user?.userType !== "Customer") {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized or not a customer",
+      });
+    }
+
+    if (!targetLang || typeof targetLang !== "string" || !targetLang.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Language code is required",
+      });
+    }
+
+    const cleanCode = targetLang.trim().toLowerCase();
+
+    // Validate that language exists in SupportedLanguage and is active
+    const activeLang = await SupportedLanguage.findOne({
+      code: cleanCode,
+      isActive: true,
+    });
+
+    if (!activeLang) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected language is invalid or inactive",
+      });
+    }
+
+    const customer = await Customer.findById(userId);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    customer.preferredLanguage = cleanCode;
+    await customer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Language preference updated successfully",
+      data: {
+        preferredLanguage: customer.preferredLanguage,
+      },
+    });
+  }
+);
 
 /**
  * Update customer profile

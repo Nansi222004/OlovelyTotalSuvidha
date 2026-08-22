@@ -1,14 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export default function DeliveryBottomNav() {
   const location = useLocation();
+  const { t } = useLanguage();
   
   const isActive = (path: string) => location.pathname === path;
 
   const navItems = [
     {
       path: '/delivery',
-      label: 'Home',
+      label: t("navigation.home", "Home"),
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           {/* Grid of 9 squares */}
@@ -26,7 +28,7 @@ export default function DeliveryBottomNav() {
     },
     {
       path: '/delivery/orders',
-      label: 'Orders',
+      label: t("navigation.orders", "Orders"),
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           {/* Delivery truck with speed lines */}
@@ -45,7 +47,7 @@ export default function DeliveryBottomNav() {
     },
     {
       path: '/delivery/notifications',
-      label: 'Notification',
+      label: t("navigation.notifications", "Notification"),
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
@@ -69,7 +71,7 @@ export default function DeliveryBottomNav() {
     },
     {
       path: '/delivery/menu',
-      label: 'Menu',
+      label: t("navigation.menu", "Menu"),
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path

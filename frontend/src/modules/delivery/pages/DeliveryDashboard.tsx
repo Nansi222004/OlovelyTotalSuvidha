@@ -6,10 +6,12 @@ import DashboardCard from "../components/DashboardCard";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
 import { getDashboardStats } from "../../../services/api/delivery/deliveryService";
 import { useDeliveryStatus } from "../context/DeliveryStatusContext";
+import { useLanguage } from "../../../context/LanguageContext";
 
 export default function DeliveryDashboard() {
   const navigate = useNavigate();
   const { isOnline, sellersInRangeCount, locationError } = useDeliveryStatus();
+  const { t } = useLanguage();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -280,10 +282,10 @@ export default function DeliveryDashboard() {
         {/* Daily Collection & Cash Balance Bar */}
         <SummaryBar
           leftIcon={dailyCollectionIcon}
-          leftLabel="Daily Collection"
+          leftLabel={t("delivery.dailyCollection", "Daily Collection")}
           leftValue={`₹ ${stats?.dailyCollection?.toLocaleString("en-IN") || "0"}`}
           rightIcon={cashBalanceIcon}
-          rightLabel="Cash Balance"
+          rightLabel={t("delivery.cashBalance", "Cash Balance")}
           rightValue={`₹ ${stats?.cashBalance?.toFixed(2) || "0.00"}`}
           accentColor="#FFC94A"
         />
@@ -293,7 +295,7 @@ export default function DeliveryDashboard() {
           onClick={() => navigate("/delivery/wallet")}
           className="bg-gradient-to-br from-green-500 to-green-700 rounded-xl p-4 text-white shadow-md cursor-pointer active:scale-[0.98] transition-transform">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-green-100 text-xs">Available Wallet Balance</p>
+            <p className="text-green-100 text-xs">{t("delivery.availableWalletBalance", "Available Wallet Balance")}</p>
             <div className="bg-green-400/30 p-1.5 rounded-lg">
               <svg
                 width="18"
@@ -314,7 +316,7 @@ export default function DeliveryDashboard() {
               ₹ {stats?.walletBalance?.toFixed(2) || "0.00"}
             </p>
             <p className="text-green-100 text-[10px] flex items-center gap-1">
-              View Details
+              {t("delivery.viewDetails", "View Details")}
               <svg
                 width="10"
                 height="10"
@@ -352,7 +354,7 @@ export default function DeliveryDashboard() {
               <div>
                 <h3
                   className={`text-sm font-semibold ${isOnline ? "text-teal-900" : "text-neutral-500"}`}>
-                  {isOnline ? "Active Service Areas" : "Offline"}
+                  {isOnline ? t("delivery.activeServiceAreas", "Active Service Areas") : t("delivery.offDuty", "Offline")}
                 </h3>
                 <p className="text-xs text-neutral-500">
                   {isOnline
@@ -395,28 +397,28 @@ export default function DeliveryDashboard() {
         <div className="grid grid-cols-2 gap-4">
           <DashboardCard
             icon={pendingOrderIcon}
-            title="Today's Pending Order"
+            title={t("delivery.todaysPendingOrder", "Today's Pending Order")}
             value={stats?.pendingOrders || 0}
             accentColor="#16a34a"
             onClick={() => navigate("/delivery/orders/pending")}
           />
           <DashboardCard
             icon={allOrderIcon}
-            title="Today's All Order"
+            title={t("delivery.todaysAllOrder", "Today's All Order")}
             value={stats?.allOrders || 0}
             accentColor="#ef4444"
             onClick={() => navigate("/delivery/orders/all")}
           />
           <DashboardCard
             icon={returnOrderIcon}
-            title="Today's Return Order"
+            title={t("delivery.todaysReturnOrder", "Today's Return Order")}
             value={stats?.returnOrders || 0}
             accentColor="#f97316"
             onClick={() => navigate("/delivery/orders/return")}
           />
           <DashboardCard
             icon={returnItemIcon}
-            title="Total return item have"
+            title={t("delivery.totalReturnItemHave", "Total return item have")}
             value={stats?.returnItems || 0}
             accentColor="#3b82f6"
           />
@@ -425,10 +427,10 @@ export default function DeliveryDashboard() {
         {/* Today's Earning & Total Earning Bar */}
         <SummaryBar
           leftIcon={earningIcon}
-          leftLabel="Today's Earning"
+          leftLabel={t("delivery.todaysEarning", "Today's Earning")}
           leftValue={`₹ ${stats?.todayEarning || 0}`}
           rightIcon={cashBalanceIcon}
-          rightLabel="Total Earning"
+          rightLabel={t("delivery.totalEarning", "Total Earning")}
           rightValue={`₹ ${stats?.totalEarning?.toFixed(2) || "0.00"}`}
           accentColor="#16a34a"
         />
@@ -436,7 +438,7 @@ export default function DeliveryDashboard() {
         {/* Today's Pending Order Section */}
         <div className="mt-6">
           <h2 className="text-neutral-900 text-lg font-semibold mb-4">
-            Todays Pending Order
+            {t("delivery.todaysPendingOrder", "Todays Pending Order")}
           </h2>
           {stats?.pendingOrdersList && stats.pendingOrdersList.length > 0 ? (
             <div className="space-y-3">

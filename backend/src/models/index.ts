@@ -34,7 +34,6 @@ export { default as DeliveryArea } from "./DeliveryArea";
 export { default as DeliveryAssignment } from "./DeliveryAssignment";
 export { default as DeliveryOrderOffer } from "./DeliveryOrderOffer";
 export { default as DeliveryTracking } from "./DeliveryTracking";
-export { default as PaymentMethod } from "./PaymentMethod";
 export { default as CashCollection } from "./CashCollection";
 export { default as FAQ } from "./FAQ";
 export { default as LowestPricesProduct } from "./LowestPricesProduct";
