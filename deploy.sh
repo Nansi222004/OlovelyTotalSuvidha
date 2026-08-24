@@ -13,6 +13,7 @@ fi
 echo "=========================================="
 echo "  1. Pulling latest code from GitHub...   "
 echo "=========================================="
+git checkout -- deploy.sh 2>/dev/null || true
 git reset --hard
 git clean -fd
 git pull origin main
