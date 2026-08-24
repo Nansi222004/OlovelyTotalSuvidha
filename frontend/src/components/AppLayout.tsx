@@ -163,6 +163,33 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   }, [isCategoriesActive, prevCategoriesActive]);
 
+  const [activeNotification, setActiveNotification] = useState<{
+    title: string;
+    body: string;
+    link?: string;
+  } | null>(null);
+
+  // Listen for in_app_notification event for foreground push notifications in web/mobile app
+  useEffect(() => {
+    const handleNotification = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.notification) {
+        setActiveNotification({
+          title: detail.notification.title || 'New Notification',
+          body: detail.notification.body || '',
+          link: detail.data?.link || '/',
+        });
+
+        setTimeout(() => {
+          setActiveNotification(null);
+        }, 6000);
+      }
+    };
+
+    window.addEventListener('in_app_notification', handleNotification);
+    return () => window.removeEventListener('in_app_notification', handleNotification);
+  }, []);
+
   // Listen for openLocationChangeModal event from anywhere in the app
   useEffect(() => {
     const handleOpen = () => setShowLocationChangeModal(true);
@@ -191,6 +218,48 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex flex-col min-h-screen w-full overflow-x-hidden">
+      {/* Foreground In-App Push Notification Banner Alert */}
+      <AnimatePresence>
+        {activeNotification && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            onClick={() => {
+              if (activeNotification.link) {
+                navigate(activeNotification.link);
+              }
+              setActiveNotification(null);
+            }}
+            className="fixed top-3 left-3 right-3 md:left-auto md:right-4 md:w-96 z-[9999] bg-emerald-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-emerald-500/30 cursor-pointer flex items-center gap-3 active:scale-98 transition-transform"
+          >
+            <img
+              src="/logo192.png"
+              alt="Olovely"
+              className="w-10 h-10 rounded-xl object-contain bg-white p-0.5 shadow-md flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <h4 className="font-bold text-sm text-white tracking-tight truncate">
+                {activeNotification.title}
+              </h4>
+              <p className="text-xs text-emerald-100/90 line-clamp-2 mt-0.5 leading-snug">
+                {activeNotification.body}
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveNotification(null);
+              }}
+              className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-emerald-100 flex items-center justify-center text-xs flex-shrink-0"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Desktop Container Wrapper */}
       <div className="md:w-full md:bg-white md:min-h-screen overflow-x-hidden">
         <div className="md:w-full md:min-h-screen md:flex md:flex-col overflow-x-hidden">

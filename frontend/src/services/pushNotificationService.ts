@@ -178,31 +178,51 @@ export async function setupForegroundNotificationHandler(
     }
 
     return onMessage(messaging, (payload) => {
-        console.log('Foreground message received:', payload);
+        console.log('Foreground message received in app:', payload);
 
+        // 1. Dispatch custom event so app UI components can render an in-app banner alert
+        const customEvent = new CustomEvent('in_app_notification', { detail: payload });
+        window.dispatchEvent(customEvent);
+
+        // 2. Play alert sound for order notifications
+        const isOrderAlert = payload.data?.type === 'NEW_ORDER_REQUEST' || payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'Order';
+        if (isOrderAlert) {
+            try {
+                const audio = new Audio('/assets/sound/delivery-alert.mp3');
+                audio.play().catch(() => {});
+            } catch {
+                // Ignore audio autoplay restrictions if user hasn't interacted
+            }
+        }
+
+        // 3. Try standard HTML5 Notification API (for desktop/web browsers)
         if ('Notification' in window && Notification.permission === 'granted') {
-            const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
-            const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
+            try {
+                const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
+                const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
 
-            const notification = new Notification(payload.notification?.title || 'New Notification', {
-                body: payload.notification?.body || '',
-                icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
-                badge: '/logo192.png',
-                tag: notificationTag,
-                requireInteraction: false,
-                silent: false,
-                data: payload.data,
-            });
+                const notification = new Notification(payload.notification?.title || 'New Notification', {
+                    body: payload.notification?.body || '',
+                    icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
+                    badge: '/logo192.png',
+                    tag: notificationTag,
+                    requireInteraction: false,
+                    silent: false,
+                    data: payload.data,
+                });
 
-            notification.onclick = (event) => {
-                event.preventDefault();
-                const link = payload.data?.link || '/';
-                window.focus();
-                window.location.href = link;
-                notification.close();
-            };
+                notification.onclick = (event) => {
+                    event.preventDefault();
+                    const link = payload.data?.link || '/';
+                    window.focus();
+                    window.location.href = link;
+                    notification.close();
+                };
 
-            console.log('Foreground notification displayed');
+                console.log('Foreground notification displayed');
+            } catch (err) {
+                console.warn('HTML5 Notification failed:', err);
+            }
         }
 
         if (handler) {
