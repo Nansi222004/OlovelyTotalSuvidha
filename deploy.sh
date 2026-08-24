@@ -50,7 +50,9 @@ npm run build
 echo "=========================================="
 echo "  5. Restarting PM2 Application Services. "
 echo "=========================================="
-pm2 restart all || pm2 reload all
+cd "$PROJECT_DIR/backend" || exit 1
+pm2 restart all || pm2 start dist/server.js --name "olovely-backend" || pm2 reload all
+pm2 status
 
 echo "=========================================="
 echo "  Deployment Completed Successfully! 🟢   "
