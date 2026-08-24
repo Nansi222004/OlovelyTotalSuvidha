@@ -17,6 +17,7 @@ git checkout -- deploy.sh 2>/dev/null || true
 git reset --hard
 git clean -fd
 git pull origin main
+chmod +x "$PROJECT_DIR/deploy.sh" 2>/dev/null || true
 
 echo "=========================================="
 echo "  2. Updating Environment Configuration... "
