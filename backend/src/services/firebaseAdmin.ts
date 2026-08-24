@@ -78,12 +78,16 @@ export async function sendPushNotification(
         }
 
         const logoIcon = payload.icon || '/logo192.png';
+        const serverUrl = process.env.SERVER_URL || process.env.FRONTEND_URL || 'https://olovelytotal.com';
+        const absoluteLogoUrl = (logoIcon.startsWith('http://') || logoIcon.startsWith('https://'))
+            ? logoIcon
+            : `${serverUrl.replace(/\/$/, '')}${logoIcon.startsWith('/') ? '' : '/'}${logoIcon}`;
 
         const message: admin.messaging.MulticastMessage = {
             notification: {
                 title: payload.title,
                 body: payload.body,
-                imageUrl: logoIcon,
+                ...(absoluteLogoUrl.startsWith('http') && { imageUrl: absoluteLogoUrl }),
             },
             webpush: {
                 headers: {
