@@ -255,6 +255,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [items, estimatedFee, platformFee, freeDeliveryThreshold, minimumOrderValue]);
 
   const addToCart = async (product: Product, sourceElement?: HTMLElement | null) => {
+    if (!isAuthenticated) {
+      showToast("Please login first to add items to cart", "info");
+      window.location.href = "/login";
+      return;
+    }
+
     // Get consistent product ID - MongoDB returns _id, frontend expects id
     const productId = product._id || product.id;
 
@@ -437,6 +443,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const updateQuantity = async (productId: string, quantity: number, variantId?: string, variantTitle?: string) => {
     if (quantity <= 0) {
       removeFromCart(productId);
+      return;
+    }
+
+    if (!isAuthenticated) {
+      showToast("Please login first to add items to cart", "info");
+      window.location.href = "/login";
       return;
     }
 

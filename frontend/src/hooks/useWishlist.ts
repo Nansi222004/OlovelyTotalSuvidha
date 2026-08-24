@@ -29,6 +29,7 @@ export function useWishlist(productId?: string) {
 
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
+      showToast('Please login first to add items to wishlist', 'info');
       navigate('/login');
       return;
     }
