@@ -33,8 +33,9 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
 
             const notificationOptions = {
                 body: payload.notification?.body || '',
-                icon: payload.notification?.icon || '/favicon.png',
-                badge: '/favicon.png',
+                icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
+                badge: '/logo192.png',
+                image: payload.notification?.image || payload.data?.image || undefined,
                 data: payload.data || {},
                 tag: notificationTag,
                 requireInteraction: isOrderAlert,

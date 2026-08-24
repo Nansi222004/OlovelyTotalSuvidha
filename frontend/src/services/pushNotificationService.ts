@@ -186,8 +186,8 @@ export async function setupForegroundNotificationHandler(
 
             const notification = new Notification(payload.notification?.title || 'New Notification', {
                 body: payload.notification?.body || '',
-                icon: payload.notification?.icon || '/favicon.png',
-                badge: '/favicon.png',
+                icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
+                badge: '/logo192.png',
                 tag: notificationTag,
                 requireInteraction: false,
                 silent: false,

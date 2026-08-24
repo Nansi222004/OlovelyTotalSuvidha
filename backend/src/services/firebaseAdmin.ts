@@ -77,14 +77,40 @@ export async function sendPushNotification(
             };
         }
 
-        const message = {
+        const logoIcon = payload.icon || '/logo192.png';
+
+        const message: admin.messaging.MulticastMessage = {
             notification: {
                 title: payload.title,
-                body: payload.body
+                body: payload.body,
+                imageUrl: logoIcon,
+            },
+            webpush: {
+                headers: {
+                    Urgency: 'high'
+                },
+                notification: {
+                    title: payload.title,
+                    body: payload.body,
+                    icon: logoIcon,
+                    badge: logoIcon,
+                    requireInteraction: true,
+                },
+                fcmOptions: {
+                    link: payload.data?.link || '/'
+                }
+            },
+            android: {
+                priority: 'high',
+                notification: {
+                    title: payload.title,
+                    body: payload.body,
+                    color: '#059669'
+                }
             },
             data: {
                 ...(payload.data || {}),
-                ...(payload.icon && { icon: payload.icon })
+                icon: logoIcon
             },
             tokens: tokens
         };
