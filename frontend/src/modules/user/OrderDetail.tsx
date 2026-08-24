@@ -16,6 +16,7 @@ import StarRating from "../../components/ui/StarRating";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { formatDeliveryAddress } from "../../utils/addressUtils";
 
 // Icon Components
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
@@ -506,6 +507,10 @@ export default function OrderDetail() {
   const [customReturnReason, setCustomReturnReason] = useState<string>("");
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [returnError, setReturnError] = useState<string | null>(null);
+
+  // Customer & Delivery Address Modal states
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
 
   // Real-time delivery tracking via WebSocket (disabled for loading, delivered, completed, or cancelled orders)
   const activeOrderStatus = order?.status || (orderStatus !== "Received" ? orderStatus : "");
@@ -1187,18 +1192,19 @@ export default function OrderDetail() {
           transition={{ delay: 0.7 }}>
           <SectionItem
             icon={PhoneIcon}
-            title={`${order.address?.name || "Customer"}, ${order.address?.phone || "9XXXXXXXX"
-              }`}
-            subtitle="Delivery partner may call this number"
+            title={`${order.customerName || order.address?.name || "Customer"}, ${order.customerPhone || order.address?.phone || "Phone Not Available"}`}
+            subtitle="Click to view customer details"
+            onClick={() => setShowCustomerModal(true)}
           />
           <SectionItem
             icon={HomeIcon}
-            title="Delivery at Home"
+            title="Delivery Address"
             subtitle={
-              order.address
-                ? `${order.address.address}, ${order.address.city}`
+              (order.deliveryAddress || order.address)
+                ? formatDeliveryAddress(order.deliveryAddress || order.address).formatted
                 : "Add delivery address"
             }
+            onClick={() => setShowDeliveryAddressModal(true)}
           />
           <SectionItem
             icon={() => (
@@ -1953,6 +1959,165 @@ export default function OrderDetail() {
                   {submittingReturn ? "Submitting..." : "Submit Return Request"}
                 </Button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Contact Details Modal */}
+      <AnimatePresence>
+        {showCustomerModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setShowCustomerModal(false)}>
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-t-3xl sm:rounded-3xl p-6 pb-8 sm:pb-6 max-w-md w-full shadow-2xl space-y-4">
+              
+              {/* Drag Handle Indicator for Mobile */}
+              <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto -mt-1 mb-1 sm:hidden" />
+
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                    <PhoneIcon className="w-4 h-4" />
+                  </div>
+                  <span>Contact Information</span>
+                </h3>
+                <button
+                  onClick={() => setShowCustomerModal(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition-colors font-bold text-sm">
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-emerald-50/50 rounded-2xl p-4 space-y-3.5 border border-emerald-100/80">
+                <div>
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Recipient Name</span>
+                  <p className="font-semibold text-gray-900 text-base mt-0.5">
+                    {order.customerName || order.address?.name || "Customer"}
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-emerald-100/60">
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Contact Phone Number</span>
+                  <p className="font-semibold text-gray-900 text-base mt-0.5">
+                    {order.customerPhone || order.address?.phone || "Not Available"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 text-xs text-gray-600 flex items-start gap-2 leading-relaxed">
+                <span className="text-sm">ℹ️</span>
+                <p>Your delivery partner and store will use this phone number for order updates, arrival calls, and delivery OTP verification.</p>
+              </div>
+
+              <button
+                onClick={() => setShowCustomerModal(false)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all text-center">
+                Got it
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delivery Address Modal */}
+      <AnimatePresence>
+        {showDeliveryAddressModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setShowDeliveryAddressModal(false)}>
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-t-3xl sm:rounded-3xl p-6 pb-8 sm:pb-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              
+              {/* Drag Handle Indicator for Mobile */}
+              <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto -mt-1 mb-1 sm:hidden" />
+
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                    <HomeIcon className="w-4 h-4" />
+                  </div>
+                  <span>Delivery Address</span>
+                </h3>
+                <button
+                  onClick={() => setShowDeliveryAddressModal(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition-colors font-bold text-sm">
+                  ✕
+                </button>
+              </div>
+
+              {(() => {
+                const da = order.deliveryAddress || order.address || {};
+                const formatted = formatDeliveryAddress(da);
+                const lat = da.latitude;
+                const lng = da.longitude;
+                const mapsUrl = (lat && lng) ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50/40 rounded-2xl p-4 space-y-3 border border-blue-100/80 text-sm">
+                      <div>
+                        <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Complete Address</span>
+                        <p className="font-semibold text-gray-900 text-sm mt-1 leading-relaxed">
+                          {formatted.formatted || da.address || da.street}
+                        </p>
+                      </div>
+                      {da.landmark && (
+                        <div className="pt-2 border-t border-blue-100/60">
+                          <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Landmark</span>
+                          <p className="font-medium text-gray-800 text-sm mt-0.5">{da.landmark}</p>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-100/60">
+                        <div>
+                          <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">City</span>
+                          <p className="font-semibold text-gray-900">{da.city || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">State</span>
+                          <p className="font-semibold text-gray-900">{da.state || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Pincode</span>
+                          <p className="font-semibold text-gray-900">{da.pincode || "-"}</p>
+                        </div>
+                      </div>
+                      {(lat && lng) && (
+                        <div className="pt-2 border-t border-blue-100/60">
+                          <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Coordinates (Snapshot)</span>
+                          <p className="font-mono text-xs text-gray-700 mt-0.5 font-medium">{lat}, {lng}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {mapsUrl && (
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-all text-center text-sm">
+                        <span>📍</span> Open in Google Maps
+                      </a>
+                    )}
+                  </div>
+                );
+              })()}
             </motion.div>
           </motion.div>
         )}

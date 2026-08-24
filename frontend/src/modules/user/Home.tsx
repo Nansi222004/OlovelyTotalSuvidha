@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import HomeHero from "./components/HomeHero";
 import PromoStrip from "./components/PromoStrip";
+import LowestPricesEver from "./components/LowestPricesEver";
 import CategoryTileSection from "./components/CategoryTileSection";
+import BestsellerSection from "./components/BestsellerSection";
 import FeaturedThisWeek from "./components/FeaturedThisWeek";
 import ProductCard from "./components/ProductCard";
 import { getHomeContent } from "../../services/api/customerHomeService";
@@ -200,11 +202,25 @@ export default function Home() {
       {/* Promo Strip */}
       <PromoStrip activeTab={activeTab} />
 
+      {/* LOWEST PRICES EVER Section */}
+      {homeData.lowestPrices && homeData.lowestPrices.length > 0 && (
+        <LowestPricesEver activeTab={activeTab} products={homeData.lowestPrices} />
+      )}
+
 
       {/* Main content */}
       <div
         className="bg-neutral-50 -mt-2 pt-1 space-y-5 md:space-y-8 md:pt-4">
 
+
+        {/* Bestseller Cards Section - Render modern Bestseller Cards */}
+        {activeTab === "all" && (
+          <BestsellerSection
+            title={t("customer.bestSellers", "Bestsellers")}
+            tiles={homeData.bestsellers}
+            loading={loading}
+          />
+        )}
 
         {/* Dynamic Home Sections - Render sections created by admin */}
         {homeData.homeSections && homeData.homeSections.length > 0 && (

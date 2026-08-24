@@ -326,25 +326,25 @@ router.delete("/system-users/:id", systemUserController.deleteSystemUser);
 router.get("/home-sections", homeSectionController.getHomeSections);
 router.get("/home-sections/:id", homeSectionController.getHomeSectionById);
 router.post("/home-sections", homeSectionController.createHomeSection);
+router.put("/home-sections/reorder", homeSectionController.reorderHomeSections);
 router.put("/home-sections/:id", homeSectionController.updateHomeSection);
 router.delete("/home-sections/:id", homeSectionController.deleteHomeSection);
-router.put("/home-sections/reorder", homeSectionController.reorderHomeSections);
 
 // ==================== Bestseller Card Routes ====================
 router.get("/bestseller-cards", bestsellerCardController.getBestsellerCards);
 router.get("/bestseller-cards/:id", bestsellerCardController.getBestsellerCardById);
 router.post("/bestseller-cards", bestsellerCardController.createBestsellerCard);
+router.put("/bestseller-cards/reorder", bestsellerCardController.reorderBestsellerCards);
 router.put("/bestseller-cards/:id", bestsellerCardController.updateBestsellerCard);
 router.delete("/bestseller-cards/:id", bestsellerCardController.deleteBestsellerCard);
-router.put("/bestseller-cards/reorder", bestsellerCardController.reorderBestsellerCards);
 
 // ==================== Lowest Prices Product Routes ====================
 router.get("/lowest-prices-products", lowestPricesController.getLowestPricesProducts);
 router.get("/lowest-prices-products/:id", lowestPricesController.getLowestPricesProductById);
 router.post("/lowest-prices-products", lowestPricesController.createLowestPricesProduct);
+router.put("/lowest-prices-products/reorder", lowestPricesController.reorderLowestPricesProducts);
 router.put("/lowest-prices-products/:id", lowestPricesController.updateLowestPricesProduct);
 router.delete("/lowest-prices-products/:id", lowestPricesController.deleteLowestPricesProduct);
-router.put("/lowest-prices-products/reorder", lowestPricesController.reorderLowestPricesProducts);
 
 // ==================== PromoStrip Routes ====================
 router.get("/promo-strips", promoStripController.getAllPromoStrips);

@@ -4,7 +4,7 @@ import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 interface GoogleMapsLocationPickerProps {
     initialLat: number;
     initialLng: number;
-    onLocationSelect: (lat: number, lng: number, address?: { street?: string, city?: string, state?: string, pincode?: string, landmark?: string }) => void;
+    onLocationSelect: (lat: number, lng: number, address?: { street?: string, city?: string, state?: string, pincode?: string, landmark?: string, formattedAddress?: string }) => void;
     height?: string;
 }
 
@@ -111,11 +111,12 @@ export default function GoogleMapsLocationPicker({
                             });
 
                             onLocationSelect(lat, lng, {
-                                street: street.trim(),
+                                street: street.trim() || results[0].formatted_address || '',
                                 city,
                                 state,
                                 pincode,
-                                landmark
+                                landmark,
+                                formattedAddress: results[0].formatted_address || '',
                             });
                         } else {
                             onLocationSelect(lat, lng);

@@ -63,7 +63,28 @@ self.addEventListener('install', (event) => {
 // Service worker activation
 self.addEventListener('activate', (event) => {
     console.log('[firebase-messaging-sw.js] Service worker activated, claiming clients');
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        (async () => {
+            // Clean up stale Firebase IndexedDB entries to fix VersionError
+            // This happens when an old SW version created an IndexedDB with a different schema version
+            try {
+                const dbNames = ['firebase-installations-database', 'firebase-messaging-database', 'firebase-heartbeat-database'];
+                await Promise.allSettled(
+                    dbNames.map(dbName => {
+                        return new Promise((resolve) => {
+                            const deleteReq = indexedDB.deleteDatabase(dbName);
+                            deleteReq.onsuccess = () => { console.log(`[SW] Deleted stale DB: ${dbName}`); resolve(true); };
+                            deleteReq.onerror = () => resolve(false);
+                            deleteReq.onblocked = () => resolve(false);
+                        });
+                    })
+                );
+            } catch (err) {
+                console.warn('[SW] Could not clean Firebase IndexedDB:', err);
+            }
+            await self.clients.claim();
+        })()
+    );
 });
 
 // Handle notification click

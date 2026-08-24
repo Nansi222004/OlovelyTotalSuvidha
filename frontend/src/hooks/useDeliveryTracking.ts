@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 // @ts-ignore - socket.io-client types may not be available
 import { io, Socket } from 'socket.io-client'
-import { getSocketBaseURL, getAuthToken } from '../services/api/config'
+import { getSocketBaseURL, getAuthToken, getPanelFromContext } from '../services/api/config'
 
 interface LocationUpdate {
     orderId: string
@@ -57,7 +57,8 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
             reconnectTimeoutRef.current = null
         }
 
-        const token = getAuthToken('delivery') || getAuthToken('customer');
+        const panel = getPanelFromContext();
+        const token = getAuthToken(panel) || getAuthToken('customer') || getAuthToken('delivery');
         const socket = io(getSocketBaseURL(), {
             auth: {
                 token,

@@ -4,6 +4,7 @@ import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, type OrderDe
 import jsPDF from 'jspdf';
 import { useToast } from '../../../context/ToastContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
+import { formatDeliveryAddress } from '../../../utils/addressUtils';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -345,8 +346,8 @@ export default function SellerOrderDetail() {
     yPos += 5;
     doc.text(`Phone: ${orderDetail.customerPhone}`, margin, yPos);
     yPos += 5;
-    const address = `${orderDetail.deliveryAddress.address}, ${orderDetail.deliveryAddress.city}, ${orderDetail.deliveryAddress.state} - ${orderDetail.deliveryAddress.pincode}`;
-    const splitAddress = doc.splitTextToSize(`Address: ${address}`, contentWidth);
+    const addressInfo = formatDeliveryAddress(orderDetail.deliveryAddress);
+    const splitAddress = doc.splitTextToSize(`Address: ${addressInfo.formatted}`, contentWidth);
     doc.text(splitAddress, margin, yPos);
     yPos += (splitAddress.length * 5) + 5;
 
@@ -516,15 +517,15 @@ export default function SellerOrderDetail() {
             </div>
 
             {/* Middle: Customer Details */}
-            <div className="flex-1 min-w-[250px] bg-neutral-50 p-4 rounded-lg border border-neutral-100">
-              <h3 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <div className="flex-1 min-w-[280px] bg-neutral-50 p-4 rounded-lg border border-neutral-200/80 shadow-2xs">
+              <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-neutral-200 pb-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-teal-600">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
-                Customer Details
+                Customer & Delivery Details
               </h3>
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-neutral-500 uppercase">Customer Name</span>
                   <span className="text-sm text-neutral-900 font-semibold">{orderDetail.customerName}</span>
@@ -535,11 +536,36 @@ export default function SellerOrderDetail() {
                     {orderDetail.customerPhone}
                   </a>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase">Delivery Location</span>
-                  <span className="text-sm text-neutral-700 leading-relaxed font-medium">
-                    {orderDetail.deliveryAddress.address}, {orderDetail.deliveryAddress.city}, {orderDetail.deliveryAddress.state} - {orderDetail.deliveryAddress.pincode}
+                
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-neutral-200/80">
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase flex items-center gap-1">
+                    📍 Delivery Address
                   </span>
+                  <div className="text-xs text-neutral-800 leading-relaxed font-medium bg-white p-3 rounded-lg border border-neutral-200/80 shadow-2xs">
+                    {formatDeliveryAddress(orderDetail.deliveryAddress).formatted}
+                  </div>
+
+                  {/* Lat / Lng & Open in Maps Button */}
+                  {formatDeliveryAddress(orderDetail.deliveryAddress).mapsUrl && (
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-neutral-500 font-mono text-[11px]">
+                        📍 {formatDeliveryAddress(orderDetail.deliveryAddress).latitude?.toFixed(6)}, {formatDeliveryAddress(orderDetail.deliveryAddress).longitude?.toFixed(6)}
+                      </span>
+                      <a
+                        href={formatDeliveryAddress(orderDetail.deliveryAddress).mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md font-semibold text-[11px] transition-colors shadow-2xs"
+                      >
+                        <span>Open in Maps</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

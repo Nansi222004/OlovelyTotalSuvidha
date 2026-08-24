@@ -5,6 +5,22 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../context/ToastContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 
+/** Frontend address formatter — mirrors backend addressUtils.ts to avoid duplication */
+function formatOrderAddress(addr: any): string {
+  if (!addr) return 'N/A';
+  const rawAddress = (addr.address || addr.street || '').trim();
+  // Remove 'Current Location, ' prefix
+  let clean = rawAddress.replace(/^Current Location,?\s*/i, '').trim();
+  if (!clean) clean = rawAddress;
+  const city = (addr.city || '').trim();
+  const pincode = (addr.pincode || '').trim();
+  const lowerClean = clean.toLowerCase();
+  const extras: string[] = [];
+  if (city && !lowerClean.includes(city.toLowerCase())) extras.push(city);
+  if (pincode && !lowerClean.includes(pincode)) extras.push(pincode);
+  return [clean, ...extras].filter(Boolean).join(', ') || 'N/A';
+}
+
 interface SellerNotificationAlertProps {
   notification: SellerNotification | null;
   onClose: () => void;
@@ -141,7 +157,7 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
                   <circle cx="12" cy="10" r="3"></circle>
                 </svg>
                 <span>
-                  {notification.customer.address.address}, {notification.customer.address.city}, {notification.customer.address.pincode}
+                  {formatOrderAddress(notification.customer.address)}
                   {notification.customer.address.landmark && <span className="block text-sm text-neutral-400 mt-0.5">Landmark: {notification.customer.address.landmark}</span>}
                 </span>
               </div>

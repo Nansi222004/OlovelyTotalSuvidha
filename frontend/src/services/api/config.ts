@@ -33,18 +33,19 @@ export const getPanelFromContext = (hint?: string, url?: string): UserPanel => {
     if (norm === 'customer') return 'customer';
   }
 
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
   const requestUrl = url || '';
 
-  // 1. Check current browser location pathname first
+  // 1. Check explicit API request URL prefix first (most specific & reliable)
+  if (requestUrl.startsWith('/customer') || requestUrl.includes('/customer/')) return 'customer';
+  if (requestUrl.startsWith('/admin') || requestUrl.includes('/admin/')) return 'admin';
+  if (requestUrl.startsWith('/delivery') || requestUrl.includes('/delivery/')) return 'delivery';
+  if (requestUrl.startsWith('/seller') || requestUrl.startsWith('/sellers') || requestUrl.includes('/seller/') || requestUrl.includes('/sellers/')) return 'seller';
+
+  // 2. Check current browser location pathname
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
   if (currentPath.includes('/admin')) return 'admin';
   if (currentPath.includes('/seller') || currentPath.includes('/sellers')) return 'seller';
   if (currentPath.includes('/delivery')) return 'delivery';
-
-  // 2. Check API request URL endpoint
-  if (requestUrl.includes('/admin')) return 'admin';
-  if (requestUrl.includes('/seller') || requestUrl.includes('/sellers')) return 'seller';
-  if (requestUrl.includes('/delivery')) return 'delivery';
 
   return 'customer';
 };
@@ -143,7 +144,21 @@ export const getAuthToken = (panel?: UserPanel | string): string | null => {
   const activePanel = getPanelFromContext(typeof panel === 'string' ? panel : undefined);
   const panelKey = `${activePanel}_authToken`;
 
-  return localStorage.getItem(panelKey);
+  const panelToken = localStorage.getItem(panelKey);
+  if (panelToken) return panelToken;
+
+  // Fallback: if customer panel and no panel-specific token, check legacy 'authToken' key
+  // This handles users who logged in before the panel-isolation system was introduced
+  if (activePanel === 'customer') {
+    const legacyToken = localStorage.getItem('authToken');
+    if (legacyToken) {
+      // Migrate legacy token to panel-specific key for future requests
+      localStorage.setItem(panelKey, legacyToken);
+      return legacyToken;
+    }
+  }
+
+  return null;
 };
 
 export const getStoredUserData = (panel?: UserPanel | string): any => {

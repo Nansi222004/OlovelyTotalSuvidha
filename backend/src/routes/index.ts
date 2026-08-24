@@ -50,6 +50,7 @@ import {
   cancelOrder,
   requestCustomerReturn,
   updateOrderNotes,
+  refreshDeliveryOtp,
 } from "../modules/customer/controllers/customerOrderController";
 
 const router = Router();
@@ -123,6 +124,7 @@ router.get("/customer/orders/:id", authenticate, requireUserType("Customer"), ge
 router.post("/customer/orders/:id/cancel", authenticate, requireUserType("Customer"), cancelOrder);
 router.post("/customer/orders/:id/return", authenticate, requireUserType("Customer"), requestCustomerReturn);
 router.patch("/customer/orders/:id/notes", authenticate, requireUserType("Customer"), updateOrderNotes);
+router.post("/customer/orders/:id/refresh-otp", authenticate, requireUserType("Customer"), refreshDeliveryOtp);
 
 router.use("/customer/coupons", customerCouponRoutes);
 router.use("/customer/addresses", customerAddressRoutes);

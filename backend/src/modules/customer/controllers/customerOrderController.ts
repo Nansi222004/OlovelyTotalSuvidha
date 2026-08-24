@@ -154,6 +154,18 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Initialize Order first to get an ID
+    // DEBUG: Log exact delivery address being saved (helps trace address flow from frontend)
+    console.log("DEBUG: Saving deliveryAddress to MongoDB:", {
+      "address.address": address.address,
+      "address.street": address.street,
+      "resolved_address": address.address || address.street || "N/A",
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      latitude: deliveryLat,
+      longitude: deliveryLng,
+    });
+
     const newOrder = new Order({
       customer: new mongoose.Types.ObjectId(userId),
       customerName: customer.name,

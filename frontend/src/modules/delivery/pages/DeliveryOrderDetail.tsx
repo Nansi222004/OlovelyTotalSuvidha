@@ -793,12 +793,43 @@ export default function DeliveryOrderDetail() {
                             <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 text-orange-600">
                                 <Icons.MapPin size={20} />
                             </div>
-                            <div>
-                                <p className="text-sm text-neutral-600 leading-relaxed font-medium">{order.address}</p>
-                                {order.distance && (
-                                    <span className="inline-block mt-1 text-xs px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-md">
-                                        {order.distance} away
-                                    </span>
+                            <div className="flex-1">
+                                <p className="text-sm text-neutral-800 leading-relaxed font-medium">
+                                    {(() => {
+                                        // Prefer the rich deliveryAddress snapshot from the order over the flat address string
+                                        if (order.deliveryAddress && typeof order.deliveryAddress === 'object') {
+                                            const addr = order.deliveryAddress as any;
+                                            const raw = (addr.address || addr.street || '').replace(/^Current Location,?\s*/i, '').trim();
+                                            const city = (addr.city || '').trim();
+                                            const pincode = (addr.pincode || '').trim();
+                                            const lc = raw.toLowerCase();
+                                            const extras = [];
+                                            if (city && !lc.includes(city.toLowerCase())) extras.push(city);
+                                            if (pincode && !lc.includes(pincode)) extras.push(pincode);
+                                            return [raw, ...extras].filter(Boolean).join(', ') || 'N/A';
+                                        }
+                                        return (order.address || 'N/A').replace(/^Current Location,?\s*/i, '');
+                                    })()}
+                                </p>
+                                {customerLat && customerLng && customerLat !== 0 && (
+                                    <div className="mt-2 flex items-center justify-between gap-2">
+                                        <span className="text-[11px] font-mono text-neutral-500">
+                                            📍 {Number(customerLat).toFixed(6)}, {Number(customerLng).toFixed(6)}
+                                        </span>
+                                        <a
+                                            href={`https://www.google.com/maps/search/?api=1&query=${customerLat},${customerLng}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold text-[11px] transition-colors shadow-xs"
+                                        >
+                                            <span>Open in Maps</span>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                                <polyline points="15 3 21 3 21 9" />
+                                                <line x1="10" y1="14" x2="21" y2="3" />
+                                            </svg>
+                                        </a>
+                                    </div>
                                 )}
                             </div>
                         </div>

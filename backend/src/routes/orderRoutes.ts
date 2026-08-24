@@ -35,7 +35,8 @@ router.get("/:id/earning-breakdown", getOrderEarningBreakdownSeller);
 // Seller marks COD as paid to admin (order leaves pending settlement list)
 router.patch("/:id/mark-cod-paid", markOrderCODPaidSeller);
 
-// Update order status
+// Update order status (support both PATCH and PUT)
 router.patch("/:id/status", updateOrderStatus);
+router.put("/:id/status", updateOrderStatus);
 
 export default router;

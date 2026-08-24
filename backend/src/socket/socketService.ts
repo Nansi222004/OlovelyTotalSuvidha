@@ -132,7 +132,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
     io.on('connection', (socket) => {
         console.log('✅ Socket connected:', socket.id, 'User:', (socket as any).user?.userId || 'Unauthenticated');
 
-        // Customer subscribes to order tracking
+        // Customer / User subscribes to order tracking
         socket.on('track-order', async (orderId: string) => {
             const user = (socket as any).user;
 
@@ -143,16 +143,28 @@ export const initializeSocket = (httpServer: HttpServer) => {
             }
 
             try {
-                // Verify order belongs to this customer
-                const order = await Order.findOne({ _id: orderId, customer: user.userId });
+                const order = await Order.findById(orderId);
 
                 if (!order) {
-                    console.warn(`⚠️ User ${user.userId} tried to track unauthorized order: ${orderId}`);
+                    console.warn(`⚠️ Socket tracking order not found: ${orderId}`);
+                    socket.emit('tracking-error', { message: 'Order not found' });
+                    return;
+                }
+
+                // Check authorization for Customer owner, assigned Delivery partner, Admin, or Seller
+                const userIdStr = String(user.userId);
+                const isCustomerOwner = order.customer?.toString() === userIdStr;
+                const isAssignedDelivery = order.deliveryBoy?.toString() === userIdStr;
+                const isAdmin = user.userType === 'Admin' || user.role === 'admin';
+                const isSellerOwner = order.acceptedSellerIds?.some((sId: any) => sId.toString() === userIdStr);
+
+                if (!isCustomerOwner && !isAssignedDelivery && !isAdmin && !isSellerOwner) {
+                    console.warn(`⚠️ User ${user.userId} (${user.userType}) unauthorized for order: ${orderId}`);
                     socket.emit('tracking-error', { message: 'Unauthorized or order not found' });
                     return;
                 }
 
-                console.log(`📦 Customer ${user.userId} tracking order: ${orderId}`);
+                console.log(`📦 User ${user.userId} (${user.userType}) tracking order: ${orderId}`);
                 socket.join(`order-${orderId}`);
 
                 // Send acknowledgment

@@ -10,6 +10,7 @@ import {
 } from "../../../services/deliveryOtpService";
 import { processOrderStatusTransition } from "../../../services/orderService";
 import { getDeliveryPendingOrderAlerts } from "../../../services/orderAlertService";
+import { formatDeliveryAddress } from "../../../utils/addressUtils";
 
 /**
  * Get pending delivery order alerts (survives page refresh).
@@ -86,7 +87,7 @@ export const getAllOrdersHistory = asyncHandler(
       customerPhone: order.customerPhone,
       status: order.status,
 
-      address: `${order.deliveryAddress.address}, ${order.deliveryAddress.city}`,
+      address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
       totalAmount: order.total,
       deliveryEarning: commissionMap.get(order._id.toString()) || 0, // Add Earning
@@ -142,7 +143,7 @@ export const getTodayOrders = asyncHandler(
       customerPhone: order.customerPhone,
       status: order.status,
 
-      address: `${order.deliveryAddress?.address || ""}, ${order.deliveryAddress?.city || ""}`,
+      address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
       items: mapOrderItems(order.items), // Real items
       totalAmount: order.total,
@@ -193,7 +194,7 @@ export const getPendingOrders = asyncHandler(
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       status: order.status,
-      address: `${order.deliveryAddress?.address || ""}, ${order.deliveryAddress?.city || ""}`,
+      address: formatDeliveryAddress(order.deliveryAddress).formatted,
       items: mapOrderItems(order.items), // Real items
       totalAmount: order.total,
       estimatedDeliveryTime: order.estimatedDeliveryDate
@@ -240,7 +241,7 @@ export const getOrderDetails = asyncHandler(
       orderId: order.orderNumber,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      address: `${order.deliveryAddress?.address || ""}, ${order.deliveryAddress?.city || ""}`,
+      address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
       status: order.status,
       items: mapOrderItems(order.items), // Real populated items
@@ -399,7 +400,7 @@ export const getReturnOrders = asyncHandler(
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       status: order.status,
-      address: `${order.deliveryAddress?.address || ""}, ${order.deliveryAddress?.city || ""}`,
+      address: formatDeliveryAddress(order.deliveryAddress).formatted,
       items: mapOrderItems(order.items),
       totalAmount: order.total,
       createdAt: order.createdAt,

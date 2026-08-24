@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, markOrderCODPaid, Order, type EarningBreakdown } from '../../../services/api/admin/adminOrderService';
 import { useToast } from '../../../context/ToastContext';
+import { formatDeliveryAddress } from '../../../utils/addressUtils';
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -257,15 +258,28 @@ export default function AdminOrderDetail() {
           {/* Delivery Address */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold mb-4">Delivery Address</h2>
-            <div className="text-neutral-700">
-              <p className="font-medium">{order.customerName}</p>
-              <p>{order.deliveryAddress.address}</p>
-              <p>
-                {order.deliveryAddress.city}, {order.deliveryAddress.state || ''} -{' '}
-                {order.deliveryAddress.pincode}
-              </p>
-              {order.deliveryAddress.landmark && (
-                <p className="text-sm text-neutral-500">Landmark: {order.deliveryAddress.landmark}</p>
+            <div className="text-neutral-700 space-y-1">
+              <p className="font-bold text-neutral-900">{order.customerName}</p>
+              <p className="text-sm font-medium">{formatDeliveryAddress(order.deliveryAddress).formatted}</p>
+              {order.deliveryAddress?.landmark && (
+                <p className="text-xs text-neutral-500">Landmark: {order.deliveryAddress.landmark}</p>
+              )}
+              {formatDeliveryAddress(order.deliveryAddress).mapsUrl && (
+                <div className="pt-2">
+                  <a
+                    href={formatDeliveryAddress(order.deliveryAddress).mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white rounded text-xs font-medium hover:bg-teal-700 transition-colors"
+                  >
+                    <span>Open in Maps</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                </div>
               )}
             </div>
           </div>

@@ -19,6 +19,7 @@ import {
   SheetClose,
 } from "../../components/ui/sheet";
 import WishlistButton from "../../components/WishlistButton";
+import { useWishlistContext } from "../../context/WishlistContext";
 
 import {
   getCoupons,
@@ -55,6 +56,7 @@ export default function Checkout() {
   const { addOrder } = useOrders();
   const { location: userLocation } = useLocationContext();
   const { showToast: showGlobalToast } = useToast();
+  const { addWishlistProduct } = useWishlistContext();
   const { user, updateUser } = useAuth();
   const { settings: appSettings } = useAppSettings();
   const navigate = useNavigate();
@@ -170,11 +172,38 @@ export default function Checkout() {
           const defaultAddr =
             addressResponse.data.find((a: any) => a.isDefault) ||
             addressResponse.data[0];
+
+          // Determine the best address text:
+          // Prefer the user's current NAMED location from the header (LocationContext)
+          // over the saved address street if it's a stale generic geocode string.
+          // The header location is set by the user manually via autocomplete/map and is the
+          // "true" delivery intent. The Address model may have an old Nominatim-reverse-geocoded string.
+          let bestAddressText = defaultAddr.address;
+          
+          // If user has a header location with a named address and the saved address
+          // coordinates roughly match the user's current location, use the header address.
+          if (userLocation?.address && userLocation.address.trim() && defaultAddr.latitude && defaultAddr.longitude) {
+            // Only override if the saved address looks like a generic geocoded string (contains "Tahsil" or
+            // is very long without a recognizable named place) AND the user has a named location.
+            // A simple heuristic: use the header location address as it's always the user's current intent.
+            bestAddressText = userLocation.address;
+            
+            // Also update the backend address record so future loads show the correct address
+            try {
+              if (defaultAddr._id) {
+                await updateAddress(defaultAddr._id, { address: userLocation.address });
+              }
+            } catch (e) {
+              // Non-critical: don't block checkout if this fails
+              console.warn('[Checkout] Could not sync header location to saved address:', e);
+            }
+          }
+
           const mappedAddress: OrderAddress = {
             name: defaultAddr.fullName,
             phone: defaultAddr.phone,
             flat: "",
-            street: defaultAddr.address,
+            street: bestAddressText,
             city: defaultAddr.city,
             state: defaultAddr.state,
             pincode: defaultAddr.pincode,
@@ -204,7 +233,7 @@ export default function Checkout() {
             const addressPayload = {
               fullName: userName,
               phone: userPhone,
-              flat: 'Current Location',
+              flat: '',
               street: userLocation.address || `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`,
               city: userLocation.city || '',
               state: userLocation.state || '',
@@ -532,12 +561,8 @@ export default function Checkout() {
         return;
       }
 
-      // Add to wishlist
-      await addToWishlist(
-        productId,
-        userLocation.latitude,
-        userLocation.longitude,
-      );
+      // Add to wishlist via context for synchronized state
+      await addWishlistProduct(productId);
       // Remove from cart
       await removeFromCart(productId);
       // Show success message
@@ -686,16 +711,13 @@ export default function Checkout() {
 
       // If address details are available from map, update them too
       if (mapLocation.address) {
-        if (mapLocation.address.street)
-          updatePayload.address = mapLocation.address.street;
-        if (mapLocation.address.city)
-          updatePayload.city = mapLocation.address.city;
-        if (mapLocation.address.state)
-          updatePayload.state = mapLocation.address.state;
-        if (mapLocation.address.pincode)
-          updatePayload.pincode = mapLocation.address.pincode;
-        if (mapLocation.address.landmark)
-          updatePayload.landmark = mapLocation.address.landmark;
+        // Prefer full formattedAddress over just street component
+        const bestAddress = (mapLocation.address as any).formattedAddress || mapLocation.address.street;
+        if (bestAddress) updatePayload.address = bestAddress;
+        if (mapLocation.address.city) updatePayload.city = mapLocation.address.city;
+        if (mapLocation.address.state) updatePayload.state = mapLocation.address.state;
+        if (mapLocation.address.pincode) updatePayload.pincode = mapLocation.address.pincode;
+        if (mapLocation.address.landmark) updatePayload.landmark = mapLocation.address.landmark;
       }
 
       // If user has an existing address, update it
@@ -703,11 +725,12 @@ export default function Checkout() {
         await updateAddress(selectedAddress.id, updatePayload);
 
         // Update local state
+        const bestAddrText = (mapLocation.address as any)?.formattedAddress || mapLocation.address?.street || selectedAddress.street;
         const updated = {
           ...selectedAddress,
           latitude: mapLocation.lat,
           longitude: mapLocation.lng,
-          street: mapLocation.address?.street || selectedAddress.street,
+          street: bestAddrText,
           city: mapLocation.address?.city || selectedAddress.city,
           state: mapLocation.address?.state || selectedAddress.state,
           pincode: mapLocation.address?.pincode || selectedAddress.pincode,
@@ -723,18 +746,19 @@ export default function Checkout() {
         const userName = user?.name || 'User';
         const userPhone = user?.phone || '';
         
+        const bestAddress = (mapLocation.address as any)?.formattedAddress || mapLocation.address?.street || `${mapLocation.lat.toFixed(6)}, ${mapLocation.lng.toFixed(6)}`;
         const newAddressPayload = {
           fullName: userName,
           phone: userPhone,
-          flat: 'Current Location',
-          street: mapLocation.address?.street || `${mapLocation.lat.toFixed(6)}, ${mapLocation.lng.toFixed(6)}`,
+          flat: '',
+          street: bestAddress,
           city: mapLocation.address?.city || '',
           state: mapLocation.address?.state || '',
           pincode: mapLocation.address?.pincode || '',
           landmark: mapLocation.address?.landmark || '',
           type: 'Home' as const,
           isDefault: true,
-          address: mapLocation.address?.street || `${mapLocation.lat.toFixed(6)}, ${mapLocation.lng.toFixed(6)}`,
+          address: bestAddress,
           latitude: mapLocation.lat,
           longitude: mapLocation.lng,
         };

@@ -301,16 +301,12 @@ export default function GoogleMapsTracking({
                 destination: destination,
                 waypoints: googleWaypoints,
                 travelMode: window.google.maps.TravelMode.DRIVING,
-                drivingOptions: {
-                    departureTime: new Date(),
-                    trafficModel: 'bestguess'
-                },
-                optimizeWaypoints: true,
+                // drivingOptions removed - trafficModel requires premium Maps Platform billing
+                optimizeWaypoints: waypoints.length > 1,
             },
             (result: any, status: any) => {
                 if (status === 'OK' && result.routes && result.routes[0]) {
                     setRouteError(null)
-                    // Extract route information
                     const route = result.routes[0]
                     if (route.legs && route.legs.length > 0) {
                         let totalDistance = 0
@@ -321,8 +317,7 @@ export default function GoogleMapsTracking({
                             totalDurationSeconds += leg.duration?.value || 0
                         })
 
-                        // Add 2-minute buffer (120 seconds) as requested
-                        totalDurationSeconds += 120
+                        totalDurationSeconds += 120 // 2-minute buffer
 
                         const formatDuration = (seconds: number) => {
                             if (seconds < 60) return `${Math.ceil(seconds)} sec`
@@ -348,14 +343,19 @@ export default function GoogleMapsTracking({
 
                     directionsRendererRef.current.setDirections(result);
                 } else {
-                    console.error('❌ Directions request failed:', status, { origin, destination })
+                    // Log actual status for debugging
+                    console.error(`❌ Directions API [status=${status}]:`, { origin, destination })
+                    if (status === 'REQUEST_DENIED') {
+                        console.error('ACTION REQUIRED: Enable Directions API at https://console.cloud.google.com/apis/library/directions-backend.googleapis.com')
+                    }
                     setRouteInfo(null)
 
-                    // Fallback to straight line if route fails
                     if (status === 'ZERO_RESULTS') {
                         setRouteError('No road route found. Showing straight line.')
                     } else if (status === 'OVER_QUERY_LIMIT') {
-                        setRouteError('Map service busy. Showing straight line.')
+                        setRouteError('Route service busy. Showing straight line.')
+                    } else if (status === 'REQUEST_DENIED') {
+                        setRouteError(`Directions API not enabled (${status}). Enable it in Google Cloud Console.`)
                     } else {
                         setRouteError('Navigation error. Showing straight line.')
                     }
