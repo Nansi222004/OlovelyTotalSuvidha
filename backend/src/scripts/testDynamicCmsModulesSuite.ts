@@ -131,7 +131,7 @@ async function runSuite() {
     // 2. Admin update billing settings
     const testPlatformFee = 99;
     const testFreeDeliveryThreshold = 999;
-    const testMinimumOrderValue = 299;
+    const testMinimumOrderValue = 0;
     const testDeliveryCharges = 75;
     const testDeliveryConfig = {
       isDistanceBased: true,
