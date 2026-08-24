@@ -910,13 +910,7 @@ function App() {
                                   <Routes>
                                     <Route
                                       path="/"
-                                      element={
-                                        <ProtectedRoute
-                                          requiredUserType="Customer"
-                                          redirectTo="/login">
-                                          <Home />
-                                        </ProtectedRoute>
-                                      }
+                                      element={<Home />}
                                     />
                                     <Route
                                       path="/user/home"
