@@ -96,7 +96,7 @@ async function testDirectionsAPI() {
   console.log('\n========== PHASE 1: GOOGLE MAPS DIRECTIONS API ==========');
   const lat1 = 22.7173716, lng1 = 75.8716678; // Destination (Customer Location)
   const lat2 = 22.717652, lng2 = 75.871944;   // Origin (Seller Location)
-  const apiKey = 'AIzaSyC0KnVCTVKjZlWoIc7mQg3Nez4hSHfj0kU';
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '';
   
   return new Promise((resolve) => {
     const req = https.request({
