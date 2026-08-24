@@ -878,33 +878,38 @@ export default function OrderDetail() {
     Received: {
       title: "Order received",
       subtitle: "Order will reach you shortly",
-      color: "bg-green-700",
+      color: "bg-emerald-700",
     },
     Accepted: {
       title: "Preparing your order",
       subtitle: `Arriving in ${estimatedTime} mins`,
-      color: "bg-green-700",
+      color: "bg-emerald-700",
     },
     "On the way": {
-      title: "Order picked up",
+      title: "Out for delivery",
       subtitle: `Arriving in ${estimatedTime} mins`,
-      color: "bg-green-700",
+      color: "bg-emerald-700",
     },
     Delivered: {
       title: "Order delivered",
-      subtitle: "Enjoy your meal!",
-      color: "bg-green-600",
+      subtitle: "Thank you for shopping with us!",
+      color: "bg-emerald-600",
+    },
+    Completed: {
+      title: "Order delivered",
+      subtitle: "Thank you for shopping with us!",
+      color: "bg-emerald-600",
     },
     // Backend status mappings
     Pending: {
       title: "Order pending",
       subtitle: "Waiting for confirmation",
-      color: "bg-yellow-600",
+      color: "bg-amber-600",
     },
     Processed: {
       title: "Order processed",
       subtitle: "Preparing for delivery",
-      color: "bg-green-700",
+      color: "bg-emerald-700",
     },
     Shipped: {
       title: "Order shipped",
@@ -914,17 +919,17 @@ export default function OrderDetail() {
     "Out for Delivery": {
       title: "Out for delivery",
       subtitle: `Arriving in ${estimatedTime} mins`,
-      color: "bg-green-700",
+      color: "bg-emerald-700",
     },
     Cancelled: {
       title: "Order cancelled",
       subtitle: "This order has been cancelled",
-      color: "bg-red-600",
+      color: "bg-rose-600",
     },
     Returned: {
       title: "Order returned",
       subtitle: "This order has been returned",
-      color: "bg-gray-600",
+      color: "bg-slate-600",
     },
   };
 
@@ -1136,8 +1141,8 @@ export default function OrderDetail() {
         {/* Promo Carousel */}
         <PromoCarousel />
 
-        {/* Delivery Partner Assignment - Only show if no partner assigned yet */}
-        {!order?.deliveryPartner && (
+        {/* Delivery Partner Assignment - Only show if no partner assigned yet during active delivery */}
+        {!order?.deliveryPartner && !["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
           <motion.div
             className="bg-white rounded-xl p-4 shadow-sm"
             initial={{ opacity: 0, y: 20 }}
@@ -1145,7 +1150,7 @@ export default function OrderDetail() {
             transition={{ delay: 0.3 }}>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <span className="text-2xl">👨‍🍳</span>
+                <span className="text-2xl">📦</span>
               </div>
               <p className="font-semibold text-gray-900">
                 {order?.status === 'Received' || order?.status === 'Accepted'
