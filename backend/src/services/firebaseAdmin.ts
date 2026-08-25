@@ -99,6 +99,7 @@ export async function sendPushNotification(
                     icon: logoIcon,
                     badge: logoIcon,
                     requireInteraction: true,
+                    vibrate: [200, 100, 200, 100, 200, 100, 400],
                 },
                 fcmOptions: {
                     link: payload.data?.link || '/'
@@ -109,7 +110,12 @@ export async function sendPushNotification(
                 notification: {
                     title: payload.title,
                     body: payload.body,
-                    color: '#059669'
+                    color: '#059669',
+                    sound: 'default',
+                    defaultSound: true,
+                    defaultVibrateTimings: true,
+                    notificationCount: 1,
+                    channelId: 'olovely_orders',
                 }
             },
             data: {
@@ -121,14 +127,15 @@ export async function sendPushNotification(
 
         const response = await admin.messaging().sendEachForMulticast(message);
 
-        console.log(`✅ Successfully sent: ${response.successCount} messages`);
-        console.log(`❌ Failed: ${response.failureCount} messages`);
+        console.log(`[FCM DEBUG] Sent notification "${payload.title}": ${response.successCount} succeeded, ${response.failureCount} failed out of ${tokens.length} tokens.`);
 
-        // Log individual failures for debugging
+        // Log individual failures with masked tokens
         if (response.failureCount > 0) {
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
-                    console.error(`Failed to send to token ${idx}:`, resp.error?.message);
+                    const rawTok = tokens[idx] || '';
+                    const maskedTok = rawTok.length > 10 ? `${rawTok.substring(0, 5)}...${rawTok.substring(rawTok.length - 4)}` : 'masked';
+                    console.error(`[FCM DEBUG] Token failure [${maskedTok}]:`, resp.error?.code, resp.error?.message);
                 }
             });
         }

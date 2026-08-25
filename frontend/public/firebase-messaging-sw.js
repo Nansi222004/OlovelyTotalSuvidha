@@ -25,24 +25,25 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
             console.log('[firebase-messaging-sw.js] Received background message', payload);
 
             const isOrderAlert = payload.data?.type === 'NEW_ORDER_REQUEST' || payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'Order';
-            const notificationTitle = payload.notification?.title || 'New Notification';
+            const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
 
             // Unique notification tag per order prevents Chrome from replacing/overwriting previous order notifications
             const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
             const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
 
             const notificationOptions = {
-                body: payload.notification?.body || '',
+                body: payload.notification?.body || payload.data?.body || '',
                 icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
                 badge: '/logo192.png',
                 image: payload.notification?.image || payload.data?.image || undefined,
                 data: payload.data || {},
                 tag: notificationTag,
-                requireInteraction: isOrderAlert,
+                requireInteraction: true,
                 renotify: true,
-                silent: !isOrderAlert
+                silent: false,
+                vibrate: [200, 100, 200, 100, 200, 100, 400]
             };
-            // Custom sound for order alerts (Chrome/Edge); other browsers use system sound or ignore
+
             if (isOrderAlert) {
                 notificationOptions.sound = '/assets/sound/delivery-alert.mp3';
             }

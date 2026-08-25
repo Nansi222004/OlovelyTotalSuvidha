@@ -257,58 +257,67 @@ export const sendOrderStatusNotification = async (
   status: string,
   io?: any,
 ) => {
-  const statusMessages: Record<string, { title: string; message: string }> = {
-    Accepted: {
+  // Normalize status string (trim & handle case variations)
+  const normStatus = (status || "").trim();
+
+  const statusMap: Record<string, { title: string; message: string }> = {
+    accepted: {
       title: "Order Accepted",
       message: "Your order has been accepted by the seller.",
     },
-    Processed: {
+    processed: {
       title: "Order Processed",
-      message:
-        "Your order has been processed and is being prepared for shipment.",
+      message: "Your order has been processed and is being prepared for shipment.",
     },
-    Shipped: {
+    shipped: {
       title: "Order Shipped",
       message: "Your order has been shipped and is on its way!",
     },
-    "Picked up": {
+    "picked up": {
       title: "Order Picked Up",
       message: "Your order has been picked up by our delivery partner.",
     },
-    "On the way": {
+    "on the way": {
       title: "Out for Delivery",
       message: "Your order is out for delivery and will reach you soon.",
     },
-    "Out for Delivery": {
+    "out for delivery": {
       title: "Out for Delivery",
       message: "Your order is out for delivery and will reach you soon.",
     },
-    Delivered: {
-      title: "Order Delivered",
-      message:
-        "Your order has been delivered successfully. Thank you for shopping with us!",
+    delivered: {
+      title: "Order Delivered 📦",
+      message: "Your order has been delivered successfully. Thank you for shopping with us!",
     },
-    Cancelled: {
+    completed: {
+      title: "Order Delivered 📦",
+      message: "Your order has been delivered successfully. Thank you for shopping with us!",
+    },
+    cancelled: {
       title: "Order Cancelled",
-      message:
-        "Your order has been cancelled. If you have any questions, please contact support.",
+      message: "Your order has been cancelled. If you have any questions, please contact support.",
     },
   };
 
-  const statusInfo = statusMessages[status];
-  if (!statusInfo) return;
+  const statusInfo = statusMap[normStatus.toLowerCase()];
+  if (!statusInfo) {
+    console.warn(`[FCM DEBUG] Unknown order status: "${status}". Notification skipped.`);
+    return;
+  }
+
+  console.log(`[FCM DEBUG] Sending order status notification: event=ORDER_${normStatus.toUpperCase()}, orderId=${orderId}, customerId=${customerId}`);
 
   if (io) {
     io.to(`order-${orderId}`).emit("order-status-update", {
       orderId,
-      status,
+      status: normStatus,
       title: statusInfo.title,
       message: statusInfo.message,
       timestamp: new Date(),
     });
     io.to(`customer-${customerId}`).emit("customer-notification", {
       orderId,
-      status,
+      status: normStatus,
       title: statusInfo.title,
       message: statusInfo.message,
       timestamp: new Date(),
@@ -323,7 +332,7 @@ export const sendOrderStatusNotification = async (
     {
       type: "Order",
       link: `/orders/${orderId}`,
-      priority: status === "Cancelled" ? "High" : "Medium",
+      priority: normStatus.toLowerCase() === "cancelled" || normStatus.toLowerCase() === "delivered" ? "High" : "Medium",
     },
   );
 };
