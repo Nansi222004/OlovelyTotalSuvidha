@@ -53,7 +53,9 @@ function calculateDistance(
  */
 export async function findAvailableDeliveryBoys(city?: string): Promise<mongoose.Types.ObjectId[]> {
     try {
-        console.log(`📝 [DEBUG] Searching for all online and active delivery boys${city ? ` in city: ${city}` : ''}...`);
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`📝 [DEBUG] Searching for all online and active delivery boys${city ? ` in city: ${city}` : ''}...`);
+        }
         const query: any = {
             isOnline: true,
             status: 'Active',
@@ -64,10 +66,12 @@ export async function findAvailableDeliveryBoys(city?: string): Promise<mongoose
         }
         const deliveryBoys = await Delivery.find(query);
 
-        console.log(`📝 [DEBUG] Found ${deliveryBoys.length} eligible delivery boys:`);
-        deliveryBoys.forEach(db => {
-            console.log(`   - ${db.name} (ID: ${db._id}, status: ${db.status}, isOnline: ${db.isOnline}, city: ${db.city})`);
-        });
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`📝 [DEBUG] Found ${deliveryBoys.length} eligible delivery boys:`);
+            deliveryBoys.forEach(db => {
+                console.log(`   - ${db.name} (ID: ${db._id}, status: ${db.status}, isOnline: ${db.isOnline}, city: ${db.city})`);
+            });
+        }
 
         return deliveryBoys.map(db => db._id as mongoose.Types.ObjectId);
     } catch (error) {

@@ -130,7 +130,9 @@ export const initializeSocket = (httpServer: HttpServer) => {
     });
 
     io.on('connection', (socket) => {
-        console.log('✅ Socket connected:', socket.id, 'User:', (socket as any).user?.userId || 'Unauthenticated');
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('✅ Socket connected:', socket.id, 'User:', (socket as any).user?.userId || 'Unauthenticated');
+        }
 
         // Customer / User subscribes to order tracking
         socket.on('track-order', async (orderId: string) => {
@@ -346,7 +348,10 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
         // Handle disconnection
         socket.on('disconnect', (reason) => {
-            console.log('❌ Socket disconnected:', socket.id, 'Reason:', reason);
+            const isNormalDisconnect = ['transport close', 'client namespace disconnect', 'ping timeout', 'transport error'].includes(reason);
+            if (!isNormalDisconnect || process.env.NODE_ENV !== 'production') {
+                console.log(`🔌 Socket disconnected: ${socket.id} (Reason: ${reason})`);
+            }
         });
 
         // Error handling

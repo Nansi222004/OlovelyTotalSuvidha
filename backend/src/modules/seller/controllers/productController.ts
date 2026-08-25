@@ -338,8 +338,9 @@ export const updateProduct = asyncHandler(
     const { id } = req.params;
     const updateData = req.body;
 
-    console.log("DEBUG updateProduct: sellerId from token:", sellerId);
-    console.log("DEBUG updateProduct: productId:", id);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG updateProduct: sellerId from token:", sellerId, "productId:", id);
+    }
 
     // Remove sellerId from update data if present (cannot change owner)
     delete updateData.sellerId;
@@ -492,8 +493,9 @@ export const deleteProduct = asyncHandler(
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
 
-    console.log("DEBUG deleteProduct: sellerId from token:", sellerId);
-    console.log("DEBUG deleteProduct: productId:", id);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG deleteProduct: sellerId from token:", sellerId, "productId:", id);
+    }
 
     const product = await Product.findOneAndDelete({
       _id: id,

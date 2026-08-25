@@ -36,7 +36,9 @@ export const updateAppSettings = asyncHandler(
     const updateData = req.body;
     updateData.updatedBy = (req as any).user?.userId;
 
-    console.log(`[DEBUG Settings] Incoming update payload:`, JSON.stringify(updateData.deliveryConfig, null, 2));
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[DEBUG Settings] Incoming update payload:`, JSON.stringify(updateData.deliveryConfig, null, 2));
+    }
 
     let settings = await AppSettings.findOne();
 
@@ -49,7 +51,9 @@ export const updateAppSettings = asyncHandler(
       });
     }
 
-    console.log(`[DEBUG Settings] Updated settings:`, JSON.stringify(settings?.deliveryConfig, null, 2));
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[DEBUG Settings] Updated settings:`, JSON.stringify(settings?.deliveryConfig, null, 2));
+    }
 
     return res.status(200).json({
       success: true,

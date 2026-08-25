@@ -33,9 +33,6 @@ const CartSchema = new Schema<ICart>(
   }
 );
 
-// Indexes
-CartSchema.index({ customer: 1 });
-
 const Cart = (mongoose.models.Cart as mongoose.Model<ICart>) || mongoose.model<ICart>("Cart", CartSchema);
 
 export default Cart;

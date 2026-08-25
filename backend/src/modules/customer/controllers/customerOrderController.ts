@@ -37,16 +37,16 @@ export const createOrder = async (req: Request, res: Response) => {
     const { items, address, paymentMethod, fees, deliveryOption, couponCode, tipAmount, giftPackaging, useWallet } = req.body;
     const userId = req.user!.userId;
 
-    // Log incoming request for debugging
-    console.log("DEBUG: Order creation request:", {
-      userId,
-      itemsCount: items?.length,
-      hasAddress: !!address,
-      addressLat: address?.latitude,
-      addressLng: address?.longitude,
-      paymentMethod,
-      deliveryOption,
-    });
+    // Log incoming request for debugging (development mode only)
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG: Order creation request:", {
+        userId,
+        itemsCount: items?.length,
+        hasAddress: !!address,
+        paymentMethod,
+        deliveryOption,
+      });
+    }
 
     if (!items || items.length === 0) {
       if (session) await session.abortTransaction();
@@ -154,17 +154,9 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Initialize Order first to get an ID
-    // DEBUG: Log exact delivery address being saved (helps trace address flow from frontend)
-    console.log("DEBUG: Saving deliveryAddress to MongoDB:", {
-      "address.address": address.address,
-      "address.street": address.street,
-      "resolved_address": address.address || address.street || "N/A",
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-      latitude: deliveryLat,
-      longitude: deliveryLng,
-    });
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG: Saving deliveryAddress to MongoDB for user:", userId);
+    }
 
     const newOrder = new Order({
       customer: new mongoose.Types.ObjectId(userId),
@@ -770,19 +762,19 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       }
     }
 
-    console.error("DEBUG: Order Creation Error Detail:", {
-      message: error.message,
-      name: error.name,
-      errors: error.errors
-        ? Object.keys(error.errors).map((key) => ({
-          field: key,
-          message: error.errors[key].message,
-          value: error.errors[key].value,
-        }))
-        : undefined,
-      stack: error.stack,
-      body: req.body,
-    });
+    if (error.message && error.message.includes("Insufficient stock")) {
+      console.warn(`[ORDER] Order creation rejected: ${error.message}`);
+    } else {
+      console.error(`[ORDER] Order Creation Failed: ${error.message || error}`);
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("DEBUG: Order Creation Error Detail:", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+      });
+    }
 
     // Return a more informative error message if it's a validation error
     let errorMessage = "Error creating order. " + error.message;

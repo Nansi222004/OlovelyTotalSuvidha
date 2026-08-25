@@ -54,7 +54,6 @@ const SupportedLanguageSchema: Schema = new Schema(
   }
 );
 
-SupportedLanguageSchema.index({ code: 1 }, { unique: true });
 SupportedLanguageSchema.index({ isActive: 1, sortOrder: 1 });
 
 export default mongoose.model<ISupportedLanguage>(

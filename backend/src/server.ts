@@ -90,13 +90,15 @@ app.get("/", (_req: Request, res: Response) => {
   });
 });
 
-// Request logger for home page debugging
-app.use((req, _res, next) => {
-  if (req.path.includes('/customer/home')) {
-    console.log(`[REQUEST] ${req.method} ${req.originalUrl} - query:`, req.query);
-  }
-  next();
-});
+// Request logger for home page debugging (Development mode only)
+if (process.env.NODE_ENV !== "production") {
+  app.use((req, _res, next) => {
+    if (req.path.includes('/customer/home')) {
+      console.log(`[REQUEST] ${req.method} ${req.originalUrl} - query:`, req.query);
+    }
+    next();
+  });
+}
 
 // API Routes
 app.use("/api/v1", routes);

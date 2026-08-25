@@ -127,15 +127,28 @@ export async function sendPushNotification(
 
         const response = await admin.messaging().sendEachForMulticast(message);
 
-        console.log(`[FCM DEBUG] Sent notification "${payload.title}": ${response.successCount} succeeded, ${response.failureCount} failed out of ${tokens.length} tokens.`);
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`[FCM] Sent notification "${payload.title}": ${response.successCount} succeeded, ${response.failureCount} failed out of ${tokens.length} tokens.`);
+        }
 
-        // Log individual failures with masked tokens
+        // Log individual failures with masked tokens (suppress expected NotRegistered errors in production)
         if (response.failureCount > 0) {
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
-                    const rawTok = tokens[idx] || '';
-                    const maskedTok = rawTok.length > 10 ? `${rawTok.substring(0, 5)}...${rawTok.substring(rawTok.length - 4)}` : 'masked';
-                    console.error(`[FCM DEBUG] Token failure [${maskedTok}]:`, resp.error?.code, resp.error?.message);
+                    const errorCode = (resp.error as any)?.code || (resp.error as any)?.message || '';
+                    const isStaleToken = errorCode.includes('registration-token-not-registered') ||
+                        errorCode.includes('invalid-registration-token') ||
+                        errorCode.includes('NotRegistered');
+
+                    if (!isStaleToken || process.env.NODE_ENV !== "production") {
+                        const rawTok = tokens[idx] || '';
+                        const maskedTok = rawTok.length > 10 ? `${rawTok.substring(0, 5)}...${rawTok.substring(rawTok.length - 4)}` : 'masked';
+                        if (isStaleToken) {
+                            console.log(`[FCM] Stale token detected [${maskedTok}] - queued for cleanup.`);
+                        } else {
+                            console.error(`[FCM] Token failure [${maskedTok}]:`, errorCode);
+                        }
+                    }
                 }
             });
         }
@@ -210,7 +223,9 @@ export async function sendNotificationToUser(
             return;
         }
 
-        console.log(`Sending notification to ${uniqueTokens.length} device(s) for user ${userId}`);
+        if (process.env.NODE_ENV !== "production") {
+            console.log(`Sending notification to ${uniqueTokens.length} device(s) for user ${userId}`);
+        }
 
         // Send notification
         const response = await sendPushNotification(uniqueTokens, payload);
@@ -220,11 +235,11 @@ export async function sendNotificationToUser(
             const invalidTokens: string[] = [];
             response.responses.forEach((resp: any, idx: number) => {
                 if (!resp.success && uniqueTokens[idx]) {
-                    // Check if error is due to invalid token
-                    const errorCode = (resp.error as any)?.code;
-                    if (errorCode === 'messaging/invalid-registration-token' ||
-                        errorCode === 'messaging/registration-token-not-registered' ||
-                        errorCode === 'messaging/invalid-argument') {
+                    const errorCode = (resp.error as any)?.code || (resp.error as any)?.message || '';
+                    if (errorCode.includes('invalid-registration-token') ||
+                        errorCode.includes('registration-token-not-registered') ||
+                        errorCode.includes('invalid-argument') ||
+                        errorCode.includes('NotRegistered')) {
                         invalidTokens.push(uniqueTokens[idx]);
                     }
                 }
