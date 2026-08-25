@@ -130,10 +130,14 @@ export default function Invoice() {
     );
   }
 
+  const addr = order.deliveryAddress || order.address || {};
   const subtotal = order.subtotal || 0;
-  const deliveryFee = order.fees?.deliveryFee || 0;
-  const platformFee = order.fees?.platformFee || 0;
-  const totalAmount = order.totalAmount || subtotal + deliveryFee + platformFee;
+  const deliveryFee = order.shipping ?? order.fees?.deliveryFee ?? 0;
+  const platformFee = order.platformFee ?? order.fees?.platformFee ?? 0;
+  const discount = order.discount || 0;
+  const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee - discount);
+  const customerName = order.customerName || addr.name || "Valued Customer";
+  const customerPhone = order.customerPhone || addr.phone || "";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -177,16 +181,16 @@ export default function Invoice() {
                 <p className="text-gray-600">
                   Fast Delivery E-Commerce Platform
                 </p>
-                <p className="text-gray-600 mt-1">Invoice</p>
+                <p className="text-gray-600 mt-1 font-medium">TAX INVOICE</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600 mb-1">Invoice Number</p>
                 <p className="text-lg font-semibold text-gray-900">
-                  {order.id?.split("-").slice(-1)[0] || order.id || "N/A"}
+                  {order.invoiceNumber || (order.id ? `INV-${order.id.slice(-8).toUpperCase()}` : "N/A")}
                 </p>
-                <p className="text-sm text-gray-600 mt-3 mb-1">Date</p>
+                <p className="text-sm text-gray-600 mt-3 mb-1">Order Date</p>
                 <p className="text-sm font-medium text-gray-900">
-                  {order.createdAt ? formatDate(order.createdAt) : "N/A"}
+                  {order.orderDate ? formatDate(order.orderDate) : (order.createdAt ? formatDate(order.createdAt) : "N/A")}
                 </p>
               </div>
             </div>
@@ -196,44 +200,48 @@ export default function Invoice() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">
-                Bill To
+                Billed & Delivered To
               </h2>
               <div className="text-gray-700">
-                <p className="font-medium">
-                  {order.address?.name || "Customer"}
+                <p className="font-medium text-gray-900">{customerName}</p>
+                {customerPhone && <p className="mt-0.5 text-sm">{customerPhone}</p>}
+                <p className="mt-2 text-sm">
+                  {addr.flat && `${addr.flat}, `}
+                  {addr.address || addr.street || ""}
                 </p>
-                <p className="mt-1">{order.address?.phone || ""}</p>
-                <p className="mt-2">
-                  {order.address?.flat && `${order.address.flat}, `}
-                  {order.address?.street || order.address?.address || ""}
-                </p>
-                {order.address?.landmark && <p>{order.address.landmark}</p>}
-                <p>
-                  {order.address?.city || ""}
-                  {order.address?.state && `, ${order.address.state}`}
-                  {order.address?.pincode && ` - ${order.address.pincode}`}
+                {addr.landmark && <p className="text-sm">{addr.landmark}</p>}
+                <p className="text-sm">
+                  {addr.city || ""}
+                  {addr.state && `, ${addr.state}`}
+                  {addr.pincode && ` - ${addr.pincode}`}
                 </p>
               </div>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">
-                Order Information
+                Order Details
               </h2>
-              <div className="text-gray-700 space-y-1">
+              <div className="text-gray-700 space-y-1.5 text-sm">
                 <p>
-                  <span className="font-medium">Order ID:</span>{" "}
-                  {order.id || "N/A"}
+                  <span className="font-medium">Order Number:</span>{" "}
+                  {order.orderNumber || order.id || "N/A"}
                 </p>
                 <p>
-                  <span className="font-medium">Status:</span>{" "}
-                  <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-medium">
-                    {order.status || "Placed"}
+                  <span className="font-medium">Order Status:</span>{" "}
+                  <span className="inline-block px-2.5 py-0.5 bg-green-100 text-green-800 rounded-md text-xs font-semibold">
+                    {order.status || "Delivered"}
                   </span>
                 </p>
+                {order.deliveredAt && (
+                  <p>
+                    <span className="font-medium">Delivered Date:</span>{" "}
+                    {formatDate(order.deliveredAt)}
+                  </p>
+                )}
                 {order.paymentMethod && (
                   <p>
-                    <span className="font-medium">Payment:</span>{" "}
-                    {order.paymentMethod}
+                    <span className="font-medium">Payment Method:</span>{" "}
+                    {order.paymentMethod} ({order.paymentStatus || 'Paid'})
                   </p>
                 )}
               </div>

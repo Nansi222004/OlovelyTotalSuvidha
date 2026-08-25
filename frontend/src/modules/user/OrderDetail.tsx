@@ -17,6 +17,7 @@ import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { formatDeliveryAddress } from "../../utils/addressUtils";
+import SupportModal from "../../components/SupportModal";
 
 // Icon Components
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
@@ -508,9 +509,10 @@ export default function OrderDetail() {
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [returnError, setReturnError] = useState<string | null>(null);
 
-  // Customer & Delivery Address Modal states
+  // Customer & Delivery Address & Support Modal states
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   // Real-time delivery tracking via WebSocket (disabled for loading, delivered, completed, or cancelled orders)
   const activeOrderStatus = order?.status || (orderStatus !== "Received" ? orderStatus : "");
@@ -1138,8 +1140,10 @@ export default function OrderDetail() {
           </motion.div>
         )}
 
-        {/* Promo Carousel */}
-        <PromoCarousel />
+        {/* Promo Carousel - Only for active orders */}
+        {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
+          <PromoCarousel />
+        )}
 
         {/* Delivery Partner Assignment - Only show if no partner assigned yet during active delivery */}
         {!order?.deliveryPartner && !["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
@@ -1161,22 +1165,26 @@ export default function OrderDetail() {
           </motion.div>
         )}
 
-        {/* Tip Section */}
-        <TipSection />
+        {/* Tip Section - Only for active orders */}
+        {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
+          <TipSection />
+        )}
 
-        {/* Delivery Partner Safety */}
-        <motion.button
-          className="w-full bg-white rounded-xl p-4 shadow-sm flex items-center gap-3"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          whileTap={{ scale: 0.99 }}>
-          <ShieldIcon className="w-6 h-6 text-gray-600" />
-          <span className="flex-1 text-left font-medium text-gray-900">
-            Learn about delivery partner safety
-          </span>
-          <ChevronRightIcon className="w-5 h-5 text-gray-400" />
-        </motion.button>
+        {/* Delivery Partner Safety - Only for active orders */}
+        {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
+          <motion.button
+            className="w-full bg-white rounded-xl p-4 shadow-sm flex items-center gap-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            whileTap={{ scale: 0.99 }}>
+            <ShieldIcon className="w-6 h-6 text-gray-600" />
+            <span className="flex-1 text-left font-medium text-gray-900">
+              Learn about delivery partner safety
+            </span>
+            <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+          </motion.button>
+        )}
 
         {/* Delivery Details Banner */}
         <motion.div
@@ -1232,12 +1240,21 @@ export default function OrderDetail() {
             subtitle={`${order.paymentMethod || 'COD'}`}
             showArrow={false}
           />
-          <SectionItem
-            icon={MessageSquareIcon}
-            title="Add delivery instructions"
-            subtitle=""
-            onClick={() => setShowInstructionsModal(true)}
-          />
+          {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) ? (
+            <SectionItem
+              icon={MessageSquareIcon}
+              title="Add delivery instructions"
+              subtitle={order.deliveryInstructions || order.instructions || ""}
+              onClick={() => setShowInstructionsModal(true)}
+            />
+          ) : (order.deliveryInstructions || order.instructions) ? (
+            <SectionItem
+              icon={MessageSquareIcon}
+              title="Delivery Instructions"
+              subtitle={order.deliveryInstructions || order.instructions}
+              showArrow={false}
+            />
+          ) : null}
         </motion.div>
 
         {/* Store Section */}
@@ -1295,12 +1312,21 @@ export default function OrderDetail() {
             </div>
           </div>
 
-          <SectionItem
-            icon={ChefHatIcon}
-            title="Add special requests"
-            subtitle=""
-            onClick={() => setShowSpecialRequestsModal(true)}
-          />
+          {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) ? (
+            <SectionItem
+              icon={ChefHatIcon}
+              title="Add special requests"
+              subtitle={order.specialRequests || ""}
+              onClick={() => setShowSpecialRequestsModal(true)}
+            />
+          ) : order.specialRequests ? (
+            <SectionItem
+              icon={ChefHatIcon}
+              title="Special Requests"
+              subtitle={order.specialRequests}
+              showArrow={false}
+            />
+          ) : null}
         </motion.div>
 
         {/* Rate & Review — only for delivered orders */}
@@ -1447,7 +1473,7 @@ export default function OrderDetail() {
           transition={{ delay: 0.8 }}>
           <div
             className="flex items-center gap-3 p-4 border-b border-dashed border-gray-200"
-            onClick={() => window.open('/help', '_blank')}
+            onClick={() => setShowSupportModal(true)}
             style={{ cursor: "pointer" }}>
             <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
               <HelpCircleIcon className="w-5 h-5 text-red-600" />
@@ -2127,6 +2153,13 @@ export default function OrderDetail() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Support Modal */}
+      <SupportModal
+        isOpen={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+        orderId={id}
+      />
     </div>
   );
 }

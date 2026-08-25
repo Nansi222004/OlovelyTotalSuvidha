@@ -7,6 +7,7 @@ import Seller from "../../../models/Seller";
 import mongoose from "mongoose";
 import { calculateDistance } from "../../../utils/locationHelper";
 import { notifySellersOfOrderUpdate } from "../../../services/sellerNotificationService";
+import { sendOrderStatusNotification } from "../../../services/notificationService";
 import { generateDeliveryOtp } from "../../../services/deliveryOtpService";
 import AppSettings from "../../../models/AppSettings";
 import { getRoadDistances } from "../../../services/mapService";
@@ -748,6 +749,16 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       console.error("Error notifying sellers:", notificationError);
     }
 
+    // Send status notification to customer for order placement
+    try {
+      const io: SocketIOServer = req.app.get("io") as SocketIOServer;
+      sendOrderStatusNotification(newOrder._id.toString(), userId, newOrder.status, io).catch((e) =>
+        console.error("Error sending Order Placed notification to customer:", e)
+      );
+    } catch (custNotifErr) {
+      console.error("Error triggering customer order notification:", custNotifErr);
+    }
+
     return res.status(201).json({
       success: true,
       message: "Order placed successfully",
@@ -929,6 +940,11 @@ export const getOrderById = async (req: Request, res: Response) => {
     );
 
 
+    const isDeliveredOrCompleted = ["Delivered", "Completed"].includes(orderObj.status);
+    const isPaymentCompleted = orderObj.paymentStatus === "Paid" || (orderObj.paymentMethod === "COD" && isDeliveredOrCompleted);
+    const hasRequiredInvoiceData = Boolean(orderObj._id && orderObj.items && orderObj.items.length > 0 && orderObj.total != null);
+    const invoiceEnabled = orderObj.invoiceEnabled === true || (isDeliveredOrCompleted && isPaymentCompleted && hasRequiredInvoiceData);
+
     const transformedOrder = {
       ...orderObj,
       items: enrichedItems,
@@ -942,8 +958,11 @@ export const getOrderById = async (req: Request, res: Response) => {
       // Keep original fields for backward compatibility
       subtotal: orderObj.subtotal,
       address: orderObj.deliveryAddress,
-      // Include invoice enabled flag
-      invoiceEnabled: orderObj.invoiceEnabled || false,
+      // Strict business rule for invoice enablement
+      invoiceEnabled,
+      // Include saved instructions / requests for read-only post-delivery display
+      deliveryInstructions: orderObj.deliveryInstructions || (orderObj as any).instructions || "",
+      specialRequests: orderObj.specialRequests || "",
       // Include customer's permanent delivery OTP (null if delivered)
       deliveryOtp,
       // Map deliveryBoy to deliveryPartner for frontend

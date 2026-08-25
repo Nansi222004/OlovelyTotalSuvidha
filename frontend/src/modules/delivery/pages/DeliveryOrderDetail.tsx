@@ -5,6 +5,8 @@ import deliveryIcon from '@assets/deliveryboy/deliveryIcon.png';
 import GoogleMapsTracking from '../../../components/GoogleMapsTracking';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useAuth } from '../../../context/AuthContext';
+import { acceptOrder, rejectOrder } from '../../../services/api/delivery/deliveryOrderNotificationService';
 import { getTranslatedDeliveryStatus } from '../utils/deliveryStatusHelper';
 
 // Helper to get delivery icon URL (works in both dev and production)
@@ -95,9 +97,12 @@ export default function DeliveryOrderDetail() {
     const navigate = useNavigate();
     const { showToast } = useToast();
     const { t } = useLanguage();
+    const { user } = useAuth();
     const [order, setOrder] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [acceptingOrder, setAcceptingOrder] = useState(false);
+    const [rejectingOrder, setRejectingOrder] = useState(false);
     const [sellerLocations, setSellerLocations] = useState<any[]>([]);
     const [showOtpInput, setShowOtpInput] = useState(false);
     const [otpValue, setOtpValue] = useState('');
@@ -195,6 +200,42 @@ export default function DeliveryOrderDetail() {
             showToast(err.message || 'Failed to verify OTP', 'error');
         } finally {
             setOtpVerifying(false);
+        }
+    };
+
+    const handleAcceptUnassigned = async () => {
+        if (!id || !user?.id) return;
+        setAcceptingOrder(true);
+        try {
+            const res = await acceptOrder(socketRef.current, id, user.id);
+            if (res.success) {
+                showToast('Order accepted successfully', 'success');
+                await fetchOrder();
+            } else {
+                showToast(res.message || 'Failed to accept order', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message || 'Error accepting order', 'error');
+        } finally {
+            setAcceptingOrder(false);
+        }
+    };
+
+    const handleRejectUnassigned = async () => {
+        if (!id || !user?.id) return;
+        setRejectingOrder(true);
+        try {
+            const res = await rejectOrder(socketRef.current, id, user.id);
+            if (res.success) {
+                showToast('Order rejected', 'info');
+                navigate('/delivery');
+            } else {
+                showToast(res.message || 'Failed to reject order', 'error');
+            }
+        } catch (err: any) {
+            showToast(err.message || 'Error rejecting order', 'error');
+        } finally {
+            setRejectingOrder(false);
         }
     };
 
@@ -582,6 +623,35 @@ export default function DeliveryOrderDetail() {
                     </span>
                 </div>
             </div>
+
+            {/* Unassigned / Pending Order Acceptance Prompt */}
+            {order && (!order.deliveryBoy || (typeof order.deliveryBoy === 'object' ? order.deliveryBoy._id?.toString() !== user?.id : order.deliveryBoy?.toString() !== user?.id)) && order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+                <div className="mx-4 mt-4 p-4 bg-amber-50 border-2 border-amber-400 rounded-xl shadow-md">
+                    <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-bold text-amber-900 text-base">New Delivery Offer Pending</h4>
+                        <span className="text-xs bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-semibold">Action Required</span>
+                    </div>
+                    <p className="text-sm text-amber-800 mb-4 leading-snug">
+                        This order is not accepted by you yet. Please explicitly accept or reject this delivery request.
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleRejectUnassigned}
+                            disabled={rejectingOrder || acceptingOrder}
+                            className="flex-1 py-2.5 bg-neutral-200 hover:bg-neutral-300 active:bg-neutral-400 text-neutral-800 font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+                        >
+                            {rejectingOrder ? 'Rejecting...' : 'Reject Order'}
+                        </button>
+                        <button
+                            onClick={handleAcceptUnassigned}
+                            disabled={acceptingOrder || rejectingOrder}
+                            className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-semibold rounded-lg text-sm transition-colors shadow-md disabled:opacity-50"
+                        >
+                            {acceptingOrder ? 'Accepting...' : 'Accept Order'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Order cancelled / returned — no locations shown, delivery boy available for next order */}
             {isCancelledOrReturned && (

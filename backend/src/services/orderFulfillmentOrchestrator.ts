@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Order from "../models/Order";
 import OrderItem from "../models/OrderItem";
 import { notifyDeliveryBoysOfNewOrder } from "./orderNotificationService";
+import { sendOrderStatusNotification } from "./notificationService";
 
 type FulfillmentOutcome =
   | "waiting_for_sellers"
@@ -181,6 +182,14 @@ export async function recomputeOrderFulfillment(
   order.sellerConfirmationStatus = "Resolved";
   order.deliveryAssignmentResolvedAt = undefined;
   await order.save();
+
+  // Notify customer that order was accepted by seller
+  if (order.customer) {
+    const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
+    sendOrderStatusNotification(order._id.toString(), customerId, "Accepted", io).catch((e) =>
+      console.error("Error sending customer Accepted notification:", e)
+    );
+  }
 
   if (order.deliveryPreference === "Self") {
     order.deliveryAssignmentStatus = "Cancelled";

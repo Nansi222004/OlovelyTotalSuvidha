@@ -462,7 +462,7 @@ export async function notifyDeliveryBoysOfNewOrder(
                 `New ${order.deliveryOption} Order #${order.orderNumber} is available. Earning: ₹${deliveryBoyEarning}`,
                 {
                     type: 'Order',
-                    link: `/delivery/orders/${order._id}`,
+                    link: '/delivery',
                     priority: 'High',
                     data: {
                         orderId: order._id.toString(),
@@ -774,7 +774,7 @@ export async function notifyDeliveryBoyOfAssignment(
             `You have been assigned to deliver order #${order.orderNumber}.`,
             {
                 type: 'Order',
-                link: `/delivery/orders/${order._id}`,
+                link: '/delivery',
                 priority: 'High'
             }
         ).catch(err => console.error(`❌ [Delivery Assignment Notif Error] ${deliveryBoyIdString}:`, err.message));

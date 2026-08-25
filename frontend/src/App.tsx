@@ -985,10 +985,14 @@ function App() {
                                       path="/product/:id"
                                       element={<ProductDetail />}
                                     />
-                                    <Route
-                                      path="/invoice/:id"
-                                      element={<Invoice />}
-                                    />
+                                     <Route
+                                       path="/orders/:id/invoice"
+                                       element={<Invoice />}
+                                     />
+                                     <Route
+                                       path="/invoice/:id"
+                                       element={<Invoice />}
+                                     />
                                     <Route path="/cart" element={<Cart />} />
                                     <Route
                                       path="/addresses"

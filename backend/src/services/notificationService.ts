@@ -261,28 +261,40 @@ export const sendOrderStatusNotification = async (
   const normStatus = (status || "").trim();
 
   const statusMap: Record<string, { title: string; message: string }> = {
+    received: {
+      title: "Order Placed 🛍️",
+      message: "Your order has been placed successfully!",
+    },
+    pending: {
+      title: "Order Placed 🛍️",
+      message: "Your order has been placed successfully!",
+    },
     accepted: {
-      title: "Order Accepted",
+      title: "Order Accepted 📌",
       message: "Your order has been accepted by the seller.",
     },
     processed: {
-      title: "Order Processed",
-      message: "Your order has been processed and is being prepared for shipment.",
+      title: "Order Preparing 🍳",
+      message: "Your order has been processed and is being prepared.",
+    },
+    preparing: {
+      title: "Order Preparing 🍳",
+      message: "Your order is being prepared by the seller.",
     },
     shipped: {
-      title: "Order Shipped",
+      title: "Order Shipped 🚚",
       message: "Your order has been shipped and is on its way!",
     },
     "picked up": {
-      title: "Order Picked Up",
+      title: "Order Picked Up 🛵",
       message: "Your order has been picked up by our delivery partner.",
     },
     "on the way": {
-      title: "Out for Delivery",
+      title: "Out for Delivery 🛵",
       message: "Your order is out for delivery and will reach you soon.",
     },
     "out for delivery": {
-      title: "Out for Delivery",
+      title: "Out for Delivery 🛵",
       message: "Your order is out for delivery and will reach you soon.",
     },
     delivered: {
@@ -294,8 +306,12 @@ export const sendOrderStatusNotification = async (
       message: "Your order has been delivered successfully. Thank you for shopping with us!",
     },
     cancelled: {
-      title: "Order Cancelled",
-      message: "Your order has been cancelled. If you have any questions, please contact support.",
+      title: "Order Cancelled ❌",
+      message: "Your order has been cancelled.",
+    },
+    rejected: {
+      title: "Order Cancelled ❌",
+      message: "Your order could not be fulfilled and has been cancelled.",
     },
   };
 

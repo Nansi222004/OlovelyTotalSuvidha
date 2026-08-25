@@ -6,15 +6,17 @@ import { submitCustomerSupport } from '../services/api/customerService';
 interface SupportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  orderId?: string;
 }
 
-export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
+export default function SupportModal({ isOpen, onClose, orderId }: SupportModalProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('');
+  const [issueCategory, setIssueCategory] = useState(orderId ? 'Order Issue' : 'General Inquiry');
+  const [subject, setSubject] = useState(orderId ? `Help needed for Order #${orderId.slice(-8)}` : '');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -25,7 +27,11 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
       if (user.name) setName(user.name);
       if (user.email) setEmail(user.email);
     }
-  }, [user, isOpen]);
+    if (orderId) {
+      setIssueCategory('Order Issue');
+      setSubject(`Help needed for Order #${orderId.slice(-8)}`);
+    }
+  }, [user, isOpen, orderId]);
 
   if (!isOpen) return null;
 
@@ -123,7 +129,43 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+          {orderId && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Associated Order</span>
+                <p className="text-sm font-semibold text-emerald-950">Order #{orderId}</p>
+              </div>
+              <span className="px-2.5 py-1 bg-emerald-200 text-emerald-900 rounded-lg text-xs font-medium">Delivered Order</span>
+            </div>
+          )}
+
+          {/* Issue Category Field */}
+          <div>
+            <label className="block text-xs font-semibold text-neutral-700 mb-1">
+              Issue Category <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={issueCategory}
+              onChange={(e) => {
+                const cat = e.target.value;
+                setIssueCategory(cat);
+                if (orderId) {
+                  setSubject(`[${cat}] Help needed for Order #${orderId.slice(-8)}`);
+                }
+              }}
+              disabled={loading}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 focus:border-green-600 bg-neutral-50/30 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/20"
+            >
+              <option value="Order Issue">Order Issue (Status / Items)</option>
+              <option value="Delivery Issue">Delivery / Delay Issue</option>
+              <option value="Product Issue">Product Damaged / Missing</option>
+              <option value="Payment Issue">Payment / Refund Inquiry</option>
+              <option value="Return Issue">Return / Exchange Assistance</option>
+              <option value="General Inquiry">General Customer Support</option>
+            </select>
+          </div>
+
           {/* Name Field */}
           <div>
             <label className="block text-xs font-semibold text-neutral-700 mb-1">

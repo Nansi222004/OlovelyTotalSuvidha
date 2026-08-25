@@ -213,9 +213,18 @@ export async function setupForegroundNotificationHandler(
 
                 notification.onclick = (event) => {
                     event.preventDefault();
-                    const link = payload.data?.link || '/';
+                    const role = (payload.data?.role || payload.data?.panel || '').toLowerCase();
+                    const isDeliveryNewOrder = role === 'delivery' && (payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'NEW_ORDER_REQUEST');
+                    let targetLink = isDeliveryNewOrder ? '/delivery' : (payload.data?.link || '/');
+                    if (!targetLink || targetLink === '/') {
+                        if (role === 'customer' && orderId) {
+                            targetLink = `/orders/${orderId}`;
+                        } else if (role === 'delivery') {
+                            targetLink = '/delivery';
+                        }
+                    }
                     window.focus();
-                    window.location.href = link;
+                    window.location.href = targetLink;
                     notification.close();
                 };
 

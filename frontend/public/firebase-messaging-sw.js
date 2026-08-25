@@ -101,16 +101,18 @@ self.addEventListener('notificationclick', (event) => {
     const orderId = data.orderId || data.id;
 
     // Determine target URL route
-    let targetUrl = link;
+    const isDeliveryNewOrder = role === 'delivery' && (data.type === 'NEW_ORDER' || data.type === 'NEW_ORDER_REQUEST' || link === '/delivery');
+    let targetUrl = isDeliveryNewOrder ? '/delivery' : link;
+
     if (!targetUrl) {
         if (role === 'seller') {
             targetUrl = orderId ? `/seller/orders/${orderId}` : '/seller/orders';
         } else if (role === 'delivery') {
-            targetUrl = orderId ? `/delivery/orders/${orderId}` : '/delivery/orders';
+            targetUrl = '/delivery';
         } else if (role === 'admin') {
             targetUrl = '/admin';
         } else {
-            targetUrl = '/';
+            targetUrl = orderId ? `/orders/${orderId}` : '/orders';
         }
     }
 

@@ -218,17 +218,21 @@ export async function sendNotificationToUser(
         // Remove duplicates
         const uniqueTokens = [...new Set(tokens)];
 
-        if (uniqueTokens.length === 0) {
-            console.log(`No FCM tokens found for user ${userId}`);
-            return;
-        }
-
-        if (process.env.NODE_ENV !== "production") {
-            console.log(`Sending notification to ${uniqueTokens.length} device(s) for user ${userId}`);
-        }
+        const maskedTokenSample = uniqueTokens.map((t) => (t.length > 10 ? `${t.substring(0, 5)}...${t.substring(t.length - 4)}` : 'masked')).join(', ');
+        console.log(`[FCM DEBUG]
+Panel: ${userType}
+User ID: ${userId}
+Token Present: ${uniqueTokens.length > 0}
+Token Count: ${uniqueTokens.length}
+Tokens Sample: [${maskedTokenSample}]
+Notification Type: ${payload.data?.type || 'Info'}
+Order ID: ${payload.data?.orderId || 'N/A'}
+Title: ${payload.title}
+Firebase Send Started...`);
 
         // Send notification
         const response = await sendPushNotification(uniqueTokens, payload);
+        console.log(`[FCM DEBUG] Firebase Send Result: success=${response?.successCount || 0}, failure=${response?.failureCount || 0}`);
 
         // Clean up invalid tokens
         if (response.failureCount > 0) {

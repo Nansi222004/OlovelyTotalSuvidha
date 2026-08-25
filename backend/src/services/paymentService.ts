@@ -283,6 +283,18 @@ export const capturePayment = async (
                 } catch (notifyError) {
                     console.error("Failed to notify sellers after payment capture:", notifyError);
                 }
+
+                try {
+                    const { sendOrderStatusNotification } = await import('./notificationService');
+                    const custId = (order.customer as any)?._id?.toString() || order.customer?.toString();
+                    if (custId) {
+                        sendOrderStatusNotification(order._id.toString(), custId, order.status, io).catch((e) =>
+                            console.error("Error sending customer notification after online payment capture:", e)
+                        );
+                    }
+                } catch (notifErr) {
+                    console.error("Error sending customer notification on capturePayment:", notifErr);
+                }
             }
 
             // Create Pending Commissions
