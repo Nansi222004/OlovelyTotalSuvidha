@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { getOrderDetails, updateOrderStatus, getSellerLocationsForOrder, sendDeliveryOtp, verifyDeliveryOtp, updateDeliveryLocation, checkSellerProximity, confirmSellerPickup, checkCustomerProximity } from '../../../services/api/delivery/deliveryService';
 import deliveryIcon from '@assets/deliveryboy/deliveryIcon.png';
 import GoogleMapsTracking from '../../../components/GoogleMapsTracking';
@@ -8,6 +9,8 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { useAuth } from '../../../context/AuthContext';
 import { acceptOrder, rejectOrder } from '../../../services/api/delivery/deliveryOrderNotificationService';
 import { getTranslatedDeliveryStatus } from '../utils/deliveryStatusHelper';
+import { getSocketBaseURL, getAuthToken } from '../../../services/api/config';
+import { useRingtoneAlert } from '../../../hooks/useRingtoneAlert';
 
 // Helper to get delivery icon URL (works in both dev and production)
 const getDeliveryIconUrl = () => {
@@ -140,6 +143,37 @@ export default function DeliveryOrderDetail() {
         fetchOrder();
     }, [id]);
 
+    // Socket.IO listener for real-time order acceptance and status synchronization
+    useEffect(() => {
+        if (!id) return;
+        const socketUrl = getSocketBaseURL();
+        const token = getAuthToken();
+        const socket = io(socketUrl, {
+            auth: { token },
+            transports: ['websocket', 'polling'],
+        });
+
+        socket.on('connect', () => {
+            socket.emit('join-order-room', id);
+        });
+
+        socket.on('order-updated', (data: any) => {
+            if (data?.orderId === id || data?.id === id) {
+                fetchOrder();
+            }
+        });
+
+        socket.on('order-accepted', (data: any) => {
+            if (data?.orderId === id || data?.id === id) {
+                fetchOrder();
+            }
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [id]);
+
     // Fetch seller locations when order is assigned — never for cancelled/returned/delivered
     useEffect(() => {
         const fetchSellerLocations = async () => {
@@ -168,6 +202,24 @@ export default function DeliveryOrderDetail() {
         };
     }, []);
 
+    const isAssignedToMe = Boolean(
+        order &&
+        order.deliveryBoy &&
+        (typeof order.deliveryBoy === 'object'
+            ? (order.deliveryBoy._id?.toString() === user?.id || order.deliveryBoy.id?.toString() === user?.id)
+            : order.deliveryBoy?.toString() === user?.id)
+    );
+
+    const isOfferPending = Boolean(
+        order &&
+        !isAssignedToMe &&
+        order.status !== 'Delivered' &&
+        order.status !== 'Cancelled' &&
+        order.status !== 'Returned'
+    );
+
+    // Play ringtone while this offer is pending acceptance
+    useRingtoneAlert('/assets/sound/delivery-alert.mp3', isOfferPending);
 
     const handleSendOtp = async () => {
         if (!id) return;
@@ -207,9 +259,16 @@ export default function DeliveryOrderDetail() {
         if (!id || !user?.id) return;
         setAcceptingOrder(true);
         try {
-            const res = await acceptOrder(socketRef.current, id, user.id);
+            const res = await acceptOrder(null, id, user.id);
             if (res.success) {
                 showToast('Order accepted successfully', 'success');
+                // Immediately transition local state so pending offer disappears without waiting
+                setOrder((prev: any) => prev ? {
+                    ...prev,
+                    deliveryBoy: user.id,
+                    deliveryBoyStatus: 'Assigned',
+                    status: 'Processed'
+                } : prev);
                 await fetchOrder();
             } else {
                 showToast(res.message || 'Failed to accept order', 'error');
@@ -225,7 +284,7 @@ export default function DeliveryOrderDetail() {
         if (!id || !user?.id) return;
         setRejectingOrder(true);
         try {
-            const res = await rejectOrder(socketRef.current, id, user.id);
+            const res = await rejectOrder(null, id, user.id);
             if (res.success) {
                 showToast('Order rejected', 'info');
                 navigate('/delivery');
@@ -625,7 +684,7 @@ export default function DeliveryOrderDetail() {
             </div>
 
             {/* Unassigned / Pending Order Acceptance Prompt */}
-            {order && (!order.deliveryBoy || (typeof order.deliveryBoy === 'object' ? order.deliveryBoy._id?.toString() !== user?.id : order.deliveryBoy?.toString() !== user?.id)) && order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+            {isOfferPending && (
                 <div className="mx-4 mt-4 p-4 bg-amber-50 border-2 border-amber-400 rounded-xl shadow-md">
                     <div className="flex items-center justify-between mb-2">
                         <h4 className="font-bold text-amber-900 text-base">New Delivery Offer Pending</h4>
@@ -734,14 +793,21 @@ export default function DeliveryOrderDetail() {
             {showSellerLocations && sellerLocations.length > 0 && (
                 <div className="p-4">
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100">
-                        <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-                            <Icons.Store size={18} className="text-neutral-500" />
-                            {t("delivery.sellerPickupLocations", "Seller Pickup Locations")}
-                        </h3>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-semibold text-neutral-900 flex items-center gap-2">
+                                <Icons.Store size={18} className="text-neutral-500" />
+                                {t("delivery.sellerPickupLocations", "Seller Pickup Locations")}
+                            </h3>
+                            {sellerLocations.length > 1 && (
+                                <span className="text-xs font-semibold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full">
+                                    {order?.sellerPickups?.filter((p: any) => p.pickedUpAt)?.length || 0} / {sellerLocations.length} Picked Up
+                                </span>
+                            )}
+                        </div>
                         <div className="space-y-3">
                             {sellerLocations.map((seller: any, idx: number) => {
                                 const isPickedUp = order?.sellerPickups?.some(
-                                    (p: any) => p.seller === seller.sellerId && p.pickedUpAt
+                                    (p: any) => (p.seller?._id?.toString() || p.seller?.toString()) === (seller.sellerId?.toString() || seller._id?.toString()) && p.pickedUpAt
                                 );
                                 const proximity = sellerProximity[seller.sellerId];
                                 const withinRange = proximity?.withinRange || false;
@@ -753,6 +819,11 @@ export default function DeliveryOrderDetail() {
                                         <div className="flex items-start justify-between mb-3">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-1">
+                                                    {sellerLocations.length > 1 && (
+                                                        <span className="text-xs font-bold px-1.5 py-0.5 bg-neutral-200 text-neutral-700 rounded">
+                                                            #{idx + 1}
+                                                        </span>
+                                                    )}
                                                     <p className="font-semibold text-neutral-900">{seller.storeName}</p>
                                                     {isPickedUp && (
                                                         <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
@@ -772,7 +843,11 @@ export default function DeliveryOrderDetail() {
                                             </div>
                                         </div>
 
-                                        {!isPickedUp && (
+                                        {isOfferPending ? (
+                                            <div className="w-full py-2 bg-amber-50 text-amber-800 border border-amber-200 text-center rounded-lg font-medium text-xs">
+                                                Accept delivery offer above to enable pickup
+                                            </div>
+                                        ) : !isPickedUp ? (
                                             <button
                                                 onClick={() => handleSellerPickup(seller.sellerId)}
                                                 disabled={!withinRange || isLoading}
@@ -781,9 +856,13 @@ export default function DeliveryOrderDetail() {
                                                     : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                                                     }`}
                                             >
-                                                {isLoading ? t("common.loading", "Confirming...") : withinRange ? t("delivery.confirmPickup", "Confirm Pickup") : 'Move within 500m to pickup'}
+                                                {isLoading
+                                                    ? t("common.loading", "Confirming...")
+                                                    : withinRange
+                                                        ? (sellerLocations.length > 1 ? `Confirm Pickup (${idx + 1} of ${sellerLocations.length})` : t("delivery.confirmPickup", "Confirm Pickup"))
+                                                        : 'Move within 500m to pickup'}
                                             </button>
-                                        )}
+                                        ) : null}
                                     </div>
                                 );
                             })}

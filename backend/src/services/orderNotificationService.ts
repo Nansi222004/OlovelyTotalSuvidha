@@ -539,8 +539,10 @@ export async function handleOrderAcceptance(
         const updatedOrder = await Order.findOneAndUpdate(
             {
                 _id: orderId,
-                deliveryBoy: { $exists: false } // Check strictly for unassigned 
-                // Or: deliveryBoy: null 
+                $or: [
+                    { deliveryBoy: null },
+                    { deliveryBoy: { $exists: false } }
+                ]
             },
             {
                 $set: {
@@ -587,6 +589,15 @@ export async function handleOrderAcceptance(
         io.to('delivery-notifications').emit('order-accepted', {
             orderId,
             acceptedBy: normalizedDeliveryBoyId,
+        });
+
+        // Also emit to order room for real-time Order Detail refresh
+        io.to(`order-${orderId}`).emit('order-updated', {
+            orderId,
+            deliveryBoy: normalizedDeliveryBoyId,
+            status: 'Processed',
+            deliveryBoyStatus: 'Assigned',
+            deliveryAssignmentStatus: 'Assigned'
         });
 
         // Also emit to specific driver rooms if they aren't listening to global (redundancy)

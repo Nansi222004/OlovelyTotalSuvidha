@@ -244,6 +244,10 @@ export const getOrderDetails = asyncHandler(
       address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
       status: order.status,
+      deliveryBoy: order.deliveryBoy,
+      deliveryBoyStatus: order.deliveryBoyStatus,
+      deliveryAssignmentStatus: (order as any).deliveryAssignmentStatus,
+      sellerPickups: (order as any).sellerPickups || [],
       items: mapOrderItems(order.items), // Real populated items
       totalAmount: order.total,
       createdAt: order.createdAt,
