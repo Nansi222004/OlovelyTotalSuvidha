@@ -347,7 +347,7 @@ export default function AdminAssignDeliveryBoy() {
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-xs font-bold text-neutral-900">4.8â˜…</div>
+                                            <div className="text-xs font-bold text-neutral-900">4.8★</div>
                                             <div className="text-[10px] text-neutral-500">1.2km away</div>
                                         </div>
                                     </div>

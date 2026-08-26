@@ -238,8 +238,8 @@ export default function AdminSellerLocation() {
                       </p>
                     )}
                     <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
-                      <span>ðŸ“ž {seller.phone}</span>
-                      {seller.email && <span>âœ‰ï¸ {seller.email}</span>}
+                      <span>📞 {seller.phone}</span>
+                      {seller.email && <span>✉️ {seller.email}</span>}
                     </div>
                   </div>
                 ))}

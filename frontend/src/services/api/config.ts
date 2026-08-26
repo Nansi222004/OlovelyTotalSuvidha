@@ -33,19 +33,28 @@ export const getPanelFromContext = (hint?: string, url?: string): UserPanel => {
     if (norm === 'customer') return 'customer';
   }
 
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+  // 1. Current browser path has highest precedence when navigating panel-specific sub-routes
+  // This ensures all requests originating from within /admin/* use the admin token, /seller/* use seller token, etc.
+  if (currentPath.startsWith('/admin') || currentPath.includes('/admin/')) return 'admin';
+  if (currentPath.startsWith('/seller') || currentPath.includes('/seller/')) return 'seller';
+  if (currentPath.startsWith('/delivery') || currentPath.includes('/delivery/')) return 'delivery';
+
   const requestUrl = url || '';
 
-  // 1. Check explicit API request URL prefix first (most specific & reliable)
+  // 2. Check explicit API request URL prefix (for background requests, auth requests, or specific endpoints)
   if (requestUrl.startsWith('/customer') || requestUrl.includes('/customer/')) return 'customer';
-  if (requestUrl.startsWith('/admin') || requestUrl.includes('/admin/')) return 'admin';
+  if (
+    requestUrl.startsWith('/admin') ||
+    requestUrl.includes('/admin/') ||
+    requestUrl.startsWith('/sellers') ||
+    requestUrl.includes('/sellers/')
+  ) {
+    return 'admin';
+  }
   if (requestUrl.startsWith('/delivery') || requestUrl.includes('/delivery/')) return 'delivery';
-  if (requestUrl.startsWith('/seller') || requestUrl.startsWith('/sellers') || requestUrl.includes('/seller/') || requestUrl.includes('/sellers/')) return 'seller';
-
-  // 2. Check current browser location pathname
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-  if (currentPath.includes('/admin')) return 'admin';
-  if (currentPath.includes('/seller') || currentPath.includes('/sellers')) return 'seller';
-  if (currentPath.includes('/delivery')) return 'delivery';
+  if (requestUrl.startsWith('/seller/') || requestUrl === '/seller') return 'seller';
 
   return 'customer';
 };

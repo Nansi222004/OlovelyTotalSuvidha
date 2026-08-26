@@ -170,7 +170,7 @@ export default function AdminManageSellerList() {
 
     const SortIcon = ({ column }: { column: string }) => (
         <span className="text-neutral-400 text-xs ml-1">
-            {sortColumn === column ? (sortDirection === 'asc' ? 'â†‘' : 'â†“') : 'â‡…'}
+            {sortColumn === column ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
         </span>
     );
 
@@ -556,7 +556,7 @@ export default function AdminManageSellerList() {
                                 className="text-red-700 hover:text-red-900 ml-4 text-lg font-bold"
                                 type="button"
                             >
-                                Ã—
+                                ×
                             </button>
                         </div>
                     )}
@@ -569,7 +569,7 @@ export default function AdminManageSellerList() {
                                 className="text-green-700 hover:text-green-900 ml-4 text-lg font-bold"
                                 type="button"
                             >
-                                Ã—
+                                ×
                             </button>
                         </div>
                     )}

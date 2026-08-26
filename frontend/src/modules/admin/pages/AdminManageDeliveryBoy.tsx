@@ -286,7 +286,7 @@ export default function AdminManageDeliveryBoy() {
 
         return (
             <span className="text-neutral-400 text-xs ml-1">
-                {sortColumn === backendColumn ? (sortDirection === 'asc' ? 'â†‘' : 'â†“') : 'â‡…'}
+                {sortColumn === backendColumn ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
             </span>
         );
     };
@@ -315,7 +315,7 @@ export default function AdminManageDeliveryBoy() {
                                 className="text-red-700 hover:text-red-900 ml-4 text-lg font-bold"
                                 type="button"
                             >
-                                Ã—
+                                ×
                             </button>
                         </div>
                     )}
@@ -329,7 +329,7 @@ export default function AdminManageDeliveryBoy() {
                                 className="text-green-700 hover:text-green-900 ml-4 text-lg font-bold"
                                 type="button"
                             >
-                                Ã—
+                                ×
                             </button>
                         </div>
                     )}

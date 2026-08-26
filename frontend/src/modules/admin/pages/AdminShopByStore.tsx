@@ -658,7 +658,7 @@ export default function AdminShopByStore() {
                   className="text-red-700 hover:text-red-900 ml-4 text-lg font-bold"
                   type="button"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             )}
@@ -670,7 +670,7 @@ export default function AdminShopByStore() {
                   className="text-green-700 hover:text-green-900 ml-4 text-lg font-bold"
                   type="button"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
             )}

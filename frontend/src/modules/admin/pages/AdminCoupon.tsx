@@ -219,7 +219,7 @@ export default function AdminCoupon() {
 
   const SortIcon = ({ column }: { column: string }) => (
     <span className="text-neutral-400 text-xs ml-1">
-      {sortColumn === column ? (sortDirection === "asc" ? "â†‘" : "â†“") : "â‡…"}
+      {sortColumn === column ? (sortDirection === "asc" ? "↑" : "↓") : "⇅"}
     </span>
   );
 

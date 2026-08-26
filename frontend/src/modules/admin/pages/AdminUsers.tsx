@@ -177,7 +177,7 @@ export default function AdminUsers() {
 
         return (
             <span className="text-neutral-400 text-xs ml-1">
-                {sortColumn === backendColumn ? (sortDirection === 'asc' ? 'â†‘' : 'â†“') : 'â‡…'}
+                {sortColumn === backendColumn ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
             </span>
         );
     };

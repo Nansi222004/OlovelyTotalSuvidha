@@ -601,12 +601,12 @@ export default function AdminDashboard() {
             </p>
             {salesDifference >= 0 ? (
               <p className="text-sm text-green-600 mt-1">
-                â–² ₹{Math.abs(salesDifference).toFixed(2)} (+{salesPercentChange}%)
+                ▲ ₹{Math.abs(salesDifference).toFixed(2)} (+{salesPercentChange}%)
                 vs same day last week
               </p>
             ) : (
               <p className="text-sm text-red-600 mt-1">
-                â–¼ ₹{Math.abs(salesDifference).toFixed(2)} ({salesPercentChange}%)
+                ▼ ₹{Math.abs(salesDifference).toFixed(2)} ({salesPercentChange}%)
                 vs same day last week
               </p>
             )}
