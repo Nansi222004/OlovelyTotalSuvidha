@@ -381,13 +381,13 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <LoadingProvider>
-        <AxiosLoadingInterceptor>
-          <IconLoader />
-          <AuthProvider>
+      <AuthProvider>
+        <LoadingProvider>
+          <AxiosLoadingInterceptor>
+            <IconLoader />
             <LanguageProvider>
               <AppSettingsProvider>
-              <ThemeProvider>
+                <ThemeProvider>
                 <LocationProvider>
                   <ToastProvider>
                     <WishlistProvider>
@@ -1049,9 +1049,9 @@ function App() {
             </ThemeProvider>
           </AppSettingsProvider>
             </LanguageProvider>
-        </AuthProvider>
-        </AxiosLoadingInterceptor>
-      </LoadingProvider>
+          </AxiosLoadingInterceptor>
+        </LoadingProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
