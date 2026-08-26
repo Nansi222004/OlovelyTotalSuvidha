@@ -6,10 +6,7 @@ import { serveAssetsPlugin } from './vite-plugin-serve-assets'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react({
-      // Ensure React Fast Refresh works properly
-      fastRefresh: true,
-    }),
+    react(),
     serveAssetsPlugin()
   ],
   assetsInclude: ['**/*.jpg', '**/*.jpeg', '**/*.png', '**/*.webp'],
