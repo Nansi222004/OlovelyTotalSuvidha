@@ -28,6 +28,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <Toast
         message={toast.message}
+        type={toast.type}
         isVisible={toast.isVisible}
         onClose={hideToast}
       />

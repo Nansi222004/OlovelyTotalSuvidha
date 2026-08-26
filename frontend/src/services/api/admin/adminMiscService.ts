@@ -9,7 +9,7 @@ export interface User {
   email: string;
   phone?: string;
   registrationDate: string;
-  status: "Active" | "Inactive" | "Suspended";
+  status: "Active" | "Inactive";
   refCode?: string;
   walletAmount: number;
   totalOrders: number;
@@ -167,7 +167,7 @@ export const getUserById = async (id: string): Promise<ApiResponse<User>> => {
 
 export const updateUserStatus = async (
   id: string,
-  status: "Active" | "Inactive" | "Suspended"
+  status: "Active" | "Inactive"
 ): Promise<ApiResponse<User>> => {
   const response = await api.patch<ApiResponse<User>>(
     `/admin/customers/${id}/status`,
