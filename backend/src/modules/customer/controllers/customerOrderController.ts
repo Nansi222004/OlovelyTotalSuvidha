@@ -749,14 +749,17 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       console.error("Error notifying sellers:", notificationError);
     }
 
-    // Send status notification to customer for order placement
-    try {
-      const io: SocketIOServer = req.app.get("io") as SocketIOServer;
-      sendOrderStatusNotification(newOrder._id.toString(), userId, newOrder.status, io).catch((e) =>
-        console.error("Error sending Order Placed notification to customer:", e)
-      );
-    } catch (custNotifErr) {
-      console.error("Error triggering customer order notification:", custNotifErr);
+    // Send status notification to customer for order placement (COD or 100% Wallet paid orders ONLY)
+    // For ONLINE orders, the customer and seller notifications are sent upon successful payment capture in paymentService.ts
+    if (newOrder.paymentStatus === "Paid" || newOrder.paymentMethod === "COD") {
+      try {
+        const io: SocketIOServer = req.app.get("io") as SocketIOServer;
+        sendOrderStatusNotification(newOrder._id.toString(), userId, newOrder.status, io).catch((e) =>
+          console.error("Error sending Order Placed notification to customer:", e)
+        );
+      } catch (custNotifErr) {
+        console.error("Error triggering customer order notification:", custNotifErr);
+      }
     }
 
     return res.status(201).json({
