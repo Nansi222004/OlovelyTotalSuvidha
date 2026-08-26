@@ -255,29 +255,27 @@ export async function initializePushNotifications(): Promise<void> {
 /**
  * Remove FCM token from backend
  */
-export async function removeFCMToken(panelOrUserType?: string): Promise<void> {
+export async function removeFCMToken(panelOrUserType?: string, explicitToken?: string): Promise<void> {
     try {
         const savedToken = localStorage.getItem('fcm_token_web');
         if (!savedToken) {
             return;
         }
 
-        const authToken = getAuthToken(panelOrUserType);
-        if (!authToken) {
-            return;
+        const authToken = explicitToken || getAuthToken(panelOrUserType);
+        if (authToken) {
+            await fetch(`${API_BASE_URL}/fcm-tokens/remove`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${authToken}`,
+                },
+                body: JSON.stringify({
+                    token: savedToken,
+                    platform: 'web',
+                }),
+            }).catch((err) => console.warn('Backend token detachment request failed:', err));
         }
-
-        await fetch(`${API_BASE_URL}/fcm-tokens/remove`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${authToken}`,
-            },
-            body: JSON.stringify({
-                token: savedToken,
-                platform: 'web',
-            }),
-        });
 
         localStorage.removeItem('fcm_token_web');
         console.log('FCM token removed');
