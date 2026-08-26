@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useToast } from "../../../context/ToastContext";
 import {
@@ -127,9 +128,13 @@ const DownloadIcon = ({ className }: { className?: string }) => (
 
 export default function AdminWallet() {
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialTab: "transactions" | "earnings" | "withdrawals" =
+    tabParam === "earnings" || tabParam === "withdrawals" ? tabParam : "transactions";
   const [activeTab, setActiveTab] = useState<
     "transactions" | "earnings" | "withdrawals"
-  >("transactions");
+  >(initialTab);
   const [stats, setStats] = useState<WalletStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
 
@@ -142,6 +147,13 @@ export default function AdminWallet() {
   const [earnings, setEarnings] = useState<AdminEarning[]>([]);
   const [earnLoading, setEarnLoading] = useState(false);
   const [earnPage, setEarnPage] = useState(1);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === "earnings" || tab === "withdrawals" || tab === "transactions") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchStats();

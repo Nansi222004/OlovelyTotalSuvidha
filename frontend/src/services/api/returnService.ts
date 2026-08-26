@@ -11,6 +11,7 @@ export interface ReturnRequest {
   orderItemId: string;
   product: string;
   variant: string;
+  requestType?: 'RETURN' | 'EXCHANGE';
   price: number;
   discPrice: number;
   quantity: number;
@@ -33,6 +34,7 @@ export interface ReturnRequestDetail {
   orderItemId: string;
   productName: string;
   variantTitle: string;
+  requestType?: 'RETURN' | 'EXCHANGE';
   price: number;
   discPrice: number;
   quantity: number;
@@ -87,6 +89,7 @@ export interface GetReturnRequestsParams {
   dateFrom?: string;
   dateTo?: string;
   status?: string;
+  requestType?: 'RETURN' | 'EXCHANGE' | 'All Types';
   search?: string;
   page?: number;
   limit?: number;

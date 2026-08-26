@@ -1,4 +1,3 @@
-
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IReturn extends Document {
@@ -6,16 +5,18 @@ export interface IReturn extends Document {
   orderItem: mongoose.Types.ObjectId;
   customer: mongoose.Types.ObjectId;
 
-  // Return Info
+  // Request Type: Distinction between return for refund vs exchange for replacement
+  requestType: "RETURN" | "EXCHANGE";
+
+  // Return / Exchange Info
   reason: string;
   description?: string;
 
   /**
-   * Full 9-stage return lifecycle:
+   * Full 9-stage return/exchange lifecycle:
    * Pending → Approved → Pickup Pending → Delivery Partner Assigned →
    * Picked Up → In Transit → Handed To Seller → Completed
    * (Rejected is a terminal failure state)
-   * NOTE: "Processing" was removed — MongoDB confirmed 0 existing Processing records.
    */
   status:
     | "Pending"
@@ -30,19 +31,18 @@ export interface IReturn extends Document {
 
   // Items
   quantity: number;
-  images?: string[]; // Images of returned items
+  images?: string[]; // Images of items
 
   // Processing
   processedBy?: mongoose.Types.ObjectId;
   processedAt?: Date;
   rejectionReason?: string;
 
-  // ─────── Delivery Partner Assignment (for return pickup) ───────
-  /** Delivery partner assigned specifically for this return pickup (NOT the forward-order DP) */
+  // ─────── Delivery Partner Assignment (for return/exchange pickup) ───────
   deliveryBoy?: mongoose.Types.ObjectId;
   assignedAt?: Date;
 
-  // ─────── Return Pickup OTP ───────
+  // ─────── Return/Exchange Pickup OTP ───────
   pickupOtp?: string;
   pickupOtpExpiresAt?: Date;
   pickupOtpAttempts?: number;
@@ -64,7 +64,7 @@ export interface IReturn extends Document {
     pincode: string;
   };
 
-  // Refund
+  // Refund (applicable only to RETURN, ₹0 for EXCHANGE)
   refundAmount?: number;
   refundId?: mongoose.Types.ObjectId;
   financialSettlementStatus?: "Pending" | "Completed" | "Failed";
@@ -89,6 +89,14 @@ const ReturnSchema = new Schema<IReturn>(
       type: Schema.Types.ObjectId,
       ref: "Customer",
       required: [true, "Customer is required"],
+    },
+
+    // Request Type
+    requestType: {
+      type: String,
+      enum: ["RETURN", "EXCHANGE"],
+      default: "RETURN",
+      required: true,
     },
 
     // Return Info
@@ -211,6 +219,7 @@ const ReturnSchema = new Schema<IReturn>(
 ReturnSchema.index({ order: 1 });
 ReturnSchema.index({ customer: 1 });
 ReturnSchema.index({ status: 1 });
+ReturnSchema.index({ requestType: 1 });
 ReturnSchema.index({ deliveryBoy: 1 }); // For DP return pickup queries
 
 const Return =

@@ -430,37 +430,99 @@ export const sendDeliveryApprovalNotification = async (
 };
 
 /**
- * Send return request notification to seller
+ * Send return or exchange request notification to seller
  */
 export const sendReturnRequestNotificationToSeller = async (
   sellerId: string,
   orderNumber: string,
   productName: string,
   returnId: string,
-  io?: any
+  io?: any,
+  requestType: "RETURN" | "EXCHANGE" = "RETURN",
+  orderId?: string
 ) => {
-  const title = "New Return Request";
-  const message = `Customer has requested a return for ${productName} (Order #${orderNumber}).`;
+  const isExchange = requestType === "EXCHANGE";
+  const title = isExchange ? "🔄 New Exchange Request" : "↩️ New Return Request";
+  const message = isExchange
+    ? `Customer has requested an exchange for ${productName} (Order #${orderNumber}).`
+    : `Customer has requested a return for ${productName} (Order #${orderNumber}).`;
+  const link = `/seller/return?id=${returnId}`;
 
   if (io) {
     io.to(`seller-${sellerId}`).emit("seller-notification", {
       type: "ORDER",
       title,
       message,
-      link: "/seller/return",
+      link,
+      requestType,
+      requestId: returnId,
+      orderId,
       timestamp: new Date(),
     });
   }
 
   return sendNotification("Seller", sellerId, title, message, {
     type: "Order",
-    link: "/seller/return",
+    link,
     priority: "High",
+    data: {
+      requestType,
+      type: isExchange ? "EXCHANGE_REQUEST" : "RETURN_REQUEST",
+      requestId: returnId,
+      ...(orderId ? { orderId } : {}),
+      link,
+    },
   });
 };
 
 /**
- * Send return status notification to customer
+ * Send return or exchange request confirmation notification to customer
+ */
+export const sendReturnRequestNotificationToCustomer = async (
+  customerId: string,
+  orderNumber: string,
+  productName: string,
+  returnId: string,
+  io?: any,
+  requestType: "RETURN" | "EXCHANGE" = "RETURN",
+  orderId?: string
+) => {
+  const isExchange = requestType === "EXCHANGE";
+  const title = isExchange ? "🔄 Exchange Request Submitted" : "↩️ Return Request Submitted";
+  const message = isExchange
+    ? `Your exchange request for ${productName} (Order #${orderNumber}) has been submitted and is awaiting seller review.`
+    : `Your return request for ${productName} (Order #${orderNumber}) has been submitted and is awaiting seller review.`;
+  const link = orderId ? `/orders/${orderId}` : "/orders";
+
+  if (io) {
+    io.to(`customer-${customerId}`).emit("customer-notification", {
+      title,
+      message,
+      status: "Pending",
+      link,
+      requestType,
+      requestId: returnId,
+      orderId,
+      timestamp: new Date(),
+    });
+  }
+
+  return sendNotification("Customer", customerId, title, message, {
+    type: "Info",
+    link,
+    priority: "Medium",
+    data: {
+      requestType,
+      type: isExchange ? "EXCHANGE_REQUEST_SUBMITTED" : "RETURN_REQUEST_SUBMITTED",
+      requestId: returnId,
+      ...(orderId ? { orderId } : {}),
+      link,
+    },
+  });
+};
+
+/**
+ * Send return or exchange status notification to customer
  */
 export const sendReturnStatusNotificationToCustomer = async (
   customerId: string,
@@ -469,24 +531,43 @@ export const sendReturnStatusNotificationToCustomer = async (
   status: string,
   rejectionReason?: string,
   orderId?: string,
-  io?: any
+  io?: any,
+  requestType: "RETURN" | "EXCHANGE" = "RETURN",
+  returnId?: string
 ) => {
-  let title = "Return Status Update";
-  let message = `Your return request for ${productName} (Order #${orderNumber}) status is now ${status}.`;
+  const isExchange = requestType === "EXCHANGE";
+  let title = isExchange ? "Exchange Status Update" : "Return Status Update";
+  let message = `Your ${isExchange ? "exchange" : "return"} request for ${productName} (Order #${orderNumber}) status is now ${status}.`;
   let type: "Success" | "Error" | "Info" = "Info";
 
   if (status === "Approved" || status === "Pickup Pending") {
-    title = "Return Request Approved";
-    message = `Your return request for ${productName} (Order #${orderNumber}) has been approved by the seller. Pickup will be scheduled soon.`;
+    title = isExchange ? "🔄 Exchange Request Approved" : "↩️ Return Request Approved";
+    message = `Your ${isExchange ? "exchange" : "return"} request for ${productName} (Order #${orderNumber}) has been approved by the seller. Pickup will be scheduled soon.`;
+    type = "Success";
+  } else if (status === "Delivery Partner Assigned") {
+    title = isExchange ? "📦 Exchange Pickup Scheduled" : "📦 Return Pickup Scheduled";
+    message = `Delivery partner has been assigned to collect your ${isExchange ? "exchange" : "return"} item for Order #${orderNumber}.`;
+    type = "Info";
+  } else if (status === "Picked Up" || status === "In Transit") {
+    title = isExchange ? "🚚 Exchange Item Picked Up" : "🚚 Return Item Picked Up";
+    message = `Your item for ${isExchange ? "exchange" : "return"} (Order #${orderNumber}) has been picked up by the delivery partner.`;
+    type = "Info";
+  } else if (status === "Handed To Seller") {
+    title = isExchange ? "🔄 Replacement Processing" : "📦 Return Received by Seller";
+    message = isExchange
+      ? `Returned item received by seller. Your replacement unit for ${productName} (Order #${orderNumber}) is now being processed.`
+      : `Returned item for ${productName} (Order #${orderNumber}) was safely received by the seller.`;
+    type = "Info";
+  } else if (status === "Completed") {
+    title = isExchange ? "✅ Exchange Completed" : "💰 Return Completed & Refund Processed";
+    message = isExchange
+      ? `Your exchange for ${productName} (Order #${orderNumber}) has been completed successfully.`
+      : `Your return for ${productName} (Order #${orderNumber}) has been completed and refund has been credited.`;
     type = "Success";
   } else if (status === "Rejected") {
-    title = "Return Request Rejected";
-    message = `Your return request for ${productName} (Order #${orderNumber}) was rejected by the seller. Reason: ${rejectionReason || "Not specified"}`;
+    title = isExchange ? "❌ Exchange Request Rejected" : "❌ Return Request Rejected";
+    message = `Your ${isExchange ? "exchange" : "return"} request for ${productName} (Order #${orderNumber}) was rejected by the seller. Reason: ${rejectionReason || "Not specified"}`;
     type = "Error";
-  } else if (status === "Completed") {
-    title = "Return Completed & Refund Processed";
-    message = `Your return for ${productName} (Order #${orderNumber}) has been completed and refund has been credited.`;
-    type = "Success";
   }
 
   const targetLink = orderId ? `/orders/${orderId}` : "/orders";
@@ -497,6 +578,9 @@ export const sendReturnStatusNotificationToCustomer = async (
       message,
       status,
       link: targetLink,
+      requestType,
+      requestId: returnId,
+      orderId,
       timestamp: new Date(),
     });
   }
@@ -505,6 +589,14 @@ export const sendReturnStatusNotificationToCustomer = async (
     type,
     link: targetLink,
     priority: status === "Rejected" || status === "Completed" ? "High" : "Medium",
+    data: {
+      requestType,
+      type: `${requestType}_${status.toUpperCase().replace(/\s+/g, "_")}`,
+      ...(returnId ? { requestId: returnId } : {}),
+      ...(orderId ? { orderId } : {}),
+      link: targetLink,
+    },
   });
 };
+
 

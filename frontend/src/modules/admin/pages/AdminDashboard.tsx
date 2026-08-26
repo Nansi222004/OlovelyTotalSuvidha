@@ -489,60 +489,70 @@ export default function AdminDashboard() {
           title={t("admin.totalUser", "Total User")}
           value={stats.totalUser}
           accentColor="#3b82f6"
+          to="/admin/customers"
         />
         <DashboardCard
           icon={categoryIcon}
           title={t("admin.totalCategory", "Total Category")}
           value={stats.totalCategory}
           accentColor="#eab308"
+          to="/admin/category"
         />
         <DashboardCard
           icon={subcategoryIcon}
           title={t("admin.totalSubcategory", "Total Subcategory")}
           value={stats.totalSubcategory ?? 0}
           accentColor="#ec4899"
+          to="/admin/subcategory"
         />
         <DashboardCard
           icon={productIcon}
           title={t("admin.totalProduct", "Total Product")}
           value={stats.totalProduct}
           accentColor="#ef4444"
+          to="/admin/product/list"
         />
         <DashboardCard
           icon={ordersIcon}
           title={t("admin.totalOrders", "Total Orders")}
           value={stats.totalOrders}
           accentColor="#3b82f6"
+          to="/admin/orders/all"
         />
         <DashboardCard
           icon={completedOrdersIcon}
           title={t("admin.completedOrders", "Completed Orders")}
           value={stats.completedOrders}
           accentColor="#16a34a"
+          to="/admin/orders/delivered"
         />
         <DashboardCard
           icon={pendingOrdersIcon}
           title={t("admin.pendingOrders", "Pending Orders")}
           value={stats.pendingOrders}
           accentColor="#a855f7"
+          to="/admin/orders/pending"
         />
         <DashboardCard
           icon={cancelledOrdersIcon}
           title={t("admin.cancelledOrders", "Cancelled Orders")}
           value={stats.cancelledOrders}
           accentColor="#ef4444"
+          to="/admin/orders/cancelled"
         />
         <DashboardCard
           icon={soldOutIcon}
           title={t("admin.productSoldOut", "Product Sold Out")}
           value={stats.soldOutProducts}
           accentColor="#ec4899"
+          to="/admin/product/list?stock=out_of_stock"
         />
         <DashboardCard
           icon={lowStockIcon}
           title={t("admin.productLowStock", "Product low on Stock")}
           value={stats.lowStockProducts}
           accentColor="#eab308"
+          to="/admin/product/list?stock=low_stock"
         />
       </div>
 
@@ -553,24 +563,28 @@ export default function AdminDashboard() {
           title={t("admin.totalRevenue", "Total Revenue")}
           value={`₹${financeStats?.totalGMV?.toLocaleString("en-IN") || "0"}`}
           accentColor="#3b82f6"
+          to="/admin/wallet?tab=transactions"
         />
         <DashboardCard
           icon={<TrendingUpIcon />}
           title={t("admin.adminProfit", "Admin Profit")}
           value={`₹${financeStats?.totalAdminEarnings?.toLocaleString("en-IN") || "0"}`}
           accentColor="#16a34a"
+          to="/admin/wallet?tab=earnings"
         />
         <DashboardCard
           icon={<ClockIcon />}
           title={t("admin.sellerOwed", "Seller Owed")}
           value={`₹${financeStats?.sellerPendingPayouts?.toLocaleString("en-IN") || "0"}`}
           accentColor="#f59e0b"
+          to="/admin/manage-seller/transaction"
         />
         <DashboardCard
           icon={<DeliveryIcon />}
           title={t("admin.deliveryOwed", "Delivery Owed")}
           value={`₹${financeStats?.deliveryPendingPayouts?.toLocaleString("en-IN") || "0"}`}
           accentColor="#ef4444"
+          to="/admin/delivery-boy/fund-transfer"
         />
       </div>
 

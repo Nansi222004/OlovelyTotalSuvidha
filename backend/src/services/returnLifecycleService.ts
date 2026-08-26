@@ -269,13 +269,31 @@ export async function verifyReturnPickupOtp(
 
 /**
  * Triggers financial settlement ONLY when return is Completed.
- * This is the ONLY place executeReturnRefundAndReversal should be called
- * from the return lifecycle (never from Approved, Pickup Pending, etc.)
+ * For EXCHANGE requests: zero refund is issued, no wallet/gateway transactions.
+ * For RETURN requests: executes full refund and commission reversal.
  */
 export async function triggerReturnFinancialSettlement(
   returnId: string,
   processedByUserId?: string
 ): Promise<{ success: boolean; message: string; data?: any }> {
+  const returnDoc = await Return.findById(returnId);
+  if (!returnDoc) {
+    return { success: false, message: "Return document not found" };
+  }
+
+  // EXCHANGE: Zero financial refund. Mark settlement as Completed without touching balances.
+  if (returnDoc.requestType === "EXCHANGE") {
+    returnDoc.financialSettlementStatus = "Completed";
+    returnDoc.refundAmount = 0;
+    await returnDoc.save();
+    return {
+      success: true,
+      message: "Exchange pickup verified and completed. Replacement fulfilled with zero cash refund.",
+      data: { requestType: "EXCHANGE", refundAmount: 0, financialSettlementStatus: "Completed" },
+    };
+  }
+
+  // RETURN: Full refund execution
   const { executeReturnRefundAndReversal } = await import(
     "./refundSettlementService"
   );

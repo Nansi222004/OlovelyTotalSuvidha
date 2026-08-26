@@ -106,11 +106,11 @@ export const updateOrderNotes = async (id: string, data: { deliveryInstructions?
 };
 
 /**
- * Submit Item-Specific Return Request
+ * Submit Item-Specific Return or Exchange Request
  */
 export const requestCustomerReturn = async (
     orderId: string,
-    data: { orderItemId: string; reason: string; description?: string; quantity?: number }
+    data: { orderItemId: string; reason: string; description?: string; quantity?: number; requestType?: 'RETURN' | 'EXCHANGE' }
 ): Promise<OrderResponse> => {
     const response = await api.post<OrderResponse>(`/customer/orders/${orderId}/return`, data);
     return response.data;

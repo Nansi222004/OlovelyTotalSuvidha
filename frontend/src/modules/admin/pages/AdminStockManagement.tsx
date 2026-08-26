@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   getProducts,
   getCategories,
@@ -26,10 +26,22 @@ interface ProductVariation {
 }
 
 const STATUS_OPTIONS = ["All Products", "Published", "Unpublished"];
-const STOCK_OPTIONS = ["All Products", "In Stock", "Out of Stock", "Unlimited"];
+const STOCK_OPTIONS = ["All Products", "In Stock", "Out of Stock", "Low on Stock", "Unlimited"];
 
 export default function AdminStockManagement() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const stockParam = searchParams.get('stock');
+  const getInitialStock = (param: string | null) => {
+    if (!param) return 'All Products';
+    const lower = param.toLowerCase();
+    if (lower === 'out_of_stock' || lower === 'sold_out' || lower === 'out of stock') return 'Out of Stock';
+    if (lower === 'low_stock' || lower === 'low on stock' || lower === 'low') return 'Low on Stock';
+    if (lower === 'in_stock' || lower === 'in stock') return 'In Stock';
+    if (lower === 'unlimited') return 'Unlimited';
+    return 'All Products';
+  };
+  const initialStock = getInitialStock(stockParam);
   const { isAuthenticated, token } = useAuth();
   const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,7 +58,14 @@ export default function AdminStockManagement() {
   const [filterCategory, setFilterCategory] = useState("All Category");
   const [filterSeller, setFilterSeller] = useState("All Sellers");
   const [filterStatus, setFilterStatus] = useState("All Products");
-  const [filterStock, setFilterStock] = useState("All Products");
+  const [filterStock, setFilterStock] = useState(initialStock);
+
+  useEffect(() => {
+    const stock = searchParams.get('stock');
+    if (stock) {
+      setFilterStock(getInitialStock(stock));
+    }
+  }, [searchParams]);
 
   // Fetch products and categories
   const fetchData = async () => {
@@ -250,7 +269,12 @@ export default function AdminStockManagement() {
         (filterStock === "Out of Stock" &&
           product.stock !== "Unlimited" &&
           typeof product.stock === "number" &&
-          product.stock === 0);
+          product.stock === 0) ||
+        (filterStock === "Low on Stock" &&
+          product.stock !== "Unlimited" &&
+          typeof product.stock === "number" &&
+          product.stock > 0 &&
+          product.stock < 10);
       const matchesSearch =
         String(product.name || "").toLowerCase().includes(String(searchTerm || "").toLowerCase()) ||
         String(product.seller || "").toLowerCase().includes(String(searchTerm || "").toLowerCase());

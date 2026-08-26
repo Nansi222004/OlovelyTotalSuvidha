@@ -170,7 +170,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-screen bg-neutral-50 relative">
+      <div className="flex flex-1 min-h-screen bg-neutral-50 relative overflow-x-hidden">
         {/* Real-time Notification Alert */}
         <SellerNotificationAlert
           notification={activeNotification}
@@ -197,15 +197,15 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
 
         {/* Main Content */}
         <div
-          className={`flex-1 flex flex-col transition-all duration-300 w-full ${
-            isSidebarOpen ? 'ml-64' : 'ml-0'
+          className={`flex-1 flex flex-col transition-all duration-300 min-w-0 ${
+            isSidebarOpen ? 'lg:ml-64' : 'ml-0'
           }`}
         >
           {/* Header */}
           <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-neutral-50">{children}</main>
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-neutral-50 min-w-0">{children}</main>
         </div>
       </div>
     </div>

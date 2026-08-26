@@ -271,14 +271,62 @@ export default function SellerDashboard() {
       </div>
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <DashboardCard icon={userIcon} title={t("seller.totalCustomers", "Total Customers")} value={stats.totalUser} accentColor="#3b82f6" />
-        <DashboardCard icon={categoryIcon} title={t("seller.sellingCategories", "Selling Categories")} value={stats.sellingCategories ?? stats.totalCategory} accentColor="#eab308" />
-        <DashboardCard icon={subcategoryIcon} title={t("seller.totalSubcategory", "Total Subcategory")} value={stats.totalSubcategory} accentColor="#ec4899" />
-        <DashboardCard icon={productIcon} title={t("seller.totalProduct", "Total Product")} value={stats.totalProduct} accentColor="#f97316" />
-        <DashboardCard icon={ordersIcon} title={t("seller.totalOrders", "Total Orders")} value={stats.totalOrders} accentColor="#3b82f6" />
-        <DashboardCard icon={completedOrdersIcon} title={t("seller.completedOrders", "Completed Orders")} value={stats.completedOrders} accentColor="#16a34a" />
-        <DashboardCard icon={pendingOrdersIcon} title={t("seller.pendingOrders", "Pending Orders")} value={stats.pendingOrders} accentColor="#a855f7" />
-        <DashboardCard icon={cancelledOrdersIcon} title={t("seller.cancelledOrders", "Cancelled Orders")} value={stats.cancelledOrders} accentColor="#ef4444" />
+        <DashboardCard
+          icon={userIcon}
+          title={t("seller.totalCustomers", "Total Customers")}
+          value={stats.totalUser}
+          accentColor="#3b82f6"
+          to="/seller/orders"
+        />
+        <DashboardCard
+          icon={categoryIcon}
+          title={t("seller.sellingCategories", "Selling Categories")}
+          value={stats.sellingCategories ?? stats.totalCategory}
+          accentColor="#eab308"
+          to="/seller/category"
+        />
+        <DashboardCard
+          icon={subcategoryIcon}
+          title={t("seller.totalSubcategory", "Total Subcategory")}
+          value={stats.totalSubcategory}
+          accentColor="#ec4899"
+          to="/seller/subcategory"
+        />
+        <DashboardCard
+          icon={productIcon}
+          title={t("seller.totalProduct", "Total Product")}
+          value={stats.totalProduct}
+          accentColor="#f97316"
+          to="/seller/product/list"
+        />
+        <DashboardCard
+          icon={ordersIcon}
+          title={t("seller.totalOrders", "Total Orders")}
+          value={stats.totalOrders}
+          accentColor="#3b82f6"
+          to="/seller/orders"
+        />
+        <DashboardCard
+          icon={completedOrdersIcon}
+          title={t("seller.completedOrders", "Completed Orders")}
+          value={stats.completedOrders}
+          accentColor="#16a34a"
+          to="/seller/orders?status=Delivered"
+        />
+        <DashboardCard
+          icon={pendingOrdersIcon}
+          title={t("seller.pendingOrders", "Pending Orders")}
+          value={stats.pendingOrders}
+          accentColor="#a855f7"
+          to="/seller/orders?status=Pending"
+        />
+        <DashboardCard
+          icon={cancelledOrdersIcon}
+          title={t("seller.cancelledOrders", "Cancelled Orders")}
+          value={stats.cancelledOrders}
+          accentColor="#ef4444"
+          to="/seller/orders?status=Cancelled"
+        />
       </div>
 
       {/* Charts Row */}
@@ -290,8 +338,20 @@ export default function SellerDashboard() {
       {/* Alerts and Button Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Alert Cards - Side by Side */}
-        <AlertCard icon={soldOutIcon} title={t("seller.productSoldOut", "Product Sold Out")} value={stats.soldOutProducts} accentColor="#ec4899" />
-        <AlertCard icon={lowStockIcon} title={t("seller.productLowStock", "Product low on Stock")} value={stats.lowStockProducts} accentColor="#eab308" />
+        <AlertCard
+          icon={soldOutIcon}
+          title={t("seller.productSoldOut", "Product Sold Out")}
+          value={stats.soldOutProducts}
+          accentColor="#ec4899"
+          to="/seller/product/stock?stock=out_of_stock"
+        />
+        <AlertCard
+          icon={lowStockIcon}
+          title={t("seller.productLowStock", "Product low on Stock")}
+          value={stats.lowStockProducts}
+          accentColor="#eab308"
+          to="/seller/product/stock?stock=low_stock"
+        />
       </div>
 
       {/* View New Orders Table Section */}

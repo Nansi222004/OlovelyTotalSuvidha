@@ -1281,11 +1281,13 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
 export const requestItemReturn = async (req: Request, res: Response) => {
   try {
     const id = req.params.id || req.params.orderId;
-    const { orderItemId, reason, description, quantity } = req.body;
+    const { orderItemId, reason, description, quantity, requestType: rawRequestType } = req.body;
     const userId = req.user!.userId;
+    const requestType: "RETURN" | "EXCHANGE" = rawRequestType === "EXCHANGE" ? "EXCHANGE" : "RETURN";
+    const typeLabel = requestType === "EXCHANGE" ? "Exchange" : "Return";
 
     if (!orderItemId || !reason) {
-      return res.status(400).json({ success: false, message: "Order item ID and return reason are required" });
+      return res.status(400).json({ success: false, message: `Order item ID and ${typeLabel.toLowerCase()} reason are required` });
     }
 
     const order = await Order.findOne({ _id: id, customer: userId }).populate("items");
@@ -1294,9 +1296,8 @@ export const requestItemReturn = async (req: Request, res: Response) => {
     }
 
     if (order.status !== "Delivered") {
-      return res.status(400).json({ success: false, message: "Returns can only be requested for delivered orders" });
+      return res.status(400).json({ success: false, message: "Returns and exchanges can only be requested for delivered orders" });
     }
-
 
     const item = (order.items as any[]).find(
       (i: any) => i._id?.toString() === orderItemId || i.id === orderItemId
@@ -1308,7 +1309,7 @@ export const requestItemReturn = async (req: Request, res: Response) => {
     const productId = item.product?._id || item.product;
     const product = await Product.findById(productId);
     if (!product || product.isReturnable === false) {
-      return res.status(400).json({ success: false, message: "This product is marked non-returnable" });
+      return res.status(400).json({ success: false, message: `This product is marked non-${requestType === "EXCHANGE" ? "exchangeable" : "returnable"}` });
     }
 
     const deliveredAt = order.deliveredAt || order.updatedAt || order.createdAt;
@@ -1317,7 +1318,7 @@ export const requestItemReturn = async (req: Request, res: Response) => {
     deadline.setDate(deadline.getDate() + windowDays);
 
     if (Date.now() > deadline.getTime()) {
-      return res.status(400).json({ success: false, message: `Return window for this product has expired (${windowDays} days)` });
+      return res.status(400).json({ success: false, message: `${typeLabel} window for this product has expired (${windowDays} days)` });
     }
 
     const existingReturn = await Return.findOne({
@@ -1326,9 +1327,10 @@ export const requestItemReturn = async (req: Request, res: Response) => {
     });
 
     if (existingReturn) {
+      const existingType = existingReturn.requestType === "EXCHANGE" ? "exchange" : "return";
       return res.status(400).json({
         success: false,
-        message: `A return request already exists for this item (Status: ${existingReturn.status})`,
+        message: `An active ${existingType} request already exists for this item (Status: ${existingReturn.status})`,
       });
     }
 
@@ -1338,39 +1340,54 @@ export const requestItemReturn = async (req: Request, res: Response) => {
       order: order._id,
       orderItem: item._id,
       customer: userId,
+      requestType,
       reason,
       description: description || "",
       quantity: returnQty,
       status: "Pending",
     });
 
-    // Notify seller of new return request
+    // Notify seller of new return/exchange request
     try {
-      const { sendReturnRequestNotificationToSeller } = await import("../../../services/notificationService");
+      const { sendReturnRequestNotificationToSeller, sendReturnRequestNotificationToCustomer } = await import("../../../services/notificationService");
       const sellerId = item.seller?._id?.toString() || item.seller?.toString() || item.vendor?.toString();
+      const io = req.app.get("io");
+
       if (sellerId) {
-        const io = req.app.get("io");
         await sendReturnRequestNotificationToSeller(
           sellerId,
           order.orderNumber || "N/A",
           product.productName || "Product",
           newReturn._id.toString(),
-          io
+          io,
+          requestType,
+          order._id.toString()
         );
       }
+
+      // Notify customer that request was submitted
+      await sendReturnRequestNotificationToCustomer(
+        userId,
+        order.orderNumber || "N/A",
+        product.productName || "Product",
+        newReturn._id.toString(),
+        io,
+        requestType,
+        order._id.toString()
+      );
     } catch (notifErr) {
-      console.error("Error notifying seller of return request:", notifErr);
+      console.error(`Error notifying seller/customer of ${typeLabel.toLowerCase()} request:`, notifErr);
     }
 
     return res.status(201).json({
       success: true,
-      message: "Return request submitted successfully",
+      message: `${typeLabel} request submitted successfully`,
       data: newReturn,
     });
 
   } catch (error: any) {
-    console.error("Error requesting item return:", error);
-    return res.status(500).json({ success: false, message: "Failed to submit return request", error: error.message });
+    console.error("Error requesting item return/exchange:", error);
+    return res.status(500).json({ success: false, message: "Failed to submit request", error: error.message });
   }
 };
 

@@ -183,36 +183,32 @@ export default function AdminUsers() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-gray-50">
+        <div className="space-y-4 sm:space-y-6">
             {/* Page Header */}
-            <div className="p-6 pb-0">
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-2xl font-semibold text-teal-800">User List</h1>
-                    <div className="text-sm text-blue-500">
-                        <span className="text-blue-500 hover:underline cursor-pointer">Home</span>{' '}
-                        <span className="text-neutral-400">/</span> User List
-                    </div>
+            <div className="flex justify-between items-center">
+                <h1 className="text-xl sm:text-2xl font-semibold text-teal-800">User List</h1>
+                <div className="text-sm text-blue-500">
+                    <span className="text-blue-500 hover:underline cursor-pointer">Home</span>{' '}
+                    <span className="text-neutral-400">/</span> User List
                 </div>
             </div>
 
-            {/* Page Content */}
-            <div className="flex-1 px-6 pb-6">
-                {/* Main Panel */}
-                <div className="bg-white rounded-lg shadow-sm border border-neutral-200">
-                    {/* Header */}
-                    <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
-                        <h2 className="text-lg font-semibold">View Users</h2>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm">Show</span>
-                            <select
-                                value={entriesPerPage}
-                                onChange={(e) => {
-                                    setEntriesPerPage(Number(e.target.value));
-                                    setCurrentPage(1);
-                                }}
-                                className="bg-white text-teal-600 border border-teal-300 rounded py-1 px-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none cursor-pointer"
-                            >
-                                <option value={10}>10</option>
+            {/* Main Panel */}
+            <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+                {/* Header */}
+                <div className="bg-teal-600 text-white px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap justify-between items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold">View Users</h2>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm">Show</span>
+                        <select
+                            value={entriesPerPage}
+                            onChange={(e) => {
+                                setEntriesPerPage(Number(e.target.value));
+                                setCurrentPage(1);
+                            }}
+                            className="bg-white text-teal-600 border border-teal-300 rounded py-1 px-2 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none cursor-pointer"
+                        >
+                            <option value={10}>10</option>
                                 <option value={20}>20</option>
                                 <option value={50}>50</option>
                                 <option value={100}>100</option>
@@ -460,13 +456,6 @@ export default function AdminUsers() {
                     </div>
                 </div>
             </div>
-
-            {/* Footer */}
-            <footer className="text-center py-4 text-sm text-neutral-600 border-t border-neutral-200 bg-white">
-                Copyright © 2025. Developed By{' '}
-                <a href="#" className="text-blue-600 hover:underline">Olovely Total Suvidha</a>
-            </footer>
-        </div>
     );
 }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getProducts, updateStock, Product } from '../../../services/api/productService';
 import { getCategories } from '../../../services/api/categoryService';
 import { useAuth } from '../../../context/AuthContext';
@@ -18,6 +19,17 @@ interface StockItem {
 
 export default function SellerStockManagement() {
     const { showToast } = useToast();
+    const [searchParams] = useSearchParams();
+    const stockQuery = searchParams.get('stock') || searchParams.get('filter');
+    const getInitialStock = (param: string | null) => {
+        if (!param) return 'All Products';
+        const lower = param.toLowerCase();
+        if (lower === 'out_of_stock' || lower === 'sold_out' || lower === 'out of stock') return 'Out of Stock';
+        if (lower === 'low_stock' || lower === 'low on stock' || lower === 'low') return 'Low on Stock';
+        if (lower === 'in_stock' || lower === 'in stock') return 'In Stock';
+        return 'All Products';
+    };
+    const initialStockFilter = getInitialStock(stockQuery);
     const [stockItems, setStockItems] = useState<StockItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
@@ -25,7 +37,7 @@ export default function SellerStockManagement() {
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('All Category');
     const [statusFilter, setStatusFilter] = useState('All Products');
-    const [stockFilter, setStockFilter] = useState('All Products');
+    const [stockFilter, setStockFilter] = useState(initialStockFilter);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
     const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -33,6 +45,13 @@ export default function SellerStockManagement() {
     const [categories, setCategories] = useState<string[]>([]);
     const [totalPages, setTotalPages] = useState(1);
     const { user } = useAuth();
+
+    useEffect(() => {
+        const query = searchParams.get('stock') || searchParams.get('filter');
+        if (query) {
+            setStockFilter(getInitialStock(query));
+        }
+    }, [searchParams]);
 
     // Fetch categories for filter
     useEffect(() => {
@@ -161,7 +180,8 @@ export default function SellerStockManagement() {
             (statusFilter === 'Unpublished' && item.status === 'Unpublished');
         const matchesStock = stockFilter === 'All Products' ||
             (stockFilter === 'In Stock' && (typeof item.stock === 'number' && item.stock > 0)) ||
-            (stockFilter === 'Out of Stock' && item.stock === 0);
+            (stockFilter === 'Out of Stock' && item.stock === 0) ||
+            (stockFilter === 'Low on Stock' && (typeof item.stock === 'number' && item.stock > 0 && item.stock < 10));
         return matchesSearch && matchesCategory && matchesStatus && matchesStock;
     });
 
@@ -256,6 +276,7 @@ export default function SellerStockManagement() {
                                 <option value="All Products">All Products</option>
                                 <option value="In Stock">In Stock</option>
                                 <option value="Out of Stock">Out of Stock</option>
+                                <option value="Low on Stock">Low on Stock</option>
                             </select>
                         </div>
                     </div>

@@ -45,7 +45,7 @@ async function assertReturnBelongsToSeller(
 export const getReturnRequests = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user?.userId;
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, requestType, page = 1, limit = 10 } = req.query;
 
     // Find this seller's OrderItem IDs
     const sellerOrderItems = await OrderItem.find({ seller: sellerId }).select("_id");
@@ -54,6 +54,9 @@ export const getReturnRequests = asyncHandler(
     const query: any = { orderItem: { $in: sellerOrderItemIds } };
     if (status && status !== "All Status") {
       query.status = status;
+    }
+    if (requestType && requestType !== "All Types") {
+      query.requestType = requestType;
     }
 
     const returns = await Return.find(query)
@@ -79,6 +82,7 @@ export const getReturnRequests = asyncHandler(
         product: item?.productName || "Unknown Product",
         productName: item?.productName || "Unknown Product",
         variant: item?.sku || "Standard",
+        requestType: ret.requestType || "RETURN",
         price,
         discPrice: price,
         quantity,
@@ -100,7 +104,6 @@ export const getReturnRequests = asyncHandler(
         })(),
       };
     });
-
 
     return res.status(200).json({
       success: true,
@@ -151,6 +154,7 @@ export const getReturnRequestById = asyncHandler(
       id: fullReturn._id,
       orderId: orderDoc?.orderNumber,
       status: fullReturn.status,
+      requestType: fullReturn.requestType || "RETURN",
       lifecycle,
       customerName: orderDoc?.customerName,
       customerEmail: (fullReturn.customer as any)?.email,
@@ -194,7 +198,7 @@ export const getReturnRequestById = asyncHandler(
 
 /**
  * PATCH /returns/:id/status
- * Seller can ONLY approve or reject a Pending return.
+ * Seller can ONLY approve or reject a Pending return/exchange.
  * Transitions enforced: Pending → Approved | Rejected
  * On Approved: status atomically becomes "Pickup Pending" (admin then assigns DP).
  *
@@ -211,7 +215,7 @@ export const updateReturnStatus = asyncHandler(
     if (!sellerAllowedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Sellers can only set return status to: ${sellerAllowedStatuses.join(", ")}`,
+        message: `Sellers can only set return/exchange status to: ${sellerAllowedStatuses.join(", ")}`,
       });
     }
 
@@ -247,13 +251,14 @@ export const updateReturnStatus = asyncHandler(
       if (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim()) {
         return res.status(400).json({
           success: false,
-          message: "A reason is required when rejecting a return request.",
+          message: "A reason is required when rejecting a request.",
         });
       }
       updateData.rejectionReason = rejectionReason.trim();
     }
 
     const updatedReturn = await Return.findByIdAndUpdate(id, updateData, { new: true });
+    const reqType = returnReq.requestType || "RETURN";
 
     // Send customer notification via notificationService
     try {
@@ -271,10 +276,12 @@ export const updateReturnStatus = asyncHandler(
         status,
         updateData.rejectionReason,
         returnReq.order.toString(),
-        io
+        io,
+        reqType,
+        returnReq._id.toString()
       );
     } catch (notifErr) {
-      console.error("Error sending customer return notification:", notifErr);
+      console.error("Error sending customer status notification:", notifErr);
     }
 
     // NO financial settlement here — ONLY triggered after seller confirms physical receipt.
@@ -283,8 +290,8 @@ export const updateReturnStatus = asyncHandler(
       success: true,
       message:
         status === "Approved"
-          ? "Return approved. Now awaiting delivery partner assignment for pickup."
-          : "Return rejected successfully.",
+          ? `${reqType === "EXCHANGE" ? "Exchange" : "Return"} approved. Now awaiting delivery partner assignment for pickup.`
+          : `${reqType === "EXCHANGE" ? "Exchange" : "Return"} rejected successfully.`,
       data: updatedReturn,
     });
   }
@@ -297,10 +304,8 @@ export const updateReturnStatus = asyncHandler(
  * Seller confirms they physically received the returned item from the delivery partner.
  * This is the FINAL physical step that advances the lifecycle to "Completed" and
  * TRIGGERS FINANCIAL SETTLEMENT:
- *   - Customer receives refund (product price only)
- *   - Seller's onHoldBalance / balance is reversed by net product earning
- *   - Commission record marked Cancelled
- *   - Refund document created
+ *   - For RETURN: Customer receives refund, Seller earning reversed
+ *   - For EXCHANGE: Zero refund, replacement dispatch fulfilled
  *
  * Transition: "Handed To Seller" → "Completed" → executeReturnRefundAndReversal()
  */
@@ -325,7 +330,7 @@ export const confirmSellerReceipt = asyncHandler(
     ) {
       return res.status(200).json({
         success: true,
-        message: "Return is already completed and settled (idempotent).",
+        message: `${returnReq.requestType === "EXCHANGE" ? "Exchange" : "Return"} is already completed and settled (idempotent).`,
         data: returnReq,
       });
     }
@@ -334,7 +339,7 @@ export const confirmSellerReceipt = asyncHandler(
     if (returnReq.status !== "Handed To Seller") {
       return res.status(400).json({
         success: false,
-        message: `Cannot confirm receipt — return is in "${returnReq.status}" status. Delivery partner must first hand the item to you.`,
+        message: `Cannot confirm receipt — request is in "${returnReq.status}" status. Delivery partner must first hand the item to you.`,
       });
     }
 
@@ -350,22 +355,23 @@ export const confirmSellerReceipt = asyncHandler(
       if (!settlementResult.success) {
         return res.status(500).json({
           success: false,
-          message: `Return receipt confirmation failed: ${settlementResult.message}`,
+          message: `Receipt confirmation failed: ${settlementResult.message}`,
         });
       }
     } catch (settleErr: any) {
       return res.status(500).json({
         success: false,
-        message: `Return receipt confirmation error: ${settleErr.message}`,
+        message: `Receipt confirmation error: ${settleErr.message}`,
       });
     }
-
 
     const finalReturn = await Return.findById(id)
       .populate("order", "orderNumber")
       .populate("customer", "name email");
 
-    // Send customer notification that return is completed and refund is credited
+    const reqType = returnReq.requestType || "RETURN";
+
+    // Send customer notification that return/exchange is completed
     try {
       const { sendReturnStatusNotificationToCustomer } = await import("../../../services/notificationService");
       const order = await Order.findById(returnReq.order);
@@ -381,7 +387,9 @@ export const confirmSellerReceipt = asyncHandler(
         "Completed",
         undefined,
         returnReq.order.toString(),
-        io
+        io,
+        reqType,
+        returnReq._id.toString()
       );
     } catch (notifErr) {
       console.error("Error sending customer completion notification:", notifErr);
@@ -389,7 +397,10 @@ export const confirmSellerReceipt = asyncHandler(
 
     return res.status(200).json({
       success: true,
-      message: "Return completed. Financial settlement executed — customer refund issued.",
+      message:
+        reqType === "EXCHANGE"
+          ? "Exchange completed. Item received and replacement fulfilled (no cash refund)."
+          : "Return completed. Financial settlement executed — customer refund issued.",
       data: {
         return: finalReturn,
         settlement: settlementResult?.data,

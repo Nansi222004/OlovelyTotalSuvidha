@@ -62,3 +62,9 @@ backend/uploads/*
 # Coverage
 coverage/
 .nyc_output/
+
+# Binaries & Installers
+*.exe
+*.msi
+*.zip
+*.tar.gz

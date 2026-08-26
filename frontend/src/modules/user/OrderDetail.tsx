@@ -501,8 +501,9 @@ export default function OrderDetail() {
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
-  // Return Modal states
+  // Return & Exchange Modal states
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnRequestType, setReturnRequestType] = useState<"Return" | "Exchange">("Return");
   const [selectedReturnItem, setSelectedReturnItem] = useState<any>(null);
   const [returnReason, setReturnReason] = useState<string>("Damaged product");
   const [customReturnReason, setCustomReturnReason] = useState<string>("");
@@ -1526,7 +1527,7 @@ export default function OrderDetail() {
                       activeReturnStatus === 'Rejected' ? (
                         <div className="mt-1 space-y-1">
                           <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
-                            Return Rejected
+                            Request Rejected
                           </span>
                           {item.activeReturnRejectionReason && (
                             <p className="text-xs text-red-700 bg-red-50 p-2 rounded-lg border border-red-200 mt-1">
@@ -1536,17 +1537,16 @@ export default function OrderDetail() {
                         </div>
                       ) : (
                         <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-                          Return Requested: {activeReturnStatus}
+                          Request: {activeReturnStatus}
                         </span>
                       )
                     ) : isReturnable && isReturnWindowActive ? (
-
                       <p className="text-xs text-green-700 font-medium mt-0.5">
-                        Return available until {expiryDate}
+                        Return / Exchange available until {expiryDate}
                       </p>
                     ) : isReturnable && !isReturnWindowActive ? (
                       <p className="text-xs text-red-600 font-medium mt-0.5">
-                        Return window expired
+                        Return / Exchange window expired
                       </p>
                     ) : (
                       <p className="text-xs text-gray-400 font-medium mt-0.5">
@@ -1555,22 +1555,39 @@ export default function OrderDetail() {
                     )}
                   </div>
                   {isReturnable && isReturnWindowActive && !activeReturnStatus && (
-                    <button
-                      type="button"
-                      id={`btn-return-item-${item._id || idx}`}
-                      onClick={() => {
-                        setSelectedReturnItem(item);
-                        setReturnReason("Damaged product");
-                        setCustomReturnReason("");
-                        setReturnError(null);
-                        setShowReturnModal(true);
-                      }}
-                      className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all shrink-0 flex items-center gap-1.5 border border-green-600"
-                    >
-                      <span>↩</span> Return Product
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <button
+                        type="button"
+                        id={`btn-exchange-item-${item._id || idx}`}
+                        onClick={() => {
+                          setSelectedReturnItem(item);
+                          setReturnRequestType("Exchange");
+                          setReturnReason("Size / fit issue - need replacement");
+                          setCustomReturnReason("");
+                          setReturnError(null);
+                          setShowReturnModal(true);
+                        }}
+                        className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all shrink-0 flex items-center gap-1.5 border border-blue-200"
+                      >
+                        <span>🔄</span> Exchange
+                      </button>
+                      <button
+                        type="button"
+                        id={`btn-return-item-${item._id || idx}`}
+                        onClick={() => {
+                          setSelectedReturnItem(item);
+                          setReturnRequestType("Return");
+                          setReturnReason("Damaged product");
+                          setCustomReturnReason("");
+                          setReturnError(null);
+                          setShowReturnModal(true);
+                        }}
+                        className="px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all shrink-0 flex items-center gap-1.5 border border-green-600"
+                      >
+                        <span>↩</span> Return Product
+                      </button>
+                    </div>
                   )}
-
                 </div>
               );
             })}
@@ -1844,7 +1861,7 @@ export default function OrderDetail() {
         />
       )}
 
-      {/* Return Request Modal */}
+      {/* Return & Exchange Request Modal */}
       <AnimatePresence>
         {showReturnModal && selectedReturnItem && (
           <motion.div
@@ -1861,12 +1878,45 @@ export default function OrderDetail() {
               className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b pb-3">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <span>↩</span> Request Return
+                  <span>{returnRequestType === "Exchange" ? "🔄" : "↩"}</span>
+                  {returnRequestType === "Exchange" ? "Request Exchange / Replacement" : "Request Return & Refund"}
                 </h2>
                 <button
                   onClick={() => setShowReturnModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-xl font-bold">
                   ✕
+                </button>
+              </div>
+
+              {/* Toggle Tab: Return vs Exchange */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReturnRequestType("Return");
+                    setReturnReason("Damaged product");
+                    setReturnError(null);
+                  }}
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    returnRequestType === "Return"
+                      ? "bg-white text-green-700 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}>
+                  <span>↩</span> Return & Refund
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReturnRequestType("Exchange");
+                    setReturnReason("Size / fit issue - need replacement");
+                    setReturnError(null);
+                  }}
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    returnRequestType === "Exchange"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}>
+                  <span>🔄</span> Exchange / Replace
                 </button>
               </div>
 
@@ -1889,16 +1939,27 @@ export default function OrderDetail() {
 
               {/* Reason Selection */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Select Reason</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  {returnRequestType === "Exchange" ? "Select Reason for Exchange" : "Select Reason for Return"}
+                </label>
                 <div className="space-y-2">
-                  {[
-                    "Damaged product",
-                    "Wrong product received",
-                    "Product not as described",
-                    "Quality issue",
-                    "Size / fit issue",
-                    "Other",
-                  ].map((reason) => (
+                  {(returnRequestType === "Exchange"
+                    ? [
+                        "Size / fit issue - need replacement",
+                        "Defective or damaged product - need replacement",
+                        "Wrong product received - need replacement",
+                        "Product quality issue",
+                        "Other exchange reason",
+                      ]
+                    : [
+                        "Damaged product",
+                        "Wrong product received",
+                        "Product not as described",
+                        "Quality issue",
+                        "Size / fit issue",
+                        "Other",
+                      ]
+                  ).map((reason) => (
                     <label
                       key={reason}
                       className={`flex items-center gap-3 p-3 rounded-xl border text-sm cursor-pointer transition-colors ${
@@ -1918,28 +1979,39 @@ export default function OrderDetail() {
               </div>
 
               {/* Custom reason text input if Other */}
-              {returnReason === "Other" && (
+              {(returnReason === "Other" || returnReason === "Other exchange reason") && (
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Details</label>
                   <textarea
                     className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
                     rows={3}
-                    placeholder="Describe the issue with this item..."
+                    placeholder={returnRequestType === "Exchange" ? "Describe your exchange / replacement requirement..." : "Describe the issue with this item..."}
                     value={customReturnReason}
                     onChange={(e) => setCustomReturnReason(e.target.value)}
                   />
                 </div>
               )}
 
-              {/* Refund Summary Preview */}
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
-                <p className="font-semibold flex items-center gap-1">
-                  <span>💰</span> Expected Refund Amount: ₹{(selectedReturnItem.total || (selectedReturnItem.unitPrice * selectedReturnItem.quantity) || 0).toFixed(2)}
-                </p>
-                <p className="text-amber-800">
-                  Refund will be settled after physical return pickup and seller receipt verification.
-                </p>
-              </div>
+              {/* Refund / Replacement Summary Preview */}
+              {returnRequestType === "Exchange" ? (
+                <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 text-xs text-blue-900 space-y-1">
+                  <p className="font-semibold flex items-center gap-1">
+                    <span>🔄</span> Replacement Dispatch Process
+                  </p>
+                  <p className="text-blue-800">
+                    A fresh replacement item will be arranged with the seller upon pickup verification of the existing item.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
+                  <p className="font-semibold flex items-center gap-1">
+                    <span>💰</span> Expected Refund Amount: ₹{(selectedReturnItem.total || (selectedReturnItem.unitPrice * selectedReturnItem.quantity) || 0).toFixed(2)}
+                  </p>
+                  <p className="text-amber-800">
+                    Refund will be settled after physical return pickup and seller receipt verification.
+                  </p>
+                </div>
+              )}
 
               {/* Error Banner */}
               {returnError && (
@@ -1958,19 +2030,26 @@ export default function OrderDetail() {
                   Cancel
                 </Button>
                 <Button
-                  className="flex-1 bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-semibold"
+                  className={`flex-1 text-white text-sm font-semibold ${
+                    returnRequestType === "Exchange"
+                      ? "bg-blue-600 hover:bg-blue-700"
+                      : "bg-neutral-900 hover:bg-neutral-800"
+                  }`}
                   disabled={submittingReturn}
                   onClick={async () => {
-                    if (returnReason === "Other" && !customReturnReason.trim()) {
-                      setReturnError("Please specify the reason in details field");
+                    const isOther = returnReason === "Other" || returnReason === "Other exchange reason";
+                    if (isOther && !customReturnReason.trim()) {
+                      setReturnError("Please specify the details in the text field");
                       return;
                     }
                     try {
                       setSubmittingReturn(true);
                       setReturnError(null);
+                      const rawReason = isOther ? customReturnReason.trim() : returnReason;
                       const res = await requestCustomerReturn(id!, {
                         orderItemId: selectedReturnItem._id || selectedReturnItem.id,
-                        reason: returnReason === "Other" ? `Other: ${customReturnReason}` : returnReason,
+                        requestType: returnRequestType === "Exchange" ? "EXCHANGE" : "RETURN",
+                        reason: rawReason,
                         description: customReturnReason,
                         quantity: selectedReturnItem.quantity || 1,
                       });
@@ -1979,15 +2058,19 @@ export default function OrderDetail() {
                         setShowReturnModal(false);
                         handleRefresh();
                       } else {
-                        setReturnError(res.message || "Failed to submit return request");
+                        setReturnError(res.message || "Failed to submit request");
                       }
                     } catch (err: any) {
-                      setReturnError(err.response?.data?.message || err.message || "Error submitting return request");
+                      setReturnError(err.response?.data?.message || err.message || "Error submitting request");
                     } finally {
                       setSubmittingReturn(false);
                     }
                   }}>
-                  {submittingReturn ? "Submitting..." : "Submit Return Request"}
+                  {submittingReturn
+                    ? "Submitting..."
+                    : returnRequestType === "Exchange"
+                    ? "Submit Exchange Request"
+                    : "Submit Return Request"}
                 </Button>
               </div>
             </motion.div>

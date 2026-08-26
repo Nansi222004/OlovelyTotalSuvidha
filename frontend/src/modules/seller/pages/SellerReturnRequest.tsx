@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   getReturnRequests,
   getReturnRequestById,
@@ -13,12 +13,14 @@ import { useToast } from '../../../context/ToastContext';
 
 export default function SellerReturnRequest() {
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [fromDate, setFromDate] = useState('12/06/2025');
   const [toDate, setToDate] = useState('12/06/2025');
   const [statusFilter, setStatusFilter] = useState('All Status');
+  const [typeFilter, setTypeFilter] = useState('All Types');
   const [searchTerm, setSearchTerm] = useState('');
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -59,6 +61,10 @@ export default function SellerReturnRequest() {
         params.status = statusFilter;
       }
 
+      if (typeFilter !== 'All Types') {
+        params.requestType = typeFilter as any;
+      }
+
       if (searchTerm) {
         params.search = searchTerm;
       }
@@ -78,7 +84,44 @@ export default function SellerReturnRequest() {
 
   useEffect(() => {
     fetchReturnRequests();
-  }, [fromDate, toDate, statusFilter, searchTerm, currentPage, rowsPerPage, sortColumn, sortDirection]);
+  }, [fromDate, toDate, statusFilter, typeFilter, searchTerm, currentPage, rowsPerPage, sortColumn, sortDirection]);
+
+  // Deep Link Handling: Auto-open detail if ?id= is in query string
+  useEffect(() => {
+    const targetId = searchParams.get('id');
+    if (targetId) {
+      (async () => {
+        try {
+          setLoadingDetail(true);
+          setShowDetailModal(true);
+          const res = await getReturnRequestById(targetId);
+          if (res.success && res.data) {
+            setFullDetail(res.data);
+            setSelectedReturn({
+              id: res.data.id || targetId,
+              orderItemId: res.data.orderItemId || targetId,
+              product: res.data.productName || 'Product',
+              variant: res.data.variantTitle || 'Standard',
+              requestType: res.data.requestType || 'RETURN',
+              price: res.data.price || 0,
+              discPrice: res.data.discPrice || 0,
+              quantity: res.data.quantity || 1,
+              total: res.data.total || 0,
+              status: res.data.status,
+              date: res.data.returnDate || new Date().toISOString(),
+              customerName: res.data.customerName,
+              orderId: res.data.orderId,
+              reason: res.data.reason,
+            });
+          }
+        } catch (err) {
+          console.error('Error opening linked return detail:', err);
+        } finally {
+          setLoadingDetail(false);
+        }
+      })();
+    }
+  }, [searchParams]);
 
   // Client-side pagination
   const totalPages = Math.ceil(returnRequests.length / rowsPerPage);
@@ -301,6 +344,19 @@ export default function SellerReturnRequest() {
                   <option value="Completed">Completed</option>
                 </select>
               </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-neutral-600 whitespace-nowrap">Type:</label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="px-3 py-2 bg-white border border-neutral-300 rounded text-sm focus:ring-1 focus:ring-green-500 focus:outline-none cursor-pointer font-medium"
+                >
+                  <option value="All Types">All Types</option>
+                  <option value="RETURN">↩ Returns Only</option>
+                  <option value="EXCHANGE">🔄 Exchanges Only</option>
+                </select>
+              </div>
             </div>
 
             {/* Right Side: Export, Per Page, Search */}
@@ -324,11 +380,12 @@ export default function SellerReturnRequest() {
 
               <button
                 onClick={() => {
-                  const headers = ['Order Item Id', 'Product', 'Variant', 'Price', 'Disc Price', 'Quantity', 'Total', 'Status', 'Date'];
+                  const headers = ['Order Item Id', 'Type', 'Product', 'Variant', 'Price', 'Disc Price', 'Quantity', 'Total', 'Status', 'Date'];
                   const csvContent = [
                     headers.join(','),
                     ...returnRequests.map((reqItem) => [
                       reqItem.orderItemId,
+                      reqItem.requestType || 'RETURN',
                       `"${reqItem.product}"`,
                       `"${reqItem.variant}"`,
                       reqItem.price,
@@ -374,7 +431,7 @@ export default function SellerReturnRequest() {
           {/* Loading & Error States */}
           {loading && (
             <div className="flex items-center justify-center p-8 text-neutral-500">
-              Loading return requests...
+              Loading return & exchange requests...
             </div>
           )}
           {error && !loading && (
@@ -392,6 +449,7 @@ export default function SellerReturnRequest() {
                     <th className="p-4 border border-neutral-200 cursor-pointer" onClick={() => handleSort('orderItemId')}>
                       <div className="flex items-center gap-1">Order Item Id <SortIcon column="orderItemId" /></div>
                     </th>
+                    <th className="p-4 border border-neutral-200">Type</th>
                     <th className="p-4 border border-neutral-200 cursor-pointer" onClick={() => handleSort('product')}>
                       <div className="flex items-center gap-1">Product <SortIcon column="product" /></div>
                     </th>
@@ -422,14 +480,25 @@ export default function SellerReturnRequest() {
                 <tbody>
                   {displayedRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-neutral-500">
-                        No return requests available
+                      <td colSpan={11} className="p-8 text-center text-neutral-500">
+                        No return or exchange requests available
                       </td>
                     </tr>
                   ) : (
                     displayedRequests.map((reqItem, index) => (
                       <tr key={reqItem.id || index} className="hover:bg-neutral-50 border-b border-neutral-200">
                         <td className="p-4 border border-neutral-200 text-sm font-medium text-neutral-900">{reqItem.orderItemId || reqItem.id}</td>
+                        <td className="p-4 border border-neutral-200 text-sm">
+                          {reqItem.requestType === 'EXCHANGE' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                              <span>🔄</span> Exchange
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <span>↩</span> Return
+                            </span>
+                          )}
+                        </td>
                         <td className="p-4 border border-neutral-200 text-sm text-neutral-900 font-semibold">{reqItem.product || (reqItem as any).productName || 'Product'}</td>
                         <td className="p-4 border border-neutral-200 text-sm text-neutral-600">{reqItem.variant || 'Standard'}</td>
                         <td className="p-4 border border-neutral-200 text-sm text-neutral-900">₹{Number(reqItem.price || 0).toFixed(2)}</td>
@@ -538,7 +607,8 @@ export default function SellerReturnRequest() {
             <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50 rounded-t-2xl">
               <div>
                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                  <span>↩</span> Return Request Details
+                  <span>{(fullDetail?.requestType || selectedReturn.requestType) === 'EXCHANGE' ? '🔄' : '↩'}</span>
+                  {(fullDetail?.requestType || selectedReturn.requestType) === 'EXCHANGE' ? 'Exchange / Replacement Request' : 'Return & Refund Request'}
                 </h3>
                 <p className="text-xs text-neutral-500 font-mono mt-0.5">
                   Order ID: {fullDetail?.orderId || selectedReturn.orderId || selectedReturn.orderItemId}
@@ -555,19 +625,30 @@ export default function SellerReturnRequest() {
             {/* Modal Content */}
             <div className="p-6 space-y-6">
               {loadingDetail ? (
-                <div className="p-8 text-center text-neutral-500 font-medium">Loading return details...</div>
+                <div className="p-8 text-center text-neutral-500 font-medium">Loading details...</div>
               ) : (
                 <>
-                  {/* Status Badge Banner */}
+                  {/* Status & Type Badge Banner */}
                   <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-xl border border-neutral-200">
                     <div>
-                      <span className="text-xs text-neutral-500 block uppercase font-bold tracking-wider">Current Status</span>
-                      <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-bold ${getStatusBadgeClass(fullDetail?.status || selectedReturn.status)}`}>
-                        {fullDetail?.status || selectedReturn.status}
-                      </span>
+                      <span className="text-xs text-neutral-500 block uppercase font-bold tracking-wider">Request Type & Status</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        {(fullDetail?.requestType || selectedReturn.requestType) === 'EXCHANGE' ? (
+                          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            🔄 Exchange (Replacement)
+                          </span>
+                        ) : (
+                          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ↩ Return (Refund)
+                          </span>
+                        )}
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getStatusBadgeClass(fullDetail?.status || selectedReturn.status)}`}>
+                          {fullDetail?.status || selectedReturn.status}
+                        </span>
+                      </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs text-neutral-500 block uppercase font-bold tracking-wider">Return Total</span>
+                      <span className="text-xs text-neutral-500 block uppercase font-bold tracking-wider">Item Total</span>
                       <span className="text-lg font-extrabold text-neutral-900">
                         ₹{Number(fullDetail?.total || selectedReturn.total || (selectedReturn as any).amount || 0).toFixed(2)}
                       </span>

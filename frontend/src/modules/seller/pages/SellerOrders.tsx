@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getOrders, Order, GetOrdersParams } from '../../../services/api/orderService';
 
 
@@ -8,16 +8,25 @@ type SortDirection = 'asc' | 'desc';
 
 export default function SellerOrders() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialStatus = searchParams.get('status') || 'All Status';
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [dateRange, setDateRange] = useState('');
-  const [status, setStatus] = useState('All Status');
+  const [status, setStatus] = useState(initialStatus);
   const [entriesPerPage, setEntriesPerPage] = useState('10');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  useEffect(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus) {
+      setStatus(urlStatus);
+    }
+  }, [searchParams]);
 
   // Fetch orders from API
   useEffect(() => {
