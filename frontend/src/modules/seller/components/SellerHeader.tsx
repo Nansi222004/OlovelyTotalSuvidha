@@ -63,10 +63,10 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 gap-3 sm:gap-0">
         {/* Logo and Hamburger Menu */}
         <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-          {/* Hamburger Menu Button */}
+          {/* Hamburger Menu Button (Desktop Only) */}
           <button
             onClick={onMenuClick}
-            className="p-2 text-neutral-600 hover:text-neutral-900 transition-colors flex-shrink-0"
+            className="hidden lg:flex p-2 text-neutral-600 hover:text-neutral-900 transition-colors flex-shrink-0"
             aria-label="Toggle menu"
           >
             {isSidebarOpen ? (
@@ -104,11 +104,12 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
             />
           </button>
 
-          {/* Mobile Logout Button - Only visible on mobile */}
-          <div className="ml-auto sm:hidden">
+          {/* Mobile Actions - Language & Logout */}
+          <div className="ml-auto sm:hidden flex items-center gap-1.5">
+            <LanguageSelector variant="dropdown" />
             <button
               onClick={handleLogout}
-              className="p-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+              className="p-1.5 text-neutral-600 hover:text-neutral-900 transition-colors"
               aria-label="Logout"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -180,13 +181,21 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
                 <button
                   onClick={() => {
                     setShowSettingsDropdown(false);
+                    navigate('/seller/profile');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                >
+                  My Profile
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSettingsDropdown(false);
                     navigate('/seller/account-settings');
                   }}
                   className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
                 >
                   Account Settings
                 </button>
-
               </div>
             )}
           </div>

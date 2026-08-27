@@ -61,7 +61,7 @@ function computeFulfillment(order: any, items: any[]): FulfillmentComputation {
   if (allRejected) {
     outcome = "all_rejected";
   } else if (allHaveResponded && anyAccepted) {
-    outcome = order.deliveryPreference === "Self" ? "self_delivery" : "ready_for_delivery";
+    outcome = "ready_for_delivery";
   }
 
   return {
@@ -81,9 +81,8 @@ async function tryStartDeliveryAssignment(orderId: mongoose.Types.ObjectId): Pro
   const lockResult = await Order.findOneAndUpdate(
     {
       _id: orderId,
-      deliveryPreference: { $ne: "Self" },
       deliveryBoy: { $exists: false },
-      deliveryAssignmentStatus: { $in: ["NotStarted", "Failed"] },
+      deliveryAssignmentStatus: { $in: ["NotStarted", "Failed", "Cancelled"] },
     },
     {
       $set: {
@@ -191,24 +190,12 @@ export async function recomputeOrderFulfillment(
     );
   }
 
-  if (order.deliveryPreference === "Self") {
-    order.deliveryAssignmentStatus = "Cancelled";
-    order.deliveryAssignmentResolvedAt = new Date();
-    await order.save();
-
-    return {
-      outcome: "self_delivery",
-      allHaveResponded: true,
-      anyAccepted: true,
-      allRejected: false,
-    };
-  }
-
-  // Only trigger delivery boy assignment if deliveryOption is Instant.
-  // For Standard delivery, the admin manually assigns a delivery partner.
-  const shouldTriggerAssignment = order.deliveryOption === "Instant"
-    ? await tryStartDeliveryAssignment(order._id as mongoose.Types.ObjectId)
-    : false;
+  // Trigger delivery boy assignment if deliveryPreference is "Self" (Seller-initiated broadcast)
+  // or deliveryOption is "Instant". For "Admin" preference on Standard delivery, Admin manually assigns.
+  const shouldTriggerAssignment =
+    (order.deliveryPreference === "Self" || order.deliveryOption === "Instant")
+      ? await tryStartDeliveryAssignment(order._id as mongoose.Types.ObjectId)
+      : false;
 
   if (io && state.rejectedSellerIds.length > 0) {
     io.to(`order-${orderId}`).emit("order-partial-rejection", {

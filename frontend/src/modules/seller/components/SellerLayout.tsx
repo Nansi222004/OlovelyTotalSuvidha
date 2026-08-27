@@ -1,6 +1,7 @@
 import { ReactNode, useState, useCallback, useEffect, useRef } from 'react';
 import SellerHeader from './SellerHeader';
 import SellerSidebar from './SellerSidebar';
+import SellerBottomNav from './SellerBottomNav';
 import { useSellerSocket, SellerNotification } from '../hooks/useSellerSocket';
 import SellerNotificationAlert from './SellerNotificationAlert';
 import { getPendingOrderAlerts } from '../../../services/api/orderService';
@@ -178,17 +179,9 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
           onResolved={handleNotificationResolved}
         />
 
-        {/* Overlay for mobile */}
-        {isSidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-            onClick={toggleSidebar}
-          />
-        )}
-
-        {/* Sidebar - Fixed */}
+        {/* Sidebar - Desktop Only */}
         <div
-          className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out ${
+          className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out hidden lg:block ${
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -205,7 +198,12 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
           <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-neutral-50 min-w-0">{children}</main>
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-neutral-50 min-w-0">
+            {children}
+          </main>
+
+          {/* Mobile Bottom Navigation */}
+          <SellerBottomNav />
         </div>
       </div>
     </div>

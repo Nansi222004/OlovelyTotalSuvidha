@@ -266,7 +266,7 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
                 />
                 <div className="ml-3 text-left">
                   <span className="block text-sm font-medium text-neutral-900">Self Assign</span>
-                  <span className="block text-xs text-neutral-500">I will manage the delivery of this order myself</span>
+                  <span className="block text-xs text-neutral-500">Auto-broadcast to nearby delivery partners</span>
                 </div>
               </label>
 

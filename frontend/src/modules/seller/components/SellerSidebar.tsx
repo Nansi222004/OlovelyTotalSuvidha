@@ -196,6 +196,26 @@ const menuItems: MenuItem[] = [
     ],
   },
   { keyPath: "seller.return", label: "Return", path: "/seller/return" },
+  {
+    keyPath: "common.profile",
+    label: "Profile",
+    path: "/seller/profile",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="7" r="4" />
+        <path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2" />
+      </svg>
+    ),
+  },
 ];
 
 export default function SellerSidebar({ onClose }: SellerSidebarProps) {

@@ -138,8 +138,8 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     amount: order.total,
     customerName: (order.customer as any)?.name || order.customerName || "",
     customerPhone: (order.customer as any)?.phone || order.customerPhone || "",
-    deliveryBoyName: order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoy as any)?.name || "",
-    deliveryBoyPhone: order.deliveryPreference === 'Self' ? '' : (order.deliveryBoy as any)?.mobile || "",
+    deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
+    deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
     deliveryPreference: order.deliveryPreference,
     paymentMethod: order.paymentMethod,
   }));
@@ -445,8 +445,8 @@ export const getOrderById = asyncHandler(
         (order.customer as any)?.email || order.customerEmail || "",
       customerPhone:
         (order.customer as any)?.phone || order.customerPhone || "",
-      deliveryBoyName: order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoy as any)?.name || "",
-      deliveryBoyPhone: order.deliveryPreference === 'Self' ? '' : (order.deliveryBoy as any)?.mobile || "",
+      deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
+      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
       deliveryPreference: order.deliveryPreference,
       deliveryOption: order.deliveryOption,
       items: formattedItems,

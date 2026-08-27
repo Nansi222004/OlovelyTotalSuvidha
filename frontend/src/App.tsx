@@ -166,6 +166,9 @@ const SellerReturnRequest = lazyWithRetry(
 const SellerAccountSettings = lazyWithRetry(
   () => import("./modules/seller/pages/SellerAccountSettings"), "SellerAccountSettings"
 );
+const SellerProfile = lazyWithRetry(
+  () => import("./modules/seller/pages/SellerProfile"), "SellerProfile"
+);
 const SellerDeliveryTracking = lazyWithRetry(
   () => import("./modules/seller/pages/SellerDeliveryTracking"), "SellerDeliveryTracking"
 );
@@ -674,6 +677,10 @@ function App() {
                                       <Route
                                         path="account-settings"
                                         element={<SellerAccountSettings />}
+                                      />
+                                      <Route
+                                        path="profile"
+                                        element={<SellerProfile />}
                                       />
                                     </Routes>
                                   </SellerLayout>

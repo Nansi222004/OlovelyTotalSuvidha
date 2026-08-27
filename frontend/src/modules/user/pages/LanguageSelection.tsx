@@ -42,9 +42,13 @@ export const LanguageSelection: React.FC = () => {
       setSubmitting(true);
       setError("");
 
-      // 1. Save to MongoDB preference via API if logged in
-      if (user) {
-        await updateCustomerLanguage(selectedLanguage);
+      // 1. Save to MongoDB preference via API if logged in as Customer
+      if (user && user.userType === "Customer") {
+        try {
+          await updateCustomerLanguage(selectedLanguage);
+        } catch {
+          // Ignore background sync errors
+        }
       }
 
       // 2. Local Storage Sync
