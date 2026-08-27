@@ -32,6 +32,9 @@
     "generate:delivery-otp": "tsx src/scripts/generateDeliveryOtpForCustomers.ts",
     "fix:seller-location": "tsx src/scripts/fixSellerLocation.ts",
     "fix:seller-locations": "tsx src/scripts/fixSellerLocations.ts",
+    "seed:45-categories": "tsx src/scripts/seed45Categories.ts",
+    "verify:45-categories": "tsx src/scripts/verify45Categories.ts",
+    "sync:header-categories": "tsx src/scripts/syncHeaderCategories.ts",
     "postinstall": "npm run build"
   },
   "keywords": [

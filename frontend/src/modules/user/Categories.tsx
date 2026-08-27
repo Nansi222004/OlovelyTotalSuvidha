@@ -27,7 +27,7 @@ export default function Categories() {
         // Fetch headers and all categories in parallel
         const [headers, catRes] = await Promise.all([
           getHeaderCategoriesPublic(true),
-          getCategories(false) // Flat list of categories
+          getCategories(false, true) // Flat list of fresh 45 categories
         ]);
         
         setHeaderCategories(headers);
@@ -45,30 +45,59 @@ export default function Categories() {
 
   // Group categories by Header Category ID
   const groupedCategories = useMemo(() => {
-    if (!headerCategories.length || !allCategories.length) return [];
-    
-    return headerCategories
+    if (!allCategories.length) return [];
+
+    const result = headerCategories
+      .filter((h) => h.status === "Published" && h.slug !== "all")
       .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .map(header => {
-        const matchingCategories = allCategories.filter(cat => {
+      .map((header) => {
+        const matchingCategories = allCategories.filter((cat) => {
           // Only show top-level categories (no parentId) under headers
           if (cat.parentId) return false;
 
           // headerCategoryId might be an object or a string
-          const headerId = typeof cat.headerCategoryId === 'object' 
-            ? cat.headerCategoryId?._id 
-            : cat.headerCategoryId;
-            
+          const headerId =
+            typeof cat.headerCategoryId === "object"
+              ? cat.headerCategoryId?._id
+              : cat.headerCategoryId;
+
           return headerId?.toString() === header._id.toString();
         });
-        
+
         return {
           ...header,
-          categories: matchingCategories.sort((a, b) => (a.order || 0) - (b.order || 0))
+          categories: matchingCategories.sort(
+            (a, b) => (a.order || 0) - (b.order || 0)
+          ),
         };
       })
-      .filter(group => group.categories.length > 0);
-  }, [headerCategories, allCategories]);
+      .filter((group) => group.categories.length > 0);
+
+    // Fallback: collect any root categories that weren't mapped to a header category
+    const matchedCategoryIds = new Set(
+      result.flatMap((group) => group.categories.map((c) => c._id))
+    );
+    const unmappedCategories = allCategories.filter(
+      (cat) => !cat.parentId && !matchedCategoryIds.has(cat._id)
+    );
+
+    if (unmappedCategories.length > 0) {
+      result.push({
+        _id: "other-categories",
+        name: t("common.otherCategories", "Other Categories"),
+        slug: "other",
+        iconName: "grid",
+        iconLibrary: "Custom",
+        status: "Published",
+        order: 999,
+        categories: unmappedCategories.sort(
+          (a, b) => (a.order || 0) - (b.order || 0)
+        ),
+      } as any);
+    }
+
+    return result;
+  }, [headerCategories, allCategories, t]);
 
   if (loading) return <PageLoader />;
 

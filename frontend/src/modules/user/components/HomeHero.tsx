@@ -36,10 +36,23 @@ const ALL_TAB: Tab = {
   ),
 };
 
+const MORE_TAB: Tab = {
+  id: 'more-categories',
+  label: 'More',
+  icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  ),
+};
+
 export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroProps) {
   const { settings: appSettings } = useAppSettings();
   const { t, getTranslatedField } = useTranslation();
-  const [tabs, setTabs] = useState<Tab[]>([ALL_TAB]);
+  const [tabs, setTabs] = useState<Tab[]>([ALL_TAB, MORE_TAB]);
 
   useEffect(() => {
     const fetchHeaderCategories = async () => {
@@ -47,16 +60,20 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
         const cats = await getHeaderCategoriesPublic();
         if (cats && cats.length > 0) {
           const mapped = cats
-            .filter(c => c.slug !== 'all') // Filter out any category with slug 'all' to prevent duplicate keys
+            .filter(c => c.slug !== 'all' && c.status === 'Published')
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
             .map(c => ({
               id: c.slug,
               label: getTranslatedField(c, "name") || c.name,
               icon: getIconByName(c.iconName)
             }));
-          setTabs([ALL_TAB, ...mapped]);
+          setTabs([ALL_TAB, ...mapped, MORE_TAB]);
+        } else {
+          setTabs([ALL_TAB, MORE_TAB]);
         }
       } catch (error) {
         console.error('Failed to fetch header categories', error);
+        setTabs([ALL_TAB, MORE_TAB]);
       }
     };
     fetchHeaderCategories();
@@ -119,24 +136,30 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
     }
 
     switch (activeTab) {
-      case 'wedding':
-        return ['gift packs', 'dry fruits', 'sweets', 'decorative items', 'wedding cards', 'return gifts'];
-      case 'winter':
-        return ['woolen clothes', 'caps', 'gloves', 'blankets', 'heater', 'winter wear'];
-      case 'electronics':
-        return ['chargers', 'cables', 'power banks', 'earphones', 'phone cases', 'screen guards'];
-      case 'beauty':
-        return ['lipstick', 'makeup', 'skincare', 'kajal', 'face wash', 'moisturizer'];
       case 'grocery':
-        return ['atta', 'milk', 'dal', 'rice', 'oil', 'vegetables'];
+        return ['atta', 'dal', 'rice', 'spices', 'sugar', 'ghee', 'oil', 'tea'];
+      case 'fruits-vegetables':
+        return ['fresh vegetables', 'potatoes', 'onions', 'apples', 'bananas', 'fresh juice'];
+      case 'dairy-milk':
+        return ['milk', 'paneer', 'curd', 'butter', 'cheese', 'ghee'];
+      case 'bakery-biscuits':
+        return ['bread', 'cookies', 'rusk', 'biscuits', 'cakes', 'toast'];
+      case 'snacks-drinks':
+        return ['chips', 'namkeen', 'cold drinks', 'chocolates', 'ice cream', 'farsan'];
+      case 'beauty':
+        return ['face wash', 'body lotion', 'shampoo', 'hair oil', 'baby care', 'cosmetics'];
       case 'fashion':
-        return ['clothing', 'shoes', 'accessories', 'watches', 'bags', 'jewelry'];
-      case 'sports':
-        return ['cricket bat', 'football', 'badminton', 'fitness equipment', 'sports shoes', 'gym wear'];
+        return ['t-shirt', 'saree', 'jeans', 'footwear', 'bags', 'kurta', 'kids wear'];
+      case 'electronics':
+        return ['chargers', 'cables', 'power banks', 'earphones', 'mobile accessories', 'appliances'];
+      case 'home-furniture':
+        return ['home decor', 'cleaners', 'kitchen items', 'stationery', 'furniture', 'pooja items'];
+      case 'toys-sports':
+        return ['toys', 'cricket bat', 'football', 'board games', 'gym equipment', 'yoga mat'];
       default: // 'all'
-        return ['atta', 'milk', 'dal', 'coke', 'bread', 'eggs', 'rice', 'oil'];
+        return ['atta', 'milk', 'dal', 'chips', 'fresh fruits', 'oil', 'tea', 'vegetables'];
     }
-  }, [activeTab]);
+  }, [activeTab, categories]);
 
   useLayoutEffect(() => {
     const hero = heroRef.current;
@@ -256,6 +279,10 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
   }, [activeTab]);
 
   const handleTabClick = (tabId: string) => {
+    if (tabId === 'more-categories') {
+      navigate('/categories');
+      return;
+    }
     onTabChange?.(tabId);
     // Don't scroll - keep page at current position
   };
@@ -458,7 +485,11 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
                       transition: 'font-weight 0.3s ease-out',
                     }}
                   >
-                    {tab.id === 'all' ? t('common.all', 'All') : tab.label}
+                    {tab.id === 'all'
+                      ? t('common.all', 'All')
+                      : tab.id === 'more-categories'
+                        ? t('common.more', 'More')
+                        : tab.label}
                   </span>
                 </button>
               )

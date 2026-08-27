@@ -90,15 +90,19 @@ export const getCategoryById = async (id: string): Promise<any> => {
  * Using /tree endpoint to get hierarchy if available, otherwise just /
  * Cached for 10 minutes as categories don't change frequently
  */
-export const getCategories = async (tree: boolean = false): Promise<CategoryListResponse> => {
-    const cacheKey = `customer-categories-${tree ? 'tree' : 'list'}`;
+export const getCategories = async (tree: boolean = false, skipCache: boolean = false): Promise<CategoryListResponse> => {
+    const url = tree ? '/customer/categories/tree' : '/customer/categories';
+    if (skipCache) {
+        const response = await api.get<CategoryListResponse>(url);
+        return response.data;
+    }
+    const cacheKey = `customer-categories-v3-${tree ? 'tree' : 'list'}`;
     return apiCache.getOrFetch(
         cacheKey,
         async () => {
-    const url = tree ? '/customer/categories/tree' : '/customer/categories';
-    const response = await api.get<CategoryListResponse>(url);
-    return response.data;
+            const response = await api.get<CategoryListResponse>(url);
+            return response.data;
         },
-        10 * 60 * 1000 // 10 minutes cache
+        5 * 60 * 1000 // 5 minutes cache
     );
 };

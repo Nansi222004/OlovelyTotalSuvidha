@@ -22,8 +22,6 @@ async function fetchSectionData(
     const { categories, subCategories, displayType, limit } = section;
 
     // If displayType is "subcategories", fetch subcategories
-    // If displayType is "subcategories", fetch subcategories
-    // If displayType is "subcategories", fetch subcategories
     if (displayType === "subcategories") {
       let subcategoryQuery: any = {};
       let specificIds: string[] = [];
@@ -33,8 +31,8 @@ async function fetchSectionData(
       // If specific subcategories are selected, use them
       if (subCategories && subCategories.length > 0) {
         specificIds = subCategories
-          .map((sub: any) => (sub ? (sub._id || sub).toString() : null))
-          .filter((id: any) => id);
+          .map((sub: any) => (sub ? (sub._id ? sub._id.toString() : (typeof sub === 'string' ? sub : null)) : null))
+          .filter(Boolean);
 
         if (specificIds.length > 0) {
           subcategoryQuery._id = { $in: specificIds };
@@ -44,8 +42,8 @@ async function fetchSectionData(
       // If no specific subcategories selected, fallback to fetching by parent categories
       if (specificIds.length === 0 && categories && categories.length > 0) {
         parentCategoryIds = categories
-          .map((cat: any) => (cat ? (cat._id || cat).toString() : null))
-          .filter((id: any) => id);
+          .map((cat: any) => (cat ? (cat._id ? cat._id.toString() : (typeof cat === 'string' ? cat : null)) : null))
+          .filter(Boolean);
 
         if (parentCategoryIds.length > 0) {
           subcategoryQuery.category = { $in: parentCategoryIds };
@@ -61,12 +59,12 @@ async function fetchSectionData(
           .lean();
 
         const mappedSubs = subcategories.map((sub: any) => ({
-          id: sub._id.toString(),
-          subcategoryId: sub._id.toString(),
-          categoryId: sub.category?.toString() || "",
-          name: sub.name,
+          id: sub._id ? sub._id.toString() : "",
+          subcategoryId: sub._id ? sub._id.toString() : "",
+          categoryId: sub.category ? (typeof sub.category === 'object' && sub.category !== null ? sub.category._id?.toString() || "" : sub.category.toString()) : "",
+          name: sub.name || "",
           image: sub.image || "",
-          slug: sub.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          slug: sub.name ? sub.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") : (sub._id ? sub._id.toString() : ""),
           type: "subcategory",
           translations: sub.translations || {},
         }));
@@ -75,7 +73,6 @@ async function fetchSectionData(
       }
 
       // 2. Fallback or Specific ID check in Category Collection
-
       // Case A: Specific IDs were provided but not found in SubCategory
       if (specificIds.length > 0) {
         const foundSubIds = results.map((r) => r.id);
@@ -94,14 +91,14 @@ async function fetchSectionData(
           const mappedCats = foundCategories.map((c: any) => {
             const hasParent = c.parentId != null;
             return {
-              id: c._id.toString(),
-              subcategoryId: hasParent ? c._id.toString() : undefined,
+              id: c._id ? c._id.toString() : "",
+              subcategoryId: hasParent ? (c._id ? c._id.toString() : "") : undefined,
               categoryId: hasParent
-                ? c.parentId.toString()
-                : c.slug || c._id.toString(),
-              name: c.name,
-              image: c.image,
-              slug: c.slug,
+                ? (c.parentId ? (typeof c.parentId === 'object' ? c.parentId._id?.toString() : c.parentId.toString()) : "")
+                : c.slug || (c._id ? c._id.toString() : ""),
+              name: c.name || "",
+              image: c.image || "",
+              slug: c.slug || "",
               type: hasParent ? "subcategory" : "category",
               translations: c.translations || {},
             };
@@ -124,12 +121,12 @@ async function fetchSectionData(
           .lean();
 
         const mappedChildCats = childCategories.map((c: any) => ({
-          id: c._id.toString(),
-          subcategoryId: c._id.toString(),
-          categoryId: c.parentId.toString(),
-          name: c.name,
-          image: c.image,
-          slug: c.slug,
+          id: c._id ? c._id.toString() : "",
+          subcategoryId: c._id ? c._id.toString() : "",
+          categoryId: c.parentId ? (typeof c.parentId === 'object' ? c.parentId._id?.toString() : c.parentId.toString()) : (c.slug || (c._id ? c._id.toString() : "")),
+          name: c.name || "",
+          image: c.image || "",
+          slug: c.slug || "",
           type: "subcategory",
           translations: c.translations || {},
         }));
@@ -162,7 +159,7 @@ async function fetchSectionData(
       if (categories && categories.length > 0) {
         const categoryIds = categories
           .map((cat: any) => (cat ? cat._id || cat : null))
-          .filter((id: any) => id);
+          .filter(Boolean);
 
         if (categoryIds.length > 0) {
           query.category = { $in: categoryIds };
@@ -173,7 +170,7 @@ async function fetchSectionData(
       if (subCategories && subCategories.length > 0) {
         const subCategoryIds = subCategories
           .map((sub: any) => (sub ? sub._id || sub : null))
-          .filter((id: any) => id);
+          .filter(Boolean);
 
         if (subCategoryIds.length > 0) {
           query.subcategory = { $in: subCategoryIds };
@@ -190,11 +187,11 @@ async function fetchSectionData(
 
       return products.map((p: any) => {
         // If we filtered by radius above, this should always be true when hasUserLocation is set.
-        const sellerIdStr = p.seller ? (typeof p.seller === 'object' ? p.seller._id?.toString() : p.seller.toString()) : null;
+        const sellerIdStr = p.seller ? (typeof p.seller === 'object' && p.seller !== null ? p.seller._id?.toString() : p.seller.toString()) : null;
         const isAvailable = hasUserLocation
           ? true
           : nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-            ? nearbySellerIds.some(id => id.toString() === sellerIdStr)
+            ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
             : false;
 
         const sellerObj = typeof p.seller === 'object' && p.seller !== null ? p.seller : null;
@@ -204,12 +201,12 @@ async function fetchSectionData(
         const shopName = shopObj?.name || storeName || null;
 
         return {
-          id: p._id.toString(),
-          productId: p._id.toString(),
-          name: p.productName,
-          productName: p.productName,
-          image: p.mainImage,
-          mainImage: p.mainImage,
+          id: p._id ? p._id.toString() : "",
+          productId: p._id ? p._id.toString() : "",
+          name: p.productName || "",
+          productName: p.productName || "",
+          image: p.mainImage || "",
+          mainImage: p.mainImage || "",
           price: p.price,
           discPrice: p.discPrice || 0,
           compareAtPrice: p.compareAtPrice || 0,
@@ -240,7 +237,7 @@ async function fetchSectionData(
     if (displayType === "categories") {
       // If categories are specified, fetch those specific categories
       if (categories && categories.length > 0) {
-        const categoryIds = categories.map((cat: any) => cat._id || cat);
+        const categoryIds = categories.map((cat: any) => (cat ? (cat._id || cat) : null)).filter(Boolean);
 
         const fetchedCategories = await Category.find({
           _id: { $in: categoryIds },
@@ -252,11 +249,11 @@ async function fetchSectionData(
           .lean();
 
         return fetchedCategories.map((c: any) => ({
-          id: c._id.toString(),
-          categoryId: c.slug || c._id.toString(), // Use slug for SEO-friendly URLs, fallback to _id
-          name: c.name,
-          image: c.image,
-          slug: c.slug,
+          id: c._id ? c._id.toString() : "",
+          categoryId: c.slug || (c._id ? c._id.toString() : ""), // Use slug for SEO-friendly URLs, fallback to _id
+          name: c.name || "",
+          image: c.image || "",
+          slug: c.slug || "",
           type: "category",
           translations: c.translations || {},
         }));
@@ -307,75 +304,79 @@ export const getHomeContent = async (req: Request, res: Response) => {
 
     // For each bestseller card, get 4 products from the associated category
     const bestsellers = await Promise.all(
-      bestsellerCards.map(async (card: any) => {
-        const categoryId = card.category?._id || card.category;
-        // Get category and any child subcategories
-        const childCats = await Category.find({ parentId: categoryId }).select("_id").lean();
-        const allCategoryIds = [categoryId, ...childCats.map((c: any) => c._id)];
+      bestsellerCards
+        .filter((card: any) => card && card.category)
+        .map(async (card: any) => {
+          const categoryId = card.category?._id || card.category;
+          if (!categoryId) return null;
 
-        // Build product query for images
-        const productQuery: any = {
-          $or: [
-            { category: { $in: allCategoryIds } },
-            { subcategory: { $in: allCategoryIds } }
-          ],
-          status: "Active",
-          publish: true,
-        };
+          // Get category and any child subcategories
+          const childCats = await Category.find({ parentId: categoryId }).select("_id").lean();
+          const allCategoryIds = [categoryId, ...childCats.map((c: any) => c._id)];
 
-        // When location is known, only show preview images for in-range sellers.
-        if (hasUserLocation) {
-          productQuery.seller = { $in: nearbySellerIds };
-        }
+          // Build product query for images
+          const productQuery: any = {
+            $or: [
+              { category: { $in: allCategoryIds } },
+              { subcategory: { $in: allCategoryIds } }
+            ],
+            status: "Active",
+            publish: true,
+          };
 
-        // Fetch 4 active products from the category for preview images
-        // We fetch these irrespective of location radius to show category preview
-        const categoryProducts = await Product.find(productQuery)
-          .select("productName mainImage galleryImages translations")
-          .sort({ createdAt: -1 })
-          .limit(4)
-          .lean();
-
-        // Extract exactly 4 product images (prefer mainImage, fallback to galleryImages[0])
-        const productImages: string[] = [];
-        categoryProducts.forEach((product: any) => {
-          if (productImages.length < 4 && product.mainImage) {
-            productImages.push(product.mainImage);
+          // When location is known, only show preview images for in-range sellers.
+          if (hasUserLocation) {
+            productQuery.seller = { $in: nearbySellerIds };
           }
-        });
 
-        // If we have less than 4 products, try to use gallery images
-        if (productImages.length < 4) {
+          // Fetch 4 active products from the category for preview images
+          const categoryProducts = await Product.find(productQuery)
+            .select("productName mainImage galleryImages translations")
+            .sort({ createdAt: -1 })
+            .limit(4)
+            .lean();
+
+          // Extract exactly 4 product images (prefer mainImage, fallback to galleryImages[0])
+          const productImages: string[] = [];
           categoryProducts.forEach((product: any) => {
-            if (
-              productImages.length < 4 &&
-              product.galleryImages &&
-              product.galleryImages.length > 0
-            ) {
-              productImages.push(product.galleryImages[0]);
+            if (productImages.length < 4 && product.mainImage) {
+              productImages.push(product.mainImage);
             }
           });
-        }
 
-        // Ensure we have exactly 4 images (pad with first image if needed)
-        while (productImages.length < 4 && productImages[0]) {
-          productImages.push(productImages[0]);
-        }
+          // If we have less than 4 products, try to use gallery images
+          if (productImages.length < 4) {
+            categoryProducts.forEach((product: any) => {
+              if (
+                productImages.length < 4 &&
+                product.galleryImages &&
+                product.galleryImages.length > 0
+              ) {
+                productImages.push(product.galleryImages[0]);
+              }
+            });
+          }
 
-        return {
-          id: card._id.toString(),
-          categoryId: categoryId.toString(),
-          name: card.name,
-          productImages: productImages.slice(0, 4),
-          productCount: categoryProducts.length,
-          translations: card.translations || {},
-        };
-      })
+          // Ensure we have exactly 4 images (pad with first image if needed)
+          while (productImages.length < 4 && productImages[0]) {
+            productImages.push(productImages[0]);
+          }
+
+          return {
+            id: card._id ? card._id.toString() : "",
+            categoryId: categoryId ? (typeof categoryId === 'object' && categoryId !== null ? categoryId._id?.toString() || "" : categoryId.toString()) : "",
+            name: card.name || "",
+            productImages: productImages.slice(0, 4),
+            productCount: categoryProducts.length,
+            translations: card.translations || {},
+          };
+        })
     );
 
+    const validBestsellers = bestsellers.filter(Boolean);
     const visibleBestsellers = hasUserLocation
-      ? bestsellers.filter((b: any) => Array.isArray(b.productImages) && b.productImages.length > 0)
-      : bestsellers;
+      ? validBestsellers.filter((b: any) => Array.isArray(b.productImages) && b.productImages.length > 0)
+      : validBestsellers;
 
     // 2. Lowest Prices Products - Get admin-selected products
     // We fetch these irrespective of location radius to show preview on home page
@@ -397,21 +398,20 @@ export const getHomeContent = async (req: Request, res: Response) => {
         match: {
           status: "Active",
           publish: true,
-          // Removed location filter to show preview images irrespective of radius
         },
       })
       .sort({ order: 1 })
       .lean();
 
-    // Filter out any products that were null (due to match condition)
+    // Filter out any products that were null (due to match condition or deletion)
     const validLowestPricesProducts = lowestPricesProducts
-      .filter((item: any) => item.product !== null)
+      .filter((item: any) => item && item.product)
       .map((item: any) => {
         const product = item.product;
-        const sellerIdStr = product.seller ? (typeof product.seller === 'object' ? product.seller._id?.toString() : product.seller.toString()) : null;
+        const sellerIdStr = product.seller ? (typeof product.seller === 'object' && product.seller !== null ? product.seller._id?.toString() : product.seller.toString()) : null;
         // Check if the product's seller is within range
         const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-          ? nearbySellerIds.some(id => id.toString() === sellerIdStr)
+          ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
           : false;
 
         const sellerObj = typeof product.seller === 'object' && product.seller !== null ? product.seller : null;
@@ -420,20 +420,20 @@ export const getHomeContent = async (req: Request, res: Response) => {
         const shopName = shopObj?.name || storeName || null;
 
         return {
-          id: product._id.toString(),
-          _id: product._id.toString(),
-          productName: product.productName,
-          name: product.productName,
-          mainImage: product.mainImage,
-          imageUrl: product.mainImage,
+          id: product._id ? product._id.toString() : "",
+          _id: product._id ? product._id.toString() : "",
+          productName: product.productName || "",
+          name: product.productName || "",
+          mainImage: product.mainImage || "",
+          imageUrl: product.mainImage || "",
           price: product.price,
           discPrice: product.discPrice || 0,
           compareAtPrice: product.compareAtPrice || product.mrp || product.price,
           mrp: product.mrp || product.compareAtPrice || product.price,
           discount: product.discount || (product.mrp && product.price ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0),
           variations: product.variations || [],
-          categoryId: product.category?.toString() || "",
-          subcategory: product.subcategory?.toString() || "",
+          categoryId: product.category ? (typeof product.category === 'object' && product.category !== null ? product.category._id?.toString() || "" : product.category.toString()) : "",
+          subcategory: product.subcategory ? (typeof product.subcategory === 'object' && product.subcategory !== null ? product.subcategory._id?.toString() || "" : product.subcategory.toString()) : "",
           status: product.status,
           publish: product.publish,
           isAvailable,
@@ -443,7 +443,6 @@ export const getHomeContent = async (req: Request, res: Response) => {
           translations: product.translations || {},
         };
       })
-
       // Strictly hide products from sellers not in range (when location is available).
       .filter((p: any) => !hasUserLocation || p.isAvailable === true);
 
@@ -466,8 +465,9 @@ export const getHomeContent = async (req: Request, res: Response) => {
         let productImages: string[] = [];
 
         if (shop.products && shop.products.length > 0) {
+          const validProdIds = shop.products.filter(Boolean);
           const shopProducts = await Product.find({
-            _id: { $in: shop.products.slice(0, 4) },
+            _id: { $in: validProdIds.slice(0, 4) },
             status: "Active",
             publish: true,
             ...(hasUserLocation ? { seller: { $in: nearbySellerIds } } : {}),
@@ -479,13 +479,13 @@ export const getHomeContent = async (req: Request, res: Response) => {
         }
 
         return {
-          id: shop.storeId || shop._id.toString(),
-          name: shop.name,
-          image: shop.image,
+          id: shop.storeId || (shop._id ? shop._id.toString() : ""),
+          name: shop.name || "",
+          image: shop.image || "",
           productImages, // Include preview images irrespective of location
-          slug: shop.storeId || shop._id.toString(),
+          slug: shop.storeId || (shop._id ? shop._id.toString() : ""),
           category: shop.category,
-          productIds: shop.products?.map((p: any) => p.toString()) || [],
+          productIds: (shop.products || []).filter(Boolean).map((p: any) => (typeof p === 'object' && p !== null && p._id ? p._id.toString() : p ? p.toString() : "")),
           bgColor: shop.bgColor || "bg-neutral-50",
           translations: shop.translations || {},
         };
@@ -505,8 +505,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .select("name image slug translations");
 
     const trending = trendingCategories.map((c: any) => ({
-      id: c._id,
-      name: c.name,
+      id: c._id ? c._id.toString() : "",
+      name: c.name || "",
       image: c.image || `/assets/categories/${c.slug}.jpg`,
       type: "category",
       translations: c.translations || {},
@@ -531,10 +531,10 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .select("productName mainImage translations");
 
     const cookingIdeas = foodProducts.map((p: any) => ({
-      id: p._id,
-      title: p.productName,
-      image: p.mainImage,
-      productId: p._id,
+      id: p._id ? p._id.toString() : "",
+      title: p.productName || "",
+      image: p.mainImage || "",
+      productId: p._id ? p._id.toString() : "",
       translations: p.translations || {},
     }));
 
@@ -586,11 +586,11 @@ export const getHomeContent = async (req: Request, res: Response) => {
           .filter((img: string) => img && img.trim() !== "");
 
         return {
-          id: category._id.toString(),
+          id: category._id ? category._id.toString() : "",
           badge: "Up to 55% OFF", // Default badge, can be customized later
-          title: category.name,
-          categoryId: category._id.toString(),
-          slug: category.slug || category._id.toString(),
+          title: category.name || "",
+          categoryId: category._id ? category._id.toString() : "",
+          slug: category.slug || (category._id ? category._id.toString() : ""),
           bgColor: "bg-yellow-50",
           subcategoryImages: subcategoryImages.slice(0, 4), // Max 4 images
           translations: category.translations || {},
@@ -675,12 +675,12 @@ export const getHomeContent = async (req: Request, res: Response) => {
         );
         
         return {
-          id: section._id.toString(),
-          title: section.title,
-          slug: section.slug,
+          id: section._id ? section._id.toString() : "",
+          title: section.title || "",
+          slug: section.slug || "",
           displayType: section.displayType,
           columns: section.columns,
-          data: sectionData,
+          data: sectionData || [],
           translations: section.translations || {},
         };
       })
@@ -688,12 +688,12 @@ export const getHomeContent = async (req: Request, res: Response) => {
 
     // 10. Fetch PromoStrip for the current header category (with caching)
     const currentHeaderCategorySlug = (headerCategorySlug as string) || "all";
-    const promoStripCacheKey = `promoStrip-${currentHeaderCategorySlug.toLowerCase()}`;
+    const promoStripCacheKey = `rawPromoStrip-${currentHeaderCategorySlug.toLowerCase()}`;
 
-    // Try to get from cache first
-    let promoStrip = cache.get(promoStripCacheKey) as any;
+    // Try to get raw un-mutated doc from cache first
+    let rawPromoStrip = cache.get(promoStripCacheKey) as any;
 
-    if (!promoStrip) {
+    if (rawPromoStrip === undefined) {
       const now = new Date();
       const promoStripDoc = await PromoStrip.findOne({
         headerCategorySlug: currentHeaderCategorySlug.toLowerCase(),
@@ -706,28 +706,31 @@ export const getHomeContent = async (req: Request, res: Response) => {
         .sort({ order: 1 })
         .lean();
 
-      promoStrip = promoStripDoc;
+      rawPromoStrip = promoStripDoc || null;
+      // Cache raw doc for 3 minutes
+      cache.set(promoStripCacheKey, rawPromoStrip, 3 * 60 * 1000);
+    }
 
-      // If we have promoStrip, add availability flag to featured products
-      if (promoStrip && (promoStrip as any).featuredProducts) {
-        (promoStrip as any).featuredProducts = (promoStrip as any).featuredProducts
+    let promoStrip = null;
+    if (rawPromoStrip) {
+      // Clone to avoid mutating cached object across different user locations
+      promoStrip = JSON.parse(JSON.stringify(rawPromoStrip));
+
+      if (promoStrip.featuredProducts && Array.isArray(promoStrip.featuredProducts)) {
+        promoStrip.featuredProducts = promoStrip.featuredProducts
+          .filter((p: any) => p && typeof p === 'object')
           .map((p: any) => {
+            const sellerIdStr = p.seller
+              ? (typeof p.seller === 'object' && p.seller !== null ? p.seller._id?.toString() : p.seller.toString())
+              : null;
             const isAvailable =
-              nearbySellerIds && nearbySellerIds.length > 0 && p.seller
-                ? nearbySellerIds.some(id => id.toString() === p.seller.toString())
+              nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+                ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
                 : false;
             return { ...p, isAvailable };
           })
           // Strictly hide products from sellers not in range (when location is available).
           .filter((p: any) => !hasUserLocation || p.isAvailable === true);
-      }
-
-      // Cache for 3 minutes (PromoStrip data doesn't change frequently)
-      if (promoStrip) {
-        cache.set(promoStripCacheKey, promoStrip, 3 * 60 * 1000);
-      } else {
-        // Cache null result for 1 minute to prevent repeated DB queries
-        cache.set(promoStripCacheKey, null, 60 * 1000);
       }
     }
 
@@ -761,6 +764,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
+    console.error("Error in getHomeContent:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching home content",

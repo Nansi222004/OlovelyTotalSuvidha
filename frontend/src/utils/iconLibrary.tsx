@@ -476,12 +476,61 @@ export const ICON_LIBRARY: IconDef[] = [
                 <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07" />
             </svg>
         )
+    },
+    {
+        name: 'milk-dairy',
+        label: 'Dairy & Milk',
+        tags: ['milk', 'dairy', 'cheese', 'butter', 'breakfast', 'cow', 'drink'],
+        svg: (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 2h8v3H8z" />
+                <path d="M7 5l-1 4v13h12V9l-1-4H7z" />
+                <path d="M6 13h12" />
+                <path d="M10 17h4" />
+            </svg>
+        )
+    },
+    {
+        name: 'beauty-cosmetics',
+        label: 'Beauty & Cosmetics',
+        tags: ['beauty', 'cosmetics', 'lipstick', 'makeup', 'care', 'salon'],
+        svg: (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 4L6 8V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V8L16 4H8Z" />
+                <path d="M8 4H16" />
+                <path d="M10 12L12 14L14 12" />
+                <path d="M9 8H15" />
+            </svg>
+        )
     }
 ];
 
 export const getIconByName = (name: string): React.ReactNode => {
+    if (!name) {
+        return (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+            </svg>
+        );
+    }
+
     const found = ICON_LIBRARY.find(icon => icon.name === name);
-    return found ? found.svg : (
+    if (found) return found.svg;
+
+    // Fallbacks by prefix or tag
+    if (name.includes('milk') || name.includes('dairy')) {
+        const dairy = ICON_LIBRARY.find(icon => icon.name === 'milk-dairy');
+        if (dairy) return dairy.svg;
+    }
+    if (name.includes('beauty') || name.includes('cosmetic')) {
+        const beauty = ICON_LIBRARY.find(icon => icon.name === 'beauty' || icon.name === 'beauty-cosmetics');
+        if (beauty) return beauty.svg;
+    }
+
+    return (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
         </svg>
