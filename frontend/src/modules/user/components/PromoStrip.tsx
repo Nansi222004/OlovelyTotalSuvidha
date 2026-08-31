@@ -20,22 +20,122 @@ interface PromoCard {
   subcategoryImages?: string[]; // Array of subcategory image URLs
 }
 
-// Icon mappings for each category
-const getCategoryIcons = (categoryId: string) => {
+// Comprehensive Icon mappings for each category and keyword fallback
+const getCategoryIcons = (categoryId: string, categoryTitle: string = ""): string[] => {
+  const normalized = (categoryId || "").toLowerCase().replace(/_/g, "-");
+  const titleNorm = (categoryTitle || "").toLowerCase();
+
   const iconMap: Record<string, string[]> = {
-    "personal-care": ["🧴", "💧", "🧼", "💄"],
+    // Fashion & Footwear
+    "foot-wear-ladies": ["👠", "👡", "🥿", "👢"],
+    "foot-wear-mens": ["👞", "👟", "🥾", "🩴"],
+    "ladies-wear-fashion": ["👗", "👚", "👘", "🥻"],
+    "mens-wear-fashion": ["👔", "👕", "👖", "🧥"],
+    "kids-wear": ["🧒", "👕", "🧸", "👟"],
+    "jewellery-item": ["💍", "💎", "👑", "📿"],
+    "handicraft-hosiery-item": ["🧶", "🧵", "🧦", "🧤"],
+    "ladies-jean-bag-purse": ["👜", "👛", "🎒", "👝"],
+    fashion: ["👕", "👗", "👠", "👜"],
+
+    // Grocery & Fresh
+    "vegetable-fruits-fresh": ["🥬", "🥕", "🍅", "🍎"],
+    "fruits-vegetable-juice": ["🧃", "🍊", "🍍", "🍉"],
+    "fruits-veg": ["🥬", "🥕", "🍅", "🥒"],
+    "dairy-items-milk-product": ["🥛", "🧀", "🧈", "🍦"],
+    "dairy-breakfast": ["🥛", "🧀", "🍞", "🥚"],
+    "dairy-milk": ["🥛", "🧀", "🧈", "🥛"],
+    "bakery-biscuit-item": ["🥐", "🥖", "🍪", "🍞"],
+    "bakery-biscuits": ["🥐", "🥖", "🍪", "🍞"],
+    "chips-namkeen-cold-drinks": ["🍿", "🥤", "🥨", "🍫"],
+    "sweet-farsan-chocolate": ["🍫", "🍬", "🧁", "🍩"],
+    "icecream-faluda": ["🍨", "🍦", "🍧", "🍮"],
+    "tea-coffee": ["☕", "🍵", "🧋", "🫖"],
+    "all-grocery-mart": ["🛒", "🥫", "🌾", "🍯"],
+    "rani-masala-spices-all": ["🌶️", "🧂", "🌿", "🥘"],
+    "all-spices-wholesaler": ["🌶️", "🧂", "🌿", "🥘"],
+    "oils-ghee": ["🫒", "🧈", "🫙", "🌻"],
+    "pan-parlour-all-item": ["🍃", "🍬", "🍫", "💨"],
     "breakfast-instant": ["🍜", "☕", "🥛", "🍞"],
     "atta-rice": ["🌾", "🍚", "🫘", "🫒"],
-    household: ["🧹", "🧽", "🧼", "🧴"],
-    "home-office": ["🏠", "💼", "📦", "🎁"],
-    fashion: ["👕", "👗", "👠", "👜"],
-    electronics: ["📱", "💻", "⌚", "🎧"],
-    "fruits-veg": ["🥬", "🥕", "🍅", "🥒"],
-    "dairy-breakfast": ["🥛", "🧀", "🍞", "🥚"],
     snacks: ["🍿", "🍪", "🥨", "🍫"],
+
+    // Personal & Beauty
+    "cosmetics-item-bath-body": ["💄", "🧴", "🧼", "💅"],
+    "skins-face-hair": ["✨", "🧴", "💇‍♀️", "💆"],
+    "baby-care-products": ["🍼", "👶", "🧸", "🧴"],
+    "personal-care": ["🧴", "💧", "🧼", "💄"],
+
+    // Electronics & Home
+    "electronics-all-items": ["📱", "💻", "⌚", "🎧"],
+    "ac-fridge-tv-electronics": ["📺", "❄️", "🖥️", "⚡"],
+    "mobile-item-accessories": ["📱", "🔌", "🔋", "🎧"],
+    electronics: ["📱", "💻", "⌚", "🎧"],
+    "home-decor": ["🖼️", "🪴", "🕯️", "🛋️"],
+    "furniture-all": ["🛋️", "🪑", "🛏️", "🚪"],
+    "home-furniture": ["🛋️", "🪑", "🛏️", "🚪"],
+    "kitchen-item-vasan-bhandar": ["🍳", "🔪", "🍽️", "🥘"],
+    "cleaners-refill-item": ["🧹", "🧽", "🧼", "🧴"],
+    household: ["🧹", "🧽", "🧼", "🧴"],
+
+    // Miscellaneous
+    "toys-sports-item": ["🧸", "⚽", "🎮", "🛹"],
+    "yoga-jim-item": ["🧘", "🏋️", "🏃", "🥊"],
     sports: ["⚽", "🏀", "🏋️", "🎾"],
+    "stationery-games-item": ["✏️", "📚", "🎨", "🎲"],
+    "pet-store-products": ["🐶", "🐱", "🦴", "🐾"],
+    "medical-health-pharma": ["💊", "🩺", "🩹", "💉"],
+    "puja-item": ["🪔", "🔔", "🌺", "🥥"],
+    "festival-item": ["🎉", "✨", "🎁", "🪔"],
+    "travel-item": ["🧳", "🎒", "✈️", "🗺️"],
   };
-  return iconMap[categoryId] || ["📦", "📦", "📦", "📦"];
+
+  if (iconMap[normalized]) {
+    return iconMap[normalized];
+  }
+
+  // Keyword heuristic matching if exact slug doesn't match
+  const searchStr = `${normalized} ${titleNorm}`;
+  if (searchStr.includes("foot") || searchStr.includes("shoe") || searchStr.includes("heel") || searchStr.includes("sandal")) {
+    return searchStr.includes("men") ? ["👞", "👟", "🥾", "🩴"] : ["👠", "👡", "🥿", "👢"];
+  }
+  if (searchStr.includes("ladi") || searchStr.includes("women") || searchStr.includes("dress") || searchStr.includes("saree") || searchStr.includes("kurti")) {
+    return ["👗", "👚", "👘", "🥻"];
+  }
+  if (searchStr.includes("men") || searchStr.includes("shirt") || searchStr.includes("pant") || searchStr.includes("suit")) {
+    return ["👔", "👕", "👖", "🧥"];
+  }
+  if (searchStr.includes("jewel") || searchStr.includes("ring") || searchStr.includes("gold")) {
+    return ["💍", "💎", "👑", "📿"];
+  }
+  if (searchStr.includes("bag") || searchStr.includes("purse") || searchStr.includes("wallet")) {
+    return ["👜", "👛", "🎒", "👝"];
+  }
+  if (searchStr.includes("fruit") || searchStr.includes("veg") || searchStr.includes("fresh")) {
+    return ["🍎", "🍌", "🥦", "🥕"];
+  }
+  if (searchStr.includes("milk") || searchStr.includes("dairy") || searchStr.includes("butter") || searchStr.includes("cheese")) {
+    return ["🥛", "🧀", "🧈", "🍦"];
+  }
+  if (searchStr.includes("spice") || searchStr.includes("masala")) {
+    return ["🌶️", "🧂", "🌿", "🥘"];
+  }
+  if (searchStr.includes("snack") || searchStr.includes("biscuit") || searchStr.includes("bakery") || searchStr.includes("cake")) {
+    return ["🍪", "🥐", "🥨", "🍫"];
+  }
+  if (searchStr.includes("drink") || searchStr.includes("tea") || searchStr.includes("coffee") || searchStr.includes("juice")) {
+    return ["☕", "🍵", "🧃", "🥤"];
+  }
+  if (searchStr.includes("phone") || searchStr.includes("elect") || searchStr.includes("gadget")) {
+    return ["📱", "💻", "⌚", "🎧"];
+  }
+  if (searchStr.includes("cosmetic") || searchStr.includes("beauty") || searchStr.includes("skin") || searchStr.includes("hair")) {
+    return ["💄", "🧴", "✨", "💅"];
+  }
+  if (searchStr.includes("toy") || searchStr.includes("kid") || searchStr.includes("baby")) {
+    return ["🧸", "🍼", "👶", "🎮"];
+  }
+
+  return ["✨", "🛍️", "🏷️", "⭐"];
 };
 
 interface PromoStripProps {
@@ -821,7 +921,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               // Use subcategory images from the map if available, otherwise check card.subcategoryImages, then fallback to emoji icons
               const subcategoryImages = subcategoryImagesMap[card.id] || card.subcategoryImages || [];
               const hasSubcategoryImages = subcategoryImages.length > 0;
-              const categoryIcons = getCategoryIcons(card.categoryId || "");
+              const categoryIcons = getCategoryIcons(card.slug || card.categoryId || "", card.title || "");
 
               return (
                 <div key={card.id} className="promo-card">
@@ -855,33 +955,32 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                         {getTranslatedField(card, "title") || card.title}
                       </div>
 
-                      {/* Subcategory Images or Emoji Icons - Horizontal Layout */}
+                      {/* Subcategory / Product Images or Category Icons - Horizontal Layout */}
                       <div
-                        className="flex items-center justify-center gap-1 overflow-hidden"
-                        style={{ marginTop: "auto" }}>
+                        className="flex items-center justify-center gap-1.5 overflow-hidden"
+                        style={{ marginTop: "auto", minHeight: "28px" }}>
                         {hasSubcategoryImages
-                          ? // Display subcategory images as small icons
+                          ? // Display subcategory or product images as icons
                           subcategoryImages.slice(0, 4).map((imageUrl, idx) => (
                             <div
                               key={idx}
-                              className="flex-shrink-0 bg-white rounded flex items-center justify-center overflow-hidden border border-neutral-200"
-                              style={{ width: "24px", height: "24px" }}>
+                              className={`flex-shrink-0 bg-white rounded-md flex items-center justify-center overflow-hidden border border-amber-200/70 shadow-2xs ${
+                                subcategoryImages.length === 1 ? "w-9 h-9" : "w-7 h-7"
+                              }`}>
                               <img
                                 src={imageUrl}
-                                alt={`Subcategory ${idx + 1}`}
+                                alt={`Item ${idx + 1}`}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
                                 decoding="async"
                                 onError={(e) => {
                                   // Fallback to emoji if image fails to load
-                                  const target =
-                                    e.target as HTMLImageElement;
+                                  const target = e.target as HTMLImageElement;
                                   target.style.display = "none";
                                   const parent = target.parentElement;
                                   if (parent) {
-                                    parent.innerHTML =
-                                      categoryIcons[idx] || "📦";
-                                    parent.style.fontSize = "18px";
+                                    parent.innerHTML = categoryIcons[idx] || "✨";
+                                    parent.style.fontSize = "16px";
                                     parent.style.display = "flex";
                                     parent.style.alignItems = "center";
                                     parent.style.justifyContent = "center";
@@ -890,15 +989,15 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                               />
                             </div>
                           ))
-                          : // Fallback to emoji icons if no subcategory images
+                          : // Fallback to theme category icons
                           categoryIcons.slice(0, 4).map((icon, idx) => (
                             <div
                               key={idx}
-                              className="flex-shrink-0 bg-transparent rounded flex items-center justify-center overflow-hidden"
+                              className="flex-shrink-0 bg-white/70 rounded-md flex items-center justify-center overflow-hidden border border-amber-100 shadow-2xs"
                               style={{
-                                width: "24px",
-                                height: "24px",
-                                fontSize: "18px",
+                                width: "26px",
+                                height: "26px",
+                                fontSize: "16px",
                               }}>
                               {icon}
                             </div>

@@ -247,60 +247,53 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
       {showAssignPopup && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 overflow-hidden">
-            <h3 className="text-xl font-bold text-neutral-900 mb-4">Assign Delivery</h3>
+            <h3 className="text-xl font-bold text-neutral-900 mb-2">Accept Order & Assign Delivery</h3>
             <p className="text-neutral-600 mb-6 text-sm">
-              {notification.deliveryOption === 'Instant'
-                ? 'Instant delivery: choose self-assign or a delivery partner will be notified automatically.'
-                : 'Please choose how you want to assign the delivery for this order.'}
+              Please choose how you want to assign the delivery for this order.
             </p>
 
             <div className="space-y-3 mb-6 flex flex-col items-stretch">
-              <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Self' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
+              <label
+                className={`flex items-start p-4 border rounded-xl cursor-pointer transition-all ${
+                  deliveryPreference === 'Self' ? 'border-teal-500 bg-teal-50/70 ring-2 ring-teal-500/20' : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
                 <input
                   type="radio"
                   name="delivery_preference_alert"
                   value="Self"
                   checked={deliveryPreference === 'Self'}
                   onChange={() => setDeliveryPreference('Self')}
-                  className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
+                  className="w-4 h-4 mt-0.5 text-teal-600 border-neutral-300 focus:ring-teal-500"
                 />
                 <div className="ml-3 text-left">
-                  <span className="block text-sm font-medium text-neutral-900">Self Assign</span>
-                  <span className="block text-xs text-neutral-500">Auto-broadcast to nearby delivery partners</span>
+                  <span className="block text-sm font-bold text-neutral-900">Assign by Seller</span>
+                  <span className="block text-xs text-neutral-500 mt-0.5">
+                    Manually select a delivery partner from the list of available online riders.
+                  </span>
                 </div>
               </label>
 
-              {notification.deliveryOption === 'Instant' ? (
-              <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Auto' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
-                <input
-                  type="radio"
-                  name="delivery_preference_alert"
-                  value="Auto"
-                  checked={deliveryPreference === 'Auto'}
-                  onChange={() => setDeliveryPreference('Auto')}
-                  className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
-                />
-                <div className="ml-3 text-left">
-                  <span className="block text-sm font-medium text-neutral-900">Auto-assign to delivery partner</span>
-                  <span className="block text-xs text-neutral-500">A delivery partner will be notified and can accept the order</span>
-                </div>
-              </label>
-              ) : (
-              <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Admin' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
+              <label
+                className={`flex items-start p-4 border rounded-xl cursor-pointer transition-all ${
+                  deliveryPreference === 'Admin' ? 'border-teal-500 bg-teal-50/70 ring-2 ring-teal-500/20' : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
                 <input
                   type="radio"
                   name="delivery_preference_alert"
                   value="Admin"
                   checked={deliveryPreference === 'Admin'}
                   onChange={() => setDeliveryPreference('Admin')}
-                  className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
+                  className="w-4 h-4 mt-0.5 text-teal-600 border-neutral-300 focus:ring-teal-500"
                 />
                 <div className="ml-3 text-left">
-                  <span className="block text-sm font-medium text-neutral-900">Assigned By Admin</span>
-                  <span className="block text-xs text-neutral-500">Let the admin assign a delivery boy for this order</span>
+                  <span className="block text-sm font-bold text-neutral-900">Assigned By Admin</span>
+                  <span className="block text-xs text-neutral-500 mt-0.5">
+                    Let the platform admin assign an eligible delivery partner for this order.
+                  </span>
                 </div>
               </label>
-              )}
             </div>
 
             <div className="flex gap-3 justify-end">
@@ -316,10 +309,10 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
                   setShowAssignPopup(false);
                   handleStatusUpdate('Accepted', deliveryPreference);
                 }}
-                className="px-5 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
+                className="px-5 py-2 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors shadow-sm"
                 disabled={loading}
               >
-                Confirm & Accept
+                {deliveryPreference === 'Self' ? 'Accept & Open Order' : 'Confirm & Accept'}
               </button>
             </div>
           </div>

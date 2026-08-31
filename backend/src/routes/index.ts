@@ -162,6 +162,7 @@ router.use("/header-categories", headerCategoryRoutes);
 
 // Order routes (protected, seller only)
 router.use("/orders", orderRoutes);
+router.use("/seller/orders", orderRoutes);
 
 // Return routes (protected, seller only)
 router.use("/returns", returnRoutes);

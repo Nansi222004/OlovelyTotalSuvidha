@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { useToast } from '../../../context/ToastContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
+import SellerAssignDeliveryBoyModal from '../components/SellerAssignDeliveryBoyModal';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -15,8 +16,9 @@ export default function SellerOrderDetail() {
   const [error, setError] = useState<string>('');
   const [orderStatus, setOrderStatus] = useState<string>('Out For Delivery');
   const [showAssignPopup, setShowAssignPopup] = useState(false);
+  const [showRiderModal, setShowRiderModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
-  const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin' | 'Auto'>('Admin');
+  const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin'>('Self');
   const [earningBreakdown, setEarningBreakdown] = useState<SellerEarningBreakdown | null>(null);
 
   // Fetch order detail from API
@@ -47,9 +49,9 @@ export default function SellerOrderDetail() {
   // Default delivery preference when assign popup opens: Instant → Auto, Standard → Admin
   useEffect(() => {
     if (showAssignPopup && orderDetail) {
-      setDeliveryPreference(orderDetail.deliveryOption === 'Instant' ? 'Auto' : 'Admin');
+      setDeliveryPreference('Self');
     }
-  }, [showAssignPopup, orderDetail?.id, orderDetail?.deliveryOption]);
+  }, [showAssignPopup, orderDetail?.id]);
 
   // Fetch earning breakdown (COD or Online): your earning, delivery (Self = you get delivery charge)
   useEffect(() => {
@@ -424,35 +426,47 @@ export default function SellerOrderDetail() {
         </div>
         <div className="bg-neutral-50 px-4 sm:px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex-1 w-full sm:w-auto">
+            <div className="flex-1 w-full sm:w-auto flex flex-wrap gap-3 items-center">
               {['Received', 'Pending'].includes(orderStatus) ? (
-                <div className="flex gap-3">
+                <div className="flex gap-3 w-full sm:w-auto">
                   <button
                     onClick={() => setShowAssignPopup(true)}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                    className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
                   >
                     Accept Order
                   </button>
                   <button
                     onClick={() => setShowRejectModal(true)}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                    className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
                   >
                     Reject Order
                   </button>
                 </div>
               ) : (
-                <select
-                  value={orderStatus}
-                  onChange={(e) => handleStatusUpdate(e.target.value)}
-                  className="w-full sm:w-64 px-4 py-2 border border-neutral-300 rounded-lg text-sm text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  disabled={orderStatus === 'Rejected' || orderStatus === 'Cancelled' || orderStatus === 'Delivered'}
-                >
-                  {orderStatus === 'Accepted' && <option value="Accepted">Accepted</option>}
-                  <option value="On the way">On the way</option>
-                  <option value="Delivered">Delivered</option>
-                  <option value="Cancelled">Cancelled</option>
-                  {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
-                </select>
+                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                  <select
+                    value={orderStatus}
+                    onChange={(e) => handleStatusUpdate(e.target.value)}
+                    className="w-full sm:w-64 px-4 py-2 border border-neutral-300 rounded-lg text-sm text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    disabled={orderStatus === 'Rejected' || orderStatus === 'Cancelled' || orderStatus === 'Delivered'}
+                  >
+                    {orderStatus === 'Accepted' && <option value="Accepted">Accepted</option>}
+                    <option value="On the way">On the way</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                    {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
+                  </select>
+
+                  {/* Manual Assignment Button for Seller */}
+                  {(!orderDetail?.deliveryBoyName || orderDetail?.deliveryBoyName === 'Self Assign') && ['Accepted', 'Processed', 'Received'].includes(orderStatus) && (
+                    <button
+                      onClick={() => setShowRiderModal(true)}
+                      className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm cursor-pointer"
+                    >
+                      <span>🛵</span> Assign by Seller
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             <button
@@ -518,35 +532,29 @@ export default function SellerOrderDetail() {
 
             {/* Middle: Customer Details */}
             <div className="flex-1 min-w-[280px] bg-neutral-50 p-4 rounded-lg border border-neutral-200/80 shadow-2xs">
-              <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-neutral-200 pb-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-teal-600">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                Customer & Delivery Details
-              </h3>
-              <div className="space-y-3">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase">Customer Name</span>
-                  <span className="text-sm text-neutral-900 font-semibold">{orderDetail.customerName}</span>
+              <div className="flex items-center justify-between mb-3 border-b border-neutral-200/60 pb-2">
+                <h3 className="text-sm font-bold text-neutral-800 uppercase tracking-wider">Customer Details</h3>
+                <span className="text-[10px] bg-teal-100 text-teal-800 font-semibold px-2 py-0.5 rounded">Verified</span>
+              </div>
+              <div className="space-y-2 text-sm text-neutral-700">
+                <div className="flex items-baseline">
+                  <span className="text-neutral-500 w-20 text-xs font-semibold">Name:</span>
+                  <span className="font-medium text-neutral-900">{orderDetail.customerName || 'N/A'}</span>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase">Phone Number</span>
-                  <a href={`tel:${orderDetail.customerPhone}`} className="text-sm text-teal-600 font-bold hover:underline flex items-center gap-1">
-                    {orderDetail.customerPhone}
-                  </a>
+                <div className="flex items-baseline">
+                  <span className="text-neutral-500 w-20 text-xs font-semibold">Email:</span>
+                  <span className="font-medium text-neutral-900 break-all">{orderDetail.customerEmail || 'N/A'}</span>
                 </div>
-                
-                <div className="flex flex-col gap-1.5 pt-2 border-t border-neutral-200/80">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase flex items-center gap-1">
-                    📍 Delivery Address
-                  </span>
-                  <div className="text-xs text-neutral-800 leading-relaxed font-medium bg-white p-3 rounded-lg border border-neutral-200/80 shadow-2xs">
+                <div className="flex items-baseline">
+                  <span className="text-neutral-500 w-20 text-xs font-semibold">Contact:</span>
+                  <span className="font-medium text-neutral-900">{orderDetail.customerPhone || 'N/A'}</span>
+                </div>
+                <div className="pt-2 border-t border-neutral-200/60">
+                  <span className="text-neutral-500 text-xs font-semibold block mb-0.5">Delivery Address:</span>
+                  <p className="text-xs text-neutral-800 leading-relaxed font-medium bg-white p-2 rounded border border-neutral-200">
                     {formatDeliveryAddress(orderDetail.deliveryAddress).formatted}
-                  </div>
-
-                  {/* Lat / Lng & Open in Maps Button */}
-                  {formatDeliveryAddress(orderDetail.deliveryAddress).mapsUrl && (
+                  </p>
+                  {orderDetail.deliveryAddress?.latitude && orderDetail.deliveryAddress?.longitude && (
                     <div className="mt-1 flex items-center justify-between gap-2 text-xs">
                       <span className="text-neutral-500 font-mono text-[11px]">
                         📍 {formatDeliveryAddress(orderDetail.deliveryAddress).latitude?.toFixed(6)}, {formatDeliveryAddress(orderDetail.deliveryAddress).longitude?.toFixed(6)}
@@ -570,7 +578,7 @@ export default function SellerOrderDetail() {
               </div>
             </div>
 
-            {/* Right: Invoice Details */}
+            {/* Right: Invoice & Delivery Partner Details */}
             <div className="flex-1 lg:text-right">
               <div className="text-sm text-neutral-600 mb-4">
                 <span className="font-medium">Date:</span> {formatDate(orderDetail.orderDate)}
@@ -584,10 +592,10 @@ export default function SellerOrderDetail() {
                   <span className="font-medium">Delivery Date:</span> {formatDate(orderDetail.deliveryDate)}
                 </div>
               )}
-              <div className="text-sm text-neutral-600 mb-3">
+              <div className="text-sm text-neutral-600 mb-2">
                 <span className="font-medium">Order Time:</span> {formatTime(orderDetail.orderDate)}
               </div>
-              <div className="text-sm text-neutral-600 mb-3">
+              <div className="text-sm text-neutral-600 mb-2">
                 <span className="font-medium">Delivery Type:</span>{' '}
                 {orderDetail.deliveryOption === 'Instant' ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Instant</span>
@@ -597,6 +605,40 @@ export default function SellerOrderDetail() {
                   '—'
                 )}
               </div>
+
+              {/* Delivery Partner Status */}
+              <div className="text-sm text-neutral-600 mb-2">
+                <span className="font-medium">Delivery Partner:</span>{' '}
+                {orderDetail.deliveryBoyName && orderDetail.deliveryBoyName !== 'Self Assign' ? (
+                  <div className="inline-flex items-center gap-2 flex-wrap mt-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-800">
+                      <span>🛵</span> {orderDetail.deliveryBoyName} {orderDetail.deliveryBoyPhone && `(${orderDetail.deliveryBoyPhone})`}
+                    </span>
+                    {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
+                      <button
+                        onClick={() => setShowRiderModal(true)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 underline cursor-pointer"
+                        title="Change Delivery Partner"
+                      >
+                        Change
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-2 flex-wrap mt-1">
+                    <span className="text-neutral-400 text-xs italic">Not Assigned</span>
+                    {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
+                      <button
+                        onClick={() => setShowRiderModal(true)}
+                        className="inline-flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded-md text-xs font-bold shadow-sm transition-all cursor-pointer"
+                      >
+                        <span>🛵</span> Assign Delivery Partner
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="text-sm text-neutral-600 mb-3">
                 <span className="font-medium">Payment Method:</span>{' '}
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
@@ -653,35 +695,28 @@ export default function SellerOrderDetail() {
         </div>
       </div>
 
-      {/* Earning breakdown: your earning (COD and Online); Self = delivery charge to you */}
-      {
-        earningBreakdown && (
-          <div className="mt-6 bg-white rounded-lg shadow-sm border border-teal-100 overflow-hidden">
-            <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
-              <h2 className="text-base sm:text-lg font-semibold">Earning breakdown</h2>
-              <p className="text-sm text-teal-100 mt-0.5">Your earning from this order</p>
-            </div>
-            <div className="px-4 sm:px-6 py-4 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Admin (commission + platform fee):</span>
-                <span className="font-semibold text-teal-700">₹{(earningBreakdown.totalAdminEarning ?? 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Your earning (this order):</span>
-                <span className="font-semibold text-green-700">₹{(earningBreakdown.yourEarning ?? 0).toFixed(2)}</span>
-              </div>
-              {earningBreakdown.isSelfAssign && (
-                <p className="text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-                  Self delivery: delivery charge is included in your earning. No share to delivery partner.
-                </p>
-              )}
-              {earningBreakdown.note && (
-                <p className="text-xs text-neutral-500">{earningBreakdown.note}</p>
-              )}
-            </div>
+      {/* Earning breakdown */}
+      {earningBreakdown && (
+        <div className="mt-6 bg-white rounded-lg shadow-sm border border-teal-100 overflow-hidden">
+          <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
+            <h2 className="text-base sm:text-lg font-semibold">Earning breakdown</h2>
+            <p className="text-sm text-teal-100 mt-0.5">Your earning from this order</p>
           </div>
-        )
-      }
+          <div className="px-4 sm:px-6 py-4 space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-neutral-600">Admin (commission + platform fee):</span>
+              <span className="font-semibold text-teal-700">₹{(earningBreakdown.totalAdminEarning ?? 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-600">Your earning (this order):</span>
+              <span className="font-semibold text-green-700">₹{(earningBreakdown.yourEarning ?? 0).toFixed(2)}</span>
+            </div>
+            {earningBreakdown.note && (
+              <p className="text-xs text-neutral-500">{earningBreakdown.note}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="mt-6 px-4 sm:px-6 text-center py-4 bg-neutral-100 rounded-lg">
@@ -690,88 +725,107 @@ export default function SellerOrderDetail() {
           <span className="font-semibold text-teal-600">Olovely Total Suvidha</span>
         </p>
       </footer>
-      {/* Delivery Assignment Popup */}
-      {
-        showAssignPopup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 overflow-hidden">
-              <h3 className="text-xl font-bold text-neutral-900 mb-4">Assign Delivery</h3>
-              <p className="text-neutral-600 mb-6 text-sm">
-                {orderDetail.deliveryOption === 'Instant'
-                  ? 'Instant delivery: choose self-assign or a delivery partner will be notified automatically.'
-                  : 'Please choose how you want to assign the delivery for this order.'}
-              </p>
 
-              <div className="space-y-3 mb-6">
-                <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Self' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
-                  <input
-                    type="radio"
-                    name="delivery_preference"
-                    value="Self"
-                    checked={deliveryPreference === 'Self'}
-                    onChange={() => setDeliveryPreference('Self')}
-                    className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
-                  />
-                  <div className="ml-3">
-                    <span className="block text-sm font-medium text-neutral-900">Self Assign</span>
-                    <span className="block text-xs text-neutral-500">Auto-broadcast to nearby delivery partners</span>
-                  </div>
-                </label>
+      {/* Delivery Assignment Mode Popup */}
+      {showAssignPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-hidden border border-neutral-200">
+            <h3 className="text-xl font-bold text-neutral-900 mb-2">Accept Order & Assign Delivery</h3>
+            <p className="text-neutral-600 mb-6 text-sm">
+              Please choose how you would like to assign the delivery for this order.
+            </p>
 
-                {orderDetail.deliveryOption === 'Instant' ? (
-                  <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Auto' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
-                    <input
-                      type="radio"
-                      name="delivery_preference"
-                      value="Auto"
-                      checked={deliveryPreference === 'Auto'}
-                      onChange={() => setDeliveryPreference('Auto')}
-                      className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
-                    />
-                    <div className="ml-3">
-                      <span className="block text-sm font-medium text-neutral-900">Auto-assign to delivery partner</span>
-                      <span className="block text-xs text-neutral-500">A delivery partner will be notified and can accept the order</span>
-                    </div>
-                  </label>
-                ) : (
-                  <label className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${deliveryPreference === 'Admin' ? 'border-teal-500 bg-teal-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
-                    <input
-                      type="radio"
-                      name="delivery_preference"
-                      value="Admin"
-                      checked={deliveryPreference === 'Admin'}
-                      onChange={() => setDeliveryPreference('Admin')}
-                      className="w-4 h-4 text-teal-600 border-neutral-300 focus:ring-teal-500"
-                    />
-                    <div className="ml-3">
-                      <span className="block text-sm font-medium text-neutral-900">Assigned By Admin</span>
-                      <span className="block text-xs text-neutral-500">Let the admin assign a delivery boy for this order</span>
-                    </div>
-                  </label>
-                )}
-              </div>
+            <div className="space-y-3 mb-6">
+              <label
+                className={`flex items-start p-4 border rounded-xl cursor-pointer transition-all ${
+                  deliveryPreference === 'Self' ? 'border-teal-500 bg-teal-50/70 ring-2 ring-teal-500/20' : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="delivery_preference"
+                  value="Self"
+                  checked={deliveryPreference === 'Self'}
+                  onChange={() => setDeliveryPreference('Self')}
+                  className="w-4 h-4 mt-0.5 text-teal-600 border-neutral-300 focus:ring-teal-500"
+                />
+                <div className="ml-3">
+                  <span className="block text-sm font-bold text-neutral-900">Assign by Seller</span>
+                  <span className="block text-xs text-neutral-500 mt-0.5">
+                    Manually select a delivery partner from the list of available online riders.
+                  </span>
+                </div>
+              </label>
 
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowAssignPopup(false)}
-                  className="px-5 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAssignPopup(false);
-                    handleStatusUpdate('Accepted', deliveryPreference);
-                  }}
-                  className="px-5 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
-                >
-                  Confirm & Accept
-                </button>
-              </div>
+              <label
+                className={`flex items-start p-4 border rounded-xl cursor-pointer transition-all ${
+                  deliveryPreference === 'Admin' ? 'border-teal-500 bg-teal-50/70 ring-2 ring-teal-500/20' : 'border-neutral-200 hover:bg-neutral-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="delivery_preference"
+                  value="Admin"
+                  checked={deliveryPreference === 'Admin'}
+                  onChange={() => setDeliveryPreference('Admin')}
+                  className="w-4 h-4 mt-0.5 text-teal-600 border-neutral-300 focus:ring-teal-500"
+                />
+                <div className="ml-3">
+                  <span className="block text-sm font-bold text-neutral-900">Assigned By Admin</span>
+                  <span className="block text-xs text-neutral-500 mt-0.5">
+                    Let the platform admin assign an eligible delivery partner for this order.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowAssignPopup(false)}
+                className="px-5 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowAssignPopup(false);
+                  if (deliveryPreference === 'Self') {
+                    await handleStatusUpdate('Accepted', 'Self');
+                    setShowRiderModal(true);
+                  } else {
+                    await handleStatusUpdate('Accepted', 'Admin');
+                  }
+                }}
+                className="px-5 py-2 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors shadow-sm"
+              >
+                {deliveryPreference === 'Self' ? 'Accept & Select Rider' : 'Confirm & Accept'}
+              </button>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
+
+      {/* Manual Delivery Partner Selection Modal */}
+      {orderDetail && (
+        <SellerAssignDeliveryBoyModal
+          isOpen={showRiderModal}
+          onClose={() => setShowRiderModal(false)}
+          orderId={orderDetail.id}
+          orderNumber={orderDetail.invoiceNumber || orderDetail.id}
+          onAssignSuccess={(rider) => {
+            setOrderDetail((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    deliveryBoyName: rider?.name || 'Assigned Partner',
+                    deliveryBoyPhone: rider?.mobile || '',
+                  }
+                : null
+            );
+            setOrderStatus('Processed');
+          }}
+        />
+      )}
 
       <ConfirmationModal
         isOpen={showRejectModal}

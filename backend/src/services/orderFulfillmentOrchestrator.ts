@@ -190,12 +190,11 @@ export async function recomputeOrderFulfillment(
     );
   }
 
-  // Trigger delivery boy assignment if deliveryPreference is "Self" (Seller-initiated broadcast)
-  // or deliveryOption is "Instant". For "Admin" preference on Standard delivery, Admin manually assigns.
-  const shouldTriggerAssignment =
-    (order.deliveryPreference === "Self" || order.deliveryOption === "Instant")
-      ? await tryStartDeliveryAssignment(order._id as mongoose.Types.ObjectId)
-      : false;
+  // Manual Assignment Model:
+  // "Self" (Assign by Seller) -> Seller manually selects specific rider.
+  // "Admin" (Assign by Admin) -> Admin manually assigns specific rider.
+  // No automatic multi-rider broadcast for manual assignment preferences.
+  const shouldTriggerAssignment = false;
 
   if (io && state.rejectedSellerIds.length > 0) {
     io.to(`order-${orderId}`).emit("order-partial-rejection", {

@@ -28,7 +28,7 @@ export const getOrderTracking = asyncHandler(
     // Get latest tracking information
     const tracking = await DeliveryTracking.findOne({ order: orderId })
       .sort({ updatedAt: -1 })
-      .populate("deliveryBoy", "name phone profileImage")
+      .populate("deliveryBoy", "name mobile phone profileImage")
       .lean();
 
     if (!tracking) {
@@ -48,7 +48,13 @@ export const getOrderTracking = asyncHandler(
         orderNumber: order.orderNumber,
         status: order.status,
         tracking: {
-          deliveryBoy: tracking.deliveryBoy,
+          deliveryBoy: tracking.deliveryBoy
+            ? {
+                ...tracking.deliveryBoy,
+                phone: (tracking.deliveryBoy as any).mobile || (tracking.deliveryBoy as any).phone || "",
+                mobile: (tracking.deliveryBoy as any).mobile || (tracking.deliveryBoy as any).phone || "",
+              }
+            : undefined,
           currentLocation: tracking.currentLocation,
           route: tracking.route,
           eta: tracking.eta,

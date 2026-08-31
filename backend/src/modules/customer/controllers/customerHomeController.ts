@@ -8,6 +8,7 @@ import HomeSection from "../../../models/HomeSection";
 import BestsellerCard from "../../../models/BestsellerCard";
 import LowestPricesProduct from "../../../models/LowestPricesProduct";
 import PromoStrip from "../../../models/PromoStrip";
+import Seller from "../../../models/Seller";
 import mongoose from "mongoose";
 import { cache } from "../../../utils/cache";
 import { findSellersWithinRange } from "../../../utils/locationHelper";
@@ -570,29 +571,61 @@ export const getHomeContent = async (req: Request, res: Response) => {
 
     const promoCards = await Promise.all(
       categoriesWithHeaderCategory.map(async (category: any) => {
-        // Get child categories (subcategories) for this category
+        // 1. Get child categories (subcategories) for this category
         const childCategories = await Category.find({
           parentId: category._id,
           status: "Active",
         })
           .select("name image _id translations")
           .sort({ order: 1 })
-          .limit(4) // Limit to 4 subcategory images
+          .limit(4)
           .lean();
 
-        // Extract subcategory images
-        const subcategoryImages = childCategories
+        let subcategoryImages = childCategories
           .map((child: any) => child.image)
           .filter((img: string) => img && img.trim() !== "");
 
+        // 2. Fallback to SubCategory collection
+        if (subcategoryImages.length === 0) {
+          const legacySubs = await SubCategory.find({ category: category._id })
+            .select("image subcategoryImage")
+            .limit(4)
+            .lean();
+          subcategoryImages = legacySubs
+            .map((s: any) => s.subcategoryImage || s.image)
+            .filter((img: any) => img && typeof img === "string" && img.trim() !== "");
+        }
+
+        // 3. Fallback: Fetch actual product images belonging to this category
+        if (subcategoryImages.length === 0) {
+          const categoryProducts = await Product.find({
+            category: category._id,
+            status: "Active",
+            publish: true,
+            mainImage: { $exists: true, $ne: null, $nin: ["", "/placeholder.png"] },
+          })
+            .select("mainImage")
+            .limit(4)
+            .lean();
+
+          subcategoryImages = categoryProducts
+            .map((p: any) => p.mainImage)
+            .filter((img: any) => img && typeof img === "string" && img.trim() !== "");
+        }
+
+        // 4. Fallback: Category's own image if available
+        if (subcategoryImages.length === 0 && category.image && category.image.trim() !== "") {
+          subcategoryImages = [category.image];
+        }
+
         return {
           id: category._id ? category._id.toString() : "",
-          badge: "Up to 55% OFF", // Default badge, can be customized later
+          badge: "Up to 55% OFF",
           title: category.name || "",
           categoryId: category._id ? category._id.toString() : "",
           slug: category.slug || (category._id ? category._id.toString() : ""),
           bgColor: "bg-yellow-50",
-          subcategoryImages: subcategoryImages.slice(0, 4), // Max 4 images
+          subcategoryImages: subcategoryImages.slice(0, 4),
           translations: category.translations || {},
         };
       })
@@ -833,13 +866,29 @@ export const getStoreProducts = async (req: Request, res: Response) => {
       // Get shop ID for filtering
       const shopId = (shop as any)._id;
 
-      // If shop has specific products assigned, use those product IDs
-      if (productIds.length > 0) {
+      // Find matching seller by store name / storeId
+      const matchingSeller = await Seller.findOne({
+        $or: [
+          { storeName: new RegExp(`^${(shop.name || "").trim()}$`, "i") },
+          { storeName: new RegExp(`^${storeId.replace(/-/g, " ").trim()}$`, "i") },
+          { storeName: new RegExp((shop.name || "").trim().replace(/\s+/g, ".*"), "i") },
+        ]
+      }).select("_id");
+
+      if (matchingSeller) {
+        console.log(`[getStoreProducts] Matching seller found: ${matchingSeller._id}`);
+        if (productIds.length > 0) {
+          query.$or = [
+            { _id: { $in: productIds } },
+            { seller: matchingSeller._id }
+          ];
+        } else {
+          query.seller = matchingSeller._id;
+        }
+      } else if (productIds.length > 0) {
         query._id = { $in: productIds };
         console.log(`[getStoreProducts] Filtering by assigned product IDs: ${productIds.length} products`);
-      }
-      // Otherwise, filter by shopId or category/subcategory
-      else {
+      } else {
         const orConditions: any[] = [
           { shopId: shopId },
           { isShopByStoreOnly: true }

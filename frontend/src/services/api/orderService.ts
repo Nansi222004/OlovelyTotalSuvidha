@@ -65,9 +65,26 @@ export interface OrderDetail {
   deliveryOption?: 'Instant' | 'Standard';
 }
 
+export interface AvailableDeliveryPartner {
+  _id: string;
+  name: string;
+  mobile: string;
+  email?: string;
+  vehicleNumber?: string;
+  vehicleType?: string;
+  profileImage?: string;
+  isOnline: boolean;
+  available: string;
+  status: string;
+  distanceKm?: number | null;
+  isBusy?: boolean;
+  activeOrdersCount?: number;
+}
+
 export interface UpdateOrderStatusData {
   status: 'Accepted' | 'On the way' | 'Delivered' | 'Cancelled' | 'Rejected';
   deliveryPreference?: 'Self' | 'Admin';
+  deliveryBoyId?: string;
 }
 
 export interface GetOrdersParams {
@@ -120,6 +137,22 @@ export const getOrderById = async (id: string): Promise<ApiResponse<OrderDetail>
  */
 export const updateOrderStatus = async (id: string, data: UpdateOrderStatusData): Promise<ApiResponse<{ id: string; status: string }>> => {
   const response = await api.patch<ApiResponse<{ id: string; status: string }>>(`/orders/${id}/status`, data);
+  return response.data;
+};
+
+/**
+ * Get available delivery partners for an order (Seller Assignment)
+ */
+export const getAvailableDeliveryPartners = async (orderId: string): Promise<ApiResponse<AvailableDeliveryPartner[]>> => {
+  const response = await api.get<ApiResponse<AvailableDeliveryPartner[]>>(`/orders/${orderId}/available-delivery-partners`);
+  return response.data;
+};
+
+/**
+ * Assign delivery partner to order by Seller (Manual Assignment)
+ */
+export const assignDeliveryBoySeller = async (orderId: string, deliveryBoyId: string): Promise<ApiResponse<any>> => {
+  const response = await api.patch<ApiResponse<any>>(`/orders/${orderId}/assign-delivery`, { deliveryBoyId });
   return response.data;
 };
 

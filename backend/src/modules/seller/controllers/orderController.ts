@@ -443,9 +443,7 @@ export const getOrderById = asyncHandler(
       customerName: (order.customer as any)?.name || order.customerName || "",
       customerEmail:
         (order.customer as any)?.email || order.customerEmail || "",
-      customerPhone:
-        (order.customer as any)?.phone || order.customerPhone || "",
-      deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
+      deliveryBoyName: (order.deliveryBoy as any)?.name || "",
       deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
       deliveryPreference: order.deliveryPreference,
       deliveryOption: order.deliveryOption,
@@ -685,4 +683,262 @@ export const updateOrderStatus = asyncHandler(
     });
   },
 );
+
+/**
+ * Get available delivery partners for seller manual assignment
+ */
+export const getAvailableDeliveryPartners = asyncHandler(
+  async (req: Request, res: Response) => {
+    const sellerId = (req as any).user?.userId;
+    const { id } = req.params;
+
+    // Verify order exists and seller has items in it
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const sellerItems = await OrderItem.findOne({ order: id, seller: sellerId });
+    if (!sellerItems) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view delivery partners for this order",
+      });
+    }
+
+    // Get seller location for proximity calculation
+    const Seller = (await import("../../../models/Seller")).default;
+    const seller = await Seller.findById(sellerId).select("latitude longitude serviceRadiusKm");
+    const sellerLat = seller?.latitude ? parseFloat(seller.latitude) : null;
+    const sellerLng = seller?.longitude ? parseFloat(seller.longitude) : null;
+
+    // Fetch active & online delivery partners
+    const Delivery = (await import("../../../models/Delivery")).default;
+    const deliveryBoys = await Delivery.find({
+      status: "Active",
+      isOnline: true,
+      available: "Available",
+    }).select("name mobile email vehicleNumber vehicleType isOnline available status location profileImage");
+
+    // Count active in-progress orders for each delivery boy
+    const busyOrders = await Order.find({
+      deliveryBoy: { $in: deliveryBoys.map((d) => d._id) },
+      deliveryBoyStatus: { $in: ["Assigned", "Picked Up", "In Transit"] },
+      status: { $nin: ["Delivered", "Cancelled", "Rejected", "Returned"] },
+    }).select("deliveryBoy");
+
+    const riderOrderCounts: Record<string, number> = {};
+    busyOrders.forEach((o) => {
+      const id = o.deliveryBoy?.toString();
+      if (id) {
+        riderOrderCounts[id] = (riderOrderCounts[id] || 0) + 1;
+      }
+    });
+
+    const { calculateDistance } = await import("../../../utils/locationHelper");
+
+    const formattedRiders = deliveryBoys.map((rider) => {
+      let distanceKm: number | null = null;
+      if (
+        sellerLat !== null &&
+        sellerLng !== null &&
+        rider.location?.coordinates &&
+        rider.location.coordinates.length === 2
+      ) {
+        const [riderLng, riderLat] = rider.location.coordinates;
+        distanceKm = Math.round(calculateDistance(sellerLat, sellerLng, riderLat, riderLng) * 10) / 10;
+      }
+
+      const activeOrdersCount = riderOrderCounts[rider._id.toString()] || 0;
+      const isBusy = activeOrdersCount > 0;
+
+      return {
+        _id: rider._id,
+        name: rider.name,
+        mobile: rider.mobile,
+        email: rider.email,
+        vehicleNumber: rider.vehicleNumber || "",
+        vehicleType: rider.vehicleType || "Bike",
+        profileImage: rider.profileImage || "",
+        isOnline: rider.isOnline,
+        available: rider.available,
+        status: rider.status,
+        distanceKm,
+        isBusy,
+        activeOrdersCount,
+      };
+    });
+
+    // Sort: Available non-busy riders first, then by distance ascending
+    formattedRiders.sort((a, b) => {
+      if (a.isBusy !== b.isBusy) return a.isBusy ? 1 : -1;
+      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
+      if (a.distanceKm !== null) return -1;
+      if (b.distanceKm !== null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Available delivery partners fetched successfully",
+      data: formattedRiders,
+    });
+  },
+);
+
+/**
+ * Assign delivery boy by seller (Manual Seller Assignment)
+ */
+export const assignDeliveryBoySeller = asyncHandler(
+  async (req: Request, res: Response) => {
+    const sellerId = (req as any).user?.userId;
+    const { id } = req.params;
+    const { deliveryBoyId } = req.body;
+
+    if (!deliveryBoyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery partner ID is required",
+      });
+    }
+
+    // Verify order exists and seller has items in it
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const sellerItems = await OrderItem.findOne({ order: id, seller: sellerId });
+    if (!sellerItems) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to assign delivery for this order",
+      });
+    }
+
+    if (["Delivered", "Cancelled", "Rejected", "Returned"].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot assign delivery partner to order with status ${order.status}`,
+      });
+    }
+
+    // Verify delivery boy exists and is active
+    const Delivery = (await import("../../../models/Delivery")).default;
+    const deliveryBoy = await Delivery.findById(deliveryBoyId);
+    if (!deliveryBoy) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery partner not found",
+      });
+    }
+
+    if (deliveryBoy.status !== "Active") {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery partner is not active",
+      });
+    }
+
+    // Check if order is already assigned to a different rider
+    if (order.deliveryBoy && order.deliveryBoy.toString() !== deliveryBoyId.toString()) {
+      return res.status(409).json({
+        success: false,
+        message: "Order is already assigned to another delivery partner",
+      });
+    }
+
+    // Atomic update on order
+    const nextStatus = (order.status === "Pending" || order.status === "Received" || order.status === "Accepted")
+      ? "Processed"
+      : order.status;
+
+    const updatedOrder = await Order.findOneAndUpdate(
+      {
+        _id: id,
+        $or: [
+          { deliveryBoy: null },
+          { deliveryBoy: { $exists: false } },
+          { deliveryBoy: deliveryBoyId },
+        ],
+        status: { $nin: ["Delivered", "Cancelled", "Rejected", "Returned"] },
+      },
+      {
+        $set: {
+          deliveryBoy: deliveryBoyId,
+          deliveryBoyStatus: "Assigned",
+          assignedAt: new Date(),
+          deliveryPreference: "Self",
+          deliveryAssignmentStatus: "Assigned",
+          deliveryAssignmentResolvedAt: new Date(),
+          status: nextStatus,
+        },
+      },
+      { new: true },
+    )
+      .populate("customer", "name email phone")
+      .populate("deliveryBoy", "name mobile email vehicleNumber vehicleType")
+      .populate("items");
+
+    if (!updatedOrder) {
+      const currentOrder = await Order.findById(id);
+      if (currentOrder?.deliveryBoy && currentOrder.deliveryBoy.toString() !== deliveryBoyId.toString()) {
+        return res.status(409).json({
+          success: false,
+          message: "Order was already assigned to another delivery partner",
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Failed to assign delivery partner",
+      });
+    }
+
+    // Create or update delivery assignment record
+    const DeliveryAssignment = (await import("../../../models/DeliveryAssignment")).default;
+    await DeliveryAssignment.findOneAndUpdate(
+      { order: id },
+      {
+        order: id,
+        deliveryBoy: deliveryBoyId,
+        assignedAt: new Date(),
+        assignedBy: sellerId,
+        status: "Assigned",
+      },
+      { upsert: true, new: true },
+    );
+
+    // Trigger notification to delivery boy & broadcast order update
+    const io: SocketIOServer = req.app.get("io");
+    if (io) {
+      const { notifyDeliveryBoyOfAssignment } = await import(
+        "../../../services/orderNotificationService"
+      );
+      notifyDeliveryBoyOfAssignment(io, updatedOrder, deliveryBoyId);
+
+      io.to(`order-${id}`).emit("order-updated", {
+        orderId: id,
+        deliveryBoy: deliveryBoyId,
+        deliveryBoyName: deliveryBoy.name,
+        deliveryBoyPhone: deliveryBoy.mobile,
+        status: updatedOrder.status,
+        deliveryBoyStatus: "Assigned",
+        deliveryAssignmentStatus: "Assigned",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Delivery partner assigned successfully",
+      data: updatedOrder,
+    });
+  },
+);
+
 

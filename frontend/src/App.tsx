@@ -202,6 +202,9 @@ const AdminSellerTransaction = lazyWithRetry(
 const AdminStockManagement = lazyWithRetry(
   () => import("./modules/admin/pages/AdminStockManagement"), "AdminStockManagement"
 );
+const AdminProductEdit = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminProductEdit"), "AdminProductEdit"
+);
 const AdminSubcategoryOrder = lazyWithRetry(
   () => import("./modules/admin/pages/AdminSubcategoryOrder"), "AdminSubcategoryOrder"
 );
@@ -734,6 +737,10 @@ function App() {
                                       <Route
                                         path="product/list"
                                         element={<AdminStockManagement />}
+                                      />
+                                      <Route
+                                        path="product/edit/:id"
+                                        element={<AdminProductEdit />}
                                       />
                                       <Route
                                         path="manage-seller/list"
