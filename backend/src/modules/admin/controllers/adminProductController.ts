@@ -993,10 +993,14 @@ export const getProductById = asyncHandler(
     const { id } = req.params;
 
     const product = await Product.findById(id)
-      .populate("category", "name")
-      .populate("subcategory", "name")
+      .populate("category", "name headerCategoryId")
+      .populate("subcategory", "name subcategoryName")
+      .populate("subSubCategory", "name")
+      .populate("headerCategoryId", "name slug")
       .populate("brand", "name")
+      .populate("tax", "name percentage")
       .populate("seller", "sellerName storeName")
+      .populate("shopId", "name storeId image")
       .populate("approvedBy", "firstName lastName");
 
     if (!product) {
@@ -1022,15 +1026,103 @@ export const updateProduct = asyncHandler(
     const { id } = req.params;
     const updateData = req.body;
 
-    const product = await Product.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("category", "name")
-      .populate("subcategory", "name")
-      .populate("brand", "name")
-      .populate("seller", "sellerName storeName");
+    // Map frontend field names to model field names and sanitize empty strings to null
+    if (updateData.headerCategoryId !== undefined) {
+      updateData.headerCategoryId = updateData.headerCategoryId || null;
+    }
+    if (updateData.categoryId !== undefined) {
+      updateData.category = updateData.categoryId || null;
+      delete updateData.categoryId;
+    }
+    if (updateData.category !== undefined) {
+      updateData.category = updateData.category || null;
+    }
+    if (updateData.subcategoryId !== undefined) {
+      updateData.subcategory = updateData.subcategoryId || null;
+      delete updateData.subcategoryId;
+    }
+    if (updateData.subcategory !== undefined) {
+      updateData.subcategory = updateData.subcategory || null;
+    }
+    if (updateData.subSubCategoryId !== undefined) {
+      updateData.subSubCategory = updateData.subSubCategoryId || null;
+      delete updateData.subSubCategoryId;
+    }
+    if (updateData.subSubCategory !== undefined) {
+      updateData.subSubCategory = updateData.subSubCategory || null;
+    }
+    if (updateData.brandId !== undefined) {
+      updateData.brand = updateData.brandId || null;
+      delete updateData.brandId;
+    }
+    if (updateData.brand !== undefined) {
+      updateData.brand = updateData.brand || null;
+    }
+    if (updateData.taxId !== undefined) {
+      updateData.tax = updateData.taxId || null;
+      delete updateData.taxId;
+    }
+    if (updateData.tax !== undefined) {
+      updateData.tax = updateData.tax || null;
+    }
+    if (updateData.mainImageUrl !== undefined) {
+      updateData.mainImage = updateData.mainImageUrl;
+      delete updateData.mainImageUrl;
+    }
+    if (updateData.galleryImageUrls !== undefined) {
+      updateData.galleryImages = updateData.galleryImageUrls;
+      delete updateData.galleryImageUrls;
+    }
 
+    // Process variations
+    if (updateData.variations) {
+      if (updateData.variations.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Product must have at least one variation",
+        });
+      }
+
+      updateData.variations = updateData.variations.map((v: any) => ({
+        ...v,
+        value: v.value || v.title,
+        name: v.name || "Variation",
+        discPrice: v.discPrice || 0,
+        status: v.status || "Available",
+      }));
+
+      for (const variation of updateData.variations) {
+        if (Number(variation.discPrice) > Number(variation.price)) {
+          return res.status(400).json({
+            success: false,
+            message: `Discounted price (${variation.discPrice}) cannot be greater than price (${variation.price}) for variation ${
+              variation.title || variation.value
+            }`,
+          });
+        }
+      }
+
+      updateData.price = updateData.variations[0].price;
+      updateData.discPrice = updateData.variations[0].discPrice || 0;
+      updateData.stock = updateData.variations.reduce(
+        (acc: number, curr: any) => acc + (parseInt(curr.stock) || 0),
+        0
+      );
+    }
+
+    // Handle Shop by Store fields
+    if (updateData.isShopByStoreOnly !== undefined) {
+      updateData.isShopByStoreOnly =
+        updateData.isShopByStoreOnly === true ||
+        updateData.isShopByStoreOnly === "true";
+    }
+    if (updateData.shopId !== undefined) {
+      updateData.shopId = updateData.shopId || null;
+    } else if (updateData.isShopByStoreOnly === false) {
+      updateData.shopId = null;
+    }
+
+    const product = await Product.findById(id);
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -1038,21 +1130,40 @@ export const updateProduct = asyncHandler(
       });
     }
 
+    Object.assign(product, updateData);
+
+    if (updateData.variations) {
+      product.markModified("variations");
+    }
+
+    await product.save();
+
     // Update inventory if stock changed
-    if (updateData.stock !== undefined) {
+    if (product.stock !== undefined) {
       await Inventory.findOneAndUpdate(
         { product: id },
         {
-          currentStock: updateData.stock,
-          availableStock: updateData.stock,
-        }
+          currentStock: product.stock,
+          availableStock: product.stock,
+        },
+        { upsert: true }
       );
     }
+
+    const populatedProduct = await Product.findById(product._id)
+      .populate("category", "name headerCategoryId")
+      .populate("subcategory", "name subcategoryName")
+      .populate("subSubCategory", "name")
+      .populate("headerCategoryId", "name slug")
+      .populate("brand", "name")
+      .populate("tax", "name percentage")
+      .populate("seller", "sellerName storeName")
+      .populate("shopId", "name storeId image");
 
     return res.status(200).json({
       success: true,
       message: "Product updated successfully",
-      data: product,
+      data: populatedProduct,
     });
   }
 );

@@ -202,8 +202,8 @@ export const calculateOrderCommissions = async (orderId: string) => {
       }),
     );
 
-    // Calculate delivery boy commission only when delivery boy is assigned and NOT Self Assign
-    if (order.deliveryBoy && order.deliveryPreference !== "Self") {
+    // Calculate delivery boy commission whenever delivery boy is assigned
+    if (order.deliveryBoy) {
       const deliveryBoyId = order.deliveryBoy.toString();
 
       // Check for distance based commission
@@ -431,10 +431,10 @@ export const distributeCommissions = async (orderId: string) => {
       }
     }
 
-    const isSelfAssign = order.deliveryPreference === "Self";
+    const isSelfAssign = !order.deliveryBoy;
     const shippingTotal = order.shipping || 0;
 
-    // Self Assign: add delivery charge to seller earnings (proportional by item total)
+    // Self Delivery without rider: add delivery charge to seller earnings (proportional by item total)
     if (isSelfAssign && shippingTotal > 0) {
       let totalOrderAmount = 0;
       for (const [, data] of sellerEarnings.entries()) {
@@ -520,8 +520,8 @@ export const distributeCommissions = async (orderId: string) => {
       };
     }
 
-    // Handle Delivery Boy Commission only when delivery boy assigned and NOT Self Assign
-    if (order.deliveryBoy && order.deliveryPreference !== "Self") {
+    // Handle Delivery Boy Commission whenever delivery boy is assigned
+    if (order.deliveryBoy) {
       const deliveryBoyId = order.deliveryBoy.toString();
       const existingDeliveryComm = await Commission.findOne({
         order: orderId,
@@ -975,8 +975,9 @@ export const calculateCODOrderBreakdown = async (
       );
     }
 
-    // 2. Calculate Delivery Commission Split (Self Assign = delivery charge to seller, no delivery boy)
-    if (isSelfAssign) {
+    // 2. Calculate Delivery Commission Split
+    if (!order.deliveryBoy) {
+      // Self Delivery without rider: delivery charge to seller, no delivery boy
       breakdown.deliveryBoyCommission = 0;
       breakdown.adminDeliveryCommission = 0;
       breakdown.amountDeliveryBoyOwesAdmin = 0;
@@ -1249,12 +1250,8 @@ export const processCODOrderDelivery = async (
       throw new Error("This function is only for COD orders");
     }
 
-    if (order.deliveryPreference === "Self") {
-      throw new Error("Use processCODOrderDeliverySelf for Self Assign COD orders");
-    }
-
     if (!order.deliveryBoy) {
-      throw new Error("Order must have a delivery boy assigned");
+      throw new Error("Use processCODOrderDeliverySelf for Self Delivery COD orders without assigned delivery boy");
     }
 
     // Calculate complete breakdown

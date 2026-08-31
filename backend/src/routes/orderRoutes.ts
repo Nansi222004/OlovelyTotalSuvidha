@@ -8,6 +8,8 @@ import {
   markOrderCODPaidSeller,
   updateOrderStatus,
   getPendingOrderAlerts,
+  getAvailableDeliveryPartners,
+  assignDeliveryBoySeller,
 } from "../modules/seller/controllers/orderController";
 import { authenticate, requireUserType, requireApprovedUser } from "../middleware/auth";
 
@@ -25,8 +27,12 @@ router.get("/pending-alerts", getPendingOrderAlerts);
 // Settlement page (must be before /:id)
 router.get("/settlement", getSettlementOrders);
 
-// Get order by ID
-router.get("/:id", getOrderById);
+// Available delivery partners for manual seller assignment (must be before /:id)
+router.get("/:id/available-delivery-partners", getAvailableDeliveryPartners);
+// Manual seller delivery assignment
+router.patch("/:id/assign-delivery", assignDeliveryBoySeller);
+router.post("/:id/assign-delivery", assignDeliveryBoySeller);
+
 // COD breakdown (admin commission, your earning, Self Assign note)
 router.get("/:id/cod-breakdown", getOrderCODBreakdown);
 // Earning breakdown for any order (COD or Online): your earning, delivery (Self / delivery partner)
@@ -39,4 +45,8 @@ router.patch("/:id/mark-cod-paid", markOrderCODPaidSeller);
 router.patch("/:id/status", updateOrderStatus);
 router.put("/:id/status", updateOrderStatus);
 
+// Get order by ID (must be after specific sub-routes)
+router.get("/:id", getOrderById);
+
 export default router;
+

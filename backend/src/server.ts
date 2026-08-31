@@ -16,6 +16,7 @@ import { initializeFirebaseAdmin } from "./services/firebaseAdmin";
 // Load environment variables
 dotenv.config();
 
+// Server Instance
 const app: Application = express();
 const httpServer = createServer(app);
 

@@ -889,7 +889,7 @@ export const getOrderById = async (req: Request, res: Response) => {
           { path: "seller", select: "storeName city phone fssaiLicNo" },
         ],
       })
-      .populate("deliveryBoy", "name phone profileImage vehicleNumber");
+      .populate("deliveryBoy", "name mobile phone profileImage vehicleNumber");
 
     if (!order) {
       return res.status(404).json({
@@ -968,8 +968,14 @@ export const getOrderById = async (req: Request, res: Response) => {
       specialRequests: orderObj.specialRequests || "",
       // Include customer's permanent delivery OTP (null if delivered)
       deliveryOtp,
-      // Map deliveryBoy to deliveryPartner for frontend
-      deliveryPartner: orderObj.deliveryBoy,
+      // Map deliveryBoy to deliveryPartner for frontend with phone/mobile fallback
+      deliveryPartner: orderObj.deliveryBoy
+        ? {
+            ...orderObj.deliveryBoy,
+            phone: (orderObj.deliveryBoy as any).mobile || (orderObj.deliveryBoy as any).phone || "",
+            mobile: (orderObj.deliveryBoy as any).mobile || (orderObj.deliveryBoy as any).phone || "",
+          }
+        : undefined,
     };
 
     console.log(`\n[CUSTOMER ORDER RESPONSE]\nOrder ID: ${transformedOrder.id}\nstatus: ${transformedOrder.status}\npaymentStatus: ${transformedOrder.paymentStatus}\npaymentId: ${transformedOrder.paymentId || 'N/A'}`);
