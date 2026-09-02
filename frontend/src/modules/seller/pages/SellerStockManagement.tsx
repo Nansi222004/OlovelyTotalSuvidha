@@ -179,9 +179,10 @@ export default function SellerStockManagement() {
             (statusFilter === 'Published' && item.status === 'Published') ||
             (statusFilter === 'Unpublished' && item.status === 'Unpublished');
         const matchesStock = stockFilter === 'All Products' ||
-            (stockFilter === 'In Stock' && (typeof item.stock === 'number' && item.stock > 0)) ||
-            (stockFilter === 'Out of Stock' && item.stock === 0) ||
-            (stockFilter === 'Low on Stock' && (typeof item.stock === 'number' && item.stock > 0 && item.stock < 10));
+            (stockFilter === 'In Stock' && (item.stock === 0 || item.stock === 'Unlimited' || (typeof item.stock === 'number' && item.stock > 0))) ||
+            (stockFilter === 'Out of Stock' && typeof item.stock === 'number' && item.stock < 0) ||
+            (stockFilter === 'Low on Stock' && (typeof item.stock === 'number' && item.stock > 0 && item.stock < 10)) ||
+            (stockFilter === 'Unlimited' && (item.stock === 0 || item.stock === 'Unlimited'));
         return matchesSearch && matchesCategory && matchesStatus && matchesStock;
     });
 
@@ -428,11 +429,13 @@ export default function SellerStockManagement() {
                                     <td className="p-4 align-middle border border-neutral-200">{item.variation}</td>
                                     <td className="p-4 align-middle border border-neutral-200">
                                         <div className="flex items-center gap-2">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.stock === 0
-                                                ? 'bg-red-50 text-red-600'
-                                                : 'bg-green-50 text-green-600'
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.stock === 0 || item.stock === 'Unlimited'
+                                                ? 'bg-blue-50 text-blue-600'
+                                                : typeof item.stock === 'number' && item.stock < 0
+                                                    ? 'bg-red-50 text-red-600'
+                                                    : 'bg-green-50 text-green-600'
                                                 }`}>
-                                                {item.stock}
+                                                {item.stock === 0 || item.stock === 'Unlimited' ? 'Unlimited' : item.stock}
                                             </span>
                                         </div>
                                     </td>
