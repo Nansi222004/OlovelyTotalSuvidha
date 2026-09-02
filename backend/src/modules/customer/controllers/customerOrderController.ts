@@ -207,106 +207,125 @@ export const createOrder = async (req: Request, res: Response) => {
         throw new Error("Invalid item quantity");
       }
 
-      // Atomically check stock and decrement to prevent race conditions
+      // Atomically check stock and decrement to prevent race conditions (stock === 0 is treated as Unlimited)
       let product;
-      // The frontend sends variation info as 'variant' or 'variation'
-      // In the product model, it's stored in 'variations' array
       const variationValue = item.variant || item.variation;
 
       if (variationValue) {
-        // Try to decrement stock for the specific variation first
-        // We check variations._id, variations.value, variations.title, or variations.pack
-        product = session
-          ? await Product.findOneAndUpdate(
-            {
-              _id: item.product.id,
-              $or: [
-                {
-                  "variations._id": mongoose.isValidObjectId(variationValue)
-                    ? variationValue
-                    : new mongoose.Types.ObjectId(),
-                },
-                { "variations.value": variationValue },
-                { "variations.title": variationValue },
-                { "variations.pack": variationValue },
-              ],
-              "variations.stock": { $gte: qty },
-            },
-            { $inc: { "variations.$.stock": -qty, stock: -qty } },
-            { session, new: true },
-          ).populate("category subcategory subSubCategory")
-          : await Product.findOneAndUpdate(
-            {
-              _id: item.product.id,
-              $or: [
-                {
-                  "variations._id": mongoose.isValidObjectId(variationValue)
-                    ? variationValue
-                    : new mongoose.Types.ObjectId(),
-                },
-                { "variations.value": variationValue },
-                { "variations.title": variationValue },
-                { "variations.pack": variationValue },
-              ],
-              "variations.stock": { $gte: qty },
-            },
-            { $inc: { "variations.$.stock": -qty, stock: -qty } },
-            { new: true },
-          ).populate("category subcategory subSubCategory");
+        // Check if variation has limited stock (> 0) or unlimited stock (=== 0)
+        const checkTarget = await Product.findById(item.product.id).populate("category subcategory subSubCategory");
+        if (checkTarget && checkTarget.variations && checkTarget.variations.length > 0) {
+          const matchedVariant: any = checkTarget.variations.find((v: any) =>
+            (v._id && v._id.toString() === variationValue.toString()) ||
+            v.value === variationValue ||
+            v.title === variationValue ||
+            v.pack === variationValue
+          );
+
+          if (matchedVariant) {
+            if (matchedVariant.status === "Sold out") {
+              throw new Error(`Variant "${matchedVariant.title || matchedVariant.value}" is sold out`);
+            }
+            // If limited stock (> 0), atomically check and decrement
+            if (matchedVariant.stock !== undefined && matchedVariant.stock !== null && matchedVariant.stock > 0) {
+              product = session
+                ? await Product.findOneAndUpdate(
+                  {
+                    _id: item.product.id,
+                    "variations._id": matchedVariant._id,
+                    "variations.stock": { $gte: qty },
+                  },
+                  { $inc: { "variations.$.stock": -qty, stock: -qty } },
+                  { session, new: true },
+                ).populate("category subcategory subSubCategory")
+                : await Product.findOneAndUpdate(
+                  {
+                    _id: item.product.id,
+                    "variations._id": matchedVariant._id,
+                    "variations.stock": { $gte: qty },
+                  },
+                  { $inc: { "variations.$.stock": -qty, stock: -qty } },
+                  { new: true },
+                ).populate("category subcategory subSubCategory");
+
+              if (!product) {
+                throw new Error(`Insufficient stock for variation: ${matchedVariant.title || variationValue}`);
+              }
+            } else {
+              // stock === 0 (or null/undefined) represents Unlimited Stock
+              product = checkTarget;
+            }
+          }
+        }
       }
 
       if (!product) {
-        // If we are here, either variationValue wasn't provided, or it didn't match any variation with enough stock.
-        // We'll try to find the product first to see if it has variations.
         const checkProduct = await Product.findById(item.product.id).populate(
           "category subcategory subSubCategory",
         );
 
-        if (
-          checkProduct &&
-          checkProduct.variations &&
-          checkProduct.variations.length > 0
-        ) {
-          // Product has variations, but we didn't match one.
-          // If a variation was provided, it means that specific variation is out of stock.
-          if (variationValue) {
-            throw new Error(
-              `Insufficient stock for variation: ${variationValue}`,
-            );
+        if (checkProduct) {
+          if ((checkProduct.status as string) === "Sold out" || checkProduct.status === "Inactive") {
+            throw new Error(`Product "${checkProduct.productName}" is unavailable`);
           }
 
-          // No variation was provided, but the product has them.
-          // To maintain data consistency, we'll try to decrement from the first variation.
-          product = session
-            ? await Product.findOneAndUpdate(
-              {
-                _id: item.product.id,
-                "variations.0.stock": { $gte: qty },
-              },
-              { $inc: { "variations.0.stock": -qty, stock: -qty } },
-              { session, new: true },
-            ).populate("category subcategory subSubCategory")
-            : await Product.findOneAndUpdate(
-              {
-                _id: item.product.id,
-                "variations.0.stock": { $gte: qty },
-              },
-              { $inc: { "variations.0.stock": -qty, stock: -qty } },
-              { new: true },
-            ).populate("category subcategory subSubCategory");
-        } else {
-          // No variations, just decrement top-level stock
-          product = session
-            ? await Product.findOneAndUpdate(
-              { _id: item.product.id, stock: { $gte: qty } },
-              { $inc: { stock: -qty } },
-              { session, new: true },
-            ).populate("category subcategory subSubCategory")
-            : await Product.findOneAndUpdate(
-              { _id: item.product.id, stock: { $gte: qty } },
-              { $inc: { stock: -qty } },
-              { new: true },
-            ).populate("category subcategory subSubCategory");
+          if (
+            checkProduct.variations &&
+            checkProduct.variations.length > 0
+          ) {
+            // Product has variations but specific one was not matched or not supplied
+            if (variationValue) {
+              throw new Error(
+                `Variant not found or out of stock: ${variationValue}`,
+              );
+            }
+
+            const firstVar: any = checkProduct.variations[0];
+            if (firstVar.status === "Sold out") {
+              throw new Error(`Product "${checkProduct.productName}" is sold out`);
+            }
+
+            if (firstVar.stock !== undefined && firstVar.stock !== null && firstVar.stock > 0) {
+              product = session
+                ? await Product.findOneAndUpdate(
+                  {
+                    _id: item.product.id,
+                    "variations.0.stock": { $gte: qty },
+                  },
+                  { $inc: { "variations.0.stock": -qty, stock: -qty } },
+                  { session, new: true },
+                ).populate("category subcategory subSubCategory")
+                : await Product.findOneAndUpdate(
+                  {
+                    _id: item.product.id,
+                    "variations.0.stock": { $gte: qty },
+                  },
+                  { $inc: { "variations.0.stock": -qty, stock: -qty } },
+                  { new: true },
+                ).populate("category subcategory subSubCategory");
+            } else {
+              // Unlimited stock for variation 0
+              product = checkProduct;
+            }
+          } else {
+            // No variations, top-level product stock
+            if (checkProduct.stock !== undefined && checkProduct.stock !== null && checkProduct.stock > 0) {
+              product = session
+                ? await Product.findOneAndUpdate(
+                  { _id: item.product.id, stock: { $gte: qty } },
+                  { $inc: { stock: -qty } },
+                  { session, new: true },
+                ).populate("category subcategory subSubCategory")
+                : await Product.findOneAndUpdate(
+                  { _id: item.product.id, stock: { $gte: qty } },
+                  { $inc: { stock: -qty } },
+                  { new: true },
+                ).populate("category subcategory subSubCategory");
+            } else {
+              // Top-level stock === 0 represents Unlimited Stock
+              product = checkProduct;
+            }
+          }
         }
       }
 

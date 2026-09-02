@@ -183,7 +183,9 @@ export default function ProductDetail() {
 
   const variantStock = selectedVariant?.stock !== undefined ? selectedVariant.stock : (product?.stock || 0);
   const variantTitle = selectedVariant?.title || selectedVariant?.value || product?.pack || "Standard";
-  const isVariantAvailable = selectedVariant?.status !== "Sold out" && (variantStock > 0);
+  const isVariantAvailable = selectedVariant
+    ? selectedVariant.status !== "Sold out" && (selectedVariant.stock === 0 || selectedVariant.stock === undefined || selectedVariant.stock === null || selectedVariant.stock > 0)
+    : product?.status !== "Sold out" && (product?.stock === 0 || product?.stock === undefined || product?.stock === null || product?.stock > 0);
 
   // Get all images for gallery
   const allImages = product?.allImages || [product?.imageUrl || ""].filter(Boolean);
@@ -315,7 +317,7 @@ export default function ProductDetail() {
       showToast("This service is not available in your location yet.", "info");
       return;
     }
-    if (!isVariantAvailable && variantStock !== 0) {
+    if (!isVariantAvailable) {
       showToast("This variant is currently out of stock.", "info");
       return;
     }
@@ -337,7 +339,7 @@ export default function ProductDetail() {
       showToast("This service is not available in your location yet.", "info");
       return;
     }
-    if (!isVariantAvailable && variantStock !== 0) {
+    if (!isVariantAvailable) {
       showToast("This variant is currently out of stock.", "info");
       return;
     }
@@ -668,7 +670,7 @@ export default function ProductDetail() {
               <div className="flex flex-wrap gap-2">
                 {product.variations.map((variant: any, index: number) => {
                   const variantTitle = variant.title || variant.value || `Variant ${index + 1}`;
-                  const isOutOfStock = variant.status === "Sold out" || (variant.stock === 0 && variant.stock !== undefined && variant.stock !== null);
+                  const isOutOfStock = variant.status === "Sold out" || (variant.stock !== undefined && variant.stock !== null && variant.stock < 0);
                   const isSelected = index === selectedVariantIndex;
 
                   return (
@@ -721,6 +723,11 @@ export default function ProductDetail() {
           {variantStock !== 0 && variantStock !== undefined && variantStock !== null && (
             <p className="text-sm text-neutral-600 mb-1">
               {variantStock > 0 ? `${variantStock} in stock` : "Out of stock"}
+            </p>
+          )}
+          {variantStock === 0 && (
+            <p className="text-sm text-green-600 mb-1 font-medium">
+              In Stock
             </p>
           )}
 
@@ -1371,7 +1378,7 @@ export default function ProductDetail() {
 
           {/* Right side - Action Buttons (Add to Cart / Stepper AND Buy Now) */}
           <div className="ml-3 flex items-center gap-2">
-            {!isVariantAvailable && variantStock === 0 ? (
+            {!isVariantAvailable ? (
               <Button
                 disabled
                 className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">

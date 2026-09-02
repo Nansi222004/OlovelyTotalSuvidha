@@ -175,7 +175,11 @@ export default function ProductCard({
     `w-full ${compact ? 'h-28 md:h-32' : 'h-32 md:h-40'} bg-neutral-50/60 flex items-center justify-center p-2 relative overflow-hidden flex-shrink-0 cursor-pointer`
   , [compact]);
 
-  const isOutOfStock = (product.stock !== undefined && product.stock <= 0) || product.status === "Sold out";
+  const isOutOfStock = product.status === "Sold out" || (
+    product.variations && product.variations.length > 0
+      ? product.variations.every((v: any) => v.status === "Sold out" || (v.stock !== undefined && v.stock !== null && v.stock < 0))
+      : (product.stock !== undefined && product.stock !== null && product.stock < 0)
+  );
 
   return (
     <motion.div
