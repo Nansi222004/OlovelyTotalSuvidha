@@ -153,8 +153,8 @@ export default function SellerProfile() {
     }
 
     const radius = parseFloat(editFormData.serviceRadiusKm);
-    if (isNaN(radius) || radius < 0.1 || radius > 100) {
-      showToast('Service radius must be between 0.1 and 100 km', 'error');
+    if (isNaN(radius) || radius < 0.1 || radius > 300) {
+      showToast('Service radius must be between 0.1 and 300 km', 'error');
       return;
     }
 
@@ -750,7 +750,7 @@ export default function SellerProfile() {
                       type="number"
                       step="0.5"
                       min="0.1"
-                      max="100"
+                      max="300"
                       value={editFormData.serviceRadiusKm}
                       onChange={(e) =>
                         setEditFormData((prev) => ({

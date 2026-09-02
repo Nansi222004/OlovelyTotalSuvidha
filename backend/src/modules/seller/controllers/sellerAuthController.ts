@@ -146,12 +146,12 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
         ? parseFloat(req.body.serviceRadiusKm)
         : Number(req.body.serviceRadiusKm);
 
-    if (!isNaN(parsedRadius) && parsedRadius >= 0.1 && parsedRadius <= 100) {
+    if (!isNaN(parsedRadius) && parsedRadius >= 0.1 && parsedRadius <= 300) {
       serviceRadiusKm = parsedRadius;
     } else {
       return res.status(400).json({
         success: false,
-        message: "Service radius must be between 0.1 and 100 kilometers",
+        message: "Service radius must be between 0.1 and 300 kilometers",
       });
     }
   }
@@ -309,12 +309,12 @@ export const updateProfile = asyncHandler(
           ? parseFloat(updates.serviceRadiusKm)
           : Number(updates.serviceRadiusKm);
 
-      if (!isNaN(radius) && radius >= 0.1 && radius <= 100) {
+      if (!isNaN(radius) && radius >= 0.1 && radius <= 300) {
         updates.serviceRadiusKm = radius; // Ensure it's saved as a number
       } else {
         return res.status(400).json({
           success: false,
-          message: "Service radius must be between 0.1 and 100 kilometers",
+          message: "Service radius must be between 0.1 and 300 kilometers",
         });
       }
     } else if (

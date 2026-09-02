@@ -312,8 +312,7 @@ export default function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!isAvailableAtLocation) {
-      // Show toast if trying to add item outside delivery area
-      showToast("This product is not available for delivery at your location.", "info");
+      showToast("This service is not available in your location yet.", "info");
       return;
     }
     if (!isVariantAvailable && variantStock !== 0) {
@@ -335,7 +334,7 @@ export default function ProductDetail() {
 
   const handleBuyNow = async () => {
     if (!isAvailableAtLocation) {
-      showToast("This product is not available for delivery at your location.", "info");
+      showToast("This service is not available in your location yet.", "info");
       return;
     }
     if (!isVariantAvailable && variantStock !== 0) {
@@ -420,11 +419,10 @@ export default function ProductDetail() {
               </svg>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-amber-900">
-                  Not available at your location
+                  Service not available at your location
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
-                  This product cannot be delivered to your current location. You
-                  can browse but cannot add to cart.
+                  This service is not available in your location yet. You can browse all details and save items to your wishlist.
                 </p>
               </div>
             </div>
@@ -1373,13 +1371,7 @@ export default function ProductDetail() {
 
           {/* Right side - Action Buttons (Add to Cart / Stepper AND Buy Now) */}
           <div className="ml-3 flex items-center gap-2">
-            {!isAvailableAtLocation ? (
-              <Button
-                disabled
-                className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
-                {t("customer.unavailable", "Unavailable")}
-              </Button>
-            ) : !isVariantAvailable ? (
+            {!isVariantAvailable && variantStock === 0 ? (
               <Button
                 disabled
                 className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">

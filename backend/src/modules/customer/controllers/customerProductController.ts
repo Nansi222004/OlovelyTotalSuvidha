@@ -38,34 +38,17 @@ export const getProducts = async (req: Request, res: Response) => {
     const userLat = latitude ? parseFloat(latitude as string) : null;
     const userLng = longitude ? parseFloat(longitude as string) : null;
 
+    let nearbySellerIds: mongoose.Types.ObjectId[] = [];
     if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
       // Find sellers within user's location range
-      const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+      nearbySellerIds = await findSellersWithinRange(userLat, userLng);
 
       if (nearbySellerIds.length > 0) {
-        // Filter products by sellers within range
+        // Filter products by sellers within range for normal in-range browsing
         query.seller = { $in: nearbySellerIds };
-      } else {
-        // If no sellers nearby, we still allow search but maybe mark them as unavailable (handled by frontend usually)
-        // For a better UX, we can return empty or show all. 
-        // Given this is quick commerce, showing nothing is "correct" but "not working" for the user.
-        // Let's keep it strict if location is provided but no sellers.
-        return res.status(200).json({
-          success: true,
-          data: [],
-          pagination: {
-            page: Number(page),
-            limit: Number(limit),
-            total: 0,
-            pages: 0,
-          },
-          message:
-            "No sellers available in your area. Please update your location.",
-        });
       }
-    } else {
-      // If no location provided, we now allow searching but items won't have availability info
-      // This makes search "work" even without location permission
+      // When nearbySellerIds is empty (no sellers in area), we do NOT restrict query.seller to []
+      // allowing customers to browse the full catalog with isAvailable: false
     }
 
     // Helper to resolve category/subcategory ID from slug or ID
@@ -201,6 +184,12 @@ export const getProducts = async (req: Request, res: Response) => {
 
     const formattedProducts = products.map((p: any) => {
       const prodObj = p.toObject ? p.toObject() : { ...p };
+      const sellerIdStr = prodObj.seller ? (typeof prodObj.seller === "object" ? prodObj.seller._id?.toString() : prodObj.seller.toString()) : null;
+      const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+        ? nearbySellerIds.some((id) => id && id.toString() === sellerIdStr)
+        : false;
+      prodObj.isAvailable = isAvailable;
+
       if (prodObj.seller && typeof prodObj.seller === "object" && prodObj.seller.viewCustomerDetails === false) {
         delete prodObj.seller.storeName;
         delete prodObj.seller.sellerName;
@@ -334,14 +323,11 @@ export const getProductById = async (req: Request, res: Response) => {
       similarProductsQuery.category = categoryId;
     }
 
-    // Filter similar products by location
+    // Filter similar products by location when sellers are in range
     if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
       const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
       if (nearbySellerIds.length > 0) {
         similarProductsQuery.seller = { $in: nearbySellerIds };
-      } else {
-        // No sellers nearby, return empty similar products
-        similarProductsQuery.seller = { $in: [] };
       }
     }
 

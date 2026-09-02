@@ -490,17 +490,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 className="w-full max-w-full"
                 style={{ minHeight: '100%' }}
               >
-                {/* Service Availability Check */}
-                {
-                  (() => {
-                    // If we have a location but service is NOT available, show the unavailable screen
-                    // We check the component state 'isServiceAvailable' which is updated by useEffect
-                    if (isLocationEnabled && userLocation && !isServiceAvailable && !showLocationRequest) {
-                      return <ServiceNotAvailable onChangeLocation={() => setShowLocationChangeModal(true)} />;
-                    }
-                    return children;
-                  })()
-                }
+                {/* Main Content */}
+                {children}
               </motion.div>
             </AnimatePresence>
           </main>

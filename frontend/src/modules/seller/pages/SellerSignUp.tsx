@@ -144,8 +144,8 @@ export default function SellerSignUp() {
 
       // Validate service radius
       const radius = parseFloat(formData.serviceRadiusKm);
-      if (isNaN(radius) || radius < 0.1 || radius > 100) {
-        setError('Service radius must be between 0.1 and 100 kilometers');
+      if (isNaN(radius) || radius < 0.1 || radius > 300) {
+        setError('Service radius must be between 0.1 and 300 kilometers');
         return;
       }
 
@@ -462,7 +462,7 @@ export default function SellerSignUp() {
                     placeholder="Enter service radius in KM (e.g. 10)"
                     required
                     min="0.1"
-                    max="100"
+                    max="300"
                     step="0.1"
                     className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                     disabled={loading}

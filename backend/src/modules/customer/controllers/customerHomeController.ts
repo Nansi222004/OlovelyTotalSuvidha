@@ -187,13 +187,10 @@ async function fetchSectionData(
         .lean();
 
       return products.map((p: any) => {
-        // If we filtered by radius above, this should always be true when hasUserLocation is set.
         const sellerIdStr = p.seller ? (typeof p.seller === 'object' && p.seller !== null ? p.seller._id?.toString() : p.seller.toString()) : null;
-        const isAvailable = hasUserLocation
-          ? true
-          : nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-            ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
-            : false;
+        const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+          ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
+          : false;
 
         const sellerObj = typeof p.seller === 'object' && p.seller !== null ? p.seller : null;
         const shopObj = typeof p.shopId === 'object' && p.shopId !== null ? p.shopId : null;
@@ -325,8 +322,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
             publish: true,
           };
 
-          // When location is known, only show preview images for in-range sellers.
-          if (hasUserLocation) {
+          // When location is known and sellers are in range, prefer preview images for in-range sellers.
+          if (hasUserLocation && nearbySellerIds.length > 0) {
             productQuery.seller = { $in: nearbySellerIds };
           }
 
@@ -375,9 +372,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
     );
 
     const validBestsellers = bestsellers.filter(Boolean);
-    const visibleBestsellers = hasUserLocation
-      ? validBestsellers.filter((b: any) => Array.isArray(b.productImages) && b.productImages.length > 0)
-      : validBestsellers;
+    const visibleBestsellers = validBestsellers;
 
     // 2. Lowest Prices Products - Get admin-selected products
     // We fetch these irrespective of location radius to show preview on home page
@@ -444,8 +439,13 @@ export const getHomeContent = async (req: Request, res: Response) => {
           translations: product.translations || {},
         };
       })
-      // Strictly hide products from sellers not in range (when location is available).
-      .filter((p: any) => !hasUserLocation || p.isAvailable === true);
+      // Show in-range products when sellers exist; when no sellers in range or no location, show preview products
+      .filter((p: any) => {
+        if (hasUserLocation && nearbySellerIds.length > 0) {
+          return p.isAvailable === true;
+        }
+        return true;
+      });
 
     // 3. Categories for Tiles (Grocery, Snacks, etc)
     const categories = await Category.find({
@@ -471,7 +471,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
             _id: { $in: validProdIds.slice(0, 4) },
             status: "Active",
             publish: true,
-            ...(hasUserLocation ? { seller: { $in: nearbySellerIds } } : {}),
+            ...(hasUserLocation && nearbySellerIds.length > 0 ? { seller: { $in: nearbySellerIds } } : {}),
           })
             .select("mainImage")
             .lean();
@@ -493,8 +493,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
       })
     );
 
-    // When location is known, hide shops that have no in-range products to preview.
-    const visibleShops = hasUserLocation
+    // When location is known and sellers are in range, filter shops that have in-range products.
+    const visibleShops = (hasUserLocation && nearbySellerIds.length > 0)
       ? shops.filter((s: any) => Array.isArray(s.productImages) && s.productImages.length > 0)
       : shops;
 
@@ -522,8 +522,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
       publish: true,
     };
 
-    // When location is known, only show preview images for in-range sellers.
-    if (hasUserLocation) {
+    // When location is known and sellers are in range, prefer preview images for in-range sellers.
+    if (hasUserLocation && nearbySellerIds.length > 0) {
       foodProductsQuery.seller = { $in: nearbySellerIds };
     }
 
@@ -762,8 +762,13 @@ export const getHomeContent = async (req: Request, res: Response) => {
                 : false;
             return { ...p, isAvailable };
           })
-          // Strictly hide products from sellers not in range (when location is available).
-          .filter((p: any) => !hasUserLocation || p.isAvailable === true);
+          // When sellers are in range, prefer in-range products; otherwise show preview products
+          .filter((p: any) => {
+            if (hasUserLocation && nearbySellerIds.length > 0) {
+              return p.isAvailable === true;
+            }
+            return true;
+          });
       }
     }
 
@@ -939,45 +944,16 @@ export const getStoreProducts = async (req: Request, res: Response) => {
 
     console.log(`[getStoreProducts] User location: lat=${userLat}, lng=${userLng}`);
 
+    let nearbySellerIds: mongoose.Types.ObjectId[] = [];
     if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
-      const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+      nearbySellerIds = await findSellersWithinRange(userLat, userLng);
       console.log(`[getStoreProducts] Found ${nearbySellerIds.length} sellers within range`);
 
-      if (nearbySellerIds.length === 0) {
-        // No sellers within range, return shop data but empty products
-        console.log(`[getStoreProducts] No sellers in range, returning empty products`);
-        return res.status(200).json({
-          success: true,
-          data: [],
-          shop: shopData,
-          pagination: {
-            page: 1,
-            limit: 50,
-            total: 0,
-            pages: 0,
-          },
-          message: "No sellers available in your area. Please update your location.",
-        });
+      if (nearbySellerIds.length > 0) {
+        // Filter products by sellers within range
+        query.seller = { $in: nearbySellerIds };
+        console.log(`[getStoreProducts] Added seller filter to query`);
       }
-
-      // Filter products by sellers within range
-      query.seller = { $in: nearbySellerIds };
-      console.log(`[getStoreProducts] Added seller filter to query`);
-    } else {
-      // If no location provided, return empty (require location for marketplace)
-      console.log(`[getStoreProducts] No location provided, returning empty products`);
-      return res.status(200).json({
-        success: true,
-        data: [],
-        shop: shopData,
-        pagination: {
-          page: 1,
-          limit: 50,
-          total: 0,
-          pages: 0,
-        },
-        message: "Location is required to view products. Please enable location access.",
-      });
     }
 
     console.log(`[getStoreProducts] Final query:`, JSON.stringify(query, null, 2));
@@ -997,7 +973,14 @@ export const getStoreProducts = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      data: products.map(p => ({ ...p, isAvailable: true })),
+      data: products.map((p: any) => {
+        const seller = p.seller;
+        const sellerIdStr = seller ? (typeof seller === 'object' && seller !== null ? seller._id?.toString() : String(seller)) : null;
+        const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+          ? nearbySellerIds.some((id: any) => id && id.toString() === sellerIdStr)
+          : false;
+        return { ...p, isAvailable };
+      }),
       shop: shopData,
       pagination: {
         page: 1,

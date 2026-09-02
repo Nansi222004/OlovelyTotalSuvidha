@@ -109,11 +109,6 @@ export default function ProductCard({
     e.stopPropagation();
     e.preventDefault();
 
-    // Check if product is available in user's location
-    if (product.isAvailable === false) {
-      return;
-    }
-
     // Prevent any operation while another is in progress
     if (isOperationPendingRef.current) {
       return;
@@ -152,11 +147,6 @@ export default function ProductCard({
     e.stopPropagation();
     e.preventDefault();
 
-    // Check if product is available in user's location
-    if (product.isAvailable === false) {
-      return;
-    }
-
     // Prevent any operation while another is in progress
     if (isOperationPendingRef.current) {
       return;
@@ -185,8 +175,7 @@ export default function ProductCard({
     `w-full ${compact ? 'h-28 md:h-32' : 'h-32 md:h-40'} bg-neutral-50/60 flex items-center justify-center p-2 relative overflow-hidden flex-shrink-0 cursor-pointer`
   , [compact]);
 
-  const isOutOfStock = product.isAvailable === false || ((product.stock !== undefined && product.stock <= 0) || product.status === "Sold out");
-  const isOutOfRange = product.isAvailable === false;
+  const isOutOfStock = (product.stock !== undefined && product.stock <= 0) || product.status === "Sold out";
 
   return (
     <motion.div
@@ -364,7 +353,7 @@ export default function ProductCard({
                 : 'border-green-600 text-green-600 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs'
             }`}
           >
-            {isOutOfRange ? 'Out of Range' : isOutOfStock ? 'Out of Stock' : 'ADD'}
+            {isOutOfStock ? 'Out of Stock' : 'ADD'}
           </Button>
         ) : (
           <div className="flex items-center justify-between bg-green-600 text-white rounded-lg px-2 h-8 w-full shadow-2xs">
@@ -382,7 +371,6 @@ export default function ProductCard({
               {inCartQty}
             </span>
             <button
-              disabled={isOutOfRange}
               onClick={(e) => {
                 e.stopPropagation();
                 handleIncrease(e);

@@ -272,7 +272,7 @@ export const addToCart = async (req: Request, res: Response) => {
         if (!isAvailable) {
             return res.status(403).json({
                 success: false,
-                message: 'This product is not available in your current location'
+                message: 'This service is not available in your location yet.'
             });
         }
 
@@ -387,7 +387,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
         if (!isAvailable) {
             return res.status(403).json({
                 success: false,
-                message: 'This item is no longer available in your location'
+                message: 'This service is not available in your location yet.'
             });
         }
 

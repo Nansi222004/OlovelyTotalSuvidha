@@ -212,7 +212,7 @@ const SellerSchema = new Schema<ISeller>(
       type: Number,
       default: 10,
       min: [0.1, 'Service radius must be at least 0.1 km'],
-      max: [100, 'Service radius cannot exceed 100 km'],
+      max: [300, 'Service radius cannot exceed 300 km'],
     },
 
     // Payment Details

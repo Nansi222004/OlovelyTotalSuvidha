@@ -1176,7 +1176,7 @@ export default function AdminManageSellerList() {
                                                     <input
                                                         type="number"
                                                         min="0.1"
-                                                        max="100"
+                                                        max="300"
                                                         step="0.1"
                                                         value={newRadius}
                                                         onChange={(e) => setNewRadius(parseFloat(e.target.value))}

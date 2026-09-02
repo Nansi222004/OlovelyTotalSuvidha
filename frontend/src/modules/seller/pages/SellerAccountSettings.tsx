@@ -126,8 +126,8 @@ const SellerAccountSettings = () => {
 
             // Validate service radius
             const radius = parseFloat(sellerData.serviceRadiusKm);
-            if (isNaN(radius) || radius < 0.1 || radius > 100) {
-                setError('Service radius must be between 0.1 and 100 kilometers');
+            if (isNaN(radius) || radius < 0.1 || radius > 300) {
+                setError('Service radius must be between 0.1 and 300 kilometers');
                 setSaveLoading(false);
                 return;
             }
@@ -512,6 +512,14 @@ const SellerAccountSettings = () => {
                                                             <option value="10">10 km</option>
                                                             <option value="20">20 km</option>
                                                             <option value="50">50 km</option>
+                                                            <option value="100">100 km</option>
+                                                            <option value="150">150 km</option>
+                                                            <option value="200">200 km</option>
+                                                            <option value="250">250 km</option>
+                                                            <option value="300">300 km</option>
+                                                            {![1, 2, 5, 10, 20, 50, 100, 150, 200, 250, 300].includes(Number(sellerData.serviceRadiusKm)) && sellerData.serviceRadiusKm && (
+                                                                <option value={sellerData.serviceRadiusKm}>{sellerData.serviceRadiusKm} km</option>
+                                                            )}
                                                         </select>
                                                         {isEditing && (
                                                             <p className="mt-1 text-xs text-gray-500">

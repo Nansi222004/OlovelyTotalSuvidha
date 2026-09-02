@@ -141,12 +141,12 @@ export const updateSeller = asyncHandler(
           ? parseFloat(updateData.serviceRadiusKm)
           : Number(updateData.serviceRadiusKm);
 
-      if (!isNaN(radius) && radius >= 0.1 && radius <= 100) {
+      if (!isNaN(radius) && radius >= 0.1 && radius <= 300) {
         updateData.serviceRadiusKm = radius; // Ensure it's saved as a number
       } else {
         return res.status(400).json({
           success: false,
-          message: "Service radius must be between 0.1 and 100 kilometers",
+          message: "Service radius must be between 0.1 and 300 kilometers",
         });
       }
     } else if (
