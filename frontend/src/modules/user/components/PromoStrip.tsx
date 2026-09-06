@@ -797,19 +797,19 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
       <div className="px-4 mt-2">
         <div ref={containerRef} className="flex gap-2">
           {/* Crazy Deals Section - Left */}
-          <div className="flex-shrink-0 w-[100px] promo-card">
+          <div className="flex-shrink-0 w-[105px] sm:w-[120px] promo-card">
             <div
-              className="h-full rounded-lg p-1 flex flex-col items-center justify-between relative overflow-hidden"
+              className="h-full rounded-lg p-1.5 flex flex-col items-center justify-between relative overflow-hidden"
               style={{
                 background: `radial-gradient(circle at center, rgba(255, 255, 255, 0.15), transparent 60%), linear-gradient(to bottom, ${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]})`,
-                minHeight: "110px",
+                minHeight: "135px",
               }}>
               {/* CRAZY DEALS - Two lines, bigger */}
               <div className="text-center mb-1.5" style={{ marginTop: "4px" }}>
                 <div
                   className="text-white font-black leading-tight"
                   style={{
-                    fontSize: "13px",
+                    fontSize: "15px",
                     fontFamily: "sans-serif",
                     textShadow:
                       "2px 2px 4px rgba(0, 0, 0, 0.8), 1px 1px 2px rgba(0, 0, 0, 0.9)",
@@ -834,7 +834,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                     paddingTop: "2px",
                     paddingBottom: "2px",
                   }}>
-                  <span className="text-white text-[8px] font-medium line-through leading-none">
+                  <span className="text-white text-[10px] font-medium line-through leading-none">
                     ₹{safeOriginalPrice}
                   </span>
                 </div>
@@ -847,7 +847,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                     paddingTop: "2px",
                     paddingBottom: "2px",
                   }}>
-                  <span className="text-white text-[9px] font-bold leading-none">
+                  <span className="text-white text-xs font-bold leading-none">
                     ₹{safeDiscountedPrice}
                   </span>
                 </div>
@@ -857,7 +857,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               <div
                 ref={productNameRef}
                 onClick={handleProductClick}
-                className="text-neutral-900 font-black text-[9px] text-center mb-0.5 cursor-pointer hover:underline line-clamp-2"
+                className="text-neutral-900 font-black text-[11px] sm:text-xs text-center mb-1 cursor-pointer hover:underline line-clamp-2 leading-tight"
                 title={getTranslatedField(displayProduct, "name") || displayProduct.productName || displayProduct.name}>
                 {getTranslatedField(displayProduct, "name") || displayProduct.productName || displayProduct.name}
               </div>
@@ -866,10 +866,10 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               <div
                 ref={productImageRef}
                 className="flex-1 flex items-end justify-center w-full"
-                style={{ minHeight: "50px", maxHeight: "65px" }}>
+                style={{ minHeight: "65px", maxHeight: "85px" }}>
                 <div
                   onClick={handleProductClick}
-                  className="w-12 h-16 rounded flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-16 h-20 sm:w-18 sm:h-22 rounded flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                   style={{ background: "transparent" }}>
                   {displayProduct.imageUrl ? (
                     <img
@@ -929,28 +929,28 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                     to={card.slug || card.categoryId ? `/category/${card.slug || card.categoryId}` : "#"}
                     className="group rounded-lg transition-all duration-300 hover:shadow-md active:scale-[0.98] h-full flex flex-col overflow-hidden relative"
                     style={{
-                      minHeight: "90px",
+                      minHeight: "135px",
                       background: "rgba(255, 247, 237, 0.9)", // Very light orange
                     }}>
                     {/* Green Discount Banner - Only around text, centered at top */}
                     <div
                       className="w-full flex justify-center"
                       style={{ paddingTop: "0", paddingBottom: "2px" }}>
-                      <div className="bg-green-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-tight text-center inline-block">
+                      <div className="bg-green-600 text-white text-[11px] sm:text-xs font-black px-2 py-0.5 rounded tracking-tight text-center inline-block">
                         {card.badge}
                       </div>
                     </div>
 
                     <div
-                      className="px-1 pb-1 flex flex-col flex-1 justify-between"
+                      className="px-1.5 pb-1.5 flex flex-col flex-1 justify-between"
                       style={{ paddingTop: "2px" }}>
                       {/* Category Title */}
                       <div
                         className="text-neutral-900 font-bold text-center"
                         style={{
-                          fontSize: "13px",
-                          lineHeight: "1.2",
-                          marginBottom: "6px",
+                          fontSize: "14px",
+                          lineHeight: "1.25",
+                          marginBottom: "4px",
                         }}>
                         {getTranslatedField(card, "title") || card.title}
                       </div>
@@ -958,19 +958,19 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                       {/* Subcategory / Product Images or Category Icons - Horizontal Layout */}
                       <div
                         className="flex items-center justify-center gap-1.5 overflow-hidden"
-                        style={{ marginTop: "auto", minHeight: "28px" }}>
+                        style={{ marginTop: "auto", minHeight: "56px" }}>
                         {hasSubcategoryImages
                           ? // Display subcategory or product images as icons
                           subcategoryImages.slice(0, 4).map((imageUrl, idx) => (
                             <div
                               key={idx}
-                              className={`flex-shrink-0 bg-white rounded-md flex items-center justify-center overflow-hidden border border-amber-200/70 shadow-2xs ${
-                                subcategoryImages.length === 1 ? "w-9 h-9" : "w-7 h-7"
+                              className={`flex-shrink-0 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-amber-200/70 shadow-2xs ${
+                                subcategoryImages.length === 1 ? "w-16 h-16 sm:w-18 sm:h-18" : "w-10 h-10 sm:w-11 sm:h-11"
                               }`}>
                               <img
                                 src={imageUrl}
                                 alt={`Item ${idx + 1}`}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-cover object-top"
                                 loading="lazy"
                                 decoding="async"
                                 onError={(e) => {
@@ -980,7 +980,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                                   const parent = target.parentElement;
                                   if (parent) {
                                     parent.innerHTML = categoryIcons[idx] || "✨";
-                                    parent.style.fontSize = "16px";
+                                    parent.style.fontSize = "24px";
                                     parent.style.display = "flex";
                                     parent.style.alignItems = "center";
                                     parent.style.justifyContent = "center";
@@ -993,11 +993,11 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                           categoryIcons.slice(0, 4).map((icon, idx) => (
                             <div
                               key={idx}
-                              className="flex-shrink-0 bg-white/70 rounded-md flex items-center justify-center overflow-hidden border border-amber-100 shadow-2xs"
+                              className="flex-shrink-0 bg-white/70 rounded-xl flex items-center justify-center overflow-hidden border border-amber-100 shadow-2xs"
                               style={{
-                                width: "26px",
-                                height: "26px",
-                                fontSize: "16px",
+                                width: "40px",
+                                height: "40px",
+                                fontSize: "24px",
                               }}>
                               {icon}
                             </div>

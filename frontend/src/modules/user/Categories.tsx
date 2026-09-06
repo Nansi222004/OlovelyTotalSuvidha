@@ -203,13 +203,11 @@ export default function Categories() {
                 </div>
                 <div className="w-16 h-4 rounded-md skeleton-shimmer" />
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
-                {[1, 2, 3, 4, 5, 6].map((c) => (
-                  <div
-                    key={c}
-                    className="relative aspect-square w-full rounded-2xl overflow-hidden skeleton-shimmer flex flex-col justify-end p-2.5"
-                  >
-                    <div className="w-3/4 h-3 rounded-md bg-slate-300/60 mx-auto" />
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3 category-mobile-grid">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((c) => (
+                  <div key={c} className="flex flex-col items-center">
+                    <div className="aspect-square w-full rounded-2xl skeleton-shimmer mb-1.5" />
+                    <div className="w-3/4 h-4 rounded-md bg-slate-200/80 mx-auto" />
                   </div>
                 ))}
               </div>
@@ -410,52 +408,54 @@ export default function Categories() {
               </div>
 
               {/* 4. Full Coverage Category Cards Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2.5 sm:gap-3.5 category-mobile-grid">
-                {group.categories.map((category) => (
-                  <motion.div
-                    key={category._id}
-                    whileHover={{ y: -3, scale: 1.02 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => navigate(`/category/${category._id}`)}
-                    className="group relative aspect-square w-full rounded-2xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.15)] transition-all duration-300 cursor-pointer bg-slate-100 active:scale-95 select-none"
-                  >
-                    {/* Full Image Coverage (No Padding, No White Space) */}
-                    {category.image ? (
-                      <img
-                        src={category.image}
-                        alt={getTranslatedField(category, "name") || category.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        loading="lazy"
-                        onError={(e) => {
-                          // Fallback to icon if image fails to load
-                          (e.target as HTMLElement).style.display = "none";
-                          const fallbackEl = (e.target as HTMLElement).nextElementSibling;
-                          if (fallbackEl) (fallbackEl as HTMLElement).style.display = "flex";
-                        }}
-                      />
-                    ) : null}
-
-                    {/* Fallback Icon Container */}
-                    <div
-                      className={`w-full h-full bg-gradient-to-br from-emerald-50 via-slate-100 to-emerald-100 text-3xl sm:text-4xl text-emerald-700/80 ${
-                        category.image ? "hidden" : "flex"
-                      } items-center justify-center`}
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3 category-mobile-grid">
+                {group.categories.map((category) => {
+                  const catName = getTranslatedField(category, "name") || category.name;
+                  return (
+                    <motion.div
+                      key={category._id}
+                      whileHover={{ y: -2, scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => navigate(`/category/${category._id}`)}
+                      className="group flex flex-col items-center cursor-pointer active:scale-95 select-none"
                     >
-                      {category.icon || "📦"}
-                    </div>
+                      {/* Soft rounded container for image - full fit with no padding */}
+                      <div className="aspect-square w-full rounded-2xl bg-[#ecf7f6] border border-teal-100/40 flex items-center justify-center overflow-hidden p-0 shadow-2xs group-hover:shadow-sm transition-all duration-200 relative">
+                        {category.image ? (
+                          <img
+                            src={category.image}
+                            alt={catName}
+                            className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                            onError={(e) => {
+                              // Fallback to icon if image fails to load
+                              (e.target as HTMLElement).style.display = "none";
+                              const fallbackEl = (e.target as HTMLElement).nextElementSibling;
+                              if (fallbackEl) (fallbackEl as HTMLElement).style.display = "flex";
+                            }}
+                          />
+                        ) : null}
 
-                    {/* Bottom Gradient Overlay for Text Readability */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 via-40% to-transparent flex flex-col justify-end p-2 sm:p-2.5 pointer-events-none">
-                      {/* Bold White Category Label Clamped to 2 Lines */}
-                      <span
-                        title={getTranslatedField(category, "name") || category.name}
-                        className="text-white text-[11px] sm:text-xs font-bold text-center leading-[1.2] line-clamp-2 drop-shadow-md"
+                        {/* Fallback Icon Container */}
+                        <div
+                          className={`w-full h-full text-2xl sm:text-3xl text-emerald-700/80 ${
+                            category.image ? "hidden" : "flex"
+                          } items-center justify-center`}
+                        >
+                          {category.icon || "📦"}
+                        </div>
+                      </div>
+
+                      {/* Category Name below container - max 2 lines, clean line-wrapping */}
+                      <div
+                        title={catName}
+                        className="mt-1.5 text-center text-sm font-bold text-neutral-900 leading-tight line-clamp-2 w-full break-words px-0.5 group-hover:text-emerald-700 transition-colors"
                       >
-                        {getTranslatedField(category, "name") || category.name}
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
+                        {catName}
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.section>
           ))}

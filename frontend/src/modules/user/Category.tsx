@@ -493,12 +493,12 @@ export default function CategoryPage() {
           </button>
 
           {/* Category Image / Icon Container */}
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-50 to-slate-50 border border-emerald-100/80 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-2xs">
+          <div className="w-14 h-14 rounded-2xl bg-[#ecf7f6] border border-emerald-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-2xs p-0">
             {category?.image ? (
               <img
                 src={category.image}
                 alt={categoryName}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover object-top"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = "none";
                   const fallback = (e.target as HTMLElement).nextElementSibling;
@@ -506,7 +506,7 @@ export default function CategoryPage() {
                 }}
               />
             ) : null}
-            <span className={`text-xl text-emerald-700 ${category?.image ? "hidden" : "flex"} items-center justify-center`}>
+            <span className={`text-2xl text-emerald-700 ${category?.image ? "hidden" : "flex"} items-center justify-center`}>
               {category?.icon || "📦"}
             </span>
           </div>
@@ -515,11 +515,11 @@ export default function CategoryPage() {
           <div className="flex-1 min-w-0">
             <h1
               title={categoryName}
-              className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight truncate"
+              className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight truncate"
             >
               {categoryName}
             </h1>
-            <p className="text-[11px] text-slate-500 font-medium leading-none mt-0.5">
+            <p className="text-xs text-slate-500 font-medium leading-none mt-0.5">
               {loading
                 ? "Loading products..."
                 : `${categoryProducts.length} ${categoryProducts.length === 1 ? "product" : "products"}`}
@@ -557,7 +557,7 @@ export default function CategoryPage() {
 
       {/* 3. Subcategories Horizontal Scroll Bar (if category has subcategories) */}
       {hasSubcategories && (
-        <div className="bg-white border-b border-slate-100 px-3 sm:px-4 py-2">
+        <div className="bg-white border-b border-slate-100 px-3 sm:px-4 py-2.5">
           <div
             ref={subcategoriesContainerRef}
             className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-0.5"
@@ -575,18 +575,18 @@ export default function CategoryPage() {
                     else subcategoryRefs.current.delete(subId);
                   }}
                   onClick={() => handleSubcategoryClick(subId)}
-                  className={`tab-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all flex-shrink-0 ${
+                  className={`tab-pill flex items-center gap-2 px-3.5 py-2 rounded-full text-xs sm:text-sm font-bold cursor-pointer transition-all flex-shrink-0 ${
                     isSelected
                       ? "bg-emerald-600 text-white shadow-sm shadow-emerald-200 border border-emerald-600"
                       : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/80 border border-slate-200/60"
                   }`}
                 >
-                  <span className="text-sm flex-shrink-0">
+                  <span className="text-base flex-shrink-0">
                     {subcat.image ? (
                       <img
                         src={subcat.image}
                         alt=""
-                        className="w-3.5 h-3.5 object-cover rounded-full"
+                        className="w-5 h-5 object-cover rounded-full"
                       />
                     ) : (
                       subcat.icon || "📦"

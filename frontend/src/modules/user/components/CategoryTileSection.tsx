@@ -156,87 +156,100 @@ export default function CategoryTileSection({
                       handleTileClick(tile);
                     }
                   }}
-                  className={`block bg-white rounded-xl shadow-sm border border-neutral-200 hover:shadow-md transition-shadow h-full ${showProductCount ? "px-2.5" : "px-1.5"
-                    }`}>
-                  {/* Image - Single image for non-bestsellers, 2x2 grid for bestsellers */}
-                  <div
-                    className={`w-full rounded-lg overflow-hidden ${showProductCount ? "h-32 md:h-36 mb-2" : "aspect-square"
-                      } ${tile.bgColor || "bg-cyan-50"}`}>
-                    {hasImages ? (
-                      showProductCount ? (
-                        // Bestsellers: 2x2 grid
-                        <div className="w-full h-full grid grid-cols-2 gap-0.5 p-0.5">
-                          {images.slice(0, 4).map((img, idx) =>
-                            img ? (
+                  className={
+                    showProductCount
+                      ? "block bg-white rounded-2xl shadow-2xs border border-neutral-200/80 hover:shadow-md transition-shadow h-full p-2.5"
+                      : "group flex flex-col items-center cursor-pointer active:scale-95 select-none w-full"
+                  }>
+                  {showProductCount ? (
+                    <>
+                      {/* Bestsellers: 2x2 collage card */}
+                      <div
+                        className={`w-full rounded-xl overflow-hidden h-32 md:h-36 mb-2 ${
+                          tile.bgColor || "bg-[#ecf7f6]"
+                        }`}
+                      >
+                        {hasImages ? (
+                          <div className="w-full h-full grid grid-cols-2 gap-0.5 p-0.5">
+                            {images.slice(0, 4).map((img, idx) =>
+                              img ? (
                                 <LazyImage
                                   key={idx}
                                   src={img}
                                   alt=""
                                   className="w-full h-full object-contain bg-white rounded-sm"
                                   onError={(e) => {
-                                  // Hide broken image
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <div
-                                key={idx}
-                                className="w-full h-full bg-neutral-200 rounded-sm flex items-center justify-center text-xs text-neutral-400">
-                                {idx + 1}
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        // Other sections: Single image - use contain to show full image without cropping
-                        <LazyImage
-                          src={images[0] || ""}
-                          alt={tileName}
-                          className="w-full h-full object-contain rounded-lg"
-                          onError={(e) => {
-                            // Hide broken image and show fallback
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center text-3xl text-neutral-300">${tileName.charAt(0)}</div>`;
-                            }
-                          }}
-                        />
-                      )
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-3xl text-neutral-300">
-                        {tileName.charAt(0)}
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = "none";
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  key={idx}
+                                  className="w-full h-full bg-neutral-200 rounded-sm flex items-center justify-center text-xs text-neutral-400"
+                                >
+                                  {idx + 1}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-3xl text-neutral-300">
+                            {tileName.charAt(0)}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Product count - shown first (only for bestsellers) */}
-                  {showProductCount && tile.productCount && (
-                    <div className="mb-1.5 flex justify-center">
-                      <span className="inline-block bg-neutral-100 text-neutral-600 text-[10px] font-medium px-2 py-0.5 rounded-full leading-tight">
-                        +{tile.productCount} {t("common.more", "more")}
-                      </span>
-                    </div>
-                  )}
+                      {/* Product count */}
+                      {tile.productCount && (
+                        <div className="mb-1.5 flex justify-center">
+                          <span className="inline-block bg-neutral-100 text-neutral-600 text-[10px] font-medium px-2 py-0.5 rounded-full leading-tight">
+                            +{tile.productCount} {t("common.more", "more")}
+                          </span>
+                        </div>
+                      )}
 
-                  {/* Tile name - inside card only for bestsellers */}
-                  {showProductCount && (
-                    <div className="text-[11px] font-semibold text-neutral-900 line-clamp-2 leading-tight text-center w-full block">
-                      {tileName}
-                    </div>
+                      {/* Tile name inside card */}
+                      <div className="text-sm font-bold text-neutral-900 line-clamp-2 leading-tight text-center w-full block">
+                        {tileName}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Standard Category Tile: Full fit with no padding */}
+                      <div
+                        className={`aspect-square w-full rounded-2xl ${
+                          tile.bgColor || "bg-[#ecf7f6]"
+                        } flex items-center justify-center overflow-hidden p-0 shadow-2xs group-hover:shadow-sm transition-all duration-200 relative`}
+                      >
+                        {hasImages ? (
+                          <LazyImage
+                            src={images[0] || ""}
+                            alt={tileName}
+                            className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = "none";
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = `<div class="w-full h-full flex items-center justify-center text-3xl text-neutral-300">${tileName.charAt(0)}</div>`;
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-3xl text-neutral-300">
+                            {tileName.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Category Name below container - max 2 lines, clean line-wrapping */}
+                      <div className="mt-1.5 text-center text-sm font-bold text-neutral-900 leading-tight line-clamp-2 w-full break-words px-0.5 group-hover:text-emerald-700 transition-colors">
+                        {tileName}
+                      </div>
+                    </>
                   )}
                 </Link>
-
-                {/* Category name - outside card for non-bestsellers */}
-                {!showProductCount && (
-                  <div className="mt-1.5 text-center">
-                    <span className="text-xs font-semibold text-neutral-900 line-clamp-2 leading-tight">
-                      {tileName}
-                    </span>
-                  </div>
-                )}
               </motion.div>
             );
           })}

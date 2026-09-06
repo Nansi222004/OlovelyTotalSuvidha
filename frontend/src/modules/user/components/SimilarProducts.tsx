@@ -30,37 +30,37 @@ export default function SimilarProducts({ products, currentProductId }: SimilarP
               <div
                 key={product.id}
                 onClick={() => navigate(`/product/${product.id}`)}
-                className="flex-shrink-0 w-32 bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+                className="flex-shrink-0 w-36 sm:w-40 bg-white rounded-xl shadow-2xs border border-neutral-200/80 overflow-hidden cursor-pointer hover:shadow-md transition-all flex flex-col"
               >
                 {/* Image */}
-                <div className="w-full h-24 bg-neutral-100 flex items-center justify-center overflow-hidden">
+                <div className="w-full aspect-square bg-neutral-50/70 flex items-center justify-center p-0 overflow-hidden">
                   {product.imageUrl ? (
                     <img
                       src={product.imageUrl}
                       alt={product.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-2xl">
+                    <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-3xl font-bold">
                       {product.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                 </div>
 
                 {/* Info */}
-                <div className="p-2">
-                  <p className="text-xs text-neutral-500 mb-1">
-                      {product.variations?.[0]?.value || product.pack}
+                <div className="p-2 flex-1 flex flex-col justify-between">
+                  <p className="text-xs font-semibold text-neutral-500 mb-0.5 truncate">
+                      {product.variations?.[0]?.value || product.pack || '1 unit'}
                   </p>
-                  <h4 className="text-xs font-semibold text-neutral-900 line-clamp-2 mb-1 min-h-[2rem]">
+                  <h4 className="text-sm font-bold text-neutral-900 line-clamp-2 mb-1 min-h-[2.2rem] leading-snug">
                     {product.name}
                   </h4>
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm font-bold text-neutral-900">₹{displayPrice.toLocaleString('en-IN')}</span>
+                  <div className="flex items-baseline gap-1.5 mt-auto">
+                    <span className="text-sm sm:text-base font-black text-neutral-900">₹{displayPrice.toLocaleString('en-IN')}</span>
                     {hasDiscount && (
-                      <span className="text-xs text-neutral-500 line-through">₹{mrp.toLocaleString('en-IN')}</span>
+                      <span className="text-[11px] text-neutral-400 line-through">₹{mrp.toLocaleString('en-IN')}</span>
                     )}
                   </div>
                 </div>

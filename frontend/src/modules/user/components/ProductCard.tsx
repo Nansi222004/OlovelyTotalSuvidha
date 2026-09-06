@@ -172,8 +172,8 @@ export default function ProductCard({
   , []);
 
   const imageContainerClassName = useMemo(() => 
-    `w-full ${compact ? 'h-28 md:h-32' : 'h-32 md:h-40'} bg-neutral-50/60 flex items-center justify-center p-2 relative overflow-hidden flex-shrink-0 cursor-pointer`
-  , [compact]);
+    `w-full aspect-square bg-neutral-50/70 flex items-center justify-center p-0 relative overflow-hidden flex-shrink-0 cursor-pointer`
+  , []);
 
   const isOutOfStock = product.status === "Sold out" || (
     product.variations && product.variations.length > 0
@@ -197,7 +197,7 @@ export default function ProductCard({
       >
         {/* Discount Badge - top left */}
         {showBadge && discount > 0 && (
-          <div className="absolute top-2 left-2 z-10 bg-green-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
+          <div className="absolute top-2 left-2 z-10 bg-green-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
             {discount}% OFF
           </div>
         )}
@@ -210,7 +210,7 @@ export default function ProductCard({
               e.stopPropagation();
               toggleWishlist(e);
             }}
-            className="absolute top-2 right-2 z-30 w-7 h-7 rounded-full bg-white/95 backdrop-blur-xs flex items-center justify-center hover:bg-white transition-all shadow-xs group/heart"
+            className="absolute top-2 right-2 z-30 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/95 backdrop-blur-xs flex items-center justify-center hover:bg-white transition-all shadow-xs group/heart cursor-pointer"
             aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
           >
             <svg
@@ -238,7 +238,7 @@ export default function ProductCard({
             ref={imageRef}
             src={product.imageUrl || product.mainImage}
             alt={productName || 'Product'}
-            className="max-h-full max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
+            className="w-full h-full max-h-full max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={(e) => {
@@ -261,7 +261,7 @@ export default function ProductCard({
 
         {(product.variations?.length || 0) >= 2 && (
           <div className="absolute bottom-1.5 left-2 z-10">
-            <span className="text-[9px] font-bold text-neutral-700 bg-white/95 backdrop-blur-xs px-1.5 py-0.5 rounded border border-neutral-200">
+            <span className="text-[10px] font-bold text-neutral-700 bg-white/95 backdrop-blur-xs px-1.5 py-0.5 rounded border border-neutral-200 shadow-2xs">
               {product.variations?.length} Options
             </span>
           </div>
@@ -271,12 +271,12 @@ export default function ProductCard({
       {/* 2. Product Info Section */}
       <div
         onClick={handleCardClick}
-        className="flex-1 flex flex-col px-3 pt-2 pb-1 cursor-pointer"
+        className="flex-1 flex flex-col px-2.5 sm:px-3 pt-2 pb-1 cursor-pointer"
       >
         {/* Shop Name Badge (if available) */}
         {shopName && (
           <div className="mb-0.5">
-            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200/70 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight truncate max-w-full">
+            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200/70 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight truncate max-w-full">
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 flex-shrink-0">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 <polyline points="9 22 9 12 15 12 15 22" />
@@ -287,13 +287,13 @@ export default function ProductCard({
         )}
 
         {/* 3. Product Quantity / Pack Size */}
-        <div className="text-[11px] font-medium text-neutral-500 mb-0.5 truncate">
+        <div className="text-xs font-semibold text-neutral-500 mb-0.5 truncate">
           {packText || '1 unit'}
         </div>
 
         {/* 4. Product Name (Max 2 lines) */}
         <h3
-          className="text-xs sm:text-sm font-semibold text-neutral-900 line-clamp-2 leading-snug mb-1 min-h-[2.1rem]"
+          className="text-sm sm:text-base font-bold text-neutral-900 line-clamp-2 leading-snug mb-1 min-h-[2.5rem]"
           title={productName}
         >
           {productName}
@@ -311,8 +311,8 @@ export default function ProductCard({
         )}
 
         {/* 5. Delivery Information */}
-        <div className="flex items-center gap-1 text-[10px] font-medium text-neutral-500 mb-1">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400 flex-shrink-0">
+        <div className="flex items-center gap-1 text-xs font-semibold text-neutral-500 mb-1">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400 flex-shrink-0">
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
@@ -321,18 +321,18 @@ export default function ProductCard({
 
         {/* 6. Discount Text (Single Instance) */}
         {discount > 0 && (
-          <div className="text-[11px] font-bold text-green-600 mb-0.5">
+          <div className="text-xs font-bold text-green-700 mb-0.5">
             {discount}% OFF
           </div>
         )}
 
         {/* 7. Price Row */}
         <div className="mt-auto flex items-baseline gap-1.5 pt-1 mb-1">
-          <span className="text-sm sm:text-base font-bold text-neutral-900">
+          <span className="text-base sm:text-lg font-black text-neutral-900">
             ₹{displayPrice.toLocaleString('en-IN')}
           </span>
           {mrp && mrp > displayPrice && (
-            <span className="text-xs text-neutral-400 line-through font-normal">
+            <span className="text-xs sm:text-sm text-neutral-400 line-through font-normal">
               ₹{mrp.toLocaleString('en-IN')}
             </span>
           )}
@@ -340,7 +340,7 @@ export default function ProductCard({
       </div>
 
       {/* 8. ADD Button (ALWAYS AT THE VERY BOTTOM OF THE CARD!) */}
-      <div className="p-3 pt-1 mt-auto">
+      <div className="p-2.5 sm:p-3 pt-1 mt-auto">
         {inCartQty === 0 ? (
           <Button
             ref={addButtonRef}
@@ -351,27 +351,27 @@ export default function ProductCard({
               e.stopPropagation();
               handleAdd(e);
             }}
-            className={`w-full border-2 rounded-lg font-bold text-xs h-8 uppercase tracking-wider transition-colors ${
+            className={`w-full border-2 rounded-lg font-bold text-xs sm:text-sm h-9 sm:h-10 uppercase tracking-wider transition-colors cursor-pointer ${
               isOutOfStock
                 ? 'border-neutral-200 text-neutral-400 bg-neutral-50 cursor-not-allowed'
-                : 'border-green-600 text-green-600 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs'
+                : 'border-green-600 text-green-700 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs'
             }`}
           >
             {isOutOfStock ? 'Out of Stock' : 'ADD'}
           </Button>
         ) : (
-          <div className="flex items-center justify-between bg-green-600 text-white rounded-lg px-2 h-8 w-full shadow-2xs">
+          <div className="flex items-center justify-between bg-green-600 text-white rounded-lg px-2 h-9 sm:h-10 w-full shadow-2xs">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleDecrease(e);
               }}
-              className="w-6 h-6 flex items-center justify-center font-bold text-white hover:bg-green-700 rounded transition-colors text-base"
+              className="w-8 h-8 flex items-center justify-center font-bold text-white hover:bg-green-700 rounded transition-colors text-lg cursor-pointer"
               aria-label="Decrease quantity"
             >
               −
             </button>
-            <span className="text-xs font-bold text-white min-w-[1.25rem] text-center">
+            <span className="text-xs sm:text-sm font-bold text-white min-w-[1.5rem] text-center">
               {inCartQty}
             </span>
             <button
@@ -379,7 +379,7 @@ export default function ProductCard({
                 e.stopPropagation();
                 handleIncrease(e);
               }}
-              className="w-6 h-6 flex items-center justify-center font-bold text-white hover:bg-green-700 rounded transition-colors text-base"
+              className="w-8 h-8 flex items-center justify-center font-bold text-white hover:bg-green-700 rounded transition-colors text-lg cursor-pointer"
               aria-label="Increase quantity"
             >
               +

@@ -473,14 +473,14 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
                   }}
                   type="button"
                 >
-                  <div className={`mb-0.5 md:hidden w-5 h-5 flex items-center justify-center ${tabColor}`} style={{
+                  <div className={`mb-0.5 md:hidden w-6 h-6 flex items-center justify-center ${tabColor}`} style={{
                     transition: 'color 0.3s ease-out, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     transform: isActive ? 'scale(1.1)' : 'scale(1)',
                   }}>
                     {tab.icon}
                   </div>
                   <span
-                    className={`text-[10px] md:text-xs md:whitespace-nowrap ${isActive ? 'font-semibold' : 'font-medium'}`}
+                    className={`text-xs md:text-sm md:whitespace-nowrap ${isActive ? 'font-bold' : 'font-semibold'}`}
                     style={{
                       transition: 'font-weight 0.3s ease-out',
                     }}

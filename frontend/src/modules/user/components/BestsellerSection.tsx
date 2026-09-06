@@ -203,7 +203,7 @@ export default function BestsellerSection({
                   aria-label={`${tileName} ${tile.productCount ? `with +${tile.productCount} more items` : ""}`}
                 >
                   {/* 2 & 3. 2x2 IMAGE COLLAGE OR FALLBACK */}
-                  <div className="w-full aspect-square bg-neutral-50/80 rounded-xl overflow-hidden border border-neutral-100 p-1 flex items-center justify-center">
+                  <div className="w-full aspect-square bg-[#ecf7f6] rounded-2xl overflow-hidden border border-teal-100/50 p-0 flex items-center justify-center">
                     {quadrants.length === 4 ? (
                       <div className="w-full h-full grid grid-cols-2 gap-1 rounded-lg overflow-hidden">
                         {quadrants.map((imgSrc, idx) => (
@@ -244,7 +244,7 @@ export default function BestsellerSection({
 
                   {/* 4 & 5. CATEGORY NAME & "+X MORE" BADGE */}
                   <div className="mt-2.5 flex flex-col items-center text-center flex-1 justify-between gap-1.5">
-                    <h3 className="text-xs sm:text-sm font-bold text-neutral-900 line-clamp-2 leading-tight tracking-tight min-h-[32px] flex items-center justify-center group-hover:text-emerald-700 transition-colors">
+                    <h3 className="text-sm font-bold text-neutral-900 line-clamp-2 leading-tight tracking-tight min-h-[32px] flex items-center justify-center group-hover:text-emerald-700 transition-colors">
                       {tileName}
                     </h3>
 

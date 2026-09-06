@@ -62,7 +62,7 @@ export default function Wishlist() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
                 </button>
 
-                <Link to={`/product/${product.id}`} className="aspect-square bg-neutral-50 flex items-center justify-center p-4">
+                <Link to={`/product/${product.id}`} className="aspect-square bg-neutral-50/70 flex items-center justify-center p-0 overflow-hidden">
                   {product.imageUrl || product.mainImage ? (
                     <LazyImage
                       src={productImage}
@@ -74,17 +74,17 @@ export default function Wishlist() {
                   )}
                 </Link>
 
-                <div className="p-3 flex-1 flex flex-col">
-                  <h3 className="text-sm font-bold text-neutral-900 line-clamp-2 mb-1">{product.name}</h3>
-                  <div className="text-[10px] text-neutral-500 mb-2">{product.pack}</div>
+                <div className="p-2.5 sm:p-3 flex-1 flex flex-col">
+                  <h3 className="text-sm sm:text-base font-bold text-neutral-900 line-clamp-2 mb-1 min-h-[2.5rem] leading-snug">{product.name}</h3>
+                  <div className="text-xs font-semibold text-neutral-500 mb-1.5">{product.pack || '1 unit'}</div>
                   <div className="mt-auto flex flex-col gap-2">
                     {(() => {
                       const { displayPrice, mrp, hasDiscount } = calculateProductPrice(product);
                       return (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-bold text-neutral-900">₹{displayPrice.toLocaleString('en-IN')}</span>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-base sm:text-lg font-black text-neutral-900">₹{displayPrice.toLocaleString('en-IN')}</span>
                           {hasDiscount && (
-                            <span className="text-xs text-neutral-500 line-through">₹{mrp.toLocaleString('en-IN')}</span>
+                            <span className="text-xs sm:text-sm text-neutral-400 line-through">₹{mrp.toLocaleString('en-IN')}</span>
                           )}
                         </div>
                       );
@@ -93,7 +93,7 @@ export default function Wishlist() {
                       variant="outline"
                       size="sm"
                       onClick={() => addToCart(product)}
-                      className="w-full border-green-600 text-green-600 hover:bg-green-50 rounded-lg h-8 text-xs font-bold"
+                      className="w-full border-2 border-green-600 text-green-700 hover:bg-green-50 rounded-lg h-9 sm:h-10 text-xs sm:text-sm font-bold uppercase tracking-wider cursor-pointer shadow-2xs active:scale-95"
                     >
                       {t("customer.addToCart", "ADD TO CART")}
                     </Button>

@@ -243,16 +243,16 @@ export default function OrderAgain() {
             return (
               <div
                 key={product.id}
-                className="flex-shrink-0 w-[140px]"
+                className="flex-shrink-0 w-[155px] sm:w-[170px]"
                 style={{ scrollSnapAlign: 'start' }}
               >
-                <div className="bg-white rounded-lg overflow-hidden flex flex-col relative h-full" style={{ boxShadow: '0 1px 1px rgba(0, 0, 0, 0.03)' }}>
+                <div className="bg-white rounded-xl overflow-hidden flex flex-col relative h-full border border-neutral-200/80 shadow-2xs hover:shadow-md transition-all">
                   {/* Product Image Area */}
                   <div
                     onClick={() => navigate(`/product/${product.id}`)}
                     className="relative block cursor-pointer"
                   >
-                    <div className="w-full h-28 bg-neutral-100 flex items-center justify-center overflow-hidden relative">
+                    <div className="w-full aspect-square bg-neutral-50/70 flex items-center justify-center p-0 overflow-hidden relative">
                       {product.imageUrl ? (
                         <img
                           src={product.imageUrl}
@@ -260,14 +260,14 @@ export default function OrderAgain() {
                           className="w-full h-full object-contain"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-4xl">
+                        <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-4xl font-bold">
                           {(product.name || product.productName || '?').charAt(0).toUpperCase()}
                         </div>
                       )}
 
                       {/* Red Discount Badge - Top Left */}
                       {discount > 0 && (
-                        <div className="absolute top-1 left-1 z-10 bg-red-600 text-white text-[9px] font-bold px-1 py-0.5 rounded">
+                        <div className="absolute top-1.5 left-1.5 z-10 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
                           {discount}% OFF
                         </div>
                       )}
@@ -276,7 +276,7 @@ export default function OrderAgain() {
                       <WishlistButton
                         productId={product.id}
                         size="sm"
-                        className="top-1 right-1 shadow-sm"
+                        className="top-1.5 right-1.5 shadow-2xs"
                       />
 
                       {/* ADD Button or Quantity Stepper - Overlaid on bottom right of image */}
@@ -295,7 +295,7 @@ export default function OrderAgain() {
                                 e.stopPropagation();
                                 addToCart(product, e.currentTarget);
                               }}
-                              className="bg-white/95 backdrop-blur-sm text-green-600 border-2 border-green-600 text-[10px] font-semibold px-2 py-1 rounded shadow-md hover:bg-white transition-colors"
+                              className="bg-white/95 backdrop-blur-xs text-xs font-bold px-2.5 py-1 rounded-lg shadow-sm transition-colors text-green-700 border-2 border-green-600 hover:bg-green-50 active:scale-95 cursor-pointer"
                             >
                               {t("common.add", "ADD")}
                             </motion.button>
@@ -306,7 +306,7 @@ export default function OrderAgain() {
                               animate={{ opacity: 1, scale: 1 }}
                               exit={{ opacity: 0, scale: 0.8 }}
                               transition={{ duration: 0.2 }}
-                              className="flex items-center gap-1 bg-green-600 rounded px-1.5 py-1 shadow-md"
+                              className="flex items-center gap-1.5 bg-green-600 rounded-lg px-2 py-1 shadow-sm"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <motion.button
@@ -316,8 +316,7 @@ export default function OrderAgain() {
                                   e.stopPropagation();
                                   updateQuantity(product.id, inCartQty - 1);
                                 }}
-                                className="w-4 h-4 flex items-center justify-center text-white font-bold hover:bg-green-700 rounded transition-colors p-0 leading-none"
-                                style={{ lineHeight: 1, fontSize: '14px' }}
+                                className="w-5 h-5 flex items-center justify-center text-white font-bold hover:bg-green-700 rounded transition-colors p-0 leading-none text-base cursor-pointer"
                               >
                                 <span className="relative top-[-1px]">−</span>
                               </motion.button>
@@ -326,8 +325,7 @@ export default function OrderAgain() {
                                 initial={{ scale: 1.2, y: -2 }}
                                 animate={{ scale: 1, y: 0 }}
                                 transition={{ type: 'spring', stiffness: 500, damping: 15 }}
-                                className="text-white font-bold min-w-[0.75rem] text-center"
-                                style={{ fontSize: '12px' }}
+                                className="text-white font-bold min-w-[1rem] text-center text-xs"
                               >
                                 {inCartQty}
                               </motion.span>
@@ -338,8 +336,7 @@ export default function OrderAgain() {
                                   e.stopPropagation();
                                   updateQuantity(product.id, inCartQty + 1);
                                 }}
-                                className="w-4 h-4 flex items-center justify-center text-white font-bold hover:bg-green-700 rounded transition-colors p-0 leading-none"
-                                style={{ lineHeight: 1, fontSize: '14px' }}
+                                className="w-5 h-5 flex items-center justify-center font-bold rounded transition-colors p-0 leading-none text-white hover:bg-green-700 text-base cursor-pointer"
                               >
                                 <span className="relative top-[-1px]">+</span>
                               </motion.button>
@@ -352,13 +349,13 @@ export default function OrderAgain() {
                   </div>
 
                   {/* Product Details */}
-                  <div className="p-1.5 flex-1 flex flex-col bg-white">
+                  <div className="p-2 flex-1 flex flex-col bg-white">
                     {/* Product Name */}
                     <div
                       onClick={() => navigate(`/product/${product.id}`)}
-                      className="mb-0.5 cursor-pointer"
+                      className="mb-1 cursor-pointer"
                     >
-                      <h3 className="text-[10px] font-bold text-neutral-900 line-clamp-2 leading-tight">
+                      <h3 className="text-sm font-bold text-neutral-900 line-clamp-2 leading-tight min-h-[2.2rem]">
                         {(() => {
                           const productName = product.name || product.productName || '';
                           return productName.replace(/\s*-\s*(Fresh|Quality|Assured|Premium|Best|Top|Hygienic|Carefully|Selected).*$/i, '').trim();
@@ -366,45 +363,26 @@ export default function OrderAgain() {
                       </h3>
                     </div>
 
-                    {/* Rating and Reviews */}
-                    <div className="flex items-center gap-0.5 mb-0.5">
-                      <div className="flex items-center">
-                        {[...Array(5)].map((_, i) => (
-                          <svg
-                            key={i}
-                            width="8"
-                            height="8"
-                            viewBox="0 0 24 24"
-                            fill={i < 4 ? '#fbbf24' : '#e5e7eb'}
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                          </svg>
-                        ))}
-                      </div>
-                      <span className="text-[8px] text-neutral-500">(85)</span>
-                    </div>
-
                     {/* Delivery Time */}
-                    <div className="text-[9px] text-neutral-600 mb-0.5">
-                      20 MINS
+                    <div className="text-[10px] font-semibold text-neutral-600 mb-0.5">
+                      ⏱️ 20 MINS
                     </div>
 
-                    {/* Discount - Blue Text */}
+                    {/* Discount - Green Text */}
                     {discount > 0 && (
-                      <div className="text-[9px] text-blue-600 font-semibold mb-0.5">
+                      <div className="text-[11px] text-green-700 font-bold mb-0.5">
                         {discount}% OFF
                       </div>
                     )}
 
                     {/* Price */}
-                    <div className="mb-1">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-[13px] font-bold text-neutral-900">
+                    <div className="mb-1.5 mt-auto">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-sm sm:text-base font-black text-neutral-900">
                           ₹{displayPrice.toLocaleString('en-IN')}
                         </span>
                         {hasDiscount && (
-                          <span className="text-[10px] text-neutral-400 line-through">
+                          <span className="text-[11px] text-neutral-400 line-through">
                             ₹{mrp.toLocaleString('en-IN')}
                           </span>
                         )}
@@ -414,7 +392,7 @@ export default function OrderAgain() {
                     {/* Bottom Link */}
                     <div
                       onClick={() => navigate(`/category/${product.categoryId || 'all'}`)}
-                      className="w-full bg-green-100 text-green-700 text-[8px] font-medium py-0.5 rounded-lg flex items-center justify-between px-1 hover:bg-green-200 transition-colors mt-auto cursor-pointer"
+                      className="w-full bg-green-100 text-green-800 text-[9px] font-bold py-1 rounded-lg flex items-center justify-between px-1.5 hover:bg-green-200 transition-colors mt-auto cursor-pointer"
                     >
                       <span>{t("customer.seeMoreLikeThis", "See more like this")}</span>
                       <div className="flex items-center gap-0.5">
