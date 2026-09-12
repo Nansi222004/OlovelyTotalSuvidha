@@ -76,6 +76,18 @@ export interface ISeller extends Document {
   logo?: string;
   isShopOpen: boolean;
 
+  // Business Channel Extensions (Ecommerce & Quick Commerce)
+  vendorType: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+  shippingConfig?: {
+    warehouseAddress?: string;
+    pickupAddress?: string;
+    pickupPincode?: string;
+    returnAddress?: string;
+    defaultCourier?: string;
+    freeShippingThreshold?: number;
+    flatShippingFee?: number;
+  };
+
   createdAt: Date;
   updatedAt: Date;
   // FCM Push Notification Tokens
@@ -316,6 +328,22 @@ const SellerSchema = new Schema<ISeller>(
     isShopOpen: {
       type: Boolean,
       default: true,
+    },
+    // Business Channel Extensions (Ecommerce & Quick Commerce)
+    vendorType: {
+      type: String,
+      enum: ['QUICK_COMMERCE', 'ECOMMERCE', 'HYBRID'],
+      default: 'QUICK_COMMERCE',
+      index: true,
+    },
+    shippingConfig: {
+      warehouseAddress: { type: String, trim: true },
+      pickupAddress: { type: String, trim: true },
+      pickupPincode: { type: String, trim: true },
+      returnAddress: { type: String, trim: true },
+      defaultCourier: { type: String, trim: true },
+      freeShippingThreshold: { type: Number, default: 0 },
+      flatShippingFee: { type: Number, default: 0 },
     },
     // FCM Push Notification Tokens
     fcmTokens: {

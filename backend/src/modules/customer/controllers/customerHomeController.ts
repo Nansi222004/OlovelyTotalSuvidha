@@ -181,7 +181,7 @@ async function fetchSectionData(
       const products = await Product.find(query)
         .sort({ createdAt: -1 }) // Show newest items first
         .limit(limit || 8)
-        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations")
+        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations productType packageDetails")
         .populate("seller", "storeName sellerName viewCustomerDetails")
         .populate("shopId", "name")
         .lean();
@@ -221,6 +221,8 @@ async function fetchSectionData(
           reviews: p.reviewsCount || 0,
           pack: p.pack || "",
           type: "product",
+          productType: p.productType || "QUICK_COMMERCE",
+          packageDetails: p.packageDetails,
           isAvailable,
           seller: p.seller,
           storeName,
@@ -386,7 +388,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .populate({
         path: "product",
         select:
-          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId translations",
+          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId translations productType packageDetails",
         populate: [
           { path: "seller", select: "storeName sellerName" },
           { path: "shopId", select: "name" },
@@ -432,6 +434,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
           subcategory: product.subcategory ? (typeof product.subcategory === 'object' && product.subcategory !== null ? product.subcategory._id?.toString() || "" : product.subcategory.toString()) : "",
           status: product.status,
           publish: product.publish,
+          productType: product.productType || "QUICK_COMMERCE",
+          packageDetails: product.packageDetails,
           isAvailable,
           seller: product.seller,
           storeName,

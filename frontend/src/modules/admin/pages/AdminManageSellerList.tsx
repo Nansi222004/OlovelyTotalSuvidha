@@ -45,7 +45,56 @@ interface Seller {
     addressProof?: string;
     requireProductApproval?: boolean;
     viewCustomerDetails?: boolean;
+    vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+    shippingConfig?: {
+        warehouseAddress?: string;
+        pickupAddress?: string;
+        pickupPincode?: string;
+        returnAddress?: string;
+        defaultCourier?: string;
+        freeShippingThreshold?: number;
+        flatShippingFee?: number;
+    };
+    pickupAddress?: string;
+    pickupPincode?: string;
 }
+
+export const getSellerTypeBadge = (vendorType?: string) => {
+    switch (vendorType) {
+        case 'QUICK_COMMERCE':
+            return {
+                label: '⚡ Quick Commerce',
+                shortLabel: 'Quick Commerce',
+                className: 'bg-emerald-50 text-emerald-800 border border-emerald-300 font-medium',
+                dotColor: 'bg-emerald-500',
+                description: 'Hyperlocal delivery via nearby delivery partners within defined radius.'
+            };
+        case 'ECOMMERCE':
+            return {
+                label: '📦 Ecommerce',
+                shortLabel: 'Ecommerce',
+                className: 'bg-blue-50 text-blue-800 border border-blue-300 font-medium',
+                dotColor: 'bg-blue-500',
+                description: 'Nationwide courier fulfillment via warehouse dispatch.'
+            };
+        case 'HYBRID':
+            return {
+                label: '⚡ + 📦 Hybrid',
+                shortLabel: 'Hybrid',
+                className: 'bg-purple-50 text-purple-800 border border-purple-300 font-medium',
+                dotColor: 'bg-purple-500',
+                description: 'Operates dual channels: hyperlocal quick delivery and nationwide courier.'
+            };
+        default:
+            return {
+                label: 'Not Set',
+                shortLabel: 'Not Set',
+                className: 'bg-neutral-100 text-neutral-600 border border-neutral-300 font-medium',
+                dotColor: 'bg-neutral-400',
+                description: 'Legacy seller record without an assigned business channel.'
+            };
+    }
+};
 
 // Helper function to convert backend seller to frontend format
 const mapSellerToFrontend = (seller: SellerType): Seller => {
@@ -86,6 +135,10 @@ const mapSellerToFrontend = (seller: SellerType): Seller => {
         addressProof: seller.addressProof,
         requireProductApproval: seller.requireProductApproval,
         viewCustomerDetails: seller.viewCustomerDetails,
+        vendorType: seller.vendorType,
+        shippingConfig: seller.shippingConfig,
+        pickupAddress: seller.shippingConfig?.pickupAddress || '',
+        pickupPincode: seller.shippingConfig?.pickupPincode || '',
     };
 };
 
@@ -106,6 +159,7 @@ export default function AdminManageSellerList() {
     const [error, setError] = useState<string>('');
     const [successMessage, setSuccessMessage] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [vendorTypeFilter, setVendorTypeFilter] = useState<'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID'>('ALL');
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
     const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -177,13 +231,22 @@ export default function AdminManageSellerList() {
     // Filter sellers
     let filteredSellers = sellers.filter(seller => {
         const q = String(searchTerm || "").toLowerCase();
-        return (
+        const matchesSearch = (
             String(seller.name || "").toLowerCase().includes(q) ||
             String(seller.storeName || "").toLowerCase().includes(q) ||
             String(seller.email || "").toLowerCase().includes(q) ||
             String(seller.phone || "").includes(searchTerm || "") ||
-            String(seller.mobile || "").includes(searchTerm || "")
+            String(seller.mobile || "").includes(searchTerm || "") ||
+            String(seller.vendorType || "").toLowerCase().includes(q)
         );
+
+        if (!matchesSearch) return false;
+
+        if (vendorTypeFilter !== 'ALL') {
+            return seller.vendorType === vendorTypeFilter;
+        }
+
+        return true;
     });
 
     // Sort sellers
@@ -204,6 +267,10 @@ export default function AdminManageSellerList() {
                 case 'storeName':
                     aValue = a.storeName;
                     bValue = b.storeName;
+                    break;
+                case 'vendorType':
+                    aValue = a.vendorType || '';
+                    bValue = b.vendorType || '';
                     break;
                 case 'balance':
                     aValue = a.balance;
@@ -233,13 +300,14 @@ export default function AdminManageSellerList() {
     const displayedSellers = filteredSellers.slice(startIndex, endIndex);
 
     const handleExport = () => {
-        const headers = ['Id', 'Name', 'Store Name', 'Contact', 'Balance', 'Commission', 'Status'];
+        const headers = ['Id', 'Name', 'Store Name', 'Seller Type', 'Contact', 'Balance', 'Commission', 'Status'];
         const csvContent = [
             headers.join(','),
             ...filteredSellers.map(seller => [
                 seller.id,
                 `"${seller.name}"`,
                 `"${seller.storeName}"`,
+                `"${getSellerTypeBadge(seller.vendorType).label}"`,
                 `"${seller.phone}, ${seller.email}"`,
                 seller.balance,
                 `${seller.commission}%`,
@@ -290,6 +358,9 @@ export default function AdminManageSellerList() {
                 requireProductApproval: seller.requireProductApproval ?? false,
                 viewCustomerDetails: seller.viewCustomerDetails ?? true,
                 balance: seller.balance || 0,
+                vendorType: seller.vendorType,
+                pickupAddress: seller.pickupAddress || seller.shippingConfig?.pickupAddress || seller.address || '',
+                pickupPincode: seller.pickupPincode || seller.shippingConfig?.pickupPincode || '',
             });
             setNewRadius(seller.serviceRadiusKm || 10);
             setEditError('');
@@ -304,7 +375,7 @@ export default function AdminManageSellerList() {
             setIsSavingSeller(true);
             setEditError('');
 
-            const payload: Partial<Seller> = {
+            const payload: any = {
                 sellerName: editForm.sellerName || editForm.name,
                 storeName: editForm.storeName,
                 email: editForm.email,
@@ -331,6 +402,16 @@ export default function AdminManageSellerList() {
                 viewCustomerDetails: editForm.viewCustomerDetails,
                 balance: Number(editForm.balance) || 0,
             };
+
+            // Update shippingConfig for Ecommerce and Hybrid sellers while keeping vendorType read-only
+            if (editingSeller.vendorType === 'ECOMMERCE' || editingSeller.vendorType === 'HYBRID') {
+                payload.shippingConfig = {
+                    ...editingSeller.shippingConfig,
+                    pickupAddress: editForm.pickupAddress || editingSeller.shippingConfig?.pickupAddress || editForm.address || '',
+                    pickupPincode: editForm.pickupPincode || editingSeller.shippingConfig?.pickupPincode || '',
+                    warehouseAddress: editForm.pickupAddress || editingSeller.shippingConfig?.warehouseAddress || editForm.address || '',
+                };
+            }
 
             const response = await updateSeller(editingSeller._id, payload);
             if (response.success && response.data) {
@@ -582,24 +663,54 @@ export default function AdminManageSellerList() {
                     )}
 
                     {/* Controls */}
-                    <div className="p-4 border-b border-neutral-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-neutral-600">Show</span>
-                            <select
-                                value={rowsPerPage}
-                                onChange={(e) => {
-                                    setRowsPerPage(Number(e.target.value));
-                                    setCurrentPage(1);
-                                }}
-                                className="bg-white border border-neutral-300 rounded py-1.5 px-3 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none cursor-pointer"
-                            >
-                                <option value={10}>10</option>
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
-                                <option value={100}>100</option>
-                            </select>
+                    <div className="p-4 border-b border-neutral-200 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-neutral-600">Show</span>
+                                <select
+                                    value={rowsPerPage}
+                                    onChange={(e) => {
+                                        setRowsPerPage(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="bg-white border border-neutral-300 rounded py-1.5 px-3 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none cursor-pointer"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </div>
+
+                            {/* Channel Filter */}
+                            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
+                                <span className="text-xs font-semibold text-neutral-500 px-2 uppercase tracking-wider hidden sm:inline">Channel:</span>
+                                {[
+                                    { key: 'ALL', label: 'All' },
+                                    { key: 'QUICK_COMMERCE', label: '⚡ Quick Commerce' },
+                                    { key: 'ECOMMERCE', label: '📦 Ecommerce' },
+                                    { key: 'HYBRID', label: '⚡ + 📦 Hybrid' }
+                                ].map(f => (
+                                    <button
+                                        key={f.key}
+                                        type="button"
+                                        onClick={() => {
+                                            setVendorTypeFilter(f.key as any);
+                                            setCurrentPage(1);
+                                        }}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
+                                            vendorTypeFilter === f.key
+                                                ? 'bg-teal-600 text-white shadow-sm font-semibold'
+                                                : 'text-neutral-600 hover:text-neutral-900 hover:bg-white/60'
+                                        }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
+
+                        <div className="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
                             <button
                                 onClick={handleExport}
                                 className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1 transition-colors"
@@ -653,6 +764,14 @@ export default function AdminManageSellerList() {
                                         >
                                             <div className="flex items-center">
                                                 Store Name <SortIcon column="storeName" />
+                                            </div>
+                                        </th>
+                                        <th
+                                            className="p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
+                                            onClick={() => handleSort('vendorType')}
+                                        >
+                                            <div className="flex items-center">
+                                                Seller Type <SortIcon column="vendorType" />
                                             </div>
                                         </th>
                                         <th className="p-4">
@@ -710,6 +829,19 @@ export default function AdminManageSellerList() {
                                                 </button>
                                             </td>
                                             <td className="p-4 align-middle">{seller.storeName}</td>
+                                            <td className="p-4 align-middle">
+                                                {(() => {
+                                                    const badge = getSellerTypeBadge(seller.vendorType);
+                                                    return (
+                                                        <span
+                                                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${badge.className}`}
+                                                            title={badge.description}
+                                                        >
+                                                            {badge.label}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </td>
                                             <td className="p-4 align-middle">
                                                 <div className="text-xs">
                                                     <div>{seller.phone}</div>
@@ -971,6 +1103,27 @@ export default function AdminManageSellerList() {
                                 </div>
                             )}
 
+                            {/* Seller Type Section */}
+                            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <label className="text-xs font-semibold text-neutral-700 uppercase tracking-wider">Seller Type:</label>
+                                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold shadow-sm ${getSellerTypeBadge(editingSeller.vendorType).className}`}>
+                                            {getSellerTypeBadge(editingSeller.vendorType).label}
+                                        </span>
+                                        <span className="text-[11px] text-neutral-500 font-medium px-2 py-0.5 bg-neutral-200/80 rounded">
+                                            Read-Only
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-neutral-500">
+                                        Registered Channel: <span className="font-mono font-bold text-neutral-700">{editingSeller.vendorType || 'LEGACY (NOT SET)'}</span>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-neutral-500 mt-2">
+                                    {getSellerTypeBadge(editingSeller.vendorType).description}
+                                </p>
+                            </div>
+
                             {/* Status Section */}
                             <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-lg border border-neutral-200">
                                 <div className="flex items-center gap-3">
@@ -1091,127 +1244,288 @@ export default function AdminManageSellerList() {
                                 </div>
                             </div>
 
-                            {/* Address Information */}
-                            <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
-                                <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                                    <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                    Address Information
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">Full Address</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.address || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="Enter full store address"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">City</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.city || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="Enter city"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">Serviceable Area</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.serviceableArea || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, serviceableArea: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="Enter serviceable area"
-                                        />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">Search Location / Landmark</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.searchLocation || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, searchLocation: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="e.g. Near City Center, Main Market"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">Latitude</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.latitude || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, latitude: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="e.g. 23.926324"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-neutral-600 mb-1">Longitude</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.longitude || ''}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, longitude: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                            placeholder="e.g. 76.899307"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Service Area Map */}
-                            <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
-                                <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                                    <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                                    Service Area Visualization
-                                </h4>
-                                {editForm.latitude && editForm.longitude ? (
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                            {/* Location & Fulfillment Configuration */}
+                            {editingSeller.vendorType === 'ECOMMERCE' ? (
+                                /* Ecommerce: Courier Pickup & Warehouse Details */
+                                <div className="space-y-4">
+                                    <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                        <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                            <span className="text-base">📦</span>
+                                            Courier Pickup & Warehouse Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup / Warehouse Address <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.pickupAddress || editForm.address || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupAddress: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter courier pickup/warehouse address"
+                                                />
+                                            </div>
                                             <div>
-                                                <label className="text-xs font-medium text-neutral-600 mb-1 block">Service Radius (km)</label>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="number"
-                                                        min="0.1"
-                                                        max="300"
-                                                        step="0.1"
-                                                        value={newRadius}
-                                                        onChange={(e) => setNewRadius(parseFloat(e.target.value))}
-                                                        className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleUpdateRadius}
-                                                        disabled={isUpdatingRadius || newRadius === editingSeller.serviceRadiusKm}
-                                                        className="px-4 py-2 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                                                    >
-                                                        {isUpdatingRadius ? 'Updating...' : 'Update Radius'}
-                                                    </button>
-                                                </div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup Pincode <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    maxLength={6}
+                                                    value={editForm.pickupPincode || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupPincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="6-digit Indian PIN (e.g. 110001)"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">City</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.city || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter city"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Store / Registered Address</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.address || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter full store address"
+                                                />
                                             </div>
                                         </div>
-                                        <div className="h-[300px] w-full">
-                                            <SellerServiceMap
-                                                latitude={parseFloat(editForm.latitude)}
-                                                longitude={parseFloat(editForm.longitude)}
-                                                radiusKm={newRadius}
-                                                storeName={editForm.storeName || editingSeller.storeName}
+                                    </div>
+
+                                    {/* Courier Notice for Ecommerce */}
+                                    <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-4 text-xs text-blue-800 flex items-start gap-2">
+                                        <span className="text-base">ℹ️</span>
+                                        <div>
+                                            <p className="font-semibold mb-0.5">Nationwide Courier Channel</p>
+                                            <p className="text-blue-700">
+                                                This seller operates exclusively via nationwide third-party courier services. Hyperlocal GPS coordinates and delivery partner service radius do not apply.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : editingSeller.vendorType === 'HYBRID' ? (
+                                /* Hybrid: Both Store/GPS/Radius AND Pickup/Pincode */
+                                <div className="space-y-4">
+                                    {/* Quick Commerce Hyperlocal Store Details */}
+                                    <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                        <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                            <span className="text-base">⚡</span>
+                                            Hyperlocal Store Location & Quick Commerce Radius
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Store Address</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.address || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter store address"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">City</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.city || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter city"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Serviceable Area</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.serviceableArea || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, serviceableArea: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter serviceable area"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Latitude</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.latitude || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, latitude: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="e.g. 23.926324"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Longitude</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.longitude || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, longitude: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="e.g. 76.899307"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Ecommerce Courier Pickup Details */}
+                                    <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                        <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                            <span className="text-base">📦</span>
+                                            Ecommerce Courier Pickup & Warehouse Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup / Warehouse Address <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.pickupAddress || editForm.address || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupAddress: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="Enter courier pickup address"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup Pincode <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    maxLength={6}
+                                                    value={editForm.pickupPincode || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupPincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="6-digit Indian PIN (e.g. 110001)"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Quick Commerce or Legacy: Store Address, City, Lat, Long, Radius */
+                                <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                    <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                        Store Address & Location
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-medium text-neutral-600 mb-1">Store Address</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.address || ''}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                placeholder="Enter store address"
                                             />
                                         </div>
-                                        <p className="text-xs text-neutral-500 italic">
-                                            * Adjust the radius above to see the service area change dynamically.
-                                        </p>
+                                        <div>
+                                            <label className="block text-xs font-medium text-neutral-600 mb-1">City</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.city || ''}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, city: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                placeholder="Enter city"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-neutral-600 mb-1">Serviceable Area</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.serviceableArea || ''}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, serviceableArea: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                placeholder="Enter serviceable area"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-neutral-600 mb-1">Latitude</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.latitude || ''}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, latitude: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                placeholder="e.g. 23.926324"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-neutral-600 mb-1">Longitude</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.longitude || ''}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, longitude: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                placeholder="e.g. 76.899307"
+                                            />
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="p-8 text-center border-2 border-dashed border-neutral-200 rounded-lg">
-                                        <p className="text-sm text-neutral-500">No valid coordinates available for this seller.</p>
-                                        <p className="text-xs text-neutral-400 mt-1">Please enter latitude and longitude above to view the service map.</p>
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
+                            {/* Service Area Map - Only for QC, HYBRID, or Legacy (not pure Ecommerce) */}
+                            {editingSeller.vendorType !== 'ECOMMERCE' && (
+                                <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                    <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+                                        Service Area Visualization
+                                    </h4>
+                                    {editForm.latitude && editForm.longitude ? (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                                <div>
+                                                    <label className="text-xs font-medium text-neutral-600 mb-1 block">Service Radius (km)</label>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="number"
+                                                            min="0.1"
+                                                            max="300"
+                                                            step="0.1"
+                                                            value={newRadius}
+                                                            onChange={(e) => setNewRadius(parseFloat(e.target.value))}
+                                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleUpdateRadius}
+                                                            disabled={isUpdatingRadius || newRadius === editingSeller.serviceRadiusKm}
+                                                            className="px-4 py-2 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                                                        >
+                                                            {isUpdatingRadius ? 'Updating...' : 'Update Radius'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="h-[300px] w-full">
+                                                <SellerServiceMap
+                                                    latitude={parseFloat(editForm.latitude)}
+                                                    longitude={parseFloat(editForm.longitude)}
+                                                    radiusKm={newRadius}
+                                                    storeName={editForm.storeName || editingSeller.storeName}
+                                                />
+                                            </div>
+                                            <p className="text-xs text-neutral-500 italic">
+                                                * Adjust the radius above to see the service area change dynamically.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="p-8 text-center border-2 border-dashed border-neutral-200 rounded-lg">
+                                            <p className="text-sm text-neutral-500">No valid coordinates available for this seller.</p>
+                                            <p className="text-xs text-neutral-400 mt-1">Please enter latitude and longitude above to view the service map.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Tax Information */}
                             <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">

@@ -61,6 +61,15 @@ export interface Product {
     name?: string;
   };
   isAvailable?: boolean;
+  productType?: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  packageDetails?: {
+    weightKg?: number;
+    dimensionsCm?: {
+      length?: number;
+      width?: number;
+      height?: number;
+    };
+  };
 }
 
 

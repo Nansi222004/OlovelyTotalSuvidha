@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import Order from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
+import Product from "../../../models/Product";
 import { asyncHandler } from "../../../utils/asyncHandler";
+import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import { recomputeOrderFulfillment } from "../../../services/orderFulfillmentOrchestrator";
 import { Server as SocketIOServer } from "socket.io";
 import {
@@ -35,14 +37,35 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     dateTo,
     status,
     search,
+    channel,
     page = "1",
     limit = "10",
     sortBy = "orderDate",
     sortOrder = "desc",
   } = req.query;
 
-  // Find all order IDs that contain items from this seller
-  const orderItems = await OrderItem.find({ seller: sellerId }).distinct(
+  // Authoritatively validate requested channel against seller.vendorType
+  const resolution = await resolveAuthorizedSellerChannel(sellerId, channel as string);
+  if (resolution.error) {
+    return res.status(resolution.statusCode || 400).json({
+      success: false,
+      message: resolution.error,
+    });
+  }
+
+  const { activeChannel } = resolution.data!;
+
+  const itemFilter: any = { seller: sellerId };
+  if (activeChannel) {
+    const relevantProductIds = await Product.find({
+      seller: sellerId,
+      productType: activeChannel,
+    }).distinct("_id");
+    itemFilter.product = { $in: relevantProductIds };
+  }
+
+  // Find all order IDs that contain items from this seller matching the active channel
+  const orderItems = await OrderItem.find(itemFilter).distinct(
     "order",
   );
 
@@ -63,11 +86,18 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   // Status filter
   if (status && status !== "All Status") {
     if (status === "Tracking") {
-      // Include orders where a delivery boy is assigned and the order is still active
-      query.deliveryBoy = { $exists: true, $ne: null };
-      query.status = {
-        $nin: ["Delivered", "Cancelled", "Rejected", "Returned"],
-      };
+      if (activeChannel === "ECOMMERCE") {
+        // Ecommerce courier shipment tracking (orders in transit/shipped/processing/accepted)
+        query.status = {
+          $in: ["Processing", "Shipped", "On the way", "Out for Delivery", "Accepted"],
+        };
+      } else {
+        // Quick Commerce local delivery partner tracking
+        query.deliveryBoy = { $exists: true, $ne: null };
+        query.status = {
+          $nin: ["Delivered", "Cancelled", "Rejected", "Returned"],
+        };
+      }
     } else {
       // Map frontend status to backend status
       const statusMapping: Record<string, string> = {
@@ -113,36 +143,69 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   const total = await Order.countDocuments(query);
 
   // Format response for frontend
-  const formattedOrders = orders.map((order) => ({
-    id: order._id,
-    orderId: order.orderNumber,
-    deliveryDate: order.estimatedDeliveryDate
-      ? order.estimatedDeliveryDate.toLocaleDateString("en-US", {
+  const formattedOrders = orders.map((order) => {
+    // Derive fulfillment summary safely from fulfillmentGroups or orderType
+    const groups = order.fulfillmentGroups || [];
+    const qcGroup = groups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY');
+    const ecomGroup = groups.find((g: any) => g.fulfillmentType === 'COURIER_SHIPPING');
+
+    const hasQcGroup = !!qcGroup || order.orderType === 'QUICK_COMMERCE';
+    const hasEcomGroup = !!ecomGroup || order.orderType === 'ECOMMERCE';
+    const isMixedOrder = order.orderType === 'MIXED' || (hasQcGroup && hasEcomGroup);
+    const isPureQc = !isMixedOrder && (hasQcGroup || order.orderType === 'QUICK_COMMERCE');
+    const isPureEcommerce = !isMixedOrder && (hasEcomGroup || order.orderType === 'ECOMMERCE');
+
+    const qcItemCount = qcGroup?.items?.length || (isPureQc ? (order.items?.length || 1) : 0);
+    const ecomItemCount = ecomGroup?.items?.length || (isPureEcommerce ? (order.items?.length || 1) : 0);
+
+    const fulfillmentSummary = {
+      type: isMixedOrder ? 'MIXED' : isPureQc ? 'QUICK_COMMERCE' : 'ECOMMERCE',
+      hasQuickCommerce: isMixedOrder ? true : isPureQc,
+      hasEcommerce: isMixedOrder ? true : isPureEcommerce,
+      isMixed: isMixedOrder,
+      isPureQc,
+      isPureEcommerce,
+      quickCommerceItemCount: qcItemCount,
+      ecommerceItemCount: ecomItemCount,
+      qcStatus: qcGroup?.status,
+      ecomStatus: ecomGroup?.status,
+    };
+
+    return {
+      id: order._id,
+      orderId: order.orderNumber,
+      deliveryDate: order.estimatedDeliveryDate
+        ? order.estimatedDeliveryDate.toLocaleDateString("en-US", {
+          month: "2-digit",
+          day: "2-digit",
+          year: "numeric",
+        })
+        : order.orderDate.toLocaleDateString("en-US", {
+          month: "2-digit",
+          day: "2-digit",
+          year: "numeric",
+        }),
+      orderDate: order.orderDate.toLocaleString("en-US", {
         month: "2-digit",
         day: "2-digit",
         year: "numeric",
-      })
-      : order.orderDate.toLocaleDateString("en-US", {
-        month: "2-digit",
-        day: "2-digit",
-        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       }),
-    orderDate: order.orderDate.toLocaleString("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    status: order.status === "On the way" ? "On the way" : order.status,
-    amount: order.total,
-    customerName: (order.customer as any)?.name || order.customerName || "",
-    customerPhone: (order.customer as any)?.phone || order.customerPhone || "",
-    deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
-    deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
-    deliveryPreference: order.deliveryPreference,
-    paymentMethod: order.paymentMethod,
-  }));
+      status: order.status === "On the way" ? "On the way" : order.status,
+      amount: order.total,
+      customerName: (order.customer as any)?.name || order.customerName || "",
+      customerPhone: (order.customer as any)?.phone || order.customerPhone || "",
+      deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
+      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
+      deliveryPreference: order.deliveryPreference,
+      paymentMethod: order.paymentMethod,
+      orderType: order.orderType || "QUICK_COMMERCE",
+      trackingNumber: order.trackingNumber || "",
+      fulfillmentGroups: order.fulfillmentGroups || [],
+      fulfillmentSummary,
+    };
+  });
 
   return res.status(200).json({
     success: true,
@@ -358,7 +421,8 @@ export const getOrderById = asyncHandler(
     // Get order with populated data
     const order = await Order.findById(id)
       .populate("customer", "name email phone")
-      .populate("deliveryBoy", "name mobile email");
+      .populate("deliveryBoy", "name mobile email")
+      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType");
 
     if (!order) {
       return res.status(404).json({
@@ -415,7 +479,11 @@ export const getOrderById = asyncHandler(
         }
       }
 
+      const prodType = (product as any)?.productType || 
+        (order.fulfillmentGroups?.find((g: any) => g.items?.some((it: any) => it.toString() === item._id.toString()))?.fulfillmentType === 'COURIER_SHIPPING' ? 'ECOMMERCE' : 'QUICK_COMMERCE');
+
       return {
+        id: item._id,
         srNo: item._id.toString().slice(-4), // Use last 4 chars of ID as srNo
         product: item.productName || "Unknown Product",
         soldBy: (item.seller as any)?.storeName || "N/A",
@@ -425,12 +493,17 @@ export const getOrderById = asyncHandler(
         taxPercent: 0,
         qty: item.quantity || 0,
         subtotal: item.total || 0,
+        productType: prodType,
+        fulfillmentType: prodType === 'ECOMMERCE' ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
       };
     });
 
     // Format order data for frontend
     const orderDetail = {
       id: order._id,
+      orderType: order.orderType || "QUICK_COMMERCE",
+      fulfillmentGroups: order.fulfillmentGroups || [],
+      trackingNumber: order.trackingNumber || "",
       invoiceNumber: order.invoiceNumber || order.orderNumber || "N/A",
       orderDate: order.orderDate
         ? order.orderDate.toISOString()
@@ -443,8 +516,11 @@ export const getOrderById = asyncHandler(
       customerName: (order.customer as any)?.name || order.customerName || "",
       customerEmail:
         (order.customer as any)?.email || order.customerEmail || "",
-      deliveryBoyName: (order.deliveryBoy as any)?.name || "",
-      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
+      deliveryBoyName: (order.deliveryBoy as any)?.name || 
+        (order.fulfillmentGroups?.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.name || 
+        (order.deliveryPreference === 'Self' ? 'Self Assign' : ''),
+      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || 
+        (order.fulfillmentGroups?.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.mobile || '',
       deliveryPreference: order.deliveryPreference,
       deliveryOption: order.deliveryOption,
       items: formattedItems,
@@ -709,9 +785,51 @@ export const getAvailableDeliveryPartners = asyncHandler(
       });
     }
 
-    // Get seller location for proximity calculation
+    // Channel guard: Local delivery assignment is only applicable for Quick Commerce orders
+    if (order.orderType === "ECOMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "Local delivery assignment is only applicable for Quick Commerce orders. Ecommerce orders are fulfilled via courier shipping.",
+      });
+    }
+
+    // Check if seller is ECOMMERCE only
     const Seller = (await import("../../../models/Seller")).default;
-    const seller = await Seller.findById(sellerId).select("latitude longitude serviceRadiusKm");
+    const seller = await Seller.findById(sellerId).select("latitude longitude serviceRadiusKm vendorType");
+    if (seller?.vendorType === "ECOMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "ECOMMERCE-only vendors cannot assign local delivery partners. Use courier shipping.",
+      });
+    }
+
+    // In a MIXED or multi-group order, verify order has a LOCAL_DELIVERY fulfillment group
+    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+      const qcGroup = order.fulfillmentGroups.find(
+        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY"
+      );
+      if (!qcGroup) {
+        return res.status(400).json({
+          success: false,
+          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
+        });
+      }
+
+      // Verify seller owns items in the QC group
+      const sellerHasQcItem = await OrderItem.exists({
+        order: id,
+        seller: sellerId,
+        _id: { $in: qcGroup.items },
+      });
+      if (!sellerHasQcItem && qcGroup.seller && qcGroup.seller.toString() !== sellerId.toString()) {
+        return res.status(400).json({
+          success: false,
+          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
+        });
+      }
+    }
+
+    // Get seller location for proximity calculation
     const sellerLat = seller?.latitude ? parseFloat(seller.latitude) : null;
     const sellerLng = seller?.longitude ? parseFloat(seller.longitude) : null;
 
@@ -822,6 +940,50 @@ export const assignDeliveryBoySeller = asyncHandler(
       });
     }
 
+    // Channel guard: Local delivery assignment is only applicable for Quick Commerce orders
+    if (order.orderType === "ECOMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "Local delivery assignment is only applicable for Quick Commerce orders. Ecommerce orders are fulfilled via courier shipping.",
+      });
+    }
+
+    // Check if seller is ECOMMERCE only
+    const Seller = (await import("../../../models/Seller")).default;
+    const seller = await Seller.findById(sellerId).select("vendorType");
+    if (seller?.vendorType === "ECOMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "ECOMMERCE-only vendors cannot assign local delivery partners. Use courier shipping.",
+      });
+    }
+
+    // In a MIXED or multi-group order, verify order has a LOCAL_DELIVERY fulfillment group
+    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+      const qcGroup = order.fulfillmentGroups.find(
+        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY"
+      );
+      if (!qcGroup) {
+        return res.status(400).json({
+          success: false,
+          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
+        });
+      }
+
+      // Verify seller owns items in the QC group
+      const sellerHasQcItem = await OrderItem.exists({
+        order: id,
+        seller: sellerId,
+        _id: { $in: qcGroup.items },
+      });
+      if (!sellerHasQcItem && qcGroup.seller && qcGroup.seller.toString() !== sellerId.toString()) {
+        return res.status(400).json({
+          success: false,
+          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
+        });
+      }
+    }
+
     if (["Delivered", "Cancelled", "Rejected", "Returned"].includes(order.status)) {
       return res.status(400).json({
         success: false,
@@ -859,6 +1021,19 @@ export const assignDeliveryBoySeller = asyncHandler(
       ? "Processed"
       : order.status;
 
+    // Update LOCAL_DELIVERY group with assigned rider while keeping COURIER_SHIPPING groups untouched
+    const updatedFulfillmentGroups = (order.fulfillmentGroups || []).map((fg: any) => {
+      const fgObj = fg.toObject ? fg.toObject() : { ...fg };
+      if (fgObj.fulfillmentType === "LOCAL_DELIVERY") {
+        return {
+          ...fgObj,
+          deliveryBoy: deliveryBoyId,
+          status: fgObj.status === "Pending" ? "Processing" : fgObj.status,
+        };
+      }
+      return fgObj;
+    });
+
     const updatedOrder = await Order.findOneAndUpdate(
       {
         _id: id,
@@ -878,12 +1053,14 @@ export const assignDeliveryBoySeller = asyncHandler(
           deliveryAssignmentStatus: "Assigned",
           deliveryAssignmentResolvedAt: new Date(),
           status: nextStatus,
+          fulfillmentGroups: updatedFulfillmentGroups,
         },
       },
       { new: true },
     )
       .populate("customer", "name email phone")
       .populate("deliveryBoy", "name mobile email vehicleNumber vehicleType")
+      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType")
       .populate("items");
 
     if (!updatedOrder) {

@@ -85,7 +85,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           pack: item.product.pack || '1 unit',
           categoryId: item.product.category || '',
           description: item.product.description,
-          variantId: item.variation // Preserving variation ID/value
+          variantId: item.variation, // Preserving variation ID/value
+          productType: item.product.productType || 'QUICK_COMMERCE',
+          packageDetails: item.product.packageDetails,
+          seller: item.product.seller,
         },
         quantity: item.quantity,
         variant: item.variation // Also preserve it here for order placement
@@ -147,13 +150,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setPlatformFee(response.data.platformFee);
         setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
         setMinimumOrderValue(response.data.minimumOrderValue);
+        if (response.data.groups) {
+          setCartGroups(response.data.groups);
+        }
       } else if (!options?.preserveItems) {
         setItems([]);
+        setCartGroups(undefined);
         setEstimatedFee(undefined);
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
         setMinimumOrderValue(undefined);
       } else {
+        setCartGroups(undefined);
         setEstimatedFee(undefined);
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
@@ -228,6 +236,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [platformFee, setPlatformFee] = useState<number | undefined>(undefined);
   const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number | undefined>(undefined);
   const [minimumOrderValue, setMinimumOrderValue] = useState<number | undefined>(undefined);
+  const [cartGroups, setCartGroups] = useState<any>(undefined);
 
   const cart: Cart = useMemo(() => {
     // Filter out any items with null products before computing totals
@@ -250,9 +259,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       freeDeliveryThreshold,
       minimumOrderValue,
       debug_config: (items as any).debug_config,
-      backendTotal: (items as any).backendTotal
+      backendTotal: (items as any).backendTotal,
+      groups: cartGroups,
     };
-  }, [items, estimatedFee, platformFee, freeDeliveryThreshold, minimumOrderValue]);
+  }, [items, estimatedFee, platformFee, freeDeliveryThreshold, minimumOrderValue, cartGroups]);
 
   const addToCart = async (product: Product, sourceElement?: HTMLElement | null) => {
     if (!isAuthenticated) {
@@ -379,6 +389,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          if (response.data.groups) {
+            setCartGroups(response.data.groups);
+          }
         } else {
           console.warn('Response missing data or items:', response);
         }
@@ -426,6 +439,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          if (response.data.groups) {
+            setCartGroups(response.data.groups);
+          }
         }
       } catch (error) {
         console.error("Remove from cart failed", error);
@@ -520,6 +536,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          if (response.data.groups) {
+            setCartGroups(response.data.groups);
+          }
         }
       } catch (error) {
         console.error("Update quantity failed", error);
@@ -537,6 +556,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = async () => {
     setItems([]);
+    setCartGroups(undefined);
     try {
       await apiClearCart();
     } catch (error) {

@@ -102,9 +102,19 @@ const ProductCard = memo(({
               </div>
             )}
 
-            {/* Red Discount Badge - Top Left */}
+            {/* Fulfillment Channel Badge */}
+            <div className={`absolute top-1.5 left-1.5 z-20 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5 ${
+              product.productType === 'ECOMMERCE'
+                ? 'bg-blue-600 text-white'
+                : 'bg-emerald-700 text-white'
+            }`}>
+              <span>{product.productType === 'ECOMMERCE' ? '📦' : '⚡'}</span>
+              <span>{product.productType === 'ECOMMERCE' ? 'Courier' : 'Quick'}</span>
+            </div>
+
+            {/* Red Discount Badge - Top Left Below Channel Badge */}
             {discount > 0 && (
-              <div className="absolute top-1.5 left-1.5 z-10 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
+              <div className="absolute top-6 left-1.5 z-10 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
                 {discount}% OFF
               </div>
             )}
@@ -236,9 +246,13 @@ const ProductCard = memo(({
             </h3>
           </div>
 
-          {/* Delivery Time */}
-          <div className="text-[10px] font-semibold text-neutral-600 mb-0.5">
-            ⏱️ 20 MINS
+          {/* Delivery Channel / Time */}
+          <div className="text-[10px] font-semibold mb-0.5">
+            {product.productType === 'ECOMMERCE' ? (
+              <span className="text-blue-700 font-bold">📦 Courier Delivery</span>
+            ) : (
+              <span className="text-emerald-800 font-bold">⚡ 12–15 MINS</span>
+            )}
           </div>
 
           {/* Discount - Green Text */}

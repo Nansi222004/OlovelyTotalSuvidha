@@ -58,6 +58,10 @@ export interface IReturn extends Document {
   // Legacy pickup fields (kept for backward compat)
   pickupScheduled?: Date;
   pickupCompleted?: Date;
+
+  // Ecommerce Reverse Logistics
+  returnAwbNumber?: string;
+  courierName?: string;
   pickupAddress?: {
     address: string;
     city: string;
@@ -193,6 +197,16 @@ const ReturnSchema = new Schema<IReturn>(
       address: String,
       city: String,
       pincode: String,
+    },
+
+    // Ecommerce Reverse Logistics
+    returnAwbNumber: {
+      type: String,
+      trim: true,
+    },
+    courierName: {
+      type: String,
+      trim: true,
     },
 
     // Refund

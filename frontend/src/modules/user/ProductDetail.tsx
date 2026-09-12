@@ -24,6 +24,7 @@ import {
 } from '../../services/api/customerReviewService';
 import { useTranslation } from '../../hooks/useTranslation';
 import PageLoader from '../../components/PageLoader';
+import { checkPincodeServiceability, PincodeServiceabilityResult } from '../../services/api/customerShippingService';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
 
@@ -64,6 +65,34 @@ export default function ProductDetail() {
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewPages, setReviewPages] = useState(1);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+
+  const [pincodeInput, setPincodeInput] = useState("");
+  const [pincodeChecking, setPincodeChecking] = useState(false);
+  const [pincodeResult, setPincodeResult] = useState<PincodeServiceabilityResult | null>(null);
+  const [pincodeError, setPincodeError] = useState<string | null>(null);
+
+  const handleCheckPincode = async () => {
+    if (!pincodeInput || pincodeInput.trim().length !== 6) {
+      setPincodeError("Please enter a valid 6-digit pincode");
+      return;
+    }
+    setPincodeChecking(true);
+    setPincodeError(null);
+    try {
+      const res = await checkPincodeServiceability(pincodeInput.trim());
+      if (res.success && res.data) {
+        setPincodeResult(res.data);
+      } else {
+        setPincodeError(res.message || "Pincode is not serviceable");
+        setPincodeResult(null);
+      }
+    } catch (err: any) {
+      setPincodeError(err.message || "Failed to check pincode");
+      setPincodeResult(null);
+    } finally {
+      setPincodeChecking(false);
+    }
+  };
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -312,8 +341,10 @@ export default function ProductDetail() {
       ? { name: product.category.name, id: product.category._id }
       : null;
 
+  const isEcommerce = product?.productType === 'ECOMMERCE';
+
   const handleAddToCart = () => {
-    if (!isAvailableAtLocation) {
+    if (!isEcommerce && !isAvailableAtLocation) {
       showToast("This service is not available in your location yet.", "info");
       return;
     }
@@ -335,7 +366,7 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = async () => {
-    if (!isAvailableAtLocation) {
+    if (!isEcommerce && !isAvailableAtLocation) {
       showToast("This service is not available in your location yet.", "info");
       return;
     }
@@ -401,7 +432,7 @@ export default function ProductDetail() {
       {/* Scrollable content */}
       <div className="pt-16">
         {/* Location Availability Banner */}
-        {!isAvailableAtLocation && (
+        {!isEcommerce && !isAvailableAtLocation && (
           <div className="bg-amber-50 border-l-4 border-amber-500 px-4 py-3 mx-4 mt-4 rounded-r-lg">
             <div className="flex items-start gap-2">
               <svg
@@ -611,32 +642,22 @@ export default function ProductDetail() {
 
         {/* Product Details Card - White section */}
         <div className="bg-white rounded-t-3xl -mt-6 relative z-10 px-4 md:px-6 lg:px-8 pt-2.5 md:pt-4 pb-2 md:pb-4">
-          {/* Delivery time */}
-          <div className="flex items-center gap-0.5 mb-1">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg">
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-              <path
-                d="M12 6v6l4 2"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="text-sm text-neutral-700 font-medium">
-              17 MINS
-            </span>
-          </div>
+          {/* Delivery channel badge */}
+          {isEcommerce ? (
+            <div className="flex items-center gap-1.5 mb-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full w-fit border border-blue-200">
+              <span className="text-sm">📦</span>
+              <span className="text-xs font-bold tracking-wide">
+                📦 Courier Delivery
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mb-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full w-fit border border-emerald-200">
+              <span className="text-sm">⚡</span>
+              <span className="text-xs font-bold tracking-wide">
+                ⚡ Quick Delivery • {appSettings?.estimatedDeliveryTime || '12–15 mins'}
+              </span>
+            </div>
+          )}
 
           {/* Product name */}
           <h2 className="text-lg md:text-2xl font-bold text-neutral-900 mb-0 leading-tight">
@@ -729,6 +750,104 @@ export default function ProductDetail() {
             <p className="text-sm text-green-600 mb-1 font-medium">
               In Stock
             </p>
+          )}
+
+          {/* Delivery Information Card */}
+          {isEcommerce ? (
+            <div className="my-3 p-3.5 bg-neutral-50 rounded-xl border border-neutral-200">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0 text-lg">
+                  📦
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-neutral-900">Courier Delivery</h4>
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      Nationwide
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-600 mt-0.5">
+                    {pincodeResult?.estimatedDays
+                      ? `Estimated delivery: ${pincodeResult.estimatedDays} days`
+                      : 'Delivery estimate shown at checkout'}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    Dispatched via verified courier partner with AWB tracking.
+                  </p>
+                </div>
+              </div>
+
+              {/* Pincode Serviceability Checker */}
+              <div className="mt-3 pt-3 border-t border-neutral-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-neutral-700 flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Check Pincode Serviceability
+                  </span>
+                  {product.packageDetails?.weightKg && (
+                    <span className="text-xs text-neutral-500 font-medium">
+                      Package: {product.packageDetails.weightKg} kg
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={pincodeInput}
+                    onChange={(e) => setPincodeInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 6-digit Pincode"
+                    className="flex-1 px-3 py-1.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCheckPincode}
+                    disabled={pincodeChecking || pincodeInput.length !== 6}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {pincodeChecking ? 'Checking...' : 'Check'}
+                  </button>
+                </div>
+                {pincodeResult && (
+                  <div className={`mt-2 text-xs p-2 rounded-lg flex items-start gap-1.5 ${pincodeResult.serviceable ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                    <span className="font-bold">{pincodeResult.serviceable ? '✓' : '✗'}</span>
+                    <span>
+                      {pincodeResult.serviceable
+                        ? `Delivery available to ${pincodeResult.pincode}. ${pincodeResult.estimatedDays ? `Estimated delivery: ${pincodeResult.estimatedDays} days via Courier Delivery.` : 'Delivery estimate shown at checkout.'}`
+                        : `Sorry, courier delivery is not available to pincode ${pincodeResult.pincode}.`}
+                    </span>
+                  </div>
+                )}
+                {pincodeError && (
+                  <p className="mt-2 text-xs text-red-600 font-medium">{pincodeError}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="my-3 p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 text-lg">
+                  ⚡
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-neutral-900">Quick Delivery</h4>
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                      Hyperlocal
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-emerald-800 mt-0.5">
+                    Delivered in {appSettings?.estimatedDeliveryTime || '12–15 mins'}
+                  </p>
+                  <p className="text-[11px] text-neutral-600 mt-1">
+                    Fulfilled directly from nearby verified store with live delivery partner tracking.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Divider line */}

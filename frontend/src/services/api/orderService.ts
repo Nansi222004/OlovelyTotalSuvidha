@@ -18,9 +18,23 @@ export interface Order {
   deliveryBoyName?: string;
   deliveryBoyPhone?: string;
   paymentMethod?: string;
+  orderType?: string;
+  trackingNumber?: string;
+  fulfillmentGroups?: any[];
+  fulfillmentSummary?: {
+    type: 'MIXED' | 'QUICK_COMMERCE' | 'ECOMMERCE' | string;
+    hasQuickCommerce: boolean;
+    hasEcommerce: boolean;
+    isMixed: boolean;
+    quickCommerceItemCount: number;
+    ecommerceItemCount: number;
+    qcStatus?: string;
+    ecomStatus?: string;
+  };
 }
 
 export interface OrderItem {
+  id?: string;
   srNo: string;
   product: string;
   soldBy: string;
@@ -30,6 +44,8 @@ export interface OrderItem {
   taxPercent: number;
   qty: number;
   subtotal: number;
+  productType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | string;
+  fulfillmentType?: 'LOCAL_DELIVERY' | 'COURIER_SHIPPING' | string;
 }
 
 export interface DeliveryAddress {
@@ -63,6 +79,10 @@ export interface OrderDetail {
   paymentStatus: string;
   deliveryAddress: DeliveryAddress;
   deliveryOption?: 'Instant' | 'Standard';
+  deliveryPreference?: 'Self' | 'Admin' | string;
+  orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
+  fulfillmentGroups?: any[];
+  trackingNumber?: string;
 }
 
 export interface AvailableDeliveryPartner {
@@ -92,6 +112,7 @@ export interface GetOrdersParams {
   dateTo?: string;
   status?: string;
   search?: string;
+  channel?: 'QUICK_COMMERCE' | 'ECOMMERCE';
   page?: number;
   limit?: number;
   sortBy?: string;

@@ -72,3 +72,10 @@ coverage/
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
+
+# Test scripts and temporary audit folders
+test/
+tests/
+backend/test/
+backend/tests/
+

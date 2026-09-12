@@ -137,8 +137,49 @@ export interface IOrder extends Document {
   tipAmount: number;
   giftPackaging: boolean;
 
+  // Commerce Channel & Multi-Fulfillment Extensions (Ecommerce & Quick Commerce)
+  orderType: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
+  fulfillmentGroups?: IFulfillmentGroup[];
+
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface IFulfillmentGroup {
+  groupId: string;
+  fulfillmentType: 'LOCAL_DELIVERY' | 'COURIER_SHIPPING' | 'THIRD_PARTY_API';
+  status:
+    | 'Pending'
+    | 'Processing'
+    | 'ReadyForPickup'
+    | 'Shipped'
+    | 'OutForDelivery'
+    | 'Delivered'
+    | 'Cancelled'
+    | 'ActionRequired';
+  items: mongoose.Types.ObjectId[];
+  seller?: mongoose.Types.ObjectId;
+  deliveryBoy?: mongoose.Types.ObjectId; // For LOCAL_DELIVERY
+  deliveryOtp?: string; // For LOCAL_DELIVERY
+  shippingDetails?: {
+    carrier?: string;
+    awbNumber?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    shippedAt?: Date;
+    estimatedDelivery?: Date;
+  };
+  thirdPartyOrderDetails?: {
+    providerId?: string;
+    externalOrderId?: string;
+    shipmentId?: string;
+    status?: string;
+    retryCount?: number;
+    lastError?: string;
+    idempotencyKey?: string;
+  };
+  subtotal: number;
+  shippingFee: number;
 }
 
 const OrderSchema = new Schema<IOrder>(
@@ -498,6 +539,59 @@ const OrderSchema = new Schema<IOrder>(
       type: Boolean,
       default: false,
     },
+    // Commerce Channel & Multi-Fulfillment Extensions (Ecommerce & Quick Commerce)
+    orderType: {
+      type: String,
+      enum: ["QUICK_COMMERCE", "ECOMMERCE", "MIXED"],
+      default: "QUICK_COMMERCE",
+    },
+    fulfillmentGroups: [
+      {
+        groupId: { type: String, required: true },
+        fulfillmentType: {
+          type: String,
+          enum: ["LOCAL_DELIVERY", "COURIER_SHIPPING", "THIRD_PARTY_API"],
+          required: true,
+        },
+        status: {
+          type: String,
+          enum: [
+            "Pending",
+            "Processing",
+            "ReadyForPickup",
+            "Shipped",
+            "OutForDelivery",
+            "Delivered",
+            "Cancelled",
+            "ActionRequired",
+          ],
+          default: "Pending",
+        },
+        items: [{ type: Schema.Types.ObjectId, ref: "OrderItem" }],
+        seller: { type: Schema.Types.ObjectId, ref: "Seller" },
+        deliveryBoy: { type: Schema.Types.ObjectId, ref: "Delivery" },
+        deliveryOtp: { type: String },
+        shippingDetails: {
+          carrier: { type: String, trim: true },
+          awbNumber: { type: String, trim: true },
+          trackingNumber: { type: String, trim: true },
+          trackingUrl: { type: String, trim: true },
+          shippedAt: { type: Date },
+          estimatedDelivery: { type: Date },
+        },
+        thirdPartyOrderDetails: {
+          providerId: { type: String, trim: true },
+          externalOrderId: { type: String, trim: true },
+          shipmentId: { type: String, trim: true },
+          status: { type: String, trim: true },
+          retryCount: { type: Number, default: 0 },
+          lastError: { type: String, trim: true },
+          idempotencyKey: { type: String, trim: true },
+        },
+        subtotal: { type: Number, default: 0 },
+        shippingFee: { type: Number, default: 0 },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -522,6 +616,7 @@ OrderSchema.index({ status: 1 });
 OrderSchema.index({ orderDate: -1 });
 OrderSchema.index({ sellerConfirmationStatus: 1, deliveryAssignmentStatus: 1 });
 OrderSchema.index({ deliveryBoy: 1 });
+OrderSchema.index({ orderType: 1 });
 
 const Order =
   (mongoose.models.Order as mongoose.Model<IOrder>) ||

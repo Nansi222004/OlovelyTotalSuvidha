@@ -4,6 +4,8 @@ import ProductCard from './components/ProductCard';
 import { getProducts } from '../../services/api/customerProductService';
 import { Product } from '../../types/domain';
 import { useLocation } from '../../hooks/useLocation';
+import ChannelFilter, { ChannelFilterValue } from '../../components/ChannelFilter';
+import { useCustomerChannel } from '../../context/CustomerChannelContext';
 
 export default function Search() {
   const navigate = useNavigate();
@@ -12,6 +14,7 @@ export default function Search() {
   const searchQuery = searchParams.get('q') || '';
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
   const [loading, setLoading] = useState(false);
 
   // Update input when URL param changes (e.g. back button)
@@ -49,6 +52,10 @@ export default function Search() {
       setLoading(true);
       try {
         const params: any = { search: q };
+        if (channelFilter === 'QUICK_COMMERCE' || channelFilter === 'ECOMMERCE') {
+          params.channel = channelFilter;
+          params.productType = channelFilter;
+        }
         // Include user location for seller service radius filtering
         if (location?.latitude && location?.longitude) {
           params.latitude = location.latitude;
@@ -65,7 +72,7 @@ export default function Search() {
     };
 
     fetchProducts();
-  }, [searchParams, location]);
+  }, [searchParams, location, channelFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +90,12 @@ export default function Search() {
     setSearchParams({});
     setSearchResults([]);
   };
+
+  const filteredResults = searchResults.filter((p) => {
+    if (channelFilter === 'QUICK_COMMERCE') return p.productType === 'QUICK_COMMERCE';
+    if (channelFilter === 'ECOMMERCE') return p.productType === 'ECOMMERCE';
+    return true;
+  });
 
   return (
     <div className="pb-24 md:pb-8 bg-neutral-50 min-h-screen">
@@ -135,21 +148,29 @@ export default function Search() {
         </form>
       </div>
 
+      {searchQuery.trim() && searchResults.length > 0 && (
+        <ChannelFilter
+          value={channelFilter}
+          onChange={setChannelFilter}
+          className="sticky top-[65px] z-20"
+        />
+      )}
+
       {/* Search Results */}
       <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6">
         {searchQuery.trim() ? (
           <>
             <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 mb-3 md:mb-6">
-              {loading ? 'Searching...' : `Search Results ${searchResults.length > 0 ? `(${searchResults.length})` : ''}`}
+              {loading ? 'Searching...' : `Search Results ${filteredResults.length > 0 ? `(${filteredResults.length})` : ''}`}
             </h2>
 
             {loading ? (
               <div className="flex justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
               </div>
-            ) : searchResults.length > 0 ? (
+            ) : filteredResults.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-                {searchResults.map((product) => (
+                {filteredResults.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}

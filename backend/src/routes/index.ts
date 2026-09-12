@@ -42,6 +42,7 @@ import customerNotificationRoutes from "./customerNotificationRoutes";
 import migrationRoutes from "./migrationRoutes";
 import languageRoutes from "./languageRoutes";
 import adminLanguageRoutes from "./adminLanguageRoutes";
+import shippingRoutes from "./shippingRoutes";
 
 import {
   createOrder,
@@ -191,8 +192,8 @@ router.use("/admin/withdrawals", authenticate, requireUserType("Admin"), adminWi
 // Admin translation routes (protected, admin only)
 router.use("/admin/translation", adminTranslationRoutes);
 
-// Admin commission management routes (protected, admin only)
-
+// Shipping & Webhook routes
+router.use("/shipping", shippingRoutes);
 
 // Add more routes here
 // router.use('/users', userRoutes);

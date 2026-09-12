@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { verifyToken, TokenPayload } from '../services/jwtService';
 
 export type AuthUserType = 'Admin' | 'Seller' | 'Customer' | 'Delivery';
@@ -204,4 +205,5 @@ export const requireApprovedUser = async (req: Request, res: Response, next: Nex
  */
 export const requireApprovedSeller = [authenticate, requireUserType('Seller'), requireApprovedUser];
 export const requireApprovedDelivery = [authenticate, requireUserType('Delivery'), requireApprovedUser];
+
 

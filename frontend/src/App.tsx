@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy, startTransition } from "react";
 import { CartProvider } from "./context/CartContext";
 import { OrdersProvider } from "./context/OrdersContext";
+import { CustomerChannelProvider } from "./context/CustomerChannelContext";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { LocationProvider } from "./context/LocationContext";
@@ -313,7 +314,6 @@ const AdminAppSettings = lazyWithRetry(
 const AdminLanguages = lazyWithRetry(
   () => import("./modules/admin/pages/AdminLanguages"), "AdminLanguages"
 );
-
 function App() {
   useEffect(() => {
     // Clear global chunk reload attempt flags when app successfully mounts
@@ -399,7 +399,8 @@ function App() {
                     <WishlistProvider>
                       <CartProvider>
                         <OrdersProvider>
-                          <BrowserRouter
+                          <CustomerChannelProvider>
+                            <BrowserRouter
                             future={{
                               v7_startTransition: true,
                               v7_relativeSplatPath: true,
@@ -1055,7 +1056,8 @@ function App() {
                           />
                           </Routes>
                         </BrowserRouter>
-                      </OrdersProvider>
+                      </CustomerChannelProvider>
+                    </OrdersProvider>
                     </CartProvider>
                   </WishlistProvider>
                 </ToastProvider>

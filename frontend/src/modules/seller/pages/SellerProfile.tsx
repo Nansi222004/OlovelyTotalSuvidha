@@ -12,6 +12,7 @@ import {
 import { uploadImage } from '../../../services/api/uploadService';
 import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import LanguageSelector from '../../../components/LanguageSelector';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 interface SellerProfileData {
   _id?: string;
@@ -39,6 +40,7 @@ export default function SellerProfile() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t } = useLanguage();
+  const { activeChannel, isHybrid, isQuickCommerceOnly, isEcommerceOnly, isLegacy } = useSellerChannel();
 
   const [profile, setProfile] = useState<SellerProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,10 +154,14 @@ export default function SellerProfile() {
       return;
     }
 
-    const radius = parseFloat(editFormData.serviceRadiusKm);
-    if (isNaN(radius) || radius < 0.1 || radius > 300) {
-      showToast('Service radius must be between 0.1 and 300 km', 'error');
-      return;
+    let radius = parseFloat(editFormData.serviceRadiusKm);
+    if (activeChannel === 'ECOMMERCE') {
+      if (isNaN(radius)) radius = 10;
+    } else {
+      if (isNaN(radius) || radius < 0.1 || radius > 300) {
+        showToast('Service radius must be between 0.1 and 300 km', 'error');
+        return;
+      }
     }
 
     try {
@@ -424,6 +430,24 @@ export default function SellerProfile() {
                     <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
                     {profile?.status || 'Active'}
                   </span>
+                  {/* Channel Badge */}
+                  {isHybrid ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                      <span>⚡+📦</span> Hybrid ({activeChannel === 'ECOMMERCE' ? 'Ecommerce' : 'Quick Commerce'})
+                    </span>
+                  ) : isQuickCommerceOnly ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span>⚡</span> Quick Commerce
+                    </span>
+                  ) : isEcommerceOnly ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      <span>📦</span> Ecommerce
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200">
+                      Channel Not Configured
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-neutral-500 font-medium">
                   {profile?.sellerName || 'Owner'}
@@ -532,6 +556,33 @@ export default function SellerProfile() {
               </p>
             </div>
           </div>
+
+          {/* Channel-Specific Fulfillment Mode */}
+          {activeChannel === 'ECOMMERCE' ? (
+            <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center gap-3 sm:col-span-2">
+              <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
+                <span className="text-base">📦</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] text-blue-700 font-semibold uppercase tracking-wider">Courier Fulfillment Mode</p>
+                <p className="text-sm font-semibold text-neutral-900">
+                  Pan-India Courier Shipping (Integrated Logistics & AWB Tracking)
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-3 sm:col-span-2">
+              <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                <span className="text-base">⚡</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] text-emerald-700 font-semibold uppercase tracking-wider">Hyperlocal Delivery Radius</p>
+                <p className="text-sm font-semibold text-neutral-900">
+                  {profile?.serviceRadiusKm || 10} KM Local Express Delivery Radius
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action strip: Change Password, Language & Security */}
@@ -726,7 +777,7 @@ export default function SellerProfile() {
                 </div>
 
                 {/* City & Radius */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid ${activeChannel === 'ECOMMERCE' ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 mb-1">
                       City
@@ -742,26 +793,28 @@ export default function SellerProfile() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                      Service Radius (km)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0.1"
-                      max="300"
-                      value={editFormData.serviceRadiusKm}
-                      onChange={(e) =>
-                        setEditFormData((prev) => ({
-                          ...prev,
-                          serviceRadiusKm: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2 rounded-xl border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                      placeholder="10"
-                    />
-                  </div>
+                  {activeChannel !== 'ECOMMERCE' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Service Radius (km)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.1"
+                        max="300"
+                        value={editFormData.serviceRadiusKm}
+                        onChange={(e) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            serviceRadiusKm: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3.5 py-2 rounded-xl border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        placeholder="10"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">

@@ -18,6 +18,8 @@ import Coupon from "../../../models/Coupon";
 import Return from "../../../models/Return";
 import { debitWallet } from "../../../services/walletManagementService";
 import { commitCouponUsage } from "../../../services/couponService";
+import { createEcommerceShipment, cancelEcommerceShipment, checkPincode } from "../../../services/shipping/shippingService";
+import { IFulfillmentGroup } from "../../../models/Order";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -106,57 +108,97 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
+    // Inspect items to detect commerce channels (Quick Commerce vs Ecommerce)
+    const productIds = items
+      .map((i: any) => i.product?.id || i.product?._id || (typeof i.product === 'string' ? i.product : null))
+      .filter(Boolean);
+    const orderedProducts = await Product.find({ _id: { $in: productIds } }).select('productType seller productName');
+    const productMap = new Map(orderedProducts.map((p) => [p._id.toString(), p]));
+
+    const hasQC = items.some((i: any) => {
+      const pid = (i.product?.id || i.product?._id || i.product)?.toString();
+      const p = productMap.get(pid);
+      return !p || p.productType !== 'ECOMMERCE';
+    });
+    const hasEcom = items.some((i: any) => {
+      const pid = (i.product?.id || i.product?._id || i.product)?.toString();
+      const p = productMap.get(pid);
+      return p && p.productType === 'ECOMMERCE';
+    });
+
+    let determinedOrderType: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED' = 'QUICK_COMMERCE';
+    if (hasQC && hasEcom) {
+      determinedOrderType = 'MIXED';
+    } else if (hasEcom) {
+      determinedOrderType = 'ECOMMERCE';
+    } else {
+      determinedOrderType = 'QUICK_COMMERCE';
+    }
+
     // Validate delivery address location
-    // Handle both string and number types, and check for null/undefined (not truthy, since 0 is valid)
-    const deliveryLat =
+    let deliveryLat =
       address.latitude != null
         ? typeof address.latitude === "number"
           ? address.latitude
           : parseFloat(address.latitude)
         : null;
-    const deliveryLng =
+    let deliveryLng =
       address.longitude != null
         ? typeof address.longitude === "number"
           ? address.longitude
           : parseFloat(address.longitude)
         : null;
 
-    if (
-      deliveryLat == null ||
-      deliveryLng == null ||
-      isNaN(deliveryLat) ||
-      isNaN(deliveryLng)
-    ) {
-      if (session) await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message: "Delivery address location (latitude/longitude) is required",
-        details: {
-          receivedLatitude: address.latitude,
-          receivedLongitude: address.longitude,
-          parsedLatitude: deliveryLat,
-          parsedLongitude: deliveryLng,
-        },
-      });
-    }
+    if (hasQC) {
+      if (
+        deliveryLat == null ||
+        deliveryLng == null ||
+        isNaN(deliveryLat) ||
+        isNaN(deliveryLng)
+      ) {
+        if (session) await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: "Delivery address location (latitude/longitude) is required for Quick Commerce orders",
+          details: {
+            receivedLatitude: address.latitude,
+            receivedLongitude: address.longitude,
+            parsedLatitude: deliveryLat,
+            parsedLongitude: deliveryLng,
+          },
+        });
+      }
 
-    // Validate coordinates
-    if (
-      deliveryLat < -90 ||
-      deliveryLat > 90 ||
-      deliveryLng < -180 ||
-      deliveryLng > 180
-    ) {
-      if (session) await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid delivery address coordinates",
-      });
+      // Validate coordinates
+      if (
+        deliveryLat < -90 ||
+        deliveryLat > 90 ||
+        deliveryLng < -180 ||
+        deliveryLng > 180
+      ) {
+        if (session) await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid delivery address coordinates",
+        });
+      }
+    } else {
+      // Ecommerce-only order: Verify delivery pincode serviceability
+      const pincodeCheck = await checkPincode(address.pincode);
+      if (!pincodeCheck.isServiceable) {
+        if (session) await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: `Delivery is not serviceable for pincode ${address.pincode}`,
+        });
+      }
+      if (deliveryLat == null || isNaN(deliveryLat)) deliveryLat = 0;
+      if (deliveryLng == null || isNaN(deliveryLng)) deliveryLng = 0;
     }
 
     // Initialize Order first to get an ID
     if (process.env.NODE_ENV !== "production") {
-      console.log("DEBUG: Saving deliveryAddress to MongoDB for user:", userId);
+      console.log("DEBUG: Saving deliveryAddress to MongoDB for user:", userId, "orderType:", determinedOrderType);
     }
 
     const newOrder = new Order({
@@ -164,6 +206,7 @@ export const createOrder = async (req: Request, res: Response) => {
       customerName: customer.name,
       customerEmail: customer.email,
       customerPhone: customer.phone,
+      orderType: determinedOrderType,
       deliveryAddress: {
         address: address.address || address.street || "N/A",
         city: address.city || "N/A",
@@ -194,8 +237,19 @@ export const createOrder = async (req: Request, res: Response) => {
     const settings = await AppSettings.getSettings();
 
     let calculatedSubtotal = 0;
+    let qcSubtotal = 0;
+    let ecomSubtotal = 0;
     const orderItemIds: mongoose.Types.ObjectId[] = [];
+    const qcItemIds: mongoose.Types.ObjectId[] = [];
+    const ecomItemIds: mongoose.Types.ObjectId[] = [];
     const sellerIds = new Set<string>(); // Track unique sellers
+    const qcSellerIds = new Set<string>();
+    const ecomSellerIds = new Set<string>();
+    const ecomGroupsBySeller = new Map<string, {
+      sellerId?: mongoose.Types.ObjectId;
+      items: mongoose.Types.ObjectId[];
+      subtotal: number;
+    }>();
 
     for (const item of items) {
       if (!item.product || !item.product.id) {
@@ -411,6 +465,30 @@ export const createOrder = async (req: Request, res: Response) => {
         await newOrderItem.save();
       }
       orderItemIds.push(newOrderItem._id as mongoose.Types.ObjectId);
+
+      // Channel-specific classification
+      const isEcommerceItem = product.productType === 'ECOMMERCE';
+      if (isEcommerceItem) {
+        ecomItemIds.push(newOrderItem._id as mongoose.Types.ObjectId);
+        ecomSubtotal += itemTotal;
+        const sellerKey = product.seller ? product.seller.toString() : 'UNKNOWN_SELLER';
+        if (product.seller) ecomSellerIds.add(sellerKey);
+
+        if (!ecomGroupsBySeller.has(sellerKey)) {
+          ecomGroupsBySeller.set(sellerKey, {
+            sellerId: product.seller,
+            items: [],
+            subtotal: 0,
+          });
+        }
+        const groupInfo = ecomGroupsBySeller.get(sellerKey)!;
+        groupInfo.items.push(newOrderItem._id as mongoose.Types.ObjectId);
+        groupInfo.subtotal += itemTotal;
+      } else {
+        qcItemIds.push(newOrderItem._id as mongoose.Types.ObjectId);
+        qcSubtotal += itemTotal;
+        if (product.seller) qcSellerIds.add(product.seller.toString());
+      }
     }
 
     // Enforce minimum order value (cart subtotal of products)
@@ -429,20 +507,21 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // Validate all sellers can deliver to user's location
-    if (sellerIds.size > 0) {
-      const uniqueSellerIds = Array.from(sellerIds).map(
+    // Validate Quick Commerce sellers can deliver to user's location (Radius calculation)
+    // Ecommerce sellers do NOT use radius checks (they use postal shipping serviceability)
+    if (qcSellerIds.size > 0) {
+      const uniqueQcSellerIds = Array.from(qcSellerIds).map(
         (id) => new mongoose.Types.ObjectId(id),
       );
 
-      // Find sellers and check if user is within their service radius
+      // Find QC sellers and check if user is within their service radius
       const sellers = await Seller.find({
-        _id: { $in: uniqueSellerIds },
+        _id: { $in: uniqueQcSellerIds },
         status: "Approved",
         location: { $exists: true, $ne: null },
       });
 
-      // Check each seller can deliver to user's location
+      // Check each QC seller can deliver to user's location
       for (const seller of sellers) {
         if (!seller.location || !seller.location.coordinates) {
           if (session) await session.abortTransaction();
@@ -472,8 +551,10 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Apply fees
-    let platformFee = Number(fees?.platformFee) || 0;
+    // Apply fees - backend configuration is authoritative (protects against client tampering)
+    let platformFee = Number.isFinite(settings?.platformFee)
+      ? Number(settings.platformFee)
+      : (Number(fees?.platformFee) || 0);
     let deliveryFee = Number(fees?.deliveryFee) || 0;
     let deliveryDistanceKm = 0;
 
@@ -484,7 +565,7 @@ export const createOrder = async (req: Request, res: Response) => {
       // Check for Free Delivery eligibility first
       if (
         freeDeliveryThreshold > 0 &&
-        calculatedSubtotal >= freeDeliveryThreshold
+        qcSubtotal >= freeDeliveryThreshold
       ) {
         deliveryFee = 0;
       }
@@ -560,8 +641,29 @@ export const createOrder = async (req: Request, res: Response) => {
         : settings?.deliveryCharges ?? 0;
     }
 
+    // If no Quick Commerce items, QC delivery fee is 0
+    if (qcItemIds.length === 0) {
+      deliveryFee = 0;
+    }
+
+    // Ecommerce Shipping Fee (dynamically configured from AppSettings)
+    let ecomShippingFee = 0;
+    if (ecomItemIds.length > 0) {
+      const freeShippingThreshold = Number.isFinite(settings?.ecommerceFreeShippingThreshold)
+        ? Number(settings.ecommerceFreeShippingThreshold)
+        : 499;
+      const defaultShippingFee = Number.isFinite(settings?.ecommerceShippingFee)
+        ? Number(settings.ecommerceShippingFee)
+        : 40;
+      ecomShippingFee = ecomSubtotal >= freeShippingThreshold ? 0 : defaultShippingFee;
+    }
+
+    const combinedShippingFee = deliveryFee + ecomShippingFee;
     const finalTipAmount = Number(tipAmount) || 0;
-    const giftPackagingFee = giftPackaging ? 30 : 0;
+    const giftPackagingPrice = Number.isFinite(settings?.giftPackagingFee)
+      ? Number(settings.giftPackagingFee)
+      : 30;
+    const giftPackagingFee = giftPackaging ? giftPackagingPrice : 0;
 
     // BUSINESS RULE: Coupon applies strictly to PRODUCT SUBTOTAL (calculatedSubtotal)
     // Delivery fees, platform fees, tips, and gift packaging fees are NOT eligible for coupon discount.
@@ -620,7 +722,7 @@ export const createOrder = async (req: Request, res: Response) => {
                   productSubtotalForCoupon -
                     discountAmount +
                     platformFee +
-                    deliveryFee +
+                    combinedShippingFee +
                     finalTipAmount +
                     giftPackagingFee
                 );
@@ -632,6 +734,8 @@ Discount Type: ${coupon.discountType}
 Discount Value: ${coupon.discountValue}${coupon.discountType === "Percentage" ? "%" : ""}
 Coupon Discount: ₹${discountAmount.toFixed(2)}
 Delivery Fee: ₹${deliveryFee}
+Ecommerce Shipping Fee: ₹${ecomShippingFee}
+Combined Shipping Fee: ₹${combinedShippingFee}
 Platform Fee: ₹${platformFee}
 Tip: ₹${finalTipAmount}
 Gift Packaging Fee: ₹${giftPackagingFee}
@@ -663,7 +767,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       productSubtotalForCoupon -
         discountAmount +
         platformFee +
-        deliveryFee +
+        combinedShippingFee +
         finalTipAmount +
         giftPackagingFee
     );
@@ -719,13 +823,74 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       }
     }
 
-    // Update Order with calculated values and items
+    // Construct Multi-Channel Fulfillment Groups
+    const fulfillmentGroups: IFulfillmentGroup[] = [];
+    if (qcItemIds.length > 0) {
+      fulfillmentGroups.push({
+        groupId: `FG_QC_${newOrder._id.toString()}`,
+        fulfillmentType: 'LOCAL_DELIVERY',
+        status: 'Pending',
+        items: qcItemIds,
+        subtotal: Number(qcSubtotal.toFixed(2)),
+        shippingFee: Number(deliveryFee.toFixed(2)),
+      });
+    }
+    if (ecomItemIds.length > 0) {
+      const ecomSellerCount = ecomGroupsBySeller.size;
+      let allocatedEcomShipping = 0;
+      let groupIndex = 0;
+
+      for (const [sellerKey, groupInfo] of ecomGroupsBySeller.entries()) {
+        let groupShippingFee = 0;
+        if (ecomShippingFee > 0 && ecomSellerCount > 0) {
+          if (groupIndex === ecomSellerCount - 1) {
+            // Last group takes remainder to reconcile parent shipping down to the exact paisa
+            groupShippingFee = Number((ecomShippingFee - allocatedEcomShipping).toFixed(2));
+          } else {
+            groupShippingFee = Number((ecomShippingFee / ecomSellerCount).toFixed(2));
+            allocatedEcomShipping += groupShippingFee;
+          }
+        }
+
+        const fgId = ecomSellerCount === 1
+          ? `FG_ECOM_${newOrder._id.toString()}`
+          : `FG_ECOM_${sellerKey}_${newOrder._id.toString()}`;
+
+        const isShiprocket = process.env.SHIPPING_PROVIDER?.toLowerCase() === 'shiprocket' ||
+          (Boolean(process.env.SHIPROCKET_EMAIL) && Boolean(process.env.SHIPROCKET_PASSWORD));
+
+        fulfillmentGroups.push({
+          groupId: fgId,
+          fulfillmentType: 'COURIER_SHIPPING',
+          seller: groupInfo.sellerId,
+          status: 'Processing',
+          items: groupInfo.items,
+          subtotal: Number(groupInfo.subtotal.toFixed(2)),
+          shippingFee: groupShippingFee,
+          shippingDetails: {
+            carrier: isShiprocket ? 'Shiprocket' : 'MockCourier Express',
+          },
+          thirdPartyOrderDetails: {
+            providerId: isShiprocket ? 'shiprocket' : 'mock_provider',
+            status: 'Processing',
+            idempotencyKey: `OLOVELY_${newOrder._id.toString()}_${fgId}`,
+          },
+        });
+
+        groupIndex++;
+      }
+    }
+
+    // Update Order with reconciled calculations and fulfillment groups
+    newOrder.orderType = determinedOrderType;
+    newOrder.fulfillmentGroups = fulfillmentGroups;
     newOrder.subtotal = Number(calculatedSubtotal.toFixed(2));
     newOrder.total = Number(finalTotal.toFixed(2));
     newOrder.grandTotal = Number(finalTotal.toFixed(2)); // Sync grandTotal alias
     newOrder.items = orderItemIds;
-    newOrder.shipping = deliveryFee; // Update with calculated fee
-    newOrder.deliveryDistanceKm = deliveryDistanceKm; // Store distance for commission calc
+    newOrder.shipping = Number(combinedShippingFee.toFixed(2)); // Combined QC + Ecommerce shipping
+    newOrder.platformFee = Number(platformFee.toFixed(2)); // Platform fee charged once
+    newOrder.deliveryDistanceKm = deliveryDistanceKm;
 
     if (session) {
       await newOrder.save({ session });
@@ -743,6 +908,18 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
     // Commit coupon usage if order is confirmed at creation time (100% Wallet paid or COD)
     if (newOrder.couponCode && (newOrder.paymentStatus === "Paid" || newOrder.paymentMethod === "COD")) {
       await commitCouponUsage(newOrder);
+    }
+
+    // For Ecommerce fulfillment groups, trigger shipment manifestation & AWB generation if order is COD or Paid
+    const ecomGroups = newOrder.fulfillmentGroups?.filter((g) => g.fulfillmentType === 'COURIER_SHIPPING') || [];
+    if (ecomGroups.length > 0 && (newOrder.paymentStatus === 'Paid' || newOrder.paymentMethod === 'COD')) {
+      for (const ecomGroup of ecomGroups) {
+        try {
+          await createEcommerceShipment(newOrder._id.toString(), ecomGroup.groupId);
+        } catch (shipErr) {
+          console.error(`Error creating ecommerce shipment for group ${ecomGroup.groupId} on order placement:`, shipErr);
+        }
+      }
     }
 
     // Emit notification to all involved sellers (non-blocking for performance)
@@ -845,7 +1022,11 @@ export const getMyOrders = async (req: Request, res: Response) => {
     const orders = await Order.find(query)
       .populate({
         path: "items",
-        populate: { path: "product", select: "productName mainImage price" },
+        populate: { path: "product", select: "productName mainImage price productType" },
+      })
+      .populate({
+        path: "fulfillmentGroups.seller",
+        select: "storeName sellerName city",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -856,8 +1037,21 @@ export const getMyOrders = async (req: Request, res: Response) => {
     // Transform orders to match frontend Order type
     const transformedOrders = orders.map((order) => {
       const orderObj = order.toObject();
+      const sanitizedGroups = (orderObj.fulfillmentGroups || []).map((fg: any) => {
+        const { thirdPartyOrderDetails, ...safeGroup } = fg;
+        return safeGroup;
+      });
+
+      const inferredOrderType = orderObj.orderType || (
+        sanitizedGroups.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING')
+          ? (sanitizedGroups.some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') ? 'MIXED' : 'ECOMMERCE')
+          : 'QUICK_COMMERCE'
+      );
+
       return {
         ...orderObj,
+        orderType: inferredOrderType,
+        fulfillmentGroups: sanitizedGroups,
         id: orderObj._id.toString(),
         totalItems: Array.isArray(orderObj.items) ? orderObj.items.length : 0,
         totalAmount: orderObj.total,
@@ -903,12 +1097,20 @@ export const getOrderById = async (req: Request, res: Response) => {
         populate: [
           {
             path: "product",
-            select: "productName mainImage pack manufacturer price",
+            select: "productName mainImage pack manufacturer price productType packageDetails",
           },
           { path: "seller", select: "storeName city phone fssaiLicNo" },
         ],
       })
-      .populate("deliveryBoy", "name mobile phone profileImage vehicleNumber");
+      .populate("deliveryBoy", "name mobile phone profileImage vehicleNumber")
+      .populate({
+        path: "fulfillmentGroups.seller",
+        select: "storeName sellerName city phone address",
+      })
+      .populate({
+        path: "fulfillmentGroups.deliveryBoy",
+        select: "name mobile phone profileImage vehicleNumber",
+      });
 
     if (!order) {
       return res.status(404).json({
@@ -937,9 +1139,10 @@ export const getOrderById = async (req: Request, res: Response) => {
     const enrichedItems = await Promise.all(
       (orderObj.items || []).map(async (item: any) => {
         const prodId = item.product?._id || item.product;
-        const prod = prodId ? await Product.findById(prodId).select("isReturnable maxReturnDays") : null;
+        const prod = prodId ? await Product.findById(prodId).select("isReturnable maxReturnDays productType") : null;
         const isReturnable = prod?.isReturnable || false;
         const maxReturnDays = prod?.maxReturnDays || 7;
+        const productType = prod?.productType || item.product?.productType || "QUICK_COMMERCE";
 
         const deliveryDate = orderObj.deliveredAt || orderObj.updatedAt || orderObj.createdAt;
         const expiryDate = new Date(deliveryDate);
@@ -950,6 +1153,7 @@ export const getOrderById = async (req: Request, res: Response) => {
 
         return {
           ...item,
+          productType,
           isReturnable,
           maxReturnDays,
           returnExpiryDate: expiryDate.toISOString(),
@@ -967,8 +1171,21 @@ export const getOrderById = async (req: Request, res: Response) => {
     const hasRequiredInvoiceData = Boolean(orderObj._id && orderObj.items && orderObj.items.length > 0 && orderObj.total != null);
     const invoiceEnabled = orderObj.invoiceEnabled === true || (isDeliveredOrCompleted && isPaymentCompleted && hasRequiredInvoiceData);
 
+    const sanitizedGroups = (orderObj.fulfillmentGroups || []).map((fg: any) => {
+      const { thirdPartyOrderDetails, ...safeGroup } = fg;
+      return safeGroup;
+    });
+
+    const inferredOrderType = orderObj.orderType || (
+      sanitizedGroups.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING')
+        ? (sanitizedGroups.some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') ? 'MIXED' : 'ECOMMERCE')
+        : 'QUICK_COMMERCE'
+    );
+
     const transformedOrder = {
       ...orderObj,
+      orderType: inferredOrderType,
+      fulfillmentGroups: sanitizedGroups,
       items: enrichedItems,
       id: orderObj._id.toString(),
       totalItems: Array.isArray(orderObj.items) ? orderObj.items.length : 0,
@@ -1110,6 +1327,22 @@ export const cancelOrder = async (req: Request, res: Response) => {
       });
     }
 
+    // Check Ecommerce fulfillment group cancellation boundary
+    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+      const dispatchedEcomGroup = order.fulfillmentGroups.find(
+        (g: any) =>
+          g.fulfillmentType === 'COURIER_SHIPPING' &&
+          ['Shipped', 'In Transit', 'Out for Delivery', 'OutForDelivery', 'Delivered'].includes(g.status)
+      );
+      if (dispatchedEcomGroup) {
+        if (session) await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: `Ecommerce items cannot be cancelled after dispatch (Carrier Status: ${dispatchedEcomGroup.status})`,
+        });
+      }
+    }
+
     // Restore stock
     for (const item of order.items) {
       const orderItem = session
@@ -1168,6 +1401,11 @@ export const cancelOrder = async (req: Request, res: Response) => {
     }
 
     order.status = "Cancelled";
+    if (order.fulfillmentGroups) {
+      for (const group of order.fulfillmentGroups) {
+        group.status = "Cancelled";
+      }
+    }
     // So delivery boy is no longer "busy" and can take next order
     if (order.deliveryBoy) {
       order.deliveryBoyStatus = "Failed";
@@ -1194,6 +1432,19 @@ export const cancelOrder = async (req: Request, res: Response) => {
         console.log(`[Customer Cancel] Refund issued for order ${order.orderNumber} (wallet: ₹${order.walletAmountUsed || 0}, online: ₹${order.onlineAmountPaid || 0})`);
       } catch (refundErr) {
         console.error("Error issuing refund on customer cancellation:", refundErr);
+      }
+    }
+
+    // Cancel provider shipment with Shiprocket / active provider if shipment was created
+    if (order.fulfillmentGroups) {
+      for (const group of order.fulfillmentGroups) {
+        if (group.fulfillmentType === 'COURIER_SHIPPING' && (group.shippingDetails?.awbNumber || group.thirdPartyOrderDetails?.externalOrderId)) {
+          try {
+            await cancelEcommerceShipment(order._id.toString(), group.groupId, reason);
+          } catch (shipCancelErr) {
+            console.error(`Error notifying shipping provider of cancellation for group ${group.groupId}:`, shipCancelErr);
+          }
+        }
       }
     }
 
@@ -1374,6 +1625,37 @@ export const requestItemReturn = async (req: Request, res: Response) => {
       quantity: returnQty,
       status: "Pending",
     });
+
+    // For Ecommerce items, initiate carrier reverse logistics
+    if (product.productType === 'ECOMMERCE') {
+      try {
+        const { getShippingProvider } = await import("../../../services/shipping/shippingService");
+        const provider = getShippingProvider();
+        if (provider.createReturn) {
+          const retShipment = await provider.createReturn({
+            orderId: order._id.toString(),
+            returnId: newReturn._id.toString(),
+            item: {
+              productId: product._id.toString(),
+              productName: product.productName,
+              quantity: returnQty,
+            },
+            pickupAddress: {
+              address: order.deliveryAddress.address,
+              city: order.deliveryAddress.city,
+              state: order.deliveryAddress.state,
+              pincode: order.deliveryAddress.pincode,
+            },
+            reason,
+          });
+          newReturn.returnAwbNumber = retShipment.returnAwbNumber;
+          newReturn.courierName = retShipment.carrier;
+          await newReturn.save();
+        }
+      } catch (retErr) {
+        console.error("Failed to generate provider reverse pickup:", retErr);
+      }
+    }
 
     // Notify seller of new return/exchange request
     try {

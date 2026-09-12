@@ -4,6 +4,7 @@ import Product from "../../../models/Product";
 import Seller from "../../../models/Seller";
 import OrderItem from "../../../models/OrderItem";
 import { asyncHandler } from "../../../utils/asyncHandler";
+import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import mongoose from "mongoose";
 
 /**
@@ -12,10 +13,34 @@ import mongoose from "mongoose";
 export const getDashboardStats = asyncHandler(
     async (req: Request, res: Response) => {
         const sellerId = new mongoose.Types.ObjectId((req as any).user.userId);
+        const { channel } = req.query;
 
-        // Find orders associated with this seller
-        // Since Order model doesn't have sellerId, we find orders via OrderItem
-        const sellerOrderItems = await OrderItem.find({ seller: sellerId }).select('order');
+        // Authoritatively validate requested channel against seller.vendorType
+        const resolution = await resolveAuthorizedSellerChannel(sellerId, channel as string);
+        if (resolution.error) {
+            return res.status(resolution.statusCode || 400).json({
+                success: false,
+                message: resolution.error,
+            });
+        }
+
+        const { activeChannel, isLegacy, vendorType } = resolution.data!;
+
+        // Determine relevant products and order items based on active channel
+        let productFilter: any = { seller: sellerId };
+        if (activeChannel) {
+            productFilter.productType = activeChannel;
+        }
+
+        const relevantProducts = await Product.find(productFilter).select("_id variations subcategory");
+        const relevantProductIds = relevantProducts.map(p => p._id);
+
+        const itemFilter: any = { seller: sellerId };
+        if (activeChannel) {
+            itemFilter.product = { $in: relevantProductIds };
+        }
+
+        const sellerOrderItems = await OrderItem.find(itemFilter).select('order');
         const sellerOrderIds = [...new Set(sellerOrderItems.map(item => item.order.toString()))];
 
         const sellerDoc = await Seller.findById(sellerId).select("categories");
@@ -36,15 +61,15 @@ export const getDashboardStats = asyncHandler(
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: "Delivered" }),
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: { $in: ["Received", "Accepted", "Processed", "Shipped", "Out for Delivery", "Out For Delivery"] } }),
             Order.countDocuments({ _id: { $in: sellerOrderIds }, status: "Cancelled" }),
-            Product.countDocuments({ seller: sellerId }),
+            Product.countDocuments(productFilter),
             Promise.resolve(sellingCategoriesCount),
-            Product.distinct("subcategory", { seller: sellerId }).then(ids => ids.length),
+            Product.distinct("subcategory", productFilter).then(ids => ids.length),
             Order.distinct("customer", { _id: { $in: sellerOrderIds }, status: { $ne: "Pending" } }).then(ids => ids.length),
         ]);
 
         // 2. Alert Metrics (Low Stock < 5)
-        // Check Product model usage
-        const products = await Product.find({ seller: sellerId });
+        // Check Product model usage with active channel filter
+        const products = await Product.find(productFilter);
         let soldOutProducts = 0;
         let lowStockProducts = 0;
 
@@ -142,6 +167,9 @@ export const getDashboardStats = asyncHandler(
             success: true,
             message: "Dashboard stats fetched successfully",
             data: {
+                channel: activeChannel,
+                vendorType: vendorType,
+                isLegacy,
                 stats: {
                     totalUser: totalCustomerCount,
                     totalCategory: totalCategoryCount,

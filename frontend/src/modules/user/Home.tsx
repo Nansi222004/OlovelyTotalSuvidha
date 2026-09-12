@@ -13,6 +13,9 @@ import PageLoader from "../../components/PageLoader";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useTranslation } from "../../hooks/useTranslation";
 
+import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
+import { useCustomerChannel } from "../../context/CustomerChannelContext";
+
 export default function Home() {
   const navigate = useNavigate();
   const { location } = useLocation();
@@ -37,6 +40,7 @@ export default function Home() {
   });
 
   const [products, setProducts] = useState<any[]>([]);
+  const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
 
   // Function to save scroll position before navigation
   const saveScrollPosition = () => {
@@ -153,12 +157,17 @@ export default function Home() {
     };
   }, []);
 
-  // Removed duplicate saveScrollPosition
   const getFilteredProducts = (tabId: string) => {
-    if (tabId === "all") {
-      return products;
+    let list = products;
+    if (channelFilter === 'QUICK_COMMERCE') {
+      list = list.filter((p) => p.productType === 'QUICK_COMMERCE');
+    } else if (channelFilter === 'ECOMMERCE') {
+      list = list.filter((p) => p.productType === 'ECOMMERCE');
     }
-    return products.filter(
+    if (tabId === "all") {
+      return list;
+    }
+    return list.filter(
       (p) =>
         p.categoryId === tabId ||
         (p.category && (p.category._id === tabId || p.category.slug === tabId))
@@ -167,8 +176,19 @@ export default function Home() {
 
   const filteredProducts = useMemo(
     () => getFilteredProducts(activeTab),
-    [activeTab, products]
+    [activeTab, products, channelFilter]
   );
+
+  const filteredLowestPrices = useMemo(() => {
+    const list = homeData.lowestPrices || [];
+    if (channelFilter === 'QUICK_COMMERCE') {
+      return list.filter((p: any) => p.productType === 'QUICK_COMMERCE');
+    }
+    if (channelFilter === 'ECOMMERCE') {
+      return list.filter((p: any) => p.productType === 'ECOMMERCE');
+    }
+    return list;
+  }, [homeData.lowestPrices, channelFilter]);
 
   if (loading && !products.length) {
     return <PageLoader />; // Let the global IconLoader handle the initial loading state
@@ -197,14 +217,22 @@ export default function Home() {
   return (
     <div className="bg-white min-h-screen pb-20 md:pb-0" ref={contentRef}>
       {/* Hero Header with Gradient and Tabs */}
-      <HomeHero activeTab={activeTab} onTabChange={setActiveTab} />
+      <HomeHero activeTab={activeTab} onTabChange={setActiveTab} channelFilter={channelFilter} />
+
+      {/* Customer Channel Segmented Filter */}
+      <ChannelFilter
+        value={channelFilter}
+        onChange={setChannelFilter}
+        activeTab={activeTab}
+        className="sticky top-[98px] z-40"
+      />
 
       {/* Promo Strip */}
       <PromoStrip activeTab={activeTab} />
 
       {/* LOWEST PRICES EVER Section */}
-      {homeData.lowestPrices && homeData.lowestPrices.length > 0 && (
-        <LowestPricesEver activeTab={activeTab} products={homeData.lowestPrices} />
+      {filteredLowestPrices.length > 0 && (
+        <LowestPricesEver activeTab={activeTab} products={filteredLowestPrices} />
       )}
 
 
@@ -229,7 +257,13 @@ export default function Home() {
               const columnCount = Number(section.columns) || 4;
               const sectionTitle = getTranslatedField(section, "title") || section.title;
 
-              if (section.displayType === "products" && section.data && section.data.length > 0) {
+              const sectionProducts = (section.data || []).filter((p: any) => {
+                if (channelFilter === 'QUICK_COMMERCE') return p.productType === 'QUICK_COMMERCE';
+                if (channelFilter === 'ECOMMERCE') return p.productType === 'ECOMMERCE';
+                return true;
+              });
+
+              if (section.displayType === "products" && sectionProducts.length > 0) {
                 // Strict column mapping as requested - applies to ALL screen sizes including mobile
                 const gridClass = {
                   2: "grid-cols-2",
@@ -252,7 +286,7 @@ export default function Home() {
                     )}
                     <div className="px-4 md:px-6 lg:px-8">
                       <div className={`grid ${gridClass} ${gapClass}`}>
-                        {section.data.map((product: any) => (
+                        {sectionProducts.map((product: any) => (
                           <ProductCard
                             key={product.id || product._id}
                             product={product}

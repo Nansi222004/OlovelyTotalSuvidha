@@ -794,7 +794,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
       </div>
 
       {/* Main Content: Crazy Deals + Category Cards */}
-      <div className="px-4 mt-2">
+      <div className="px-4 md:px-6 lg:px-8 mt-2">
         <div ref={containerRef} className="flex gap-2">
           {/* Crazy Deals Section - Left */}
           <div className="flex-shrink-0 w-[105px] sm:w-[120px] promo-card">
@@ -916,7 +916,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
           </div>
 
           {/* Category Cards Grid - Right */}
-          <div className="flex-1 grid grid-cols-2 gap-2">
+          <div className={`flex-1 grid grid-cols-2 ${categoryCards.length >= 4 ? 'md:grid-cols-4' : categoryCards.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-2`}>
             {categoryCards.map((card) => {
               // Use subcategory images from the map if available, otherwise check card.subcategoryImages, then fallback to emoji icons
               const subcategoryImages = subcategoryImagesMap[card.id] || card.subcategoryImages || [];

@@ -5,9 +5,11 @@ import { useAuth } from '../../../context/AuthContext';
 import { getHeaderCategoriesPublic, HeaderCategory } from '../../../services/api/headerCategoryService';
 import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
 import LocationPickerMap from '../../../components/LocationPickerMap';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 const SellerAccountSettings = () => {
     const { user, updateUser } = useAuth();
+    const { activeChannel, isHybrid, isQuickCommerceOnly, isEcommerceOnly, isLegacy } = useSellerChannel();
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -117,19 +119,22 @@ const SellerAccountSettings = () => {
             setSaveLoading(true);
             setError('');
 
-            // Validate location if address is being updated
-            if (sellerData.searchLocation && (!sellerData.latitude || !sellerData.longitude)) {
-                setError('Please select a valid location using the map picker');
-                setSaveLoading(false);
-                return;
-            }
+            // Validate location and service radius for Quick Commerce mode
+            let radius = parseFloat(sellerData.serviceRadiusKm);
+            if (activeChannel === 'ECOMMERCE') {
+                if (isNaN(radius)) radius = 10;
+            } else {
+                if (sellerData.searchLocation && (!sellerData.latitude || !sellerData.longitude)) {
+                    setError('Please select a valid location using the map picker');
+                    setSaveLoading(false);
+                    return;
+                }
 
-            // Validate service radius
-            const radius = parseFloat(sellerData.serviceRadiusKm);
-            if (isNaN(radius) || radius < 0.1 || radius > 300) {
-                setError('Service radius must be between 0.1 and 300 kilometers');
-                setSaveLoading(false);
-                return;
+                if (isNaN(radius) || radius < 0.1 || radius > 300) {
+                    setError('Service radius must be between 0.1 and 300 kilometers');
+                    setSaveLoading(false);
+                    return;
+                }
             }
 
             const updateData = {
@@ -221,7 +226,26 @@ const SellerAccountSettings = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
-                            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Settings</h1>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Settings</h1>
+                                {isHybrid ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                        <span>⚡+📦</span> Hybrid ({activeChannel === 'ECOMMERCE' ? 'Ecommerce Mode' : 'Quick Commerce Mode'})
+                                    </span>
+                                ) : isQuickCommerceOnly ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        <span>⚡</span> Quick Commerce
+                                    </span>
+                                ) : isEcommerceOnly ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                        <span>📦</span> Ecommerce
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                        Channel Not Configured
+                                    </span>
+                                )}
+                            </div>
                             <p className="mt-1 text-sm text-gray-500">Manage your store preferences and profile details</p>
                         </div>
                         <motion.button
@@ -440,93 +464,127 @@ const SellerAccountSettings = () => {
                                                         </div>
                                                     </div>
 
-                                                    <div className="md:col-span-2 space-y-1.5">
-                                                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                                                            Store Location <span className="text-red-500">*</span>
-                                                        </label>
-                                                        {isEditing ? (
-                                                            <>
-                                                                <GoogleMapsAutocomplete
-                                                                    value={sellerData.searchLocation || sellerData.address || ''}
-                                                                    onChange={(address: string, lat: number, lng: number, placeName: string, components?: { city?: string; state?: string }) => {
-                                                                        setSellerData(prev => ({
-                                                                            ...prev,
-                                                                            searchLocation: address,
-                                                                            latitude: lat.toString(),
-                                                                            longitude: lng.toString(),
-                                                                            address: address,
-                                                                            city: components?.city || prev.city,
-                                                                        }));
-                                                                    }}
-                                                                    placeholder="Search and select your store location..."
+                                                    {activeChannel === 'ECOMMERCE' ? (
+                                                        <>
+                                                            <div className="md:col-span-2 space-y-1.5">
+                                                                <label className="text-sm font-semibold text-gray-700 ml-1">
+                                                                    Store / Registered Business Address <span className="text-red-500">*</span>
+                                                                </label>
+                                                                <textarea
+                                                                    name="address"
+                                                                    value={sellerData.address || ''}
+                                                                    onChange={handleInputChange}
                                                                     disabled={!isEditing}
+                                                                    rows={3}
+                                                                    placeholder="Enter complete store / warehouse pickup address..."
+                                                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none disabled:bg-gray-50/50 disabled:text-gray-500 transition-all resize-none"
                                                                     required
                                                                 />
-                                                                <div className="mt-4 animate-fadeIn">
-                                                                    <p className="text-sm font-medium text-neutral-700 mb-2">
-                                                                        Exact Location <span className="text-teal-600 text-xs font-normal">(Move the map to place the pin on your store's entrance)</span>
-                                                                    </p>
-                                                                    <LocationPickerMap
-                                                                        initialLat={parseFloat(sellerData.latitude) || 26.9124}
-                                                                        initialLng={parseFloat(sellerData.longitude) || 75.7873}
-                                                                        onLocationSelect={(lat, lng) => {
-                                                                            setSellerData(prev => ({
-                                                                                ...prev,
-                                                                                latitude: lat.toString(),
-                                                                                longitude: lng.toString()
-                                                                            }));
-                                                                        }}
-                                                                    />
-                                                                    <p className="mt-1 text-xs text-neutral-500 text-center">
-                                                                        Selected Coordinates: {sellerData.latitude || 'Not selected'}, {sellerData.longitude || 'Not selected'}
-                                                                    </p>
+                                                            </div>
+
+                                                            <InputGroup label="City" name="city" value={sellerData.city} onChange={handleInputChange} disabled={!isEditing} />
+
+                                                            <div className="md:col-span-2 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                                                <div className="flex items-center gap-2 text-blue-900 font-bold text-sm mb-1">
+                                                                    <span>📦</span>
+                                                                    <span>Pan-India Courier Fulfillment Mode</span>
                                                                 </div>
-                                                            </>
-                                                        ) : (
-                                                            <textarea
-                                                                name="address"
-                                                                value={sellerData.address || sellerData.searchLocation || ''}
-                                                                disabled={true}
-                                                                rows={3}
-                                                                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-gray-50/50 text-gray-500 resize-none"
-                                                            />
-                                                        )}
-                                                    </div>
+                                                                <p className="text-xs text-blue-800 leading-relaxed">
+                                                                    This store operates on courier shipping. Parcels are collected from your registered business location by courier partners (e.g. Shiprocket) and dispatched nationwide. Hyperlocal delivery radius and GPS map pin do not apply.
+                                                                </p>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="md:col-span-2 space-y-1.5">
+                                                                <label className="text-sm font-semibold text-gray-700 ml-1">
+                                                                    Store Location <span className="text-red-500">*</span>
+                                                                </label>
+                                                                {isEditing ? (
+                                                                    <>
+                                                                        <GoogleMapsAutocomplete
+                                                                            value={sellerData.searchLocation || sellerData.address || ''}
+                                                                            onChange={(address: string, lat: number, lng: number, placeName: string, components?: { city?: string; state?: string }) => {
+                                                                                setSellerData(prev => ({
+                                                                                    ...prev,
+                                                                                    searchLocation: address,
+                                                                                    latitude: lat.toString(),
+                                                                                    longitude: lng.toString(),
+                                                                                    address: address,
+                                                                                    city: components?.city || prev.city,
+                                                                                }));
+                                                                            }}
+                                                                            placeholder="Search and select your store location..."
+                                                                            disabled={!isEditing}
+                                                                            required
+                                                                        />
+                                                                        <div className="mt-4 animate-fadeIn">
+                                                                            <p className="text-sm font-medium text-neutral-700 mb-2">
+                                                                                Exact Location <span className="text-teal-600 text-xs font-normal">(Move the map to place the pin on your store's entrance)</span>
+                                                                            </p>
+                                                                            <LocationPickerMap
+                                                                                initialLat={parseFloat(sellerData.latitude) || 26.9124}
+                                                                                initialLng={parseFloat(sellerData.longitude) || 75.7873}
+                                                                                onLocationSelect={(lat, lng) => {
+                                                                                    setSellerData(prev => ({
+                                                                                        ...prev,
+                                                                                        latitude: lat.toString(),
+                                                                                        longitude: lng.toString()
+                                                                                    }));
+                                                                                }}
+                                                                            />
+                                                                            <p className="mt-1 text-xs text-neutral-500 text-center">
+                                                                                Selected Coordinates: {sellerData.latitude || 'Not selected'}, {sellerData.longitude || 'Not selected'}
+                                                                            </p>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <textarea
+                                                                        name="address"
+                                                                        value={sellerData.address || sellerData.searchLocation || ''}
+                                                                        disabled={true}
+                                                                        rows={3}
+                                                                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-gray-50/50 text-gray-500 resize-none"
+                                                                    />
+                                                                )}
+                                                            </div>
 
-                                                    <InputGroup label="City" name="city" value={sellerData.city} onChange={handleInputChange} disabled={!isEditing} />
+                                                            <InputGroup label="City" name="city" value={sellerData.city} onChange={handleInputChange} disabled={!isEditing} />
 
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                                                            Service Radius (KM) <span className="text-red-500">*</span>
-                                                        </label>
-                                                        <select
-                                                            name="serviceRadiusKm"
-                                                            value={sellerData.serviceRadiusKm}
-                                                            onChange={handleInputChange}
-                                                            disabled={!isEditing}
-                                                            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none disabled:bg-gray-50/50 disabled:text-gray-500 transition-all appearance-none bg-white"
-                                                        >
-                                                            <option value="1">1 km</option>
-                                                            <option value="2">2 km</option>
-                                                            <option value="5">5 km</option>
-                                                            <option value="10">10 km</option>
-                                                            <option value="20">20 km</option>
-                                                            <option value="50">50 km</option>
-                                                            <option value="100">100 km</option>
-                                                            <option value="150">150 km</option>
-                                                            <option value="200">200 km</option>
-                                                            <option value="250">250 km</option>
-                                                            <option value="300">300 km</option>
-                                                            {![1, 2, 5, 10, 20, 50, 100, 150, 200, 250, 300].includes(Number(sellerData.serviceRadiusKm)) && sellerData.serviceRadiusKm && (
-                                                                <option value={sellerData.serviceRadiusKm}>{sellerData.serviceRadiusKm} km</option>
-                                                            )}
-                                                        </select>
-                                                        {isEditing && (
-                                                            <p className="mt-1 text-xs text-gray-500">
-                                                                Products will be shown to users within this radius from your store location
-                                                            </p>
-                                                        )}
-                                                    </div>
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-sm font-semibold text-gray-700 ml-1">
+                                                                    Service Radius (KM) <span className="text-red-500">*</span>
+                                                                </label>
+                                                                <select
+                                                                    name="serviceRadiusKm"
+                                                                    value={sellerData.serviceRadiusKm}
+                                                                    onChange={handleInputChange}
+                                                                    disabled={!isEditing}
+                                                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none disabled:bg-gray-50/50 disabled:text-gray-500 transition-all appearance-none bg-white"
+                                                                >
+                                                                    <option value="1">1 km</option>
+                                                                    <option value="2">2 km</option>
+                                                                    <option value="5">5 km</option>
+                                                                    <option value="10">10 km</option>
+                                                                    <option value="20">20 km</option>
+                                                                    <option value="50">50 km</option>
+                                                                    <option value="100">100 km</option>
+                                                                    <option value="150">150 km</option>
+                                                                    <option value="200">200 km</option>
+                                                                    <option value="250">250 km</option>
+                                                                    <option value="300">300 km</option>
+                                                                    {![1, 2, 5, 10, 20, 50, 100, 150, 200, 250, 300].includes(Number(sellerData.serviceRadiusKm)) && sellerData.serviceRadiusKm && (
+                                                                        <option value={sellerData.serviceRadiusKm}>{sellerData.serviceRadiusKm} km</option>
+                                                                    )}
+                                                                </select>
+                                                                {isEditing && (
+                                                                    <p className="mt-1 text-xs text-gray-500">
+                                                                        Products will be shown to users within this radius from your store location
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    )}
 
                                                 </div>
                                             </div>

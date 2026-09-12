@@ -11,6 +11,7 @@ import {
   Category as apiCategory,
 } from "../../../services/api/categoryService";
 import { useAuth } from "../../../context/AuthContext";
+import { useSellerChannel } from "../../../context/SellerChannelContext";
 import StarRating from "../../../components/ui/StarRating";
 
 // ... (interfaces remain same)
@@ -40,6 +41,7 @@ export default function SellerProductList() {
   } | null>(null);
   const [allCategories, setAllCategories] = useState<apiCategory[]>([]);
   const { user } = useAuth();
+  const { activeChannel } = useSellerChannel();
 
   // Fetch categories
   useEffect(() => {
@@ -84,6 +86,9 @@ export default function SellerProductList() {
       } else if (stockFilter === "Out of Stock") {
         params.stock = "outOfStock";
       }
+      if (activeChannel) {
+        params.channel = activeChannel;
+      }
 
       const response = await getProducts(params);
       if (response.success && response.data) {
@@ -120,6 +125,7 @@ export default function SellerProductList() {
     stockFilter,
     sortColumn,
     sortDirection,
+    activeChannel,
   ]);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -295,8 +301,26 @@ export default function SellerProductList() {
 
       {/* Content Card */}
       <div className="bg-white rounded-lg shadow-sm border border-neutral-200 flex-1 flex flex-col">
-        <div className="p-4 border-b border-neutral-100 font-medium text-neutral-700">
-          View Product List
+        <div className="p-4 border-b border-neutral-100 font-medium text-neutral-700 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span>View Product List</span>
+            {activeChannel === "QUICK_COMMERCE" && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                ⚡ Quick Commerce
+              </span>
+            )}
+            {activeChannel === "ECOMMERCE" && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                📦 Ecommerce
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => navigate("/seller/product/add")}
+            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <span>+</span> Add New Product
+          </button>
         </div>
 
         {/* Filters and Controls */}
@@ -602,7 +626,16 @@ export default function SellerProductList() {
                       </td>
                       <td className="p-4 align-middle border border-neutral-200">
                         <div className="flex flex-col gap-1">
-                          <span>{variation.productName}</span>
+                          <span className="font-medium text-neutral-900">{variation.productName}</span>
+                          {(product as any)?.productType === "ECOMMERCE" ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 w-fit">
+                              📦 Ecommerce
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 w-fit">
+                              ⚡ Quick Commerce
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="p-4 align-middle border border-neutral-200">

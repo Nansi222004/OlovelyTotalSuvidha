@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useLayoutEffect, useRef, useState, useEffect, useMemo } from 'react';
+import { useLayoutEffect, useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { getTheme } from '../../../utils/themes';
@@ -17,6 +17,7 @@ gsap.registerPlugin(ScrollTrigger);
 interface HomeHeroProps {
   activeTab?: string;
   onTabChange?: (tabId: string) => void;
+  channelFilter?: 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE';
 }
 
 interface Tab {
@@ -49,7 +50,7 @@ const MORE_TAB: Tab = {
   ),
 };
 
-export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroProps) {
+export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter = 'ALL' }: HomeHeroProps) {
   const { settings: appSettings } = useAppSettings();
   const { t, getTranslatedField } = useTranslation();
   const [tabs, setTabs] = useState<Tab[]>([ALL_TAB, MORE_TAB]);
@@ -89,6 +90,36 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
   const [, setIsSticky] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = tabsContainerRef.current;
+    if (el) {
+      setCanScrollLeft(el.scrollLeft > 2);
+      setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [tabs, checkScroll]);
+
+  const handleScrollTabs = (direction: 'left' | 'right') => {
+    const el = tabsContainerRef.current;
+    if (el) {
+      const scrollAmount = direction === 'left' ? -250 : 250;
+      el.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   // Format location display text - only show if user has provided location
   const locationDisplayText = useMemo(() => {
@@ -340,10 +371,46 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
               <div className="text-neutral-800 font-bold text-[11px] md:text-xs tracking-tight truncate leading-tight">
                 {appSettings?.appName || 'Olovely Total Suvidha'}
               </div>
-              {/* Delivery time - large, bold */}
-              <div className="text-neutral-950 font-black text-2xl md:text-xl leading-tight my-0.5">
-                {appSettings?.estimatedDeliveryTime || appConfig.estimatedDeliveryTime || '12-15 mins'}
-              </div>
+              {/* Delivery time / Channel Context - Contextual Header */}
+              {channelFilter === 'ECOMMERCE' ? (
+                <div className="my-0.5">
+                  <div className="text-neutral-950 font-black text-xl md:text-xl leading-tight">
+                    <span>Nationwide Delivery</span>
+                  </div>
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-tight"
+                    style={{
+                      color: theme.headerTextColor === '#ffffff' ? '#15803d' : (theme.headerTextColor || theme.textColor),
+                    }}
+                  >
+                    Direct from verified sellers
+                  </div>
+                </div>
+              ) : channelFilter === 'QUICK_COMMERCE' ? (
+                <div className="my-0.5">
+                  <div className="text-neutral-950 font-black text-2xl md:text-xl leading-tight">
+                    <span>{appSettings?.estimatedDeliveryTime || appConfig.estimatedDeliveryTime || '12-15 mins'}</span>
+                  </div>
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-tight"
+                    style={{
+                      color: theme.headerTextColor === '#ffffff' ? '#15803d' : (theme.headerTextColor || theme.textColor),
+                    }}
+                  >
+                    Quick doorstep delivery
+                  </div>
+                </div>
+              ) : (
+                <div className="my-0.5">
+                  <div className="text-neutral-950 font-black text-2xl md:text-xl leading-tight flex items-center gap-1.5 flex-wrap">
+                    <span>{appSettings?.estimatedDeliveryTime || appConfig.estimatedDeliveryTime || '12-15 mins'}</span>
+                    <span className="text-xs font-bold text-neutral-500">• Pan-India</span>
+                  </div>
+                  <div className="text-[10px] font-medium text-neutral-600">
+                    Fast local & courier delivery suvidha
+                  </div>
+                </div>
+              )}
               {/* Location with dropdown indicator - only show if location is provided */}
               {locationDisplayText && (
                 <div
@@ -428,10 +495,38 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
         </div>
 
         {/* Category Tabs */}
-        <div className="border-b border-neutral-400/40 w-full" style={{ paddingBottom: 0 }}>
+        <div className="border-b border-neutral-400/40 w-full relative group/tabs" style={{ paddingBottom: 0 }}>
+          {/* Desktop Scroll Left Button */}
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => handleScrollTabs('left')}
+              className="hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/90 hover:bg-white text-neutral-800 shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 border border-neutral-200/70 cursor-pointer"
+              aria-label="Scroll left"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+
+          {/* Desktop Scroll Right Button */}
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => handleScrollTabs('right')}
+              className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/90 hover:bg-white text-neutral-800 shadow-md items-center justify-center transition-all hover:scale-110 active:scale-95 border border-neutral-200/70 cursor-pointer"
+              aria-label="Scroll right"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          )}
+
           <div
             ref={tabsContainerRef}
-            className="relative flex gap-2 md:gap-3 overflow-x-auto scrollbar-hide -mx-4 md:mx-0 px-4 md:px-6 lg:px-8 md:justify-center scroll-smooth"
+            className="relative flex gap-2 md:gap-2.5 lg:gap-3 overflow-x-auto scrollbar-hide -mx-4 md:mx-0 px-4 md:px-8 lg:px-10 justify-start 2xl:justify-center scroll-smooth"
             style={{ paddingBottom: '12px' }}
             data-padding-bottom="md:8px"
           >
@@ -467,7 +562,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
                     }
                   }}
                   onClick={() => handleTabClick(tab.id)}
-                  className={`flex-shrink-0 flex flex-col md:flex-row items-center justify-center min-w-[50px] md:min-w-fit md:px-3 py-1 md:py-1.5 relative ${tabColor} z-10`}
+                  className={`flex-shrink-0 flex flex-col md:flex-row items-center justify-center min-w-[50px] md:min-w-fit md:px-2.5 lg:px-3 py-1 md:py-1.5 relative ${tabColor} z-10`}
                   style={{
                     transition: 'color 0.3s ease-out',
                   }}
@@ -480,7 +575,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange }: HomeHeroPro
                     {tab.icon}
                   </div>
                   <span
-                    className={`text-xs md:text-sm md:whitespace-nowrap ${isActive ? 'font-bold' : 'font-semibold'}`}
+                    className={`text-xs md:text-xs lg:text-sm md:whitespace-nowrap ${isActive ? 'font-bold' : 'font-semibold'}`}
                     style={{
                       transition: 'font-weight 0.3s ease-out',
                     }}

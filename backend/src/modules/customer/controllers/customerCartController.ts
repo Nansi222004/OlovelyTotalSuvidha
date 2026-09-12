@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import Cart from '../../../models/Cart';
 import CartItem from '../../../models/CartItem';
@@ -14,7 +13,7 @@ const calculateItemPrice = (product: any, variationSelector: any) => {
     let variation = null;
     let variationId = variationSelector;
 
-    // Handle if variationSelector is an object (some implementations store it differently)
+    // Handle if variationSelector is an object
     if (variationSelector && typeof variationSelector === 'object' && variationSelector._id) {
         variationId = variationSelector._id;
     }
@@ -38,29 +37,7 @@ const calculateItemPrice = (product: any, variationSelector: any) => {
     return finalPrice;
 };
 
-// Helper to calculate cart total with location filtering
-const calculateCartTotal = async (cartId: any, nearbySellerIds: mongoose.Types.ObjectId[] = []) => {
-    const items = await CartItem.find({ cart: cartId }).populate({
-        path: 'product',
-        select: 'price discPrice variations seller status publish productName'
-    });
-
-    let total = 0;
-    for (const item of items) {
-        const product = item.product as any;
-        if (product && product.status === 'Active' && product.publish) {
-            // Check if seller is in range
-            const isAvailable = nearbySellerIds.some(id => id.toString() === product.seller.toString());
-            if (isAvailable) {
-                const price = calculateItemPrice(product, item.variation);
-                total += price * item.quantity;
-            }
-        }
-    }
-    return total;
-};
-
-// Helper to calculate delivery fee
+// Helper to calculate delivery fee for Quick Commerce
 const calculateDeliveryStuff = async (total: number, items: any[], userLat: number | null, userLng: number | null, deliveryOption: string = 'Standard') => {
     let estimatedDeliveryFee = 0;
     let platformFee = 0;
@@ -84,11 +61,9 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
         // Instant Delivery: Distance Based (if config exists)
         else if (deliveryOption === 'Instant' && settings?.deliveryConfig) {
             const config = settings.deliveryConfig;
-            // Default to base charge
             estimatedDeliveryFee = config.baseCharge || 0;
 
             if (userLat && userLng) {
-                // Get all sellers involved in the cart
                 const sellerIds = new Set<string>();
                 items.forEach((item: any) => {
                     if (item.product?.seller) {
@@ -120,16 +95,18 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
                             config.googleMapsKey
                         );
 
-                        if (distances && distances.length > 0) {
+                        if (distances.length > 0) {
                             const maxDistance = Math.max(...distances);
-                            const extraKm = Math.max(0, maxDistance - config.baseDistance);
-                            estimatedDeliveryFee = Math.ceil(config.baseCharge + (extraKm * config.kmRate));
+                            if (maxDistance > config.baseDistance) {
+                                const extraDistance = maxDistance - config.baseDistance;
+                                const extraCharge = Math.ceil(extraDistance * config.kmRate);
+                                estimatedDeliveryFee += extraCharge;
+                            }
                         }
                     }
                 }
             }
         } else {
-            // Fallback for unknown options
             estimatedDeliveryFee = settings?.deliveryCharges ?? 40;
         }
     } catch (err) {
@@ -140,6 +117,118 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
         platformFee,
         freeDeliveryThreshold,
         minimumOrderValue,
+    };
+};
+
+/**
+ * Build unified cart response with distinct Quick Commerce and Ecommerce groups
+ */
+const buildUnifiedCartResponse = async (
+    cart: any,
+    nearbySellerIds: mongoose.Types.ObjectId[],
+    hasValidLocation: boolean,
+    userLat: number | null,
+    userLng: number | null,
+    deliveryOption: string = 'Standard'
+) => {
+    const qcItems: any[] = [];
+    const ecomItems: any[] = [];
+    const unavailableItems: any[] = [];
+
+    let qcSubtotal = 0;
+    let ecomSubtotal = 0;
+
+    for (const item of (cart.items as any[] || [])) {
+        const product = item.product;
+        if (!product || product.status !== 'Active' || !product.publish) {
+            continue;
+        }
+
+        const itemProductType = item.productType || product.productType || 'QUICK_COMMERCE';
+        const price = calculateItemPrice(product, item.variation);
+        const itemTotal = price * item.quantity;
+
+        if (itemProductType === 'ECOMMERCE') {
+            // Ecommerce items: NOT subject to local seller radius filtering!
+            ecomItems.push(item);
+            ecomSubtotal += itemTotal;
+        } else {
+            // Quick Commerce items: requires seller range check if location is known
+            if (!hasValidLocation) {
+                qcItems.push(item);
+                qcSubtotal += itemTotal;
+            } else {
+                const isAvailable = nearbySellerIds.some(
+                    (id) => id.toString() === (product.seller?._id || product.seller)?.toString()
+                );
+                if (isAvailable) {
+                    qcItems.push(item);
+                    qcSubtotal += itemTotal;
+                } else {
+                    unavailableItems.push(item);
+                }
+            }
+        }
+    }
+
+    const totalProductSubtotal = Number((qcSubtotal + ecomSubtotal).toFixed(2));
+
+    // Update cart total in DB
+    if (cart.total !== totalProductSubtotal) {
+        cart.total = totalProductSubtotal;
+        await cart.save();
+    }
+
+    // Quick Commerce fees
+    const qcFees = await calculateDeliveryStuff(qcSubtotal, qcItems, userLat, userLng, deliveryOption);
+
+    // Ecommerce shipping fee (dynamically configured from AppSettings)
+    const settings = await AppSettings.findOne();
+    const ecomFreeThreshold = Number.isFinite(settings?.ecommerceFreeShippingThreshold)
+        ? Number(settings?.ecommerceFreeShippingThreshold)
+        : 499;
+    const ecomDefaultFee = Number.isFinite(settings?.ecommerceShippingFee)
+        ? Number(settings?.ecommerceShippingFee)
+        : 40;
+    let ecomShippingFee = 0;
+    if (ecomItems.length > 0) {
+        ecomShippingFee = ecomSubtotal >= ecomFreeThreshold ? 0 : ecomDefaultFee;
+    }
+
+    const combinedDeliveryFee = qcFees.estimatedDeliveryFee + ecomShippingFee;
+
+    const groups = {
+        quickCommerce: {
+            fulfillmentType: 'LOCAL_DELIVERY',
+            title: '⚡ QUICK DELIVERY',
+            estimatedDeliveryTime: '10–30 min',
+            items: qcItems,
+            subtotal: Number(qcSubtotal.toFixed(2)),
+            deliveryFee: qcFees.estimatedDeliveryFee,
+        },
+        ecommerce: {
+            fulfillmentType: 'COURIER_SHIPPING',
+            title: '📦 STANDARD SHIPPING',
+            estimatedDeliveryTime: '3–7 days',
+            items: ecomItems,
+            subtotal: Number(ecomSubtotal.toFixed(2)),
+            shippingFee: ecomShippingFee,
+        },
+    };
+
+    return {
+        ...cart.toObject(),
+        items: [...qcItems, ...ecomItems], // All available active items
+        unavailableItems,
+        groups,
+        total: totalProductSubtotal,
+        estimatedDeliveryFee: combinedDeliveryFee,
+        qcDeliveryFee: qcFees.estimatedDeliveryFee,
+        ecomShippingFee,
+        platformFee: qcFees.platformFee,
+        freeDeliveryThreshold: qcFees.freeDeliveryThreshold,
+        minimumOrderValue: qcFees.minimumOrderValue,
+        giftPackagingFee: settings?.giftPackagingFee ?? 30,
     };
 };
 
@@ -164,61 +253,51 @@ export const getCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
             }
         });
 
         if (!cart) {
             cart = await Cart.create({ customer: userId, items: [], total: 0 });
-            return res.status(200).json({ success: true, data: cart });
+            return res.status(200).json({
+                success: true,
+                data: {
+                    ...cart.toObject(),
+                    groups: {
+                        quickCommerce: {
+                            fulfillmentType: 'LOCAL_DELIVERY',
+                            title: '⚡ QUICK DELIVERY',
+                            estimatedDeliveryTime: '10–30 min',
+                            items: [],
+                            subtotal: 0,
+                            deliveryFee: 0,
+                        },
+                        ecommerce: {
+                            fulfillmentType: 'COURIER_SHIPPING',
+                            title: '📦 STANDARD SHIPPING',
+                            estimatedDeliveryTime: '3–7 days',
+                            items: [],
+                            subtotal: 0,
+                            shippingFee: 0,
+                        },
+                    },
+                },
+            });
         }
 
-        // Filter items based on location availability and update total
-        const filteredItems = [];
-        const unavailableItems = [];
-        let total = 0;
-
-        for (const item of (cart.items as any)) {
-            const product = item.product;
-            if (product && product.status === 'Active' && product.publish) {
-                // If no location provided, include all items
-                if (!hasValidLocation) {
-                    filteredItems.push(item);
-                    const price = calculateItemPrice(product, item.variation);
-                    total += price * item.quantity;
-                } else {
-                    // Check if available at location
-                    const isAvailable = nearbySellerIds.some(id => id.toString() === product.seller.toString());
-                    if (isAvailable) {
-                        filteredItems.push(item);
-                        const price = calculateItemPrice(product, item.variation);
-                        total += price * item.quantity;
-                    } else {
-                        unavailableItems.push(item);
-                    }
-                }
-            }
-        }
-
-        // Update cart total in DB if it changed
-        if (cart.total !== total) {
-            cart.total = total;
-            await cart.save();
-        }
-
-        // Calculate fees
         const deliveryOption = (req.query.deliveryOption as string) || 'Standard';
-        const fees = await calculateDeliveryStuff(total, filteredItems, userLat, userLng, deliveryOption);
+        const responseData = await buildUnifiedCartResponse(
+            cart,
+            nearbySellerIds,
+            hasValidLocation,
+            userLat,
+            userLng,
+            deliveryOption
+        );
 
         return res.status(200).json({
             success: true,
-            data: {
-                ...cart.toObject(),
-                items: filteredItems,
-                unavailableItems: unavailableItems, // Include unavailable items
-                total,
-                ...fees
-            }
+            data: responseData,
         });
     } catch (error: any) {
         return res.status(500).json({
@@ -240,40 +319,50 @@ export const addToCart = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Product ID is required' });
         }
 
-        // Parse location
-        const userLat = latitude ? parseFloat(latitude as string) : null;
-        const userLng = longitude ? parseFloat(longitude as string) : null;
-
-        if (userLat === null || userLng === null || isNaN(userLat) || isNaN(userLng)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Location is required to add items to cart'
-            });
-        }
-
-        // Verify product exists and is available at location
+        // Verify product exists
         const product = await Product.findOne({ _id: productId, status: 'Active', publish: true }).populate('seller');
         if (!product) {
             return res.status(404).json({ success: false, message: 'Product not found or unavailable' });
         }
 
-        // Check if seller's shop is open
-        const seller = product.seller as any;
-        if (seller && seller.isShopOpen === false) {
-            return res.status(400).json({
-                success: false,
-                message: 'Seller is not available at this moment'
-            });
-        }
+        const isEcommerceProduct = product.productType === 'ECOMMERCE';
 
-        const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-        const isAvailable = nearbySellerIds.some(id => id.toString() === (seller._id || seller).toString());
+        // Location verification is ONLY required for Quick Commerce products
+        let nearbySellerIds: mongoose.Types.ObjectId[] = [];
+        let hasValidLocation = false;
+        const userLat = latitude ? parseFloat(latitude as string) : null;
+        const userLng = longitude ? parseFloat(longitude as string) : null;
 
-        if (!isAvailable) {
-            return res.status(403).json({
-                success: false,
-                message: 'This service is not available in your location yet.'
-            });
+        if (!isEcommerceProduct) {
+            if (userLat === null || userLng === null || isNaN(userLat) || isNaN(userLng)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Location is required to add Quick Commerce items to cart'
+                });
+            }
+
+            // Check if seller's shop is open
+            const seller = product.seller as any;
+            if (seller && seller.isShopOpen === false) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Seller is not available at this moment'
+                });
+            }
+
+            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+            const isAvailable = nearbySellerIds.some(id => id.toString() === (seller._id || seller).toString());
+
+            if (!isAvailable) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'This service is not available in your location yet.'
+                });
+            }
+            hasValidLocation = true;
+        } else if (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng)) {
+            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+            hasValidLocation = true;
         }
 
         // Get or create cart
@@ -290,51 +379,43 @@ export const addToCart = async (req: Request, res: Response) => {
         });
 
         if (cartItem) {
-            // Update quantity
             cartItem.quantity += quantity;
             await cartItem.save();
         } else {
-            // Create new cart item
             cartItem = await CartItem.create({
                 cart: cart._id,
                 product: productId,
                 quantity,
-                variation
+                variation: variation || null,
+                productType: product.productType || 'QUICK_COMMERCE',
             });
             cart.items.push(cartItem._id as any);
+            await cart.save();
         }
 
-        // Update total with location filtering
-        cart.total = await calculateCartTotal(cart._id, nearbySellerIds);
-        await cart.save();
-
-        // Return updated cart with filtering
+        // Reload updated cart with full population
         const updatedCart = await Cart.findById(cart._id).populate({
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
             }
         });
 
-        const filteredItems = (updatedCart?.items as any[] || []).filter(item => {
-            const prod = item.product;
-            return prod && nearbySellerIds.some(id => id.toString() === prod.seller.toString());
-        });
-
-        // Calculate fees
         const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Standard';
-        const fees = await calculateDeliveryStuff(cart.total, filteredItems, userLat, userLng, deliveryOption);
+        const responseData = await buildUnifiedCartResponse(
+            updatedCart,
+            nearbySellerIds,
+            hasValidLocation,
+            userLat,
+            userLng,
+            deliveryOption
+        );
 
         return res.status(200).json({
             success: true,
             message: 'Item added to cart',
-            data: {
-                ...updatedCart?.toObject(),
-                items: filteredItems,
-                total: cart.total,
-                ...fees
-            }
+            data: responseData,
         });
     } catch (error: any) {
         return res.status(500).json({
@@ -357,19 +438,6 @@ export const updateCartItem = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
         }
 
-        // Parse location
-        const userLat = latitude ? parseFloat(latitude as string) : null;
-        const userLng = longitude ? parseFloat(longitude as string) : null;
-
-        if (userLat === null || userLng === null || isNaN(userLat) || isNaN(userLng)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Location is required to update cart'
-            });
-        }
-
-        const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-
         const cart = await Cart.findOne({ customer: userId });
         if (!cart) {
             return res.status(404).json({ success: false, message: 'Cart not found' });
@@ -380,49 +448,55 @@ export const updateCartItem = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Item not found in cart' });
         }
 
-        // Verify item is still available at location
         const product = cartItem.product as any;
-        const isAvailable = product && nearbySellerIds.some(id => id.toString() === product.seller.toString());
+        const isEcommerceProduct = cartItem.productType === 'ECOMMERCE' || product?.productType === 'ECOMMERCE';
 
-        if (!isAvailable) {
-            return res.status(403).json({
-                success: false,
-                message: 'This service is not available in your location yet.'
-            });
+        // Parse location
+        const userLat = latitude ? parseFloat(latitude as string) : null;
+        const userLng = longitude ? parseFloat(longitude as string) : null;
+        let nearbySellerIds: mongoose.Types.ObjectId[] = [];
+        const hasValidLocation = userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng);
+
+        if (hasValidLocation) {
+            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+        }
+
+        // Quick Commerce items must remain serviceable
+        if (!isEcommerceProduct && hasValidLocation && product?.seller) {
+            const isAvailable = nearbySellerIds.some(id => id.toString() === product.seller.toString());
+            if (!isAvailable) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'This service is not available in your location yet.'
+                });
+            }
         }
 
         cartItem.quantity = quantity;
         await cartItem.save();
 
-        cart.total = await calculateCartTotal(cart._id, nearbySellerIds);
-        await cart.save();
-
         const updatedCart = await Cart.findById(cart._id).populate({
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
             }
         });
 
-        const filteredItems = (updatedCart?.items as any[] || []).filter(item => {
-            const prod = item.product;
-            return prod && nearbySellerIds.some(id => id.toString() === prod.seller.toString());
-        });
-
-        // Calculate fees
         const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Standard';
-        const fees = await calculateDeliveryStuff(cart.total, filteredItems, userLat, userLng, deliveryOption);
+        const responseData = await buildUnifiedCartResponse(
+            updatedCart,
+            nearbySellerIds,
+            hasValidLocation,
+            userLat,
+            userLng,
+            deliveryOption
+        );
 
         return res.status(200).json({
             success: true,
             message: 'Cart updated',
-            data: {
-                ...updatedCart?.toObject(),
-                items: filteredItems,
-                total: cart.total,
-                ...fees
-            }
+            data: responseData,
         });
     } catch (error: any) {
         return res.status(500).json({
@@ -440,58 +514,46 @@ export const removeFromCart = async (req: Request, res: Response) => {
         const { itemId } = req.params;
         const { latitude, longitude } = req.query;
 
-        // Parse location
-        const userLat = latitude ? parseFloat(latitude as string) : null;
-        const userLng = longitude ? parseFloat(longitude as string) : null;
-
         const cart = await Cart.findOne({ customer: userId });
         if (!cart) {
             return res.status(404).json({ success: false, message: 'Cart not found' });
         }
 
         await CartItem.findOneAndDelete({ _id: itemId, cart: cart._id });
-
-        // Remove from cart array
         cart.items = cart.items.filter(id => id.toString() !== itemId);
+        await cart.save();
 
-        // Calculate total with location if provided
+        const userLat = latitude ? parseFloat(latitude as string) : null;
+        const userLng = longitude ? parseFloat(longitude as string) : null;
         let nearbySellerIds: mongoose.Types.ObjectId[] = [];
-        if (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng)) {
+        const hasValidLocation = userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng);
+
+        if (hasValidLocation) {
             nearbySellerIds = await findSellersWithinRange(userLat, userLng);
         }
-
-        cart.total = await calculateCartTotal(cart._id, nearbySellerIds);
-        await cart.save();
 
         const updatedCart = await Cart.findById(cart._id).populate({
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
             }
         });
 
-        const filteredItems = (updatedCart?.items as any[] || []).filter(item => {
-            const prod = item.product;
-            if (nearbySellerIds.length > 0) {
-                return prod && nearbySellerIds.some(id => id.toString() === prod.seller.toString());
-            }
-            return true; // If no location provided for removal, just return all (though getCart will filter)
-        });
-
-        // Calculate fees
         const deliveryOption = (req.query.deliveryOption as string) || 'Standard';
-        const fees = await calculateDeliveryStuff(cart.total, filteredItems, userLat, userLng, deliveryOption);
+        const responseData = await buildUnifiedCartResponse(
+            updatedCart,
+            nearbySellerIds,
+            hasValidLocation,
+            userLat,
+            userLng,
+            deliveryOption
+        );
 
         return res.status(200).json({
             success: true,
             message: 'Item removed from cart',
-            data: {
-                ...updatedCart?.toObject(),
-                items: filteredItems,
-                total: cart.total,
-                ...fees
-            }
+            data: responseData,
         });
     } catch (error: any) {
         return res.status(500).json({
@@ -518,7 +580,28 @@ export const clearCart = async (req: Request, res: Response) => {
         return res.status(200).json({
             success: true,
             message: 'Cart cleared',
-            data: { items: [], total: 0 }
+            data: {
+                items: [],
+                total: 0,
+                groups: {
+                    quickCommerce: {
+                        fulfillmentType: 'LOCAL_DELIVERY',
+                        title: '⚡ QUICK DELIVERY',
+                        estimatedDeliveryTime: '10–30 min',
+                        items: [],
+                        subtotal: 0,
+                        deliveryFee: 0,
+                    },
+                    ecommerce: {
+                        fulfillmentType: 'COURIER_SHIPPING',
+                        title: '📦 STANDARD SHIPPING',
+                        estimatedDeliveryTime: '3–7 days',
+                        items: [],
+                        subtotal: 0,
+                        shippingFee: 0,
+                    },
+                },
+            }
         });
     } catch (error: any) {
         return res.status(500).json({

@@ -17,4 +17,21 @@ export interface Cart {
   minimumOrderValue?: number;
   debug_config?: any;
   backendTotal?: number;
+  groups?: {
+    quickCommerce?: {
+      items: any[];
+      subtotal: number;
+      fulfillmentType: string;
+      estimatedDelivery: string;
+      deliveryFee: number;
+    };
+    ecommerce?: {
+      items: any[];
+      subtotal: number;
+      fulfillmentType: string;
+      estimatedDelivery: string;
+      shippingFee: number;
+      note?: string;
+    };
+  };
 }

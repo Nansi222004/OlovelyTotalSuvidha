@@ -23,6 +23,40 @@ export interface OrderFees {
   deliveryFee?: number;
 }
 
+export interface IFulfillmentGroup {
+  groupId: string;
+  fulfillmentType: 'LOCAL_DELIVERY' | 'COURIER_SHIPPING' | 'THIRD_PARTY_API';
+  status: string;
+  items: any[];
+  seller?: {
+    _id?: string;
+    storeName?: string;
+    sellerName?: string;
+    city?: string;
+    phone?: string;
+    address?: string;
+  } | any;
+  deliveryBoy?: {
+    _id?: string;
+    name?: string;
+    mobile?: string;
+    phone?: string;
+    vehicleNumber?: string;
+    profileImage?: string;
+  };
+  deliveryOtp?: string;
+  shippingDetails?: {
+    carrier?: string;
+    awbNumber?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    shippedAt?: string;
+    estimatedDelivery?: string;
+  };
+  subtotal: number;
+  shippingFee: number;
+}
+
 export interface Order {
   id: string;
   items: CartItem[];
@@ -41,6 +75,8 @@ export interface Order {
   deliveryOption?: 'Instant' | 'Standard';
   useWallet?: boolean;
   walletAmountUsed?: number;
+  orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
+  fulfillmentGroups?: IFulfillmentGroup[];
 }
 
 

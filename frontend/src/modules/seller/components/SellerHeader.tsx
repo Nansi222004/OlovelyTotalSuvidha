@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import olovelyLogo from '@assets/olovelylogo.jpeg';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 import LanguageSelector from '../../../components/LanguageSelector';
 
 interface SellerHeaderProps {
@@ -16,9 +17,19 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
   const { t } = useLanguage();
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showChannelDropdown, setShowChannelDropdown] = useState(false);
   const { user, logout } = useAuth();
+  const {
+    activeChannel,
+    setActiveChannel,
+    isHybrid,
+    isQuickCommerceOnly,
+    isEcommerceOnly,
+    isLegacy,
+  } = useSellerChannel();
   const settingsRef = useRef<HTMLDivElement>(null);
   const locationRef = useRef<HTMLDivElement>(null);
+  const channelDropdownRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) => location.pathname.includes(path);
 
@@ -30,6 +41,9 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
       }
       if (locationRef.current && !locationRef.current.contains(event.target as Node)) {
         setShowLocationDropdown(false);
+      }
+      if (channelDropdownRef.current && !channelDropdownRef.current.contains(event.target as Node)) {
+        setShowChannelDropdown(false);
       }
     };
 
@@ -103,6 +117,123 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
               style={{ maxWidth: '200px' }}
             />
           </button>
+
+          {/* Channel Selector / Indicator Badge */}
+          <div className="flex items-center ml-1 sm:ml-4">
+            {isHybrid ? (
+              <div className="relative" ref={channelDropdownRef}>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">
+                    CHANNEL
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowChannelDropdown(!showChannelDropdown)}
+                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-neutral-200 hover:border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-xs sm:text-sm font-semibold text-neutral-800 transition-all shadow-sm"
+                    title="Switch Active Channel"
+                  >
+                    {activeChannel === "QUICK_COMMERCE" ? (
+                      <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                        <span>⚡</span> <span className="hidden xs:inline sm:inline">Quick Commerce</span><span className="xs:hidden sm:hidden">QC</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-blue-700 font-bold">
+                        <span>📦</span> <span className="hidden xs:inline sm:inline">Ecommerce</span><span className="xs:hidden sm:hidden">Ecom</span>
+                      </span>
+                    )}
+                    <svg
+                      className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${
+                        showChannelDropdown ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                {showChannelDropdown && (
+                  <div className="absolute left-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-neutral-200 py-1.5 z-50 animate-fadeIn">
+                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-100 mb-1">
+                      Active Channel
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveChannel("QUICK_COMMERCE");
+                        setShowChannelDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs sm:text-sm flex items-center justify-between transition-colors ${
+                        activeChannel === "QUICK_COMMERCE"
+                          ? "bg-emerald-50 text-emerald-800 font-semibold"
+                          : "text-neutral-700 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>⚡</span> Quick Commerce
+                      </span>
+                      {activeChannel === "QUICK_COMMERCE" && (
+                        <span className="text-emerald-600 text-xs font-bold">✓</span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveChannel("ECOMMERCE");
+                        setShowChannelDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs sm:text-sm flex items-center justify-between transition-colors ${
+                        activeChannel === "ECOMMERCE"
+                          ? "bg-blue-50 text-blue-800 font-semibold"
+                          : "text-neutral-700 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>📦</span> Ecommerce
+                      </span>
+                      {activeChannel === "ECOMMERCE" && (
+                        <span className="text-blue-600 text-xs font-bold">✓</span>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">
+                  CHANNEL
+                </span>
+                <div
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 ${
+                    isQuickCommerceOnly
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : isEcommerceOnly
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : "bg-neutral-100 text-neutral-600 border-neutral-200"
+                  }`}
+                >
+                  {isQuickCommerceOnly && (
+                    <>
+                      <span>⚡</span> Quick Commerce
+                    </>
+                  )}
+                  {isEcommerceOnly && (
+                    <>
+                      <span>📦</span> Ecommerce
+                    </>
+                  )}
+                  {isLegacy && <>Channel Not Configured</>}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Mobile Actions - Language & Logout */}
           <div className="ml-auto sm:hidden flex items-center gap-1.5">

@@ -197,6 +197,10 @@ export const capturePayment = async (
                 };
             }
 
+            const payableAmount = (order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0)
+                ? order.onlineAmountPaid
+                : (order.walletAmountUsed ? Math.max(0, order.total - order.walletAmountUsed) : order.total);
+
             // Explicitly verify & capture on Razorpay API if real payment
             let payStatus = 'captured';
             if (razorpayPaymentId && !razorpayPaymentId.startsWith('pay_mock_')) {
@@ -206,9 +210,9 @@ export const capturePayment = async (
                     payStatus = payDetails.status;
                     console.log(`ℹ️ [Razorpay API] Fetched payment ${razorpayPaymentId} status: ${payDetails.status}`);
                     if (payDetails.status === 'authorized') {
-                        await razorpay.payments.capture(razorpayPaymentId, Math.round(order.total * 100), 'INR');
+                        await razorpay.payments.capture(razorpayPaymentId, Math.round(payableAmount * 100), 'INR');
                         payStatus = 'captured';
-                        console.log(`✅ [Razorpay API] Explicitly captured authorized payment ${razorpayPaymentId} for ₹${order.total}`);
+                        console.log(`✅ [Razorpay API] Explicitly captured authorized payment ${razorpayPaymentId} for ₹${payableAmount}`);
                     }
                 } catch (apiErr: any) {
                     console.warn(`⚠️ [Razorpay API] Fetch/Capture warning for ${razorpayPaymentId}:`, apiErr?.message || apiErr);
@@ -231,7 +235,7 @@ export const capturePayment = async (
                     razorpayOrderId,
                     razorpayPaymentId,
                     razorpaySignature,
-                    amount: order.total,
+                    amount: payableAmount,
                     currency: 'INR',
                     status: 'Completed',
                     paidAt: new Date(),
@@ -250,7 +254,7 @@ export const capturePayment = async (
             // Update order payment status and allocation fields
             order.paymentStatus = 'Paid';
             order.paymentId = razorpayPaymentId;
-            order.onlineAmountPaid = order.total;
+            order.onlineAmountPaid = payableAmount;
             order.codAmountPending = 0;
             if (order.status === 'Pending') {
                 order.status = 'Received';
@@ -303,6 +307,20 @@ export const capturePayment = async (
                 await createPendingCommissions(orderId);
             } catch (commError) {
                 console.error("Failed to create pending commissions after payment:", commError);
+            }
+
+            // Manifest Ecommerce shipments if any
+            if (order.fulfillmentGroups) {
+                for (const group of order.fulfillmentGroups) {
+                    if (group.fulfillmentType === 'COURIER_SHIPPING' && (group.status === 'Processing' || group.status === 'Pending')) {
+                        try {
+                            const { createEcommerceShipment } = await import('./shipping/shippingService');
+                            await createEcommerceShipment(order._id.toString(), group.groupId);
+                        } catch (shipErr) {
+                            console.error('Failed to create ecommerce shipment after payment capture:', shipErr);
+                        }
+                    }
+                }
             }
 
             return {
@@ -625,6 +643,20 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
             } catch (commError) {
                 console.error("Failed to create pending commissions after webhook payment:", commError);
             }
+
+            // Manifest Ecommerce shipments if any (idempotently)
+            if (order.fulfillmentGroups) {
+                for (const group of order.fulfillmentGroups) {
+                    if (group.fulfillmentType === 'COURIER_SHIPPING' && (group.status === 'Processing' || group.status === 'Pending')) {
+                        try {
+                            const { createEcommerceShipment } = await import('./shipping/shippingService');
+                            await createEcommerceShipment(order._id.toString(), group.groupId);
+                        } catch (shipErr) {
+                            console.error('Failed to create ecommerce shipment after webhook payment capture:', shipErr);
+                        }
+                    }
+                }
+            }
         }
     } catch (error) {
         console.error('Error handling payment captured webhook:', error);
@@ -654,10 +686,33 @@ const handlePaymentFailed = async (payload: any) => {
             };
             await payment.save();
 
-            // Update order
-            await Order.findByIdAndUpdate(payment.order, {
-                paymentStatus: 'Failed',
-            });
+            // Update order and restore inventory atomically
+            const order = await Order.findById(payment.order);
+            if (order && order.paymentStatus !== 'Failed') {
+                order.paymentStatus = 'Failed';
+                order.status = 'Cancelled';
+                if (order.fulfillmentGroups) {
+                    for (const group of order.fulfillmentGroups) {
+                        group.status = 'Cancelled';
+                    }
+                }
+                await order.save();
+
+                // Restore stock for all items
+                const OrderItem = (await import('../models/OrderItem')).default;
+                const Product = (await import('../models/Product')).default;
+                for (const itemId of order.items) {
+                    const item = await OrderItem.findById(itemId);
+                    if (item && item.product) {
+                        await Product.findByIdAndUpdate(item.product, {
+                            $inc: { stock: item.quantity },
+                        });
+                        item.status = 'Cancelled';
+                        await item.save();
+                    }
+                }
+                console.log(`🔒 [Payment Failed] Order ${order.orderNumber} cancelled and inventory restored atomically`);
+            }
         }
     } catch (error) {
         console.error('Error handling payment failed webhook:', error);

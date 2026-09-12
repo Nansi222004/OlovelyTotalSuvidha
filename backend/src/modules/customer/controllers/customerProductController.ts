@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Product from "../../../models/Product";
 import Category from "../../../models/Category";
 import SubCategory from "../../../models/SubCategory";
+import HeaderCategory from "../../../models/HeaderCategory";
 import mongoose from "mongoose";
 import { findSellersWithinRange } from "../../../utils/locationHelper";
 import AppSettings from "../../../models/AppSettings";
@@ -22,6 +23,8 @@ export const getProducts = async (req: Request, res: Response) => {
       minDiscount,
       latitude, // User location latitude
       longitude, // User location longitude
+      channel,
+      productType,
     } = req.query;
 
     const query: any = {
@@ -33,6 +36,13 @@ export const getProducts = async (req: Request, res: Response) => {
         { isShopByStoreOnly: { $exists: false } },
       ],
     };
+
+    const targetChannel = ((channel || productType) as string || "").toUpperCase();
+    if (targetChannel === 'QUICK_COMMERCE') {
+      query.productType = 'QUICK_COMMERCE';
+    } else if (targetChannel === 'ECOMMERCE') {
+      query.productType = 'ECOMMERCE';
+    }
 
     // Location-based filtering
     const userLat = latitude ? parseFloat(latitude as string) : null;
@@ -62,6 +72,8 @@ export const getProducts = async (req: Request, res: Response) => {
       const baseQuery: any = {};
       if (modelName === "Category") {
         baseQuery.status = "Active";
+      } else if (modelName === "HeaderCategory") {
+        baseQuery.status = "Published";
       }
 
       let item = await model
@@ -89,7 +101,7 @@ export const getProducts = async (req: Request, res: Response) => {
         .lean();
       if (item) return item._id;
 
-      if (modelName === "Category" && value.includes("and")) {
+      if ((modelName === "Category" || modelName === "HeaderCategory") && value.includes("and")) {
         const withAmpersand = value.replace(/-and-/g, " & ").replace(/-/g, " ");
         item = await model
           .findOne({
@@ -105,12 +117,14 @@ export const getProducts = async (req: Request, res: Response) => {
     };
 
     if (category) {
+      let resolved = false;
       const categoryId = await resolveId(
         Category,
         category as string,
         "Category"
       );
       if (categoryId) {
+        resolved = true;
         const categoryDoc = await Category.findById(categoryId).lean();
         if (categoryDoc && categoryDoc.parentId) {
           query.category = categoryDoc.parentId;
@@ -118,6 +132,33 @@ export const getProducts = async (req: Request, res: Response) => {
         } else {
           query.category = categoryId;
         }
+      } else {
+        const headerCatId = await resolveId(
+          HeaderCategory,
+          category as string,
+          "HeaderCategory"
+        );
+        if (headerCatId) {
+          resolved = true;
+          const childCategories = await Category.find({
+            headerCategoryId: headerCatId,
+            status: "Active",
+          }).select("_id").lean();
+
+          const childCategoryIds = childCategories.map((c: any) => c._id);
+          const headerMatch: any[] = [
+            { headerCategoryId: headerCatId },
+          ];
+          if (childCategoryIds.length > 0) {
+            headerMatch.push({ category: { $in: childCategoryIds } });
+          }
+          query.$and = query.$and || [];
+          query.$and.push({ $or: headerMatch });
+        }
+      }
+
+      if (!resolved) {
+        query._id = new mongoose.Types.ObjectId();
       }
     }
 
@@ -189,6 +230,7 @@ export const getProducts = async (req: Request, res: Response) => {
         ? nearbySellerIds.some((id) => id && id.toString() === sellerIdStr)
         : false;
       prodObj.isAvailable = isAvailable;
+      prodObj.productType = prodObj.productType || "QUICK_COMMERCE";
 
       if (prodObj.seller && typeof prodObj.seller === "object" && prodObj.seller.viewCustomerDetails === false) {
         delete prodObj.seller.storeName;
@@ -341,6 +383,7 @@ export const getProductById = async (req: Request, res: Response) => {
     let showSellerDetails = settings?.features?.showSellerDetails !== false;
 
     const prodObj = product.toObject();
+    prodObj.productType = prodObj.productType || "QUICK_COMMERCE";
     if (prodObj.seller && typeof prodObj.seller === "object" && (prodObj.seller as any).viewCustomerDetails === false) {
       showSellerDetails = false;
       delete (prodObj.seller as any).storeName;

@@ -72,6 +72,13 @@ export interface Product {
   shopId?: string | any;
   rating?: number;
   reviewsCount?: number;
+  productType?: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  sku?: string;
+  packageDetails?: {
+    weightKg?: number;
+    dimensionsCm?: { length?: number; width?: number; height?: number };
+    shippingClass?: string;
+  };
 }
 
 export interface CreateProductData {
@@ -103,6 +110,15 @@ export interface CreateProductData {
   variationType?: string;
   isShopByStoreOnly?: boolean;
   shopId?: string;
+  productType?: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  sku?: string;
+  weightKg?: number;
+  dimensionsCm?: { length?: number; width?: number; height?: number };
+  packageDetails?: {
+    weightKg?: number;
+    dimensionsCm?: { length?: number; width?: number; height?: number };
+    shippingClass?: string;
+  };
 }
 
 export interface Shop {
@@ -119,6 +135,7 @@ export interface GetProductsParams {
   category?: string;
   status?: "published" | "unpublished" | "popular" | "dealOfDay";
   stock?: "inStock" | "outOfStock";
+  channel?: "QUICK_COMMERCE" | "ECOMMERCE";
   page?: number;
   limit?: number;
   sortBy?: string;

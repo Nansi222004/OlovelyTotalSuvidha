@@ -28,6 +28,46 @@ const formatDate = (dateString: string) => {
   });
 };
 
+const getOrderChannelBadge = (order: any) => {
+  if (order.orderType === 'MIXED') {
+    return {
+      label: '⚡ + 📦 Mixed Order',
+      className: 'bg-purple-50 text-purple-700 border-purple-200',
+    };
+  }
+  if (order.orderType === 'ECOMMERCE') {
+    return {
+      label: '📦 Ecommerce',
+      className: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+  }
+  if (order.orderType === 'QUICK_COMMERCE') {
+    return {
+      label: '⚡ Quick Commerce',
+      className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    };
+  }
+  const items = order.items || [];
+  const hasQc = items.some((i: any) => !i.product?.productType || i.product?.productType === 'QUICK_COMMERCE');
+  const hasEcom = items.some((i: any) => i.product?.productType === 'ECOMMERCE');
+  if (hasQc && hasEcom) {
+    return {
+      label: '⚡ + 📦 Mixed Order',
+      className: 'bg-purple-50 text-purple-700 border-purple-200',
+    };
+  }
+  if (hasEcom) {
+    return {
+      label: '📦 Ecommerce',
+      className: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+  }
+  return {
+    label: '⚡ Quick Commerce',
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  };
+};
+
 export default function Orders() {
   const { orders } = useOrders();
   const { t } = useTranslation();
@@ -60,6 +100,7 @@ export default function Orders() {
       <div className="px-4 md:px-6 lg:px-8 space-y-4 md:space-y-6">
         {orders.map((order) => {
           const shortId = order.id.split('-').slice(-1)[0];
+          const channelBadge = getOrderChannelBadge(order);
           return (
             <Link
               key={order.id}
@@ -68,8 +109,13 @@ export default function Orders() {
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-900 mb-1">
-                    {t("common.order", "Order")} #{shortId}
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-sm font-semibold text-neutral-900">
+                      {t("common.order", "Order")} #{shortId}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${channelBadge.className}`}>
+                      {channelBadge.label}
+                    </span>
                   </div>
                   <div className="text-xs text-neutral-500">{formatDate(order.createdAt)}</div>
                 </div>

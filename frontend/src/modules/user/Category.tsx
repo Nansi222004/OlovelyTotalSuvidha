@@ -10,6 +10,8 @@ import {
 import { useLocation as useLocationContext } from "../../hooks/useLocation";
 import { useTranslation } from "../../hooks/useTranslation";
 import { getIconByName } from "../../utils/iconLibrary";
+import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
+import { useCustomerChannel } from "../../context/CustomerChannelContext";
 
 export default function CategoryPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +19,7 @@ export default function CategoryPage() {
   const [searchParams] = useSearchParams();
   const { location: userLocation } = useLocationContext();
   const { t, getTranslatedField } = useTranslation();
+  const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
 
   const [category, setCategory] = useState<ApiCategory | null>(null);
   const [subcategories, setSubcategories] = useState<ApiCategory[]>([]);
@@ -162,6 +165,10 @@ export default function CategoryPage() {
       if (selectedSubcategory !== "all") {
         params.subcategory = selectedSubcategory;
       }
+      if (channelFilter === 'QUICK_COMMERCE' || channelFilter === 'ECOMMERCE') {
+        params.channel = channelFilter;
+        params.productType = channelFilter;
+      }
       // Include user location for seller service radius filtering
       if (userLocation?.latitude && userLocation?.longitude) {
         params.latitude = userLocation.latitude;
@@ -192,7 +199,7 @@ export default function CategoryPage() {
     if (id) {
       fetchProducts();
     }
-  }, [id, selectedSubcategory, category?._id, userLocation]);
+  }, [id, selectedSubcategory, category?._id, userLocation, channelFilter]);
 
   // Sync selectedFilters with appliedFilters when modal opens
   useEffect(() => {
@@ -205,6 +212,13 @@ export default function CategoryPage() {
   // Derived state: Filtered, Searched, and Sorted Products
   const categoryProducts = useMemo(() => {
     let result = [...products];
+
+    // Channel filter (strict authoritative + defensive UI layer)
+    if (channelFilter === 'QUICK_COMMERCE') {
+      result = result.filter((p: any) => p.productType === 'QUICK_COMMERCE');
+    } else if (channelFilter === 'ECOMMERCE') {
+      result = result.filter((p: any) => p.productType === 'ECOMMERCE');
+    }
 
     // 0. Search query filter
     const query = searchQuery.trim().toLowerCase();
@@ -600,6 +614,13 @@ export default function CategoryPage() {
         </div>
       )}
 
+      {/* Customer Channel Filter for Category - Light surface without header color */}
+      <ChannelFilter
+        value={channelFilter}
+        onChange={setChannelFilter}
+        variant="light"
+      />
+
       {/* 4. Filter & Sort Action Bar */}
       <div className="sticky top-[108px] z-20 bg-white/95 backdrop-blur-md border-b border-slate-100 px-3 sm:px-4 py-2">
         <div className="flex items-center justify-between gap-2">
@@ -701,27 +722,43 @@ export default function CategoryPage() {
             <h3 className="text-slate-900 font-bold text-lg mb-1.5">
               {searchQuery
                 ? `No products matching "${searchQuery}"`
+                : channelFilter === 'QUICK_COMMERCE'
+                ? `No Quick Commerce products found in ${categoryName}`
+                : channelFilter === 'ECOMMERCE'
+                ? `No Ecommerce products found in ${categoryName}`
                 : t("customer.noProductsFound", "No products found")}
             </h3>
             <p className="text-slate-500 text-xs sm:text-sm max-w-sm mb-6 leading-relaxed">
               {searchQuery
                 ? `Try checking your spelling or searching for other items in ${categoryName}.`
+                : channelFilter === 'QUICK_COMMERCE'
+                ? `There are currently no Quick Commerce (instant delivery) items in "${categoryName}". Try switching to All or Ecommerce.`
+                : channelFilter === 'ECOMMERCE'
+                ? `There are currently no Ecommerce (courier delivery) items in "${categoryName}". Try switching to All or Quick Commerce.`
                 : `There are currently no products available in "${categoryName}". You can explore other categories or continue browsing.`}
             </p>
             <div className="flex items-center gap-3">
+              {channelFilter !== 'ALL' && (
+                <button
+                  onClick={() => setChannelFilter('ALL')}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                >
+                  View All Products
+                </button>
+              )}
               {searchQuery ? (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Clear Search
                 </button>
               ) : (
                 <button
-                  onClick={() => navigate("/categories")}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95"
+                  onClick={() => navigate("/")}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  {t("customer.browseCategories", "Browse Categories")}
+                  {t("customer.browseOtherCategories", "Browse Other Categories")}
                 </button>
               )}
             </div>

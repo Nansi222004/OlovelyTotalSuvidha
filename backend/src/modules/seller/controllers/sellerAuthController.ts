@@ -94,6 +94,8 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
         logo: seller.logo,
         address: seller.address,
         city: seller.city,
+        vendorType: seller.vendorType || 'QUICK_COMMERCE',
+        shippingConfig: seller.shippingConfig,
       },
     },
   });
@@ -131,10 +133,16 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Validate location is provided
-  const latitude = req.body.latitude ? parseFloat(req.body.latitude) : null;
-  const longitude = req.body.longitude ? parseFloat(req.body.longitude) : null;
+  // Validate vendorType if provided
+  let vendorType = req.body.vendorType || "QUICK_COMMERCE";
+  if (!["QUICK_COMMERCE", "ECOMMERCE", "HYBRID"].includes(vendorType)) {
+    return res.status(400).json({
+      success: false,
+      message: "vendorType must be one of 'QUICK_COMMERCE', 'ECOMMERCE', 'HYBRID'",
+    });
+  }
 
-  // Parse and validate service radius
+  // Parse and validate service radius for QC / Hybrid
   let serviceRadiusKm = 10; // Default 10km
   if (
     req.body.serviceRadiusKm !== undefined &&
@@ -156,15 +164,24 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
-    // Location is optional now to allow dynamic setting later
-    // Just proceed without setting location if not provided
+  // Location validation: for QUICK_COMMERCE and HYBRID, store GPS coordinates are required
+  const latitude = req.body.latitude ? parseFloat(req.body.latitude) : null;
+  const longitude = req.body.longitude ? parseFloat(req.body.longitude) : null;
+
+  if (vendorType === "QUICK_COMMERCE" || vendorType === "HYBRID") {
+    if (latitude === null || longitude === null || isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: "Store location GPS coordinates (latitude and longitude) are required for Quick Commerce",
+      });
+    }
   }
 
-  // Validate latitude and longitude ranges if provided
   if (
-    latitude &&
-    longitude &&
+    latitude !== null &&
+    longitude !== null &&
+    !isNaN(latitude) &&
+    !isNaN(longitude) &&
     (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
   ) {
     return res.status(400).json({
@@ -172,6 +189,37 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
       message: "Invalid location coordinates",
     });
   }
+
+  // Shipping configuration for Ecommerce / Hybrid
+  const rawPincode = req.body.shippingConfig?.pickupPincode || req.body.pickupPincode;
+  const rawPickupAddress = req.body.shippingConfig?.pickupAddress || req.body.pickupAddress || address;
+
+  if (vendorType === "ECOMMERCE" || vendorType === "HYBRID") {
+    if (!rawPincode || !/^[1-9][0-9]{5}$/.test(String(rawPincode).trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid 6-digit Indian pickup pincode is required for Ecommerce shipping configuration",
+      });
+    }
+    if (!rawPickupAddress || String(rawPickupAddress).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup/warehouse address is required for Ecommerce shipping configuration",
+      });
+    }
+  }
+
+  const shippingConfig = req.body.shippingConfig ? {
+    pickupAddress: rawPickupAddress,
+    pickupPincode: rawPincode,
+    warehouseAddress: req.body.shippingConfig.warehouseAddress || rawPickupAddress,
+    returnAddress: req.body.shippingConfig.returnAddress || rawPickupAddress,
+    freeShippingThreshold: Number(req.body.shippingConfig.freeShippingThreshold) || 0,
+    flatShippingFee: Number(req.body.shippingConfig.flatShippingFee) || 0,
+  } : (rawPincode || rawPickupAddress) ? {
+    pickupAddress: rawPickupAddress,
+    pickupPincode: rawPincode,
+  } : undefined;
 
   // Check if seller already exists
   const existingSeller = await Seller.findOne({
@@ -187,19 +235,18 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 
   // Create GeoJSON location point [longitude, latitude] if provided
   const location =
-    longitude && latitude
+    longitude !== null && latitude !== null && !isNaN(longitude) && !isNaN(latitude)
       ? {
           type: "Point" as const,
           coordinates: [longitude, latitude],
         }
       : undefined;
 
-  // Create new seller with GeoJSON location (password not required during signup)
+  // Create new seller with GeoJSON location
   const seller = await Seller.create({
     sellerName,
     mobile,
     email,
-    // password field removed - sellers don't need password during signup
     storeName,
     category,
     address,
@@ -210,6 +257,8 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     longitude: req.body.longitude,
     location, // GeoJSON location for geospatial queries
     serviceRadiusKm, // Service radius in kilometers
+    vendorType,
+    ...(shippingConfig && { shippingConfig }),
     status: "Pending",
     requireProductApproval: false,
     viewCustomerDetails: false,
@@ -238,6 +287,8 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
         status: seller.status,
         address: seller.address,
         city: seller.city,
+        vendorType: seller.vendorType,
+        shippingConfig: seller.shippingConfig,
       },
     },
   });

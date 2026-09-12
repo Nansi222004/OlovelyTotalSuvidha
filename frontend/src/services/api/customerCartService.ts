@@ -24,6 +24,7 @@ export interface Cart {
     minimumOrderValue?: number;
     debug_config?: any;
     backendTotal?: number;
+    groups?: any;
 }
 
 export interface CartResponse {

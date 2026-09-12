@@ -26,6 +26,14 @@ export default function Cart() {
   const meetsMinimumOrder = minimumOrderValue <= 0 || cart.total >= minimumOrderValue;
   const amountNeededForMinimumOrder = Math.max(0, minimumOrderValue - cart.total);
 
+  const qcItems = cart.items.filter(
+    (item) => !item.product?.productType || item.product?.productType === 'QUICK_COMMERCE'
+  );
+  const ecomItems = cart.items.filter(
+    (item) => item.product?.productType === 'ECOMMERCE'
+  );
+  const isMixed = qcItems.length > 0 && ecomItems.length > 0;
+
   const handleCheckout = () => {
     if (!meetsMinimumOrder) return;
     navigate('/checkout');
@@ -64,89 +72,213 @@ export default function Cart() {
         <p className="text-xs md:text-sm text-neutral-600">{t("customer.deliveredIn", "Delivered in")} {appConfig.estimatedDeliveryTime}</p>
       </div>
 
-      {/* Cart Items */}
-      <div className="px-4 md:px-6 lg:px-8 space-y-4 md:space-y-6 mb-4 md:mb-6">
-        {cart.items.map((item) => {
-          const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
-          return (
-            <div
-              key={item.product.id}
-              className="bg-white rounded-lg border border-neutral-200 p-4 md:p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex gap-4 md:gap-6">
-                {/* Product Image */}
-                <div className="w-20 h-20 md:w-24 md:h-24 bg-neutral-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  {item.product.imageUrl ? (
-                    <img
-                      src={item.product.imageUrl}
-                      alt={item.product.name}
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                  ) : (
-                    <span className="text-2xl text-neutral-400">
-                      {item.product.name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </div>
+      {/* Mixed Basket Notice */}
+      {isMixed && (
+        <div className="mx-4 md:mx-6 lg:mx-8 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
+          <span className="text-base">ℹ️</span>
+          <span>
+            <strong>Multi-Shipment Order:</strong> Your basket contains both Quick Delivery and Courier Delivery items. They will be delivered separately.
+          </span>
+        </div>
+      )}
 
-                {/* Product Info */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-neutral-900 mb-1 md:mb-2 line-clamp-2 md:text-lg">
-                    {item.product.name}
-                  </h3>
-                  <p className="text-xs md:text-sm text-neutral-500 mb-2">{item.product.pack}</p>
-                  <div className="flex items-center gap-2 mb-3 md:mb-4">
-                    <span className="text-base md:text-lg font-bold text-neutral-900">
-                      ₹{displayPrice.toLocaleString('en-IN')}
-                    </span>
-                    {hasDiscount && (
-                      <span className="text-xs md:text-sm text-neutral-500 line-through">
-                        ₹{mrp.toLocaleString('en-IN')}
+      {/* Cart Items Groups */}
+      <div className="px-4 md:px-6 lg:px-8 space-y-6 mb-4 md:mb-6">
+        {/* Quick Delivery Group */}
+        {qcItems.length > 0 && (
+          <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden shadow-xs">
+            <div className="px-4 py-3 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚡</span>
+                <span className="text-xs font-bold text-emerald-900 tracking-wide uppercase">
+                  QUICK DELIVERY
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  {appConfig.estimatedDeliveryTime || '12–15 mins'}
+                </span>
+              </div>
+              <span className="text-xs text-neutral-500 font-medium">
+                {qcItems.length} {qcItems.length === 1 ? 'item' : 'items'}
+              </span>
+            </div>
+            <div className="p-4 space-y-4 divide-y divide-neutral-100">
+              {qcItems.map((item) => {
+                const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                return (
+                  <div
+                    key={item.product.id || item.product._id}
+                    className="pt-4 first:pt-0 flex gap-4 md:gap-6"
+                  >
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-100 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                      {item.product.imageUrl ? (
+                        <img
+                          src={item.product.imageUrl}
+                          alt={item.product.name}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                      ) : (
+                        <span className="text-xl text-neutral-400">
+                          {item.product.name?.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="absolute bottom-0 left-0 right-0 bg-emerald-700 text-white text-[9px] font-bold text-center py-0.5">
+                        ⚡ Quick
                       </span>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant)}
-                      className="w-8 h-8 md:w-10 md:h-10 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600 md:text-lg"
-                    >
-                      −
-                    </Button>
-                    <span className="text-base md:text-lg font-semibold text-neutral-900 min-w-[2rem] md:min-w-[2.5rem] text-center">
-                      {item.quantity}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant)}
-                      className="w-8 h-8 md:w-10 md:h-10 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600 md:text-lg"
-                    >
-                      +
-                    </Button>
-                    <div className="ml-auto text-right">
-                      <div className="text-sm md:text-base font-bold text-neutral-900">
-                        ₹{(displayPrice * item.quantity).toFixed(0)}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-neutral-900 mb-1 text-sm md:text-base line-clamp-2">
+                        {item.product.name}
+                      </h3>
+                      <p className="text-xs text-neutral-500 mb-1">{item.product.pack}</p>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm md:text-base font-bold text-neutral-900">
+                          ₹{displayPrice.toLocaleString('en-IN')}
+                        </span>
+                        {hasDiscount && (
+                          <span className="text-xs text-neutral-500 line-through">
+                            ₹{mrp.toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant)}
+                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                        >
+                          −
+                        </Button>
+                        <span className="text-sm font-semibold text-neutral-900 min-w-[1.5rem] text-center">
+                          {item.quantity}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant)}
+                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                        >
+                          +
+                        </Button>
+                        <div className="ml-auto text-right font-bold text-sm text-neutral-900">
+                          ₹{(displayPrice * item.quantity).toFixed(0)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Remove Button */}
-                <button
-                  onClick={() => removeFromCart(item.product.id)}
-                  className="text-neutral-400 hover:text-red-600 transition-colors self-start"
-                  aria-label="Remove item"
-                >
-                  ✕
-                </button>
-              </div>
+                    <button
+                      onClick={() => removeFromCart(item.product.id)}
+                      className="text-neutral-400 hover:text-red-600 transition-colors self-start text-sm"
+                      aria-label="Remove item"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        )}
+
+        {/* Courier Delivery Group */}
+        {ecomItems.length > 0 && (
+          <div className="bg-white rounded-xl border border-blue-200 overflow-hidden shadow-xs">
+            <div className="px-4 py-3 bg-blue-50/70 border-b border-blue-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📦</span>
+                <span className="text-xs font-bold text-blue-900 tracking-wide uppercase">
+                  COURIER DELIVERY
+                </span>
+                <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">
+                  Delivery estimate shown at checkout
+                </span>
+              </div>
+              <span className="text-xs text-neutral-500 font-medium">
+                {ecomItems.length} {ecomItems.length === 1 ? 'item' : 'items'}
+              </span>
+            </div>
+            <div className="p-4 space-y-4 divide-y divide-neutral-100">
+              {ecomItems.map((item) => {
+                const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                return (
+                  <div
+                    key={item.product.id || item.product._id}
+                    className="pt-4 first:pt-0 flex gap-4 md:gap-6"
+                  >
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-100 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                      {item.product.imageUrl ? (
+                        <img
+                          src={item.product.imageUrl}
+                          alt={item.product.name}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                      ) : (
+                        <span className="text-xl text-neutral-400">
+                          {item.product.name?.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="absolute bottom-0 left-0 right-0 bg-blue-700 text-white text-[9px] font-bold text-center py-0.5">
+                        📦 Courier
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-neutral-900 mb-1 text-sm md:text-base line-clamp-2">
+                        {item.product.name}
+                      </h3>
+                      <p className="text-xs text-neutral-500 mb-1">{item.product.pack}</p>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm md:text-base font-bold text-neutral-900">
+                          ₹{displayPrice.toLocaleString('en-IN')}
+                        </span>
+                        {hasDiscount && (
+                          <span className="text-xs text-neutral-500 line-through">
+                            ₹{mrp.toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant)}
+                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                        >
+                          −
+                        </Button>
+                        <span className="text-sm font-semibold text-neutral-900 min-w-[1.5rem] text-center">
+                          {item.quantity}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant)}
+                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                        >
+                          +
+                        </Button>
+                        <div className="ml-auto text-right font-bold text-sm text-neutral-900">
+                          ₹{(displayPrice * item.quantity).toFixed(0)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => removeFromCart(item.product.id)}
+                      className="text-neutral-400 hover:text-red-600 transition-colors self-start text-sm"
+                      aria-label="Remove item"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Order Summary */}

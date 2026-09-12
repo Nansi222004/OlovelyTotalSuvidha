@@ -12,42 +12,73 @@ import { seedHeaderCategories } from "./utils/seedHeaderCategories";
 import { initializeSocket } from "./socket/socketService";
 import { initializeFirebaseAdmin } from "./services/firebaseAdmin";
 
-
-// Load environment variables
+// Load environment variables - reloaded for Phase 2
+// Reload timestamp: 2026-09-11T15:49:00
 dotenv.config();
 
 // Server Instance
 const app: Application = express();
 const httpServer = createServer(app);
 
+// Helper to clean origin string (remove quotes, trailing slashes, whitespace)
+const cleanOrigin = (url: string): string =>
+  url.trim().replace(/^['"]|['"]$/g, "").replace(/\/$/, "");
+
 // Environment-driven CORS configuration
-const envOrigins = [
-  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(url => url.trim()) : []),
-  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",").map(url => url.trim()) : [])
+const parseOrigins = (raw?: string): string[] => {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map(cleanOrigin)
+    .filter(url => url.length > 0);
+};
+
+const allowedOrigins = [
+  ...parseOrigins(process.env.FRONTEND_URL),
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+  "http://127.0.0.1:5175",
+  "http://127.0.0.1:3000"
 ];
-const allowedOrigins = envOrigins.filter(url => url.length > 0);
+
+const isLocalhostOrigin = (origin: string): boolean => {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
+};
 
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) {
       return callback(null, true);
     }
 
-    // In development, allow localhost
-    if (process.env.NODE_ENV !== "production") {
-      if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+    // Always allow any localhost / loopback port (dev or local deployment)
+    if (isLocalhostOrigin(origin) || process.env.NODE_ENV !== "production") {
+      if (isLocalhostOrigin(origin)) {
         return callback(null, true);
       }
     }
 
-    // Normalize origin (remove trailing slash)
-    const normalizedOrigin = origin.replace(/\/$/, '');
+    // Normalize origin (remove trailing slash and surrounding quotes)
+    const normalizedOrigin = cleanOrigin(origin);
 
     // Check if origin is in allowed list (exact match or normalized)
     const isAllowed = allowedOrigins.some(allowed => {
-      const normalizedAllowed = allowed.replace(/\/$/, '');
-      return origin === allowed || normalizedOrigin === normalizedAllowed || origin === normalizedAllowed || normalizedOrigin === allowed;
+      const normalizedAllowed = cleanOrigin(allowed);
+      if (normalizedOrigin === normalizedAllowed || origin === normalizedAllowed) return true;
+      if (normalizedAllowed.includes("www.")) {
+        const nonWww = normalizedAllowed.replace("www.", "");
+        if (normalizedOrigin === nonWww || origin === nonWww) return true;
+      } else {
+        const withWww = normalizedAllowed.replace(/^(https?:\/\/)/, "$1www.");
+        if (normalizedOrigin === withWww || origin === withWww) return true;
+      }
+      return false;
     });
 
     if (isAllowed) {
@@ -140,7 +171,7 @@ async function startServer() {
       `   \x1b[36mEnvironment:\x1b[0m ${process.env.NODE_ENV || "development"}`
     );
     console.log(`   \x1b[36mSocket.IO:\x1b[0m ✓ Ready for connections\n`);
-    console.log(`   [DEBUG] Server reloaded at: ${new Date().toISOString()}`);
+    console.log(`   [DEBUG] Server reloaded at: ${new Date().toISOString()} (Orders UX Update)`);
   });
 }
 

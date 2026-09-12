@@ -5,6 +5,7 @@ export interface ICartItem extends Document {
   product: mongoose.Types.ObjectId;
   quantity: number;
   variation?: string;
+  productType?: 'QUICK_COMMERCE' | 'ECOMMERCE';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +30,11 @@ const CartItemSchema = new Schema<ICartItem>(
     variation: {
       type: String,
       trim: true,
+    },
+    productType: {
+      type: String,
+      enum: ['QUICK_COMMERCE', 'ECOMMERCE'],
+      default: 'QUICK_COMMERCE',
     },
   },
   {

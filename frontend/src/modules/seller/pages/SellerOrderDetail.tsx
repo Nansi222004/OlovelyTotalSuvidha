@@ -417,6 +417,21 @@ export default function SellerOrderDetail() {
     return `${unit} x ${qty}`;
   };
 
+  const hasQcGroup = Boolean(
+    orderDetail?.orderType === 'QUICK_COMMERCE' ||
+    orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') ||
+    (!orderDetail?.orderType && !orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING'))
+  );
+
+  const hasEcomGroup = Boolean(
+    orderDetail?.orderType === 'ECOMMERCE' ||
+    orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API')
+  );
+
+  const isMixedOrder = Boolean(orderDetail?.orderType === 'MIXED' || (hasQcGroup && hasEcomGroup));
+  const isPureEcommerce = hasEcomGroup && !hasQcGroup;
+  const isPureQc = hasQcGroup && !hasEcomGroup;
+
   return (
     <div className="min-h-screen bg-neutral-50 pb-8">
       {/* Order Action Section */}
@@ -430,7 +445,13 @@ export default function SellerOrderDetail() {
               {['Received', 'Pending'].includes(orderStatus) ? (
                 <div className="flex gap-3 w-full sm:w-auto">
                   <button
-                    onClick={() => setShowAssignPopup(true)}
+                    onClick={async () => {
+                      if (isPureEcommerce) {
+                        await handleStatusUpdate('Accepted');
+                      } else {
+                        setShowAssignPopup(true);
+                      }
+                    }}
                     className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
                   >
                     Accept Order
@@ -451,19 +472,39 @@ export default function SellerOrderDetail() {
                     disabled={orderStatus === 'Rejected' || orderStatus === 'Cancelled' || orderStatus === 'Delivered'}
                   >
                     {orderStatus === 'Accepted' && <option value="Accepted">Accepted</option>}
-                    <option value="On the way">On the way</option>
-                    <option value="Delivered">Delivered</option>
-                    <option value="Cancelled">Cancelled</option>
-                    {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
+                    {isPureEcommerce ? (
+                      <>
+                        <option value="Processed">Processed (Packed)</option>
+                        <option value="Shipped">Shipped (In Transit)</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                        {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
+                      </>
+                    ) : isMixedOrder ? (
+                      <>
+                        <option value="Processed">Processed (Packed)</option>
+                        <option value="On the way">Out For Delivery / Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                        {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
+                      </>
+                    ) : (
+                      <>
+                        <option value="On the way">On the way</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                        {orderStatus === 'Rejected' && <option value="Rejected">Rejected</option>}
+                      </>
+                    )}
                   </select>
 
-                  {/* Manual Assignment Button for Seller */}
-                  {(!orderDetail?.deliveryBoyName || orderDetail?.deliveryBoyName === 'Self Assign') && ['Accepted', 'Processed', 'Received'].includes(orderStatus) && (
+                  {/* Manual Assignment Button for Seller - QUICK COMMERCE ITEMS */}
+                  {hasQcGroup && (!orderDetail?.deliveryBoyName || orderDetail?.deliveryBoyName === 'Self Assign') && ['Accepted', 'Processed', 'Received'].includes(orderStatus) && (
                     <button
                       onClick={() => setShowRiderModal(true)}
                       className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm cursor-pointer"
                     >
-                      <span>🛵</span> Assign by Seller
+                      <span>🛵</span> {isMixedOrder ? 'Assign QC Delivery Partner' : 'Assign by Seller'}
                     </button>
                   )}
                 </div>
@@ -578,8 +619,25 @@ export default function SellerOrderDetail() {
               </div>
             </div>
 
-            {/* Right: Invoice & Delivery Partner Details */}
+            {/* Right: Invoice & Summary */}
             <div className="flex-1 lg:text-right">
+              {/* Channel Badge */}
+              <div className="mb-2">
+                {isMixedOrder ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs">
+                    <span>⚡+📦</span> Mixed Order (Quick Commerce + Courier)
+                  </span>
+                ) : isPureEcommerce ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
+                    <span>📦</span> Ecommerce Order (Courier Fulfillment)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                    <span>⚡</span> Quick Commerce Order (Local Delivery)
+                  </span>
+                )}
+              </div>
+
               <div className="text-sm text-neutral-600 mb-4">
                 <span className="font-medium">Date:</span> {formatDate(orderDetail.orderDate)}
               </div>
@@ -594,49 +652,6 @@ export default function SellerOrderDetail() {
               )}
               <div className="text-sm text-neutral-600 mb-2">
                 <span className="font-medium">Order Time:</span> {formatTime(orderDetail.orderDate)}
-              </div>
-              <div className="text-sm text-neutral-600 mb-2">
-                <span className="font-medium">Delivery Type:</span>{' '}
-                {orderDetail.deliveryOption === 'Instant' ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Instant</span>
-                ) : orderDetail.deliveryOption === 'Standard' ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800">Standard</span>
-                ) : (
-                  '—'
-                )}
-              </div>
-
-              {/* Delivery Partner Status */}
-              <div className="text-sm text-neutral-600 mb-2">
-                <span className="font-medium">Delivery Partner:</span>{' '}
-                {orderDetail.deliveryBoyName && orderDetail.deliveryBoyName !== 'Self Assign' ? (
-                  <div className="inline-flex items-center gap-2 flex-wrap mt-1">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-800">
-                      <span>🛵</span> {orderDetail.deliveryBoyName} {orderDetail.deliveryBoyPhone && `(${orderDetail.deliveryBoyPhone})`}
-                    </span>
-                    {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
-                      <button
-                        onClick={() => setShowRiderModal(true)}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 underline cursor-pointer"
-                        title="Change Delivery Partner"
-                      >
-                        Change
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-2 flex-wrap mt-1">
-                    <span className="text-neutral-400 text-xs italic">Not Assigned</span>
-                    {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
-                      <button
-                        onClick={() => setShowRiderModal(true)}
-                        className="inline-flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded-md text-xs font-bold shadow-sm transition-all cursor-pointer"
-                      >
-                        <span>🛵</span> Assign Delivery Partner
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div className="text-sm text-neutral-600 mb-3">
@@ -654,6 +669,200 @@ export default function SellerOrderDetail() {
             </div>
           </div>
 
+          {/* Multi-Channel Fulfillment Sections */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-neutral-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>🚚</span>
+              <span>Fulfillment & Logistics Channels</span>
+              {isMixedOrder && (
+                <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
+                  Dual Fulfillment Channels
+                </span>
+              )}
+            </h3>
+
+            <div className={`grid grid-cols-1 ${isMixedOrder ? 'md:grid-cols-2' : ''} gap-4`}>
+              {/* Quick Commerce Fulfillment Card */}
+              {hasQcGroup && (
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 shadow-2xs">
+                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚡</span>
+                      <div>
+                        <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                          Quick Commerce (Local Delivery)
+                        </h4>
+                        <span className="text-[10px] text-emerald-700 font-medium">
+                          Local Rider / Hyperlocal Delivery
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      {orderDetail.deliveryOption === 'Instant' ? '⚡ Instant Express' : '⚡ Local Express'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-neutral-700">
+                    <div className="bg-white p-2.5 rounded-lg border border-emerald-150 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-500 font-medium">Delivery Partner:</span>
+                        {orderDetail.deliveryBoyName && orderDetail.deliveryBoyName !== 'Self Assign' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-800">
+                              <span>🛵</span> {orderDetail.deliveryBoyName}
+                            </span>
+                            {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
+                              <button
+                                onClick={() => setShowRiderModal(true)}
+                                className="text-xs text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer ml-1"
+                              >
+                                Change
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-amber-700 font-medium italic">Not Assigned</span>
+                            {!['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(orderStatus) && (
+                              <button
+                                onClick={() => setShowRiderModal(true)}
+                                className="inline-flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <span>🛵</span> Assign Delivery Boy
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {orderDetail.deliveryBoyPhone && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-500 font-medium">Partner Contact:</span>
+                          <span className="font-mono font-bold text-neutral-900">{orderDetail.deliveryBoyPhone}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-neutral-500 font-medium">Assignment Mode:</span>
+                        <span className="font-semibold text-neutral-800">
+                          {orderDetail.deliveryPreference === 'Admin' ? 'Assigned by Admin' : 'Assign by Seller'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* QC Items Summary */}
+                    {isMixedOrder && (
+                      <div className="mt-2 text-[11px] text-emerald-800 font-medium">
+                        <span className="font-bold">QC Items: </span>
+                        {orderDetail.items
+                          .filter((it) => it.productType !== 'ECOMMERCE')
+                          .map((it) => `${it.product} (×${it.qty})`)
+                          .join(', ') || 'Local delivery items'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Ecommerce Courier Shipment Card */}
+              {hasEcomGroup && (
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 shadow-2xs">
+                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-blue-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📦</span>
+                      <div>
+                        <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                          Ecommerce (Courier Shipping)
+                        </h4>
+                        <span className="text-[10px] text-blue-700 font-medium">
+                          Shiprocket / Courier Surface & Air
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">
+                      📦 Courier Shipping
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-neutral-700">
+                    {orderDetail?.fulfillmentGroups?.filter(
+                      (g: any) => g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API'
+                    ).map((fg: any, idx: number) => {
+                      const carrier = fg.shippingDetails?.carrier || fg.courierDetails?.provider || 'Shiprocket';
+                      const awb = fg.shippingDetails?.awbNumber || fg.courierDetails?.awbNumber;
+                      const trackingNo = fg.shippingDetails?.trackingNumber || fg.courierDetails?.trackingNumber;
+                      const trackingUrl = fg.shippingDetails?.trackingUrl || fg.courierDetails?.trackingUrl;
+                      const fgStatus = fg.status || 'Active';
+
+                      return (
+                        <div key={idx} className="bg-white p-2.5 rounded-lg border border-blue-150 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-neutral-500 font-medium">Carrier:</span>
+                            <span className="font-bold text-neutral-900">{carrier}</span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-neutral-500 font-medium">AWB Number:</span>
+                            {awb ? (
+                              <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                {awb}
+                              </span>
+                            ) : (
+                              <span className="text-neutral-400 italic">Pending Courier Manifest</span>
+                            )}
+                          </div>
+
+                          {trackingNo && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-neutral-500 font-medium">Tracking ID:</span>
+                              <span className="font-mono text-neutral-800">{trackingNo}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-neutral-100">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-neutral-500 font-medium">Shipment Status:</span>
+                              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                {fgStatus}
+                              </span>
+                            </div>
+
+                            {trackingUrl && (
+                              <a
+                                href={trackingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold transition-colors shadow-2xs"
+                              >
+                                <span>Track</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                  <polyline points="15 3 21 3 21 9" />
+                                  <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Ecommerce Items Summary */}
+                    {isMixedOrder && (
+                      <div className="mt-2 text-[11px] text-blue-800 font-medium">
+                        <span className="font-bold">Ecommerce Items: </span>
+                        {orderDetail.items
+                          .filter((it) => it.productType === 'ECOMMERCE')
+                          .map((it) => `${it.product} (×${it.qty})`)
+                          .join(', ') || 'Courier shipping items'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Product Table */}
           <div className="overflow-x-auto mb-6">
             <table className="w-full min-w-[800px]">
@@ -661,6 +870,7 @@ export default function SellerOrderDetail() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Sr. No.</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Product</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Channel</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Unit</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Price</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">Tax ₹ (%)</th>
@@ -672,14 +882,25 @@ export default function SellerOrderDetail() {
                 {orderDetail.items.map((item) => (
                   <tr key={item.srNo}>
                     <td className="px-4 py-3 text-sm text-neutral-900">{item.srNo}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-900">{item.product}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-900 font-medium">{item.product}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {item.productType === 'ECOMMERCE' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                          <span>📦</span> Ecommerce
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <span>⚡</span> Quick Commerce
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-neutral-900">{formatUnit(item.unit, item.qty)}</td>
                     <td className="px-4 py-3 text-sm text-neutral-900">₹{item.price.toFixed(2)}</td>
                     <td className="px-4 py-3 text-sm text-neutral-600">
                       {item.tax.toFixed(2)} ({item.taxPercent.toFixed(2)}%)
                     </td>
                     <td className="px-4 py-3 text-sm text-neutral-900">{item.qty}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-900 font-medium">₹{item.subtotal.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-900 font-bold">₹{item.subtotal.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -730,9 +951,13 @@ export default function SellerOrderDetail() {
       {showAssignPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-hidden border border-neutral-200">
-            <h3 className="text-xl font-bold text-neutral-900 mb-2">Accept Order & Assign Delivery</h3>
+            <h3 className="text-xl font-bold text-neutral-900 mb-2">
+              {isMixedOrder ? 'Accept Order & Assign QC Delivery' : 'Accept Order & Assign Delivery'}
+            </h3>
             <p className="text-neutral-600 mb-6 text-sm">
-              Please choose how you would like to assign the delivery for this order.
+              {isMixedOrder
+                ? 'This mixed order contains Quick Commerce items requiring local delivery. Choose delivery assignment for the Quick Commerce portion. The Ecommerce items will be fulfilled via Courier Shipping.'
+                : 'Please choose how you would like to assign the delivery for this order.'}
             </p>
 
             <div className="space-y-3 mb-6">
@@ -752,7 +977,9 @@ export default function SellerOrderDetail() {
                 <div className="ml-3">
                   <span className="block text-sm font-bold text-neutral-900">Assign by Seller</span>
                   <span className="block text-xs text-neutral-500 mt-0.5">
-                    Manually select a delivery partner from the list of available online riders.
+                    {isMixedOrder
+                      ? 'Manually select a local delivery partner for the Quick Commerce items.'
+                      : 'Manually select a delivery partner from the list of available online riders.'}
                   </span>
                 </div>
               </label>
@@ -773,7 +1000,9 @@ export default function SellerOrderDetail() {
                 <div className="ml-3">
                   <span className="block text-sm font-bold text-neutral-900">Assigned By Admin</span>
                   <span className="block text-xs text-neutral-500 mt-0.5">
-                    Let the platform admin assign an eligible delivery partner for this order.
+                    {isMixedOrder
+                      ? 'Let the platform admin assign an eligible delivery partner for Quick Commerce items.'
+                      : 'Let the platform admin assign an eligible delivery partner for this order.'}
                   </span>
                 </div>
               </label>
@@ -819,6 +1048,15 @@ export default function SellerOrderDetail() {
                     ...prev,
                     deliveryBoyName: rider?.name || 'Assigned Partner',
                     deliveryBoyPhone: rider?.mobile || '',
+                    fulfillmentGroups: prev.fulfillmentGroups?.map((fg: any) =>
+                      fg.fulfillmentType === 'LOCAL_DELIVERY'
+                        ? {
+                            ...fg,
+                            deliveryBoy: rider ? { _id: rider._id, name: rider.name, mobile: rider.mobile } : fg.deliveryBoy,
+                            status: fg.status === 'Pending' ? 'Processing' : fg.status,
+                          }
+                        : fg
+                    ),
                   }
                 : null
             );

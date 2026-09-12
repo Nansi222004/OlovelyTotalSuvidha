@@ -436,6 +436,13 @@ export default function Checkout() {
     }, 0),
   };
 
+  const qcItems = displayItems.filter(
+    (item) => !item.product?.productType || item.product?.productType === "QUICK_COMMERCE"
+  );
+  const ecomItems = displayItems.filter(
+    (item) => item.product?.productType === "ECOMMERCE"
+  );
+
   const freeDeliveryThreshold =
     cart.freeDeliveryThreshold ?? appConfig.freeDeliveryThreshold;
   const amountNeededForFreeDelivery = Math.max(
@@ -504,7 +511,8 @@ export default function Checkout() {
 
   // Calculate tip amount (use custom tip if custom tip input is shown, otherwise use selected tip)
   const finalTipAmount = showCustomTipInput ? customTipAmount : tipAmount || 0;
-  const giftPackagingFee = giftPackaging ? 30 : 0;
+  const giftPackagingPrice = (cart as any)?.giftPackagingFee ?? 30;
+  const giftPackagingFee = giftPackaging ? giftPackagingPrice : 0;
   const grandTotal = Math.max(
     0,
     discountedTotal -
@@ -614,13 +622,17 @@ export default function Checkout() {
     const finalLatitude = selectedAddress.latitude ?? userLocation?.latitude;
     const finalLongitude = selectedAddress.longitude ?? userLocation?.longitude;
 
-    // Validate that we have location data (either from address or user's current location)
-    if (finalLatitude == null || finalLongitude == null) {
+    const hasQcItems = cart.items.some(
+      (i) => !i.product?.productType || i.product?.productType === "QUICK_COMMERCE"
+    );
+
+    // Validate that we have location data for Quick Commerce
+    if (hasQcItems && (finalLatitude == null || finalLongitude == null)) {
       console.error(
         "Address is missing location data (latitude/longitude) and user location is not available",
       );
       showGlobalToast(
-        "Location is required for delivery. Please ensure your address has location data or enable location access.",
+        "Location is required for Quick Commerce delivery. Please ensure your address has location data or enable location access.",
         "error"
       );
       return;
@@ -1250,122 +1262,143 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Main Product Card */}
-      <div className="px-4 md:px-6 lg:px-8 py-2 md:py-3 bg-white border-b border-neutral-200">
-        <div className="bg-white rounded-lg border border-neutral-200 p-2.5">
-          {/* Delivery info */}
-          <div className="flex items-center gap-1.5 mb-2">
-            <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" />
-                <path
-                  d="M12 6v6l4 2"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <span className="text-xs font-semibold text-neutral-900">
-              Delivery in {appConfig.estimatedDeliveryTime}
+      {/* Grouped Fulfillment Cards */}
+      <div className="px-4 md:px-6 lg:px-8 py-2 md:py-3 bg-white border-b border-neutral-200 space-y-3">
+        {/* Multi-Shipment Order Notice */}
+        {qcItems.length > 0 && ecomItems.length > 0 && (
+          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-xs text-amber-900">
+            <span className="text-sm">ℹ️</span>
+            <span>
+              <strong>Multi-Shipment Order:</strong> Quick Delivery and Courier Delivery items will arrive in separate shipments.
             </span>
           </div>
+        )}
 
-          <p className="text-[10px] text-neutral-600 mb-2.5">
-            Shipment of {displayCart.itemCount || 0}{" "}
-            {(displayCart.itemCount || 0) === 1 ? "item" : "items"}
-          </p>
+        {/* Quick Commerce Basket */}
+        {qcItems.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-emerald-200 p-3 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">⚡</span>
+                <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+                  QUICK DELIVERY
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  {appSettings?.estimatedDeliveryTime || '12–15 mins'}
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-500 font-medium">
+                {qcItems.length} {qcItems.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+            <p className="text-[10px] text-neutral-500 mb-2 border-b border-neutral-100 pb-1.5">
+              Fulfilled locally from nearby store with live delivery partner tracking
+            </p>
 
-          {/* Cart Items */}
-          <div className="space-y-2.5">
-            {displayItems
-              .filter((item) => item.product)
-              .map((item) => (
-                <div
-                  key={item.product?.id || Math.random()}
-                  className="flex gap-2">
-                  {/* Product Image */}
-                  <div className="w-12 h-12 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden">
-                    {item.product?.imageUrl ? (
-                      <img
-                        src={item.product?.imageUrl}
-                        alt={item.product?.name}
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-neutral-400">
-                        {(item.product?.name || "").charAt(0)}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Product Info */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-xs font-semibold text-neutral-900 mb-0.5 line-clamp-2">
-                      {item.product?.name}
-                    </h3>
-                    <p className="text-[10px] text-neutral-600 mb-0.5">
-                      {item.quantity} × {item.product?.pack}
-                    </p>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMoveToWishlist(item.product);
-                      }}
-                      className="text-[10px] text-green-600 font-medium mb-1.5 hover:text-green-700 transition-colors">
-                      Move to wishlist
-                    </button>
-
-                    {/* Quantity Selector */}
-                    <div className="flex items-center justify-between mt-1.5">
-                      <div className="flex items-center gap-1.5 bg-white border-2 border-green-600 rounded-full px-1.5 py-0.5">
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.product?.id, item.quantity - 1)
-                          }
-                          className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">
-                          −
-                        </button>
-                        <span className="text-xs font-bold text-green-600 min-w-[1.25rem] text-center">
-                          {item.quantity}
+            <div className="space-y-2.5">
+              {qcItems.map((item) => {
+                const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                return (
+                  <div key={item.product?.id || Math.random()} className="flex gap-2">
+                    <div className="w-12 h-12 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                      {item.product?.imageUrl ? (
+                        <img src={item.product?.imageUrl} alt={item.product?.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {(item.product?.name || "").charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          ⚡ Quick
                         </span>
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.product?.id, item.quantity + 1)
-                          }
-                          className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">
-                          +
-                        </button>
                       </div>
-
-                      {/* Price */}
-                      {(() => {
-                        const { displayPrice, mrp, hasDiscount } =
-                          calculateProductPrice(item.product, item.variant);
-                        return (
-                          <div className="flex items-center gap-1.5">
-                            {hasDiscount && (
-                              <span className="text-[10px] text-neutral-500 line-through">
-                                ₹{mrp}
-                              </span>
-                            )}
-                            <span className="text-sm font-bold text-neutral-900">
-                              ₹{displayPrice}
-                            </span>
-                          </div>
-                        );
-                      })()}
+                      <h3 className="text-xs font-semibold text-neutral-900 mb-0.5 line-clamp-2">{item.product?.name}</h3>
+                      <p className="text-[10px] text-neutral-600 mb-0.5">{item.quantity} × {item.product?.pack}</p>
+                      <button onClick={(e) => { e.stopPropagation(); handleMoveToWishlist(item.product); }} className="text-[10px] text-green-600 font-medium mb-1.5 hover:text-green-700 transition-colors">Move to wishlist</button>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <div className="flex items-center gap-1.5 bg-white border-2 border-green-600 rounded-full px-1.5 py-0.5">
+                          <button onClick={() => updateQuantity(item.product?.id, item.quantity - 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">−</button>
+                          <span className="text-xs font-bold text-green-600 min-w-[1.25rem] text-center">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.product?.id, item.quantity + 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">+</button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {hasDiscount && <span className="text-[10px] text-neutral-500 line-through">₹{mrp}</span>}
+                          <span className="text-sm font-bold text-neutral-900">₹{displayPrice}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Ecommerce Basket */}
+        {ecomItems.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-blue-200 p-3 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">📦</span>
+                <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">
+                  COURIER DELIVERY
+                </span>
+                <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">
+                  Delivery estimate shown at checkout
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-500 font-medium">
+                {ecomItems.length} {ecomItems.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+            <p className="text-[10px] text-neutral-500 mb-2 border-b border-neutral-100 pb-1.5">
+              Dispatched nationwide via verified courier partner with AWB tracking
+            </p>
+
+            <div className="space-y-2.5">
+              {ecomItems.map((item) => {
+                const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                return (
+                  <div key={item.product?.id || Math.random()} className="flex gap-2">
+                    <div className="w-12 h-12 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                      {item.product?.imageUrl ? (
+                        <img src={item.product?.imageUrl} alt={item.product?.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {(item.product?.name || "").charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                          📦 Courier
+                        </span>
+                      </div>
+                      <h3 className="text-xs font-semibold text-neutral-900 mb-0.5 line-clamp-2">{item.product?.name}</h3>
+                      <p className="text-[10px] text-neutral-600 mb-0.5">{item.quantity} × {item.product?.pack}</p>
+                      <button onClick={(e) => { e.stopPropagation(); handleMoveToWishlist(item.product); }} className="text-[10px] text-green-600 font-medium mb-1.5 hover:text-green-700 transition-colors">Move to wishlist</button>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <div className="flex items-center gap-1.5 bg-white border-2 border-green-600 rounded-full px-1.5 py-0.5">
+                          <button onClick={() => updateQuantity(item.product?.id, item.quantity - 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">−</button>
+                          <span className="text-xs font-bold text-green-600 min-w-[1.25rem] text-center">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.product?.id, item.quantity + 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">+</button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {hasDiscount && <span className="text-[10px] text-neutral-500 line-through">₹{mrp}</span>}
+                          <span className="text-sm font-bold text-neutral-900">₹{displayPrice}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* You might also like */}
@@ -2251,13 +2284,13 @@ export default function Checkout() {
               </p>
               <p className="text-[10px] text-neutral-600">
                 {giftPackaging
-                  ? "Add ₹30 for gift packaging"
-                  : "Add ₹30 for elegant gift packaging"}
+                  ? `Add ₹${giftPackagingPrice} for gift packaging`
+                  : `Add ₹${giftPackagingPrice} for elegant gift packaging`}
               </p>
             </div>
           </div>
           {giftPackaging && (
-            <span className="text-xs font-semibold text-green-600">₹30</span>
+            <span className="text-xs font-semibold text-green-600">₹{giftPackagingPrice}</span>
           )}
         </button>
       </div>
@@ -2628,7 +2661,7 @@ export default function Checkout() {
       {showRazorpayCheckout && pendingOrderId && user && (
         <RazorpayCheckout
           orderId={pendingOrderId}
-          amount={grandTotal}
+          amount={finalPayable}
           customerDetails={{
             name: user.name || "Customer",
             email: user.email || "",

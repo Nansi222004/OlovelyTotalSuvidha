@@ -7,17 +7,22 @@ export const isOriginAllowed = (origin: string | undefined): boolean => {
     return true; // Allow requests with no origin
   }
 
+  // Always allow any localhost / loopback port
+  if (
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:') ||
+    origin.startsWith('https://localhost:') ||
+    origin.startsWith('https://127.0.0.1:') ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin)
+  ) {
+    return true;
+  }
+
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // In development, allow any localhost port
+  // In development, all origins or localhost are allowed
   if (!isProduction) {
-    if (
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:') ||
-      origin.startsWith('https://localhost:')
-    ) {
-      return true;
-    }
+    return true;
   }
 
   // In production, check against allowed origins
@@ -25,8 +30,14 @@ export const isOriginAllowed = (origin: string | undefined): boolean => {
     // Get allowed origins from environment variable (comma-separated)
     const frontendUrl = process.env.FRONTEND_URL || '';
     const corsOrigins = process.env.CORS_ORIGINS || '';
-    const allAllowedOrigins = [...frontendUrl.split(','), ...corsOrigins.split(',')]
-      .map((url) => url.trim().replace(/\/$/, '')) // Remove trailing slashes
+    const allAllowedOrigins = [
+      ...frontendUrl.split(','),
+      ...corsOrigins.split(','),
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:3000'
+    ]
+      .map((url) => url.trim().replace(/^['"]|['"]$/g, '').replace(/\/$/, '')) // Remove quotes and trailing slashes
       .filter((url) => url.length > 0);
 
     if (allAllowedOrigins.length === 0) {

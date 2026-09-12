@@ -6,6 +6,7 @@ export interface Category {
     _id: string; // MongoDB ID
     id?: string; // Virtual ID
     name: string;
+    slug?: string;
     parent?: string | null;
     parentId?: string | null;
     image?: string;
@@ -30,6 +31,8 @@ export interface GetProductsParams {
     limit?: number;
     latitude?: number; // User location latitude
     longitude?: number; // User location longitude
+    channel?: string;
+    productType?: string;
 }
 
 export interface ProductListResponse {

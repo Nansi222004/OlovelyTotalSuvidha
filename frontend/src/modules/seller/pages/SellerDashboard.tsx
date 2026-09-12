@@ -7,11 +7,19 @@ import { getSellerDashboardStats, DashboardStats, NewOrder } from '../../../serv
 import { getSellerProfile, toggleShopStatus } from '../../../services/api/auth/sellerAuthService';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 export default function SellerDashboard() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useLanguage();
+  const {
+    activeChannel,
+    isHybrid,
+    isQuickCommerceOnly,
+    isEcommerceOnly,
+    isLegacy,
+  } = useSellerChannel();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [newOrders, setNewOrders] = useState<NewOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +34,7 @@ export default function SellerDashboard() {
       try {
         setLoading(true);
         const [statsResponse, profileResponse] = await Promise.all([
-          getSellerDashboardStats(),
+          getSellerDashboardStats(activeChannel),
           getSellerProfile()
         ]);
 
@@ -49,7 +57,7 @@ export default function SellerDashboard() {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [activeChannel]);
 
   const handleToggleShop = async () => {
     try {
@@ -247,8 +255,46 @@ export default function SellerDashboard() {
       {/* Header with Shop Status Toggle */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-lg shadow-sm border border-neutral-200 gap-4 sm:gap-0">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">{t("seller.dashboard", "Dashboard")}</h1>
-          <p className="text-sm text-gray-500">{t("seller.overview", "Overview of your store performance")}</p>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold text-gray-800">
+              {activeChannel === 'QUICK_COMMERCE'
+                ? 'Quick Commerce Dashboard'
+                : activeChannel === 'ECOMMERCE'
+                ? 'Ecommerce Dashboard'
+                : t("seller.dashboard", "Dashboard")}
+            </h1>
+            {isHybrid && (
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                activeChannel === 'QUICK_COMMERCE'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-blue-50 text-blue-700 border-blue-200'
+              }`}>
+                {activeChannel === 'QUICK_COMMERCE' ? '⚡ Active: Quick Commerce' : '📦 Active: Ecommerce'}
+              </span>
+            )}
+            {isQuickCommerceOnly && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                ⚡ Quick Commerce
+              </span>
+            )}
+            {isEcommerceOnly && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                📦 Ecommerce
+              </span>
+            )}
+            {isLegacy && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-neutral-100 text-neutral-600 border-neutral-200">
+                Channel Not Configured
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            {activeChannel === 'QUICK_COMMERCE'
+              ? 'Hyperlocal orders, delivery partner fulfillment & inventory'
+              : activeChannel === 'ECOMMERCE'
+              ? 'Nationwide courier orders, Shiprocket fulfillment & shipments'
+              : t("seller.overview", "Overview of your store performance")}
+          </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
           <span className={`text-sm font-medium ${isShopOpen ? 'text-green-600' : 'text-red-500'}`}>

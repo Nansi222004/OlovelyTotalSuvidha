@@ -75,6 +75,7 @@
     "tsx": "^4.7.0"
   },
   "devDependencies": {
+    "@types/node-fetch": "^2.6.13",
     "@types/socket.io-client": "^1.4.36",
     "typescript": "^5.7.2"
   }

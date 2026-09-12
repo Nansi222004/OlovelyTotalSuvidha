@@ -93,6 +93,23 @@ export interface IProduct extends Document {
   // Multilingual Translations (hi, mr, gu)
   translations?: Record<string, Record<string, string>>;
 
+  // Commerce Channel & Sourcing Extensions
+  productType: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  productSource: 'LOCAL_VENDOR' | 'THIRD_PARTY_API';
+  externalMetadata?: {
+    providerId?: string;
+    externalSku?: string;
+    externalProductId?: string;
+    lastSyncedAt?: Date;
+    syncPrice?: number;
+    syncStock?: number;
+  };
+  packageDetails?: {
+    weightKg?: number;
+    dimensionsCm?: { length?: number; width?: number; height?: number };
+    shippingClass?: string;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -335,6 +352,49 @@ const ProductSchema = new Schema<IProduct>(
       type: Schema.Types.Mixed,
       default: {},
     },
+    // Commerce Channel & Sourcing Extensions
+    productType: {
+      type: String,
+      enum: ['QUICK_COMMERCE', 'ECOMMERCE'],
+      default: 'QUICK_COMMERCE',
+    },
+    productSource: {
+      type: String,
+      enum: ['LOCAL_VENDOR', 'THIRD_PARTY_API'],
+      default: 'LOCAL_VENDOR',
+      index: true,
+    },
+    externalMetadata: {
+      type: new Schema(
+        {
+          providerId: { type: String, trim: true },
+          externalSku: { type: String, trim: true },
+          externalProductId: { type: String, trim: true },
+          lastSyncedAt: { type: Date },
+          syncPrice: { type: Number },
+          syncStock: { type: Number },
+        },
+        { _id: false }
+      ),
+      required: false,
+      default: undefined,
+    },
+    packageDetails: {
+      type: new Schema(
+        {
+          weightKg: { type: Number, min: 0 },
+          dimensionsCm: {
+            length: { type: Number, min: 0 },
+            width: { type: Number, min: 0 },
+            height: { type: Number, min: 0 },
+          },
+          shippingClass: { type: String, trim: true },
+        },
+        { _id: false }
+      ),
+      required: false,
+      default: undefined,
+    },
   },
   {
     timestamps: true,
@@ -384,6 +444,7 @@ ProductSchema.index({ status: 1 });
 ProductSchema.index({ publish: 1 });
 // Compound indexes for common queries
 ProductSchema.index({ status: 1, publish: 1 }); // For getProducts
+ProductSchema.index({ productType: 1, status: 1, publish: 1 }); // For channel-filtered queries
 ProductSchema.index({ category: 1, status: 1, publish: 1 }); // For category products
 ProductSchema.index({ subcategory: 1, status: 1, publish: 1 }); // For subcategory products
 ProductSchema.index({

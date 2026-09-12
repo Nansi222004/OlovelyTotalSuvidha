@@ -19,7 +19,11 @@ const getExpiresIn = () => process.env.JWT_EXPIRES_IN || '7d';
 /**
  * Generate JWT token for authenticated user
  */
-export function generateToken(userId: string, userType: UserType, role?: string): string {
+export function generateToken(
+  userId: string,
+  userType: UserType,
+  role?: string
+): string {
   const payload: TokenPayload = {
     userId,
     userType,

@@ -36,7 +36,11 @@ router.post('/create-order', authenticate, requireUserType('Customer'), async (r
             });
         }
 
-        const result = await createRazorpayOrder(orderId, order.total);
+        const payableAmount = (order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0)
+            ? order.onlineAmountPaid
+            : (order.walletAmountUsed ? Math.max(0, order.total - order.walletAmountUsed) : order.total);
+
+        const result = await createRazorpayOrder(orderId, payableAmount);
 
         if (!result.success) {
             return res.status(400).json(result);

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Category from "../../../models/Category";
 import SubCategory from "../../../models/SubCategory";
 import Product from "../../../models/Product";
+import HeaderCategory from "../../../models/HeaderCategory";
 import mongoose from "mongoose";
 import { cache } from "../../../utils/cache";
 
@@ -224,6 +225,65 @@ export const getCategoryById = async (req: Request, res: Response) => {
             });
           }
         }
+      }
+
+      // Check if it's a HeaderCategory
+      let headerCat = null;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        headerCat = await HeaderCategory.findOne({
+          _id: id,
+          status: "Published",
+        }).lean();
+      }
+      if (!headerCat) {
+        headerCat = await HeaderCategory.findOne({
+          slug: id,
+          status: "Published",
+        }).lean();
+      }
+      if (!headerCat) {
+        headerCat = await HeaderCategory.findOne({
+          slug: { $regex: new RegExp(`^${id}$`, "i") },
+          status: "Published",
+        }).lean();
+      }
+      if (!headerCat) {
+        const namePattern = id.replace(/[-_]/g, " ");
+        headerCat = await HeaderCategory.findOne({
+          name: { $regex: new RegExp(`^${namePattern}$`, "i") },
+          status: "Published",
+        }).lean();
+      }
+
+      if (headerCat) {
+        // Find child categories for this header category
+        const childCategories = await Category.find({
+          headerCategoryId: headerCat._id,
+          status: "Active",
+        })
+          .select("name image order slug icon translations")
+          .sort({ order: 1 })
+          .lean();
+
+        const data = {
+          category: {
+            _id: headerCat._id,
+            id: headerCat._id,
+            name: headerCat.name,
+            slug: headerCat.slug,
+            image: childCategories[0]?.image || "",
+            icon: headerCat.iconName,
+            isHeaderCategory: true,
+            translations: headerCat.translations || {},
+          },
+          subcategories: childCategories,
+        };
+
+        cache.set(cacheKey, data, 10 * 60 * 1000);
+        return res.status(200).json({
+          success: true,
+          data,
+        });
       }
 
       console.log(`[getCategoryById] Category not found: ${id}`);

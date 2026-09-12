@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "../../../context/LanguageContext";
+import { useSellerChannel } from "../../../context/SellerChannelContext";
 
 interface SubMenuItem {
   keyPath: string;
@@ -222,6 +223,7 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useLanguage();
+  const { activeChannel, isHybrid, isLegacy } = useSellerChannel();
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
 
   const isActive = (path: string) => {
@@ -293,7 +295,36 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
           </svg>
         </button>
       </div>
-      <nav className="flex-1 py-4 sm:py-6 overflow-y-auto">
+      {/* Channel Pill in Sidebar */}
+      <div className="px-4 py-3 bg-teal-800/60 border-b border-teal-600/60">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold tracking-wider text-teal-300 uppercase">
+            Active Channel
+          </span>
+          {isHybrid && (
+            <span className="text-[9px] font-bold text-teal-200 bg-teal-900/60 px-1.5 py-0.5 rounded border border-teal-500/30">
+              ⚡+📦 Hybrid
+            </span>
+          )}
+        </div>
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-white">
+          {activeChannel === "QUICK_COMMERCE" && (
+            <span className="flex items-center gap-1.5 text-emerald-300">
+              <span>⚡</span> Quick Commerce
+            </span>
+          )}
+          {activeChannel === "ECOMMERCE" && (
+            <span className="flex items-center gap-1.5 text-blue-200">
+              <span>📦</span> Ecommerce
+            </span>
+          )}
+          {isLegacy && (
+            <span className="text-neutral-300">Channel Not Configured</span>
+          )}
+        </div>
+      </div>
+
+      <nav className="flex-1 py-3 sm:py-4 overflow-y-auto">
         <ul className="space-y-1 px-2 sm:px-4">
           {menuItems.map((item) => {
             const expanded = isExpanded(item.path);
@@ -319,7 +350,11 @@ export default function SellerSidebar({ onClose }: SellerSidebarProps) {
                       <span className="flex-shrink-0">{item.icon}</span>
                     )}
                     <span className="text-xs sm:text-sm font-medium">
-                      {t(item.keyPath, item.label)}
+                      {item.path === "/seller/delivery-tracking"
+                        ? activeChannel === "ECOMMERCE"
+                          ? "Courier Tracking"
+                          : t(item.keyPath, item.label)
+                        : t(item.keyPath, item.label)}
                     </span>
                   </div>
                   {item.hasSubmenu && (

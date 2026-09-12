@@ -25,13 +25,16 @@ import {
 } from "../../../services/api/categoryService";
 import { getActiveTaxes, Tax } from "../../../services/api/taxService";
 import { getBrands, Brand } from "../../../services/api/brandService";
-import {
-  HeaderCategory,
-} from "../../../services/api/headerCategoryService";
+import { HeaderCategory } from "../../../services/api/headerCategoryService";
+import { useAuth } from "../../../context/AuthContext";
+import { useSellerChannel } from "../../../context/SellerChannelContext";
 
 export default function SellerAddProduct() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
+  const { activeChannel, sellerVendorType } = useSellerChannel();
+
   const [formData, setFormData] = useState({
     productName: "",
     headerCategory: "",
@@ -59,6 +62,12 @@ export default function SellerAddProduct() {
     galleryImageUrls: [] as string[],
     isShopByStoreOnly: "No",
     shopId: "",
+    productType: ((activeChannel || sellerVendorType) === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE") as "QUICK_COMMERCE" | "ECOMMERCE",
+    sku: "",
+    weightKg: "",
+    lengthCm: "",
+    widthCm: "",
+    heightCm: "",
   });
 
   const [variations, setVariations] = useState<ProductVariation[]>([]);
@@ -78,6 +87,16 @@ export default function SellerAddProduct() {
   );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
+
+  // Synchronize productType with activeChannel for new products
+  useEffect(() => {
+    if (!id && activeChannel) {
+      setFormData((prev) => ({
+        ...prev,
+        productType: activeChannel,
+      }));
+    }
+  }, [id, activeChannel]);
   const [successMessage, setSuccessMessage] = useState<string>("");
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -191,6 +210,12 @@ export default function SellerAddProduct() {
               galleryImageUrls: product.galleryImageUrls || [],
               isShopByStoreOnly: (product as any).isShopByStoreOnly ? "Yes" : "No",
               shopId: (product as any).shopId?._id || (product as any).shopId || "",
+              productType: (product as any).productType || "QUICK_COMMERCE",
+              sku: (product as any).sku || "",
+              weightKg: (product as any).packageDetails?.weightKg?.toString() || "",
+              lengthCm: (product as any).packageDetails?.dimensionsCm?.length?.toString() || "",
+              widthCm: (product as any).packageDetails?.dimensionsCm?.width?.toString() || "",
+              heightCm: (product as any).packageDetails?.dimensionsCm?.height?.toString() || "",
             });
             setVariations(product.variations);
             if (product.mainImageUrl || product.mainImage) {
@@ -459,6 +484,30 @@ export default function SellerAddProduct() {
         return;
       }
 
+      // Ecommerce package validation
+      if (formData.productType === "ECOMMERCE") {
+        if (!formData.weightKg || isNaN(parseFloat(formData.weightKg)) || parseFloat(formData.weightKg) <= 0) {
+          setUploadError("Package weight is required and must be greater than 0 kg for Ecommerce products");
+          setUploading(false);
+          return;
+        }
+        if (formData.lengthCm && (isNaN(parseFloat(formData.lengthCm)) || parseFloat(formData.lengthCm) <= 0)) {
+          setUploadError("Package length must be greater than 0 cm");
+          setUploading(false);
+          return;
+        }
+        if (formData.widthCm && (isNaN(parseFloat(formData.widthCm)) || parseFloat(formData.widthCm) <= 0)) {
+          setUploadError("Package width must be greater than 0 cm");
+          setUploading(false);
+          return;
+        }
+        if (formData.heightCm && (isNaN(parseFloat(formData.heightCm)) || parseFloat(formData.heightCm) <= 0)) {
+          setUploadError("Package height must be greater than 0 cm");
+          setUploading(false);
+          return;
+        }
+      }
+
       // Prepare product data for API
 
       const productData = {
@@ -491,6 +540,22 @@ export default function SellerAddProduct() {
         variationType: formData.variationType || undefined,
         isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
         shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : undefined,
+        productType: formData.productType,
+        sku: formData.sku || undefined,
+        weightKg: formData.weightKg ? parseFloat(formData.weightKg) : undefined,
+        dimensionsCm: (formData.lengthCm && formData.widthCm && formData.heightCm) ? {
+          length: parseFloat(formData.lengthCm),
+          width: parseFloat(formData.widthCm),
+          height: parseFloat(formData.heightCm),
+        } : undefined,
+        packageDetails: formData.productType === "ECOMMERCE" ? {
+          weightKg: parseFloat(formData.weightKg),
+          dimensionsCm: (formData.lengthCm && formData.widthCm && formData.heightCm) ? {
+            length: parseFloat(formData.lengthCm),
+            width: parseFloat(formData.widthCm),
+            height: parseFloat(formData.heightCm),
+          } : undefined,
+        } : undefined,
       };
 
       // Create or Update product via API
@@ -535,6 +600,12 @@ export default function SellerAddProduct() {
               galleryImageUrls: [],
               isShopByStoreOnly: "No",
               shopId: "",
+              productType: (sellerVendorType === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE") as "QUICK_COMMERCE" | "ECOMMERCE",
+              sku: "",
+              weightKg: "",
+              lengthCm: "",
+              widthCm: "",
+              heightCm: "",
             });
             setVariations([]);
             setMainImageFile(null);
@@ -571,6 +642,138 @@ export default function SellerAddProduct() {
               <h2 className="text-lg font-semibold">Product</h2>
             </div>
             <div className="p-4 sm:p-6 space-y-4">
+              {/* Commerce Channel / Product Type Selection */}
+              <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+                <label className="block text-xs font-semibold text-neutral-600 uppercase tracking-wider mb-2">
+                  Commerce Channel / Fulfillment Mode
+                </label>
+                {sellerVendorType === "HYBRID" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, productType: "QUICK_COMMERCE" }))}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        formData.productType === "QUICK_COMMERCE"
+                          ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
+                          : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
+                      }`}
+                    >
+                      <div className="text-sm flex items-center gap-1.5">⚡ Quick Commerce</div>
+                      <div className="text-xs text-neutral-500 mt-0.5">Hyperlocal local delivery (10–30 mins)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, productType: "ECOMMERCE" }))}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        formData.productType === "ECOMMERCE"
+                          ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
+                          : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
+                      }`}
+                    >
+                      <div className="text-sm flex items-center gap-1.5">📦 Ecommerce</div>
+                      <div className="text-xs text-neutral-500 mt-0.5">Courier shipping nationwide (3–7 days)</div>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm font-medium text-neutral-800 flex items-center gap-2">
+                    {formData.productType === "ECOMMERCE" ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg">
+                        📦 Ecommerce (Courier Shipping)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-900 border border-teal-200 rounded-lg">
+                        ⚡ Quick Commerce (Hyperlocal Delivery)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Ecommerce Package Details */}
+              {formData.productType === "ECOMMERCE" && (
+                <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200 space-y-4">
+                  <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+                    📦 Courier Shipping Package Dimensions & SKU
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Package Weight (KG) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="weightKg"
+                        value={formData.weightKg}
+                        onChange={handleChange}
+                        placeholder="e.g. 0.5"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Length (CM)
+                      </label>
+                      <input
+                        type="number"
+                        name="lengthCm"
+                        value={formData.lengthCm}
+                        onChange={handleChange}
+                        placeholder="e.g. 15"
+                        step="0.1"
+                        min="0.1"
+                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Width (CM)
+                      </label>
+                      <input
+                        type="number"
+                        name="widthCm"
+                        value={formData.widthCm}
+                        onChange={handleChange}
+                        placeholder="e.g. 10"
+                        step="0.1"
+                        min="0.1"
+                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Height (CM)
+                      </label>
+                      <input
+                        type="number"
+                        name="heightCm"
+                        value={formData.heightCm}
+                        onChange={handleChange}
+                        placeholder="e.g. 5"
+                        step="0.1"
+                        min="0.1"
+                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      Product SKU (Optional for courier manifest)
+                    </label>
+                    <input
+                      type="text"
+                      name="sku"
+                      value={formData.sku}
+                      onChange={handleChange}
+                      placeholder="e.g. SKU-PROD-001"
+                      className="w-full sm:w-1/2 px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">

@@ -55,6 +55,8 @@ export default function SellerLogin() {
           status: response.data.user.status,
           address: response.data.user.address,
           city: response.data.user.city,
+          vendorType: response.data.user.vendorType,
+          shippingConfig: response.data.user.shippingConfig,
         });
         const from = (location.state as any)?.from?.pathname || (location.state as any)?.from || '/seller';
         navigate(from, { replace: true });

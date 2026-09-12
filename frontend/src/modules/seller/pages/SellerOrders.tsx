@@ -1,14 +1,66 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getOrders, Order, GetOrdersParams } from '../../../services/api/orderService';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 
 type SortField = 'orderId' | 'deliveryDate' | 'orderDate' | 'status' | 'amount';
 type SortDirection = 'asc' | 'desc';
 
+export interface OrderFulfillmentInfo {
+  isMixed: boolean;
+  isPureQc: boolean;
+  isPureEcommerce: boolean;
+  qcItemCount: number;
+  ecomItemCount: number;
+  qcStatus?: string;
+  ecomStatus?: string;
+}
+
+export function getOrderFulfillment(order: Order): OrderFulfillmentInfo {
+  if (order.fulfillmentSummary) {
+    const fs = order.fulfillmentSummary;
+    return {
+      isMixed: Boolean(fs.isMixed),
+      isPureQc: !fs.isMixed && (Boolean(fs.hasQuickCommerce) || fs.type === 'QUICK_COMMERCE'),
+      isPureEcommerce: !fs.isMixed && (Boolean(fs.hasEcommerce) || fs.type === 'ECOMMERCE'),
+      qcItemCount: fs.quickCommerceItemCount || 0,
+      ecomItemCount: fs.ecommerceItemCount || 0,
+      qcStatus: fs.qcStatus,
+      ecomStatus: fs.ecomStatus,
+    };
+  }
+
+  const groups = order.fulfillmentGroups || [];
+  const qcGroup = groups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY');
+  const ecomGroup = groups.find((g: any) => g.fulfillmentType === 'COURIER_SHIPPING');
+
+  const hasQc = Boolean(qcGroup) || order.orderType === 'QUICK_COMMERCE';
+  const hasEcom = Boolean(ecomGroup) || order.orderType === 'ECOMMERCE';
+
+  // Explicit group classification - never classify mixed as pure ecommerce
+  const isMixed = order.orderType === 'MIXED' || (hasQc && hasEcom);
+  const isPureQc = !isMixed && (hasQc || order.orderType === 'QUICK_COMMERCE');
+  const isPureEcommerce = !isMixed && (hasEcom || order.orderType === 'ECOMMERCE');
+
+  const qcItemCount = qcGroup?.items?.length || (isPureQc ? 1 : 0);
+  const ecomItemCount = ecomGroup?.items?.length || (isPureEcommerce ? 1 : 0);
+
+  return {
+    isMixed,
+    isPureQc,
+    isPureEcommerce,
+    qcItemCount,
+    ecomItemCount,
+    qcStatus: qcGroup?.status,
+    ecomStatus: ecomGroup?.status,
+  };
+}
+
 export default function SellerOrders() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { activeChannel } = useSellerChannel();
   const initialStatus = searchParams.get('status') || 'All Status';
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +112,10 @@ export default function SellerOrders() {
           params.search = searchQuery;
         }
 
+        if (activeChannel) {
+          params.channel = activeChannel;
+        }
+
         const response = await getOrders(params);
         if (response.success && response.data) {
           setOrders(response.data);
@@ -74,7 +130,7 @@ export default function SellerOrders() {
     };
 
     fetchOrders();
-  }, [dateRange, status, entriesPerPage, searchQuery, currentPage, sortField, sortDirection]);
+  }, [dateRange, status, entriesPerPage, searchQuery, currentPage, sortField, sortDirection, activeChannel]);
 
   const handleClearDate = () => {
     setDateRange('');
@@ -92,12 +148,22 @@ export default function SellerOrders() {
 
   const handleExport = () => {
     // Create CSV content
-    const headers = ['Order ID', 'Delivery Date', 'Order Date', 'Status', 'Amount'];
+    const headers = ['Order ID', 'Customer', 'Delivery Date', 'Order Date', 'Fulfillment', 'Status', 'Amount'];
     const csvContent = [
       headers.join(','),
-      ...orders.map(order =>
-        [order.orderId, order.deliveryDate, order.orderDate, order.status, order.amount].join(',')
-      )
+      ...orders.map(order => {
+        const f = getOrderFulfillment(order);
+        const fType = f.isMixed ? 'Mixed' : f.isPureQc ? 'Quick Commerce' : 'Ecommerce';
+        return [
+          order.orderId,
+          `"${order.customerName || ''}"`,
+          order.deliveryDate,
+          order.orderDate,
+          fType,
+          order.status,
+          order.amount
+        ].join(',');
+      })
     ].join('\n');
 
     // Create blob and download
@@ -150,7 +216,18 @@ export default function SellerOrders() {
       <div className="bg-white border-b border-neutral-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
           {/* Page Title */}
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">Orders List</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">
+              Orders
+            </h1>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-neutral-50 text-neutral-700 border-neutral-200">
+              {activeChannel === 'QUICK_COMMERCE'
+                ? '⚡ Orders relevant to Quick Commerce'
+                : activeChannel === 'ECOMMERCE'
+                ? '📦 Orders relevant to Ecommerce'
+                : 'All Orders'}
+            </span>
+          </div>
 
           {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-xs sm:text-sm">
@@ -168,8 +245,14 @@ export default function SellerOrders() {
         {/* White Card Container */}
         <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
           {/* Green Banner */}
-          <div className="bg-green-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-t-lg">
-            <h2 className="text-base sm:text-lg font-semibold">View Order List</h2>
+          <div className="bg-green-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-t-lg flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-semibold">
+              {activeChannel === 'QUICK_COMMERCE'
+                ? 'Orders relevant to Quick Commerce'
+                : activeChannel === 'ECOMMERCE'
+                ? 'Orders relevant to Ecommerce'
+                : 'View Order List'}
+            </h2>
           </div>
 
           {/* Filter and Action Bar */}
@@ -427,6 +510,9 @@ export default function SellerOrders() {
                       </button>
                     </th>
                     <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+                      Fulfillment
+                    </th>
+                    <th className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 text-left text-xs font-semibold text-neutral-700 uppercase tracking-wider">
                       <button
                         onClick={() => handleSort('status')}
                         className="flex items-center gap-2 hover:text-neutral-900 transition-colors"
@@ -495,47 +581,109 @@ export default function SellerOrders() {
                 <tbody className="bg-white divide-y divide-neutral-200">
                   {paginatedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 sm:px-4 md:px-6 py-8 sm:py-12 text-center text-xs sm:text-sm text-neutral-500">
+                      <td colSpan={9} className="px-3 sm:px-4 md:px-6 py-8 sm:py-12 text-center text-xs sm:text-sm text-neutral-500">
                         No data available in table
                       </td>
                     </tr>
                   ) : (
-                    paginatedOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900">
-                          {order.orderId}
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900">
-                          <div className="font-medium">{order.customerName}</div>
-                          <div className="text-[10px] text-teal-600 font-bold">{order.customerPhone}</div>
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-700">
-                          {order.status === 'Delivered' ? order.deliveryDate : '-'}
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-700">
-                          {order.orderDate}
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
-                            {order.status}
-                          </span>
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900 font-medium">
-                          ₹{order.amount.toFixed(2)}
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-600 capitalize">
-                          {order.paymentMethod || 'COD'}
-                        </td>
-                        <td className="px-3 sm:px-4 md:px-6 py-3">
-                          <button
-                            onClick={() => navigate(`/seller/orders/${order.id}`)}
-                            className="text-green-600 hover:text-green-700 text-xs sm:text-sm font-medium transition-colors"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedOrders.map((order) => {
+                      const fulfillment = getOrderFulfillment(order);
+                      return (
+                        <tr key={order.id} className="hover:bg-neutral-50 transition-colors">
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900 font-medium">
+                            {order.orderId}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900">
+                            <div className="font-medium">{order.customerName}</div>
+                            <div className="text-[10px] text-teal-600 font-bold">{order.customerPhone}</div>
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-700">
+                            {order.status === 'Delivered' ? order.deliveryDate : '-'}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-700">
+                            {order.orderDate}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm">
+                            {fulfillment.isMixed ? (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                                  <span>🟡</span>
+                                  <span>Mixed</span>
+                                </span>
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-neutral-600 font-medium">
+                                  <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+                                    ⚡ QC: {fulfillment.qcItemCount} {fulfillment.qcItemCount === 1 ? 'item' : 'items'}
+                                  </span>
+                                  <span className="text-neutral-300">•</span>
+                                  <span className="text-blue-700 font-semibold flex items-center gap-0.5">
+                                    📦 Ecom: {fulfillment.ecomItemCount} {fulfillment.ecomItemCount === 1 ? 'item' : 'items'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : fulfillment.isPureQc ? (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <span>🟢</span>
+                                  <span>⚡ Quick Commerce</span>
+                                </span>
+                                <span className="text-[11px] text-neutral-500 font-medium">
+                                  Local Delivery
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                                  <span>🔵</span>
+                                  <span>📦 Ecommerce</span>
+                                </span>
+                                <span className="text-[11px] text-neutral-500 font-medium">
+                                  Courier Shipping
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3">
+                            {fulfillment.isMixed && (fulfillment.qcStatus || fulfillment.ecomStatus) ? (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
+                                  {order.status}
+                                </span>
+                                <div className="text-[10px] text-neutral-500 font-medium space-y-0.5">
+                                  {fulfillment.qcStatus && (
+                                    <div>
+                                      <span className="text-emerald-700 font-semibold">QC:</span> {fulfillment.qcStatus}
+                                    </div>
+                                  )}
+                                  {fulfillment.ecomStatus && (
+                                    <div>
+                                      <span className="text-blue-700 font-semibold">Ecom:</span> {fulfillment.ecomStatus}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
+                                {order.status}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-900 font-medium">
+                            ₹{order.amount.toFixed(2)}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3 text-xs sm:text-sm text-neutral-600 capitalize">
+                            {order.paymentMethod || 'COD'}
+                          </td>
+                          <td className="px-3 sm:px-4 md:px-6 py-3">
+                            <button
+                              onClick={() => navigate(`/seller/orders/${order.id}`)}
+                              className="text-green-600 hover:text-green-700 text-xs sm:text-sm font-medium transition-colors"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

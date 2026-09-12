@@ -35,7 +35,8 @@ export interface DashboardResponse {
 /**
  * Get seller's dashboard statistics
  */
-export const getSellerDashboardStats = async (): Promise<DashboardResponse> => {
-    const response = await api.get<DashboardResponse>('/seller/dashboard/stats');
+export const getSellerDashboardStats = async (channel?: string): Promise<DashboardResponse> => {
+    const params = channel ? { channel } : {};
+    const response = await api.get<DashboardResponse>('/seller/dashboard/stats', { params });
     return response.data;
 };

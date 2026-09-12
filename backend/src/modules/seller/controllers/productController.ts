@@ -6,6 +6,7 @@ import Category from "../../../models/Category";
 import SubCategory from "../../../models/SubCategory";
 import Shop from "../../../models/Shop";
 import { asyncHandler } from "../../../utils/asyncHandler";
+import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 
 /**
  * Validate that the seller is allowed to add products in the given header category.
@@ -62,6 +63,29 @@ export const createProduct = asyncHandler(
       });
     }
 
+    // Enforce Seller Channel & Product Type compatibility (Backend Enforcement)
+    const seller = await Seller.findById(sellerId).select("categories vendorType");
+    const sellerVendorType = seller?.vendorType || "QUICK_COMMERCE";
+    let targetProductType = productData.productType;
+
+    if (!targetProductType) {
+      targetProductType = sellerVendorType === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE";
+    }
+
+    if (sellerVendorType === "ECOMMERCE" && targetProductType === "QUICK_COMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "ECOMMERCE-only seller cannot create QUICK_COMMERCE products",
+      });
+    }
+
+    if (sellerVendorType === "QUICK_COMMERCE" && targetProductType === "ECOMMERCE") {
+      return res.status(400).json({
+        success: false,
+        message: "QUICK_COMMERCE-only seller cannot create ECOMMERCE products",
+      });
+    }
+
     // Validate Category & Subcategory hierarchy
     const targetCategoryId = productData.categoryId || productData.category;
     const targetSubcategoryId = productData.subcategoryId || productData.subcategory;
@@ -97,7 +121,64 @@ export const createProduct = asyncHandler(
       brand: productData.brandId,
       mainImage: productData.mainImageUrl, // Map mainImageUrl to mainImage
       galleryImages: productData.galleryImageUrls,
+      productType: targetProductType,
+      productSource: productData.productSource || "LOCAL_VENDOR",
     };
+
+    // Package details mapping and validation for Ecommerce
+    if (targetProductType === "ECOMMERCE") {
+      const rawWeight = productData.packageDetails?.weightKg ?? productData.weightKg;
+      if (rawWeight === undefined || rawWeight === null || rawWeight === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Package weight (weightKg) is required for ECOMMERCE products",
+        });
+      }
+      const parsedWeight = Number(rawWeight);
+      if (isNaN(parsedWeight) || parsedWeight <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Package weight (weightKg) must be a positive number greater than 0",
+        });
+      }
+
+      const rawDimensions = productData.packageDetails?.dimensionsCm || productData.dimensionsCm;
+      let dimensionsCm: { length?: number; width?: number; height?: number } | undefined = undefined;
+
+      const rawLen = rawDimensions?.length ?? productData.length;
+      const rawWid = rawDimensions?.width ?? productData.width;
+      const rawHgt = rawDimensions?.height ?? productData.height;
+
+      if (rawLen !== undefined || rawWid !== undefined || rawHgt !== undefined) {
+        const pLen = Number(rawLen);
+        const pWid = Number(rawWid);
+        const pHgt = Number(rawHgt);
+
+        if (isNaN(pLen) || pLen <= 0 || isNaN(pWid) || pWid <= 0 || isNaN(pHgt) || pHgt <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Package dimensions (length, width, height) must all be positive numbers greater than 0",
+          });
+        }
+        dimensionsCm = { length: pLen, width: pWid, height: pHgt };
+      }
+
+      newProductData.packageDetails = {
+        weightKg: parsedWeight,
+        ...(dimensionsCm && { dimensionsCm }),
+        shippingClass: productData.packageDetails?.shippingClass || productData.shippingClass,
+      };
+    } else if (productData.packageDetails || productData.weightKg || productData.dimensionsCm) {
+      newProductData.packageDetails = {
+        weightKg: Number(productData.packageDetails?.weightKg ?? productData.weightKg) || undefined,
+        dimensionsCm: {
+          length: Number(productData.packageDetails?.dimensionsCm?.length ?? productData.dimensionsCm?.length ?? productData.length) || undefined,
+          width: Number(productData.packageDetails?.dimensionsCm?.width ?? productData.dimensionsCm?.width ?? productData.width) || undefined,
+          height: Number(productData.packageDetails?.dimensionsCm?.height ?? productData.dimensionsCm?.height ?? productData.height) || undefined,
+        },
+        shippingClass: productData.packageDetails?.shippingClass || productData.shippingClass,
+      };
+    }
 
     // Map variations: Ensure 'title' from frontend is mapped to 'value' (or name) expected by Schema
     if (newProductData.variations) {
@@ -148,13 +229,15 @@ export const createProduct = asyncHandler(
       newProductData.tax = productData.taxId;
     }
 
-    // Validate variation prices
-    for (const variation of productData.variations) {
-      if (Number(variation.discPrice) > Number(variation.price)) {
-        return res.status(400).json({
-          success: false,
-          message: `Discounted price (${variation.discPrice}) cannot be greater than price (${variation.price}) for variation ${variation.title}`,
-        });
+    // Validate variation prices if provided
+    if (Array.isArray(productData.variations)) {
+      for (const variation of productData.variations) {
+        if (Number(variation.discPrice) > Number(variation.price)) {
+          return res.status(400).json({
+            success: false,
+            message: `Discounted price (${variation.discPrice}) cannot be greater than price (${variation.price}) for variation ${variation.title || variation.name}`,
+          });
+        }
       }
     }
 
@@ -212,14 +295,30 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     category,
     status,
     stock,
+    channel,
     page = "1",
     limit = "10",
     sortBy = "createdAt",
     sortOrder = "desc",
   } = req.query;
 
+  // Validate channel against seller vendorType
+  const resolution = await resolveAuthorizedSellerChannel(sellerId, channel as string);
+  if (resolution.error) {
+    return res.status(resolution.statusCode || 400).json({
+      success: false,
+      message: resolution.error,
+    });
+  }
+
+  const { activeChannel } = resolution.data!;
+
   // Build query
   const query: any = { seller: sellerId };
+
+  if (activeChannel) {
+    query.productType = activeChannel;
+  }
 
   // Search filter
   if (search) {
@@ -388,6 +487,65 @@ export const updateProduct = asyncHandler(
     if (updateData.galleryImageUrls) {
       updateData.galleryImages = updateData.galleryImageUrls;
       delete updateData.galleryImageUrls;
+    }
+
+    // Validate and enforce productType compatibility on update
+    if (updateData.productType) {
+      const seller = await Seller.findById(sellerId).select("vendorType");
+      const sellerVendorType = seller?.vendorType || "QUICK_COMMERCE";
+      if (sellerVendorType === "ECOMMERCE" && updateData.productType === "QUICK_COMMERCE") {
+        return res.status(400).json({
+          success: false,
+          message: "ECOMMERCE-only seller cannot update product to QUICK_COMMERCE",
+        });
+      }
+      if (sellerVendorType === "QUICK_COMMERCE" && updateData.productType === "ECOMMERCE") {
+        return res.status(400).json({
+          success: false,
+          message: "QUICK_COMMERCE-only seller cannot update product to ECOMMERCE",
+        });
+      }
+    }
+
+    // Map and validate package details if provided
+    if (updateData.packageDetails || updateData.weightKg !== undefined || updateData.dimensionsCm || updateData.length !== undefined) {
+      const rawWeight = updateData.packageDetails?.weightKg ?? updateData.weightKg;
+      let parsedWeight: number | undefined = undefined;
+      if (rawWeight !== undefined && rawWeight !== null && rawWeight !== "") {
+        parsedWeight = Number(rawWeight);
+        if (isNaN(parsedWeight) || parsedWeight <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Package weight (weightKg) must be a positive number greater than 0",
+          });
+        }
+      }
+
+      const rawDimensions = updateData.packageDetails?.dimensionsCm || updateData.dimensionsCm;
+      const rawLen = rawDimensions?.length ?? updateData.length;
+      const rawWid = rawDimensions?.width ?? updateData.width;
+      const rawHgt = rawDimensions?.height ?? updateData.height;
+
+      let dimensionsCm: { length?: number; width?: number; height?: number } | undefined = undefined;
+      if (rawLen !== undefined || rawWid !== undefined || rawHgt !== undefined) {
+        const pLen = Number(rawLen);
+        const pWid = Number(rawWid);
+        const pHgt = Number(rawHgt);
+
+        if (isNaN(pLen) || pLen <= 0 || isNaN(pWid) || pWid <= 0 || isNaN(pHgt) || pHgt <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Package dimensions (length, width, height) must all be positive numbers greater than 0",
+          });
+        }
+        dimensionsCm = { length: pLen, width: pWid, height: pHgt };
+      }
+
+      updateData.packageDetails = {
+        weightKg: parsedWeight,
+        ...(dimensionsCm && { dimensionsCm }),
+        shippingClass: updateData.packageDetails?.shippingClass || updateData.shippingClass,
+      };
     }
 
     // Validate variations if provided

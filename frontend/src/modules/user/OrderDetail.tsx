@@ -1116,6 +1116,223 @@ export default function OrderDetail() {
 
       {/* Scrollable Content */}
       <div className="px-4 py-4 space-y-4 pb-24">
+        {/* Multi-Fulfillment Group Status Cards */}
+        {order?.fulfillmentGroups && order.fulfillmentGroups.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                {order.fulfillmentGroups.length > 1 ? 'Shipment Details (Multi-Shipment Order)' : 'Shipment Details'}
+              </h3>
+              <span className="text-xs text-neutral-400 font-medium">
+                {order.fulfillmentGroups.length} {order.fulfillmentGroups.length === 1 ? 'Shipment' : 'Shipments'}
+              </span>
+            </div>
+
+            {order.fulfillmentGroups.map((group: any, idx: number) => {
+              const isEcommerce = group.fulfillmentType === 'COURIER_SHIPPING';
+
+              // Match order items belonging to this fulfillment group
+              const groupItems = (order.items || []).filter((orderItem: any) => {
+                const orderItemProdId = String(orderItem.product?._id || orderItem.product?.id || orderItem.product || '');
+                const hasMatch = (group.items || []).some((gi: any) => {
+                  const giProdId = String(gi.product?._id || gi.product?.id || gi.product || '');
+                  return giProdId && orderItemProdId && giProdId === orderItemProdId;
+                });
+                if (hasMatch) return true;
+                if (isEcommerce) {
+                  return orderItem.product?.productType === 'ECOMMERCE';
+                } else {
+                  return !orderItem.product?.productType || orderItem.product?.productType === 'QUICK_COMMERCE';
+                }
+              });
+
+              return (
+                <div
+                  key={group.fulfillmentGroupId || idx}
+                  className={`rounded-2xl p-4 shadow-sm border ${
+                    isEcommerce
+                      ? 'bg-blue-50/40 border-blue-200'
+                      : 'bg-emerald-50/40 border-emerald-200'
+                  }`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-neutral-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${isEcommerce ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {isEcommerce ? '📦' : '⚡'}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-neutral-900">
+                            {isEcommerce ? 'Courier Delivery' : 'Quick Delivery'}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isEcommerce ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                            Shipment #{idx + 1}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 mt-0.5">
+                          {isEcommerce
+                            ? (group.courierDetails?.estimatedDays
+                                ? `Estimated Delivery: ${group.courierDetails.estimatedDays} days`
+                                : 'Delivery estimate shown at checkout')
+                            : `Quick local delivery • ${order.estimatedDeliveryTime || '12–15 mins'}`}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                        group.status === 'Delivered'
+                          ? 'bg-green-100 text-green-800'
+                          : group.status === 'Cancelled'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {group.status || order.status}
+                    </span>
+                  </div>
+
+                  {/* Seller / Source Information */}
+                  {group.seller && (
+                    <div className="mb-3 px-3 py-2 bg-white/70 rounded-xl border border-neutral-200/60 text-xs">
+                      <span className="text-neutral-500 font-medium">Dispatched by: </span>
+                      <strong className="text-neutral-800">
+                        {typeof group.seller === 'object' ? (group.seller.storeName || group.seller.name) : 'Verified Partner'}
+                      </strong>
+                      {typeof group.seller === 'object' && group.seller.city && (
+                        <span className="text-neutral-500"> ({group.seller.city})</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Products in this Shipment */}
+                  <div className="mb-3 space-y-2 bg-white p-3 rounded-xl border border-neutral-200/80">
+                    <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider block">
+                      Items in this shipment ({groupItems.length})
+                    </span>
+                    <div className="divide-y divide-neutral-100">
+                      {groupItems.map((item: any, itemIdx: number) => (
+                        <div key={itemIdx} className="py-2 first:pt-1 last:pb-0 flex items-center gap-2.5">
+                          <div className="w-10 h-10 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                            {item.product?.imageUrl ? (
+                              <img src={item.product.imageUrl} alt={item.product?.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 font-bold">
+                                {(item.product?.name || item.productName || '?').charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-neutral-900 truncate">
+                              {item.product?.name || item.productName || 'Product'}
+                            </p>
+                            <p className="text-[11px] text-neutral-500">
+                              Qty: {item.quantity} {item.product?.pack ? `• ${item.product.pack}` : ''}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-neutral-900">
+                              ₹{(item.price || item.product?.price || 0) * (item.quantity || 1)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Commerce Details (Rider + OTP) */}
+                  {!isEcommerce && (
+                    <div className="pt-2 border-t border-emerald-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-neutral-700">
+                          {group.deliveryBoy?.name ? `Express Rider: ${group.deliveryBoy.name}` : 'Local delivery partner'}
+                        </p>
+                        <p className="text-[11px] text-neutral-500">
+                          Hyperlocal direct store delivery
+                        </p>
+                      </div>
+                      {(group.otp || order?.deliveryOtp) && !['Delivered', 'Completed', 'Cancelled'].includes(group.status || order.status) && (
+                        <div className="bg-white px-3 py-1.5 rounded-lg border border-emerald-300 text-right shadow-xs">
+                          <span className="text-[10px] text-neutral-500 block uppercase font-semibold">Delivery OTP</span>
+                          <span className="text-sm font-extrabold text-emerald-700 tracking-wider font-mono">
+                            {group.otp || order?.deliveryOtp}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Ecommerce Courier Details (Carrier + AWB + Tracking) */}
+                  {isEcommerce && (
+                    <div className="pt-2 border-t border-blue-100">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div>
+                          <span className="text-xs font-semibold text-neutral-800 block">
+                            Courier Partner: {group.courierDetails?.courierName || group.courierDetails?.provider || 'Verified Courier Partner'}
+                          </span>
+                          {group.courierDetails?.awbNumber ? (
+                            <span className="text-[11px] text-neutral-600 font-mono">
+                              AWB: <strong className="text-blue-700">{group.courierDetails.awbNumber}</strong>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-neutral-500 italic">
+                              AWB tracking number assigned upon dispatch
+                            </span>
+                          )}
+                        </div>
+                        {group.courierDetails?.trackingNumber && (
+                          <div className="text-right">
+                            <span className="text-[10px] text-neutral-500 block">Tracking ID</span>
+                            <span className="text-xs font-mono font-medium text-neutral-700">
+                              {group.courierDetails.trackingNumber}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* External Tracking Link if provided */}
+                      {group.courierDetails?.trackingUrl && (
+                        <div className="mt-2">
+                          <a
+                            href={group.courierDetails.trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg border border-blue-200"
+                          >
+                            <span>Track on Courier Site</span>
+                            <span>↗</span>
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Tracking Timeline */}
+                      {group.trackingTimeline && group.trackingTimeline.length > 0 && (
+                        <div className="mt-2.5 bg-white p-3 rounded-lg border border-blue-100">
+                          <span className="text-xs font-bold text-neutral-800 block mb-2">Courier Tracking Updates</span>
+                          <div className="space-y-2 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-200">
+                            {group.trackingTimeline.map((step: any, sIdx: number) => (
+                              <div key={sIdx} className="flex items-start gap-2.5 pl-6 relative">
+                                <div className="absolute left-1 top-1 w-2.5 h-2.5 rounded-full bg-blue-600 ring-2 ring-white"></div>
+                                <div className="flex-1">
+                                  <p className="text-xs font-semibold text-neutral-900">{step.status}</p>
+                                  <p className="text-[11px] text-neutral-600">{step.description}</p>
+                                  <p className="text-[10px] text-neutral-400">
+                                    {new Date(step.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                                    {step.location ? ` • ${step.location}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Payment Pending */}
         {order?.paymentStatus !== "Paid" && order?.paymentStatus !== "Completed" && order?.paymentStatus !== "Refunded" && (
           <motion.div

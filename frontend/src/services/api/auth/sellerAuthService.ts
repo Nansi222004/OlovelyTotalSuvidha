@@ -20,6 +20,8 @@ export interface VerifyOTPResponse {
       logo?: string;
       address?: string;
       city?: string;
+      vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+      shippingConfig?: any;
     };
   };
 }
@@ -38,6 +40,14 @@ export interface RegisterData {
   latitude?: string;
   longitude?: string;
   serviceRadiusKm?: string | number;
+  vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+  shippingConfig?: {
+    pickupAddress?: string;
+    pickupPincode?: string;
+    returnAddress?: string;
+  };
+  pickupPincode?: string;
+  pickupAddress?: string;
 }
 
 export interface RegisterResponse {
@@ -53,6 +63,8 @@ export interface RegisterResponse {
       storeName: string;
       status: string;
       categories?: string[];
+      vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+      shippingConfig?: any;
     };
   };
 }

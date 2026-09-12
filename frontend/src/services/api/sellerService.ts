@@ -42,6 +42,16 @@ export interface Seller {
   addressProof?: string;
   requireProductApproval?: boolean;
   viewCustomerDetails?: boolean;
+  vendorType?: "QUICK_COMMERCE" | "ECOMMERCE" | "HYBRID";
+  shippingConfig?: {
+    warehouseAddress?: string;
+    pickupAddress?: string;
+    pickupPincode?: string;
+    returnAddress?: string;
+    defaultCourier?: string;
+    freeShippingThreshold?: number;
+    flatShippingFee?: number;
+  };
   createdAt?: string;
   updatedAt?: string;
 }

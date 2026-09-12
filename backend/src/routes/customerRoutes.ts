@@ -60,6 +60,15 @@ router.post("/support/contact", optionalAuthenticate, supportController.submitCu
 
 import FAQ from "../models/FAQ";
 import Policy from "../models/Policy";
+import {
+  checkPincodeServiceability,
+  getTracking,
+} from "../modules/customer/controllers/customerShippingController";
+
+// Customer Shipping routes
+router.get("/shipping/serviceability", checkPincodeServiceability);
+router.get("/shipping/tracking/:awbNumber", getTracking);
+router.get("/shipping/track/:awbNumber", getTracking);
 
 // Get active FAQs for customer app
 router.get("/faqs", async (_req, res) => {

@@ -66,3 +66,8 @@ uploads/*
 # Cloudinary raw downloaded folder
 cloudinary/
 ../cloudinary/
+
+# Test scripts and temporary audit files
+test/
+tests/
+

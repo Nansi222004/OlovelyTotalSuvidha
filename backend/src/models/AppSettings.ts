@@ -59,6 +59,9 @@ export interface IAppSettings extends Document {
   freeDeliveryThreshold?: number;
   /** Cart subtotal must be at least this amount to place an order. 0 = no minimum. */
   minimumOrderValue?: number;
+  giftPackagingFee?: number;
+  ecommerceShippingFee?: number;
+  ecommerceFreeShippingThreshold?: number;
   deliveryConfig?: {
     isDistanceBased: boolean;
     googleMapsKey?: string;
@@ -306,6 +309,21 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: Number,
       default: 0,
       min: [0, "Minimum order value cannot be negative"],
+    },
+    giftPackagingFee: {
+      type: Number,
+      default: 30,
+      min: [0, "Gift packaging fee cannot be negative"],
+    },
+    ecommerceShippingFee: {
+      type: Number,
+      default: 40,
+      min: [0, "Ecommerce shipping fee cannot be negative"],
+    },
+    ecommerceFreeShippingThreshold: {
+      type: Number,
+      default: 499,
+      min: [0, "Ecommerce free shipping threshold cannot be negative"],
     },
     deliveryConfig: {
       isDistanceBased: { type: Boolean, default: false },
