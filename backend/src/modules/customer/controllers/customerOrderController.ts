@@ -1123,7 +1123,7 @@ export const getOrderById = async (req: Request, res: Response) => {
     const customer = await Customer.findById(userId).select("deliveryOtp");
     const deliveryOtp = (order.status === "Delivered" || order.status === "Cancelled")
       ? null
-      : customer?.deliveryOtp;
+      : (order.deliveryOtp || customer?.deliveryOtp);
 
 
     // Transform order to match frontend Order type

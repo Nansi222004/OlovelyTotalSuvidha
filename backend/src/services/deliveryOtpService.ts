@@ -77,18 +77,18 @@ export async function verifyDeliveryOtp(orderId: string, otp: string): Promise<{
       throw new Error('OTP has expired. Please request a new OTP.');
     }
 
-    // Determine expected OTP: Order dynamic OTP first, fallback to Customer permanent OTP
-    let expectedOtp = order.deliveryOtp;
-    if (!expectedOtp) {
-      if (order.customer && typeof order.customer === 'object' && 'deliveryOtp' in order.customer) {
-        expectedOtp = (order.customer as any).deliveryOtp;
-      } else if (order.customer) {
-        const customer = await Customer.findById(order.customer);
-        expectedOtp = customer?.deliveryOtp;
-      }
+    // Retrieve both order dynamic OTP and customer permanent OTP
+    let customerOtp: string | undefined;
+    if (order.customer && typeof order.customer === 'object' && 'deliveryOtp' in order.customer) {
+      customerOtp = (order.customer as any).deliveryOtp;
+    } else if (order.customer) {
+      const customer = await Customer.findById(order.customer).select("deliveryOtp");
+      customerOtp = customer?.deliveryOtp;
     }
 
-    if (!expectedOtp) {
+    const orderOtp = order.deliveryOtp;
+
+    if (!orderOtp && !customerOtp) {
       throw new Error('Customer delivery OTP not found. Please contact support.');
     }
 
@@ -107,8 +107,9 @@ export async function verifyDeliveryOtp(orderId: string, otp: string): Promise<{
       };
     }
 
-    // 3. Verify exact OTP match
-    if (expectedOtp !== otp) {
+    // 3. Verify match against either order dynamic OTP or customer permanent OTP
+    const isMatch = (orderOtp && otp === orderOtp) || (customerOtp && otp === customerOtp);
+    if (!isMatch) {
       // Record failed attempt in DB
       order.deliveryOtpAttempts = currentAttempts + 1;
       await order.save();
