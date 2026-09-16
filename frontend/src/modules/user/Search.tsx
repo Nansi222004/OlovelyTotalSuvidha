@@ -56,6 +56,9 @@ export default function Search() {
           params.channel = channelFilter;
           params.productType = channelFilter;
         }
+        if (channelFilter === 'WHOLESALE') {
+          params.isWholesale = 'true';
+        }
         // Include user location for seller service radius filtering
         if (location?.latitude && location?.longitude) {
           params.latitude = location.latitude;
@@ -91,9 +94,10 @@ export default function Search() {
     setSearchResults([]);
   };
 
-  const filteredResults = searchResults.filter((p) => {
+  const filteredResults = searchResults.filter((p: any) => {
     if (channelFilter === 'QUICK_COMMERCE') return p.productType === 'QUICK_COMMERCE';
     if (channelFilter === 'ECOMMERCE') return p.productType === 'ECOMMERCE';
+    if (channelFilter === 'WHOLESALE') return p.wholesaleEnabled && (p.wholesalePrice || 0) > 0;
     return true;
   });
 

@@ -18,6 +18,15 @@ export interface IOrderItem extends Document {
   // Variation
   variation?: string;
   variantTitle?: string;
+  /** ObjectId of the specific variation purchased — used for variation-level stock restoration. */
+  variationId?: mongoose.Types.ObjectId;
+
+  // Wholesale Snapshot (immutable at order creation time)
+  isWholesale: boolean;
+  /** Wholesale unit price at time of order. Null for retail orders. */
+  wholesalePrice?: number;
+  /** MOQ at time of order — snapshot for audit trail. */
+  wholesaleMinimumQuantity?: number;
 
   // Status
   status: "Pending" | "Shipped" | "Delivered" | "Cancelled" | "Returned";
@@ -95,6 +104,23 @@ const OrderItemSchema = new Schema<IOrderItem>(
     variantTitle: {
       type: String,
       trim: true,
+    },
+    variationId: {
+      type: Schema.Types.ObjectId,
+    },
+
+    // Wholesale Snapshot (immutable at order creation time)
+    isWholesale: {
+      type: Boolean,
+      default: false,
+    },
+    wholesalePrice: {
+      type: Number,
+      min: [0, 'Wholesale price cannot be negative'],
+    },
+    wholesaleMinimumQuantity: {
+      type: Number,
+      min: [1, 'Wholesale minimum quantity must be at least 1'],
     },
 
     // Status

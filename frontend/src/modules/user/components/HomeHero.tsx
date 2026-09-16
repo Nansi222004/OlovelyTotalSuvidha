@@ -17,7 +17,7 @@ gsap.registerPlugin(ScrollTrigger);
 interface HomeHeroProps {
   activeTab?: string;
   onTabChange?: (tabId: string) => void;
-  channelFilter?: 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE';
+  channelFilter?: 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'WHOLESALE';
 }
 
 interface Tab {
@@ -372,7 +372,21 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
                 {appSettings?.appName || 'Olovely Total Suvidha'}
               </div>
               {/* Delivery time / Channel Context - Contextual Header */}
-              {channelFilter === 'ECOMMERCE' ? (
+              {channelFilter === 'WHOLESALE' ? (
+                <div className="my-0.5">
+                  <div className="text-neutral-950 font-black text-xl md:text-xl leading-tight">
+                    <span>Wholesale Bulk Hub</span>
+                  </div>
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-tight"
+                    style={{
+                      color: theme.headerTextColor === '#ffffff' ? '#15803d' : (theme.headerTextColor || theme.textColor),
+                    }}
+                  >
+                    B2B & Bulk Quantities • Direct Prices
+                  </div>
+                </div>
+              ) : channelFilter === 'ECOMMERCE' ? (
                 <div className="my-0.5">
                   <div className="text-neutral-950 font-black text-xl md:text-xl leading-tight">
                     <span>Nationwide Delivery</span>

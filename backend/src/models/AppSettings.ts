@@ -142,6 +142,24 @@ export interface IAppSettings extends Document {
   // Withdrawal Settings
   minimumWithdrawalAmount?: number;
 
+  // Wholesale Global Settings
+  wholesaleSettings?: {
+    /** Master on/off switch for the entire wholesale capability. */
+    wholesaleEnabled: boolean;
+    /** Pre-fill default MOQ for NEW wholesale products. Does NOT retroactively change existing products. */
+    defaultWholesaleMinimumQuantity: number;
+    /** Whether wholesale sections and badges are displayed in customer UI. */
+    wholesaleDisplayEnabled?: boolean;
+  };
+
+  // Inventory / Low-Stock Settings
+  inventorySettings?: {
+    /** Stock threshold below which "low stock" warning is shown. Admin-configurable. Default 10. */
+    lowStockThreshold: number;
+    /** Display quantity shown in "Only X items left" message. Purely presentational. Default 2. */
+    lowStockDisplayQuantity: number;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -475,6 +493,37 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     updatedBy: {
       type: Schema.Types.ObjectId,
       ref: "Admin",
+    },
+
+    // Wholesale Global Settings
+    wholesaleSettings: {
+      wholesaleEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      defaultWholesaleMinimumQuantity: {
+        type: Number,
+        default: 10,
+        min: [1, 'Default wholesale minimum quantity must be at least 1'],
+      },
+      wholesaleDisplayEnabled: {
+        type: Boolean,
+        default: true,
+      },
+    },
+
+    // Inventory / Low-Stock Settings
+    inventorySettings: {
+      lowStockThreshold: {
+        type: Number,
+        default: 10,
+        min: [0, 'Low stock threshold cannot be negative'],
+      },
+      lowStockDisplayQuantity: {
+        type: Number,
+        default: 2,
+        min: [1, 'Low stock display quantity must be at least 1'],
+      },
     },
   },
   {

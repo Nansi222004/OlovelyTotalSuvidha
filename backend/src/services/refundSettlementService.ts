@@ -196,37 +196,43 @@ export const handleOnlineOrderCancellation = async (
         }
       }
 
-      // 3. RESTORE INVENTORY STOCK (ONCE for non-cancelled items)
+      // 3. RESTORE INVENTORY STOCK — use mutateStock for atomicity and variation isolation
       if (Array.isArray(order.items) && order.items.length > 0) {
-        const Product = (await import("../models/Product")).default;
+        const { mutateStock } = await import('./inventoryService');
         for (const itemRef of order.items) {
           const orderItem = await OrderItem.findById(itemRef).session(session);
           if (orderItem && orderItem.status !== "Cancelled") {
-            const product = await Product.findById(orderItem.product).session(session);
-            if (product) {
-              if (orderItem.variation) {
-                const variationIndex = product.variations?.findIndex(
-                  (v: any) =>
-                    v.value === orderItem.variation ||
-                    v.title === orderItem.variation ||
-                    v.pack === orderItem.variation
+            // Resolve variationId — prefer ObjectId field, fall back to string match
+            let resolvedVariationId: string | null = null;
+            if ((orderItem as any).variationId) {
+              resolvedVariationId = (orderItem as any).variationId.toString();
+            } else if (orderItem.variation && orderItem.product) {
+              const Product = (await import("../models/Product")).default;
+              const prodForLookup = await Product.findById(orderItem.product).select('variations').lean();
+              if (prodForLookup?.variations?.length) {
+                const matchedVar: any = (prodForLookup.variations as any[]).find((v: any) =>
+                  v.value === orderItem.variation || v.title === orderItem.variation || v.pack === orderItem.variation
                 );
-                if (
-                  variationIndex !== undefined &&
-                  variationIndex !== -1 &&
-                  product.variations &&
-                  product.variations[variationIndex]
-                ) {
-                  const currentStock = product.variations[variationIndex].stock || 0;
-                  product.variations[variationIndex].stock = currentStock + orderItem.quantity;
-                } else if (product.variations && product.variations.length > 0) {
-                  const currentStock = product.variations[0].stock || 0;
-                  product.variations[0].stock = currentStock + orderItem.quantity;
-                }
+                if (matchedVar?._id) resolvedVariationId = matchedVar._id.toString();
               }
-              product.stock += orderItem.quantity;
-              await product.save({ session });
             }
+
+            try {
+              await mutateStock({
+                productId: orderItem.product.toString(),
+                variationId: resolvedVariationId,
+                quantity: +orderItem.quantity,   // positive = restore
+                type: 'RETURN',
+                referenceType: 'RETURN',
+                referenceId: order._id.toString(),
+                orderItemId: orderItem._id.toString(),
+                performedByRole: 'SYSTEM',
+                note: 'Return/refund stock restore',
+              });
+            } catch (stockErr: any) {
+              console.warn(`[RefundService] Stock restore failed for product ${orderItem.product}:`, stockErr.message);
+            }
+
             orderItem.status = "Cancelled";
             await orderItem.save({ session });
           }

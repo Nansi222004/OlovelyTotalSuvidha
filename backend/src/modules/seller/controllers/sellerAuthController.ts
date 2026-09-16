@@ -8,6 +8,22 @@ import { generateToken } from "../../../services/jwtService";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
 /**
+ * Safe boolean parser to avoid JavaScript `Boolean("false") === true` trap.
+ * Only returns true for actual boolean `true`, number 1, or string "true" / "1".
+ * Returns false for false, 0, "false", "0", or missing values.
+ */
+export function parseSafeBoolean(val: any, defaultVal: boolean = false): boolean {
+  if (val === true || val === 1) return true;
+  if (val === false || val === 0) return false;
+  if (typeof val === "string") {
+    const trimmed = val.trim().toLowerCase();
+    if (trimmed === "true" || trimmed === "1") return true;
+    if (trimmed === "false" || trimmed === "0") return false;
+  }
+  return defaultVal;
+}
+
+/**
  * Send OTP to seller mobile number
  */
 export const sendOTP = asyncHandler(async (req: Request, res: Response) => {
@@ -95,6 +111,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
         address: seller.address,
         city: seller.city,
         vendorType: seller.vendorType || 'QUICK_COMMERCE',
+        wholesaleEnabled: parseSafeBoolean(seller.wholesaleEnabled, false),
         shippingConfig: seller.shippingConfig,
       },
     },
@@ -268,6 +285,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
       Array.isArray(req.body.categories) && req.body.categories.length > 0
         ? req.body.categories
         : [category],
+    wholesaleEnabled: parseSafeBoolean(req.body.wholesaleEnabled, false),
   });
 
   // Generate token
@@ -288,6 +306,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
         address: seller.address,
         city: seller.city,
         vendorType: seller.vendorType,
+        wholesaleEnabled: seller.wholesaleEnabled || false,
         shippingConfig: seller.shippingConfig,
       },
     },

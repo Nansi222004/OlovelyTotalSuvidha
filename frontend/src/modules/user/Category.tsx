@@ -169,6 +169,9 @@ export default function CategoryPage() {
         params.channel = channelFilter;
         params.productType = channelFilter;
       }
+      if (channelFilter === 'WHOLESALE') {
+        params.isWholesale = 'true';
+      }
       // Include user location for seller service radius filtering
       if (userLocation?.latitude && userLocation?.longitude) {
         params.latitude = userLocation.latitude;
@@ -726,6 +729,8 @@ export default function CategoryPage() {
                 ? `No Quick Commerce products found in ${categoryName}`
                 : channelFilter === 'ECOMMERCE'
                 ? `No Ecommerce products found in ${categoryName}`
+                : channelFilter === 'WHOLESALE'
+                ? `No Wholesale products found in ${categoryName}`
                 : t("customer.noProductsFound", "No products found")}
             </h3>
             <p className="text-slate-500 text-xs sm:text-sm max-w-sm mb-6 leading-relaxed">
@@ -735,6 +740,8 @@ export default function CategoryPage() {
                 ? `There are currently no Quick Commerce (instant delivery) items in "${categoryName}". Try switching to All or Ecommerce.`
                 : channelFilter === 'ECOMMERCE'
                 ? `There are currently no Ecommerce (courier delivery) items in "${categoryName}". Try switching to All or Quick Commerce.`
+                : channelFilter === 'WHOLESALE'
+                ? `There are currently no Wholesale items in "${categoryName}". Try switching to All or Quick Commerce.`
                 : `There are currently no products available in "${categoryName}". You can explore other categories or continue browsing.`}
             </p>
             <div className="flex items-center gap-3">

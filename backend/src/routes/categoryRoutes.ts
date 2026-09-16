@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { optionalAuthenticate } from "../middleware/auth";
 import {
   getCategories,
   getCategoryById,
@@ -14,7 +15,7 @@ const router = Router();
 // Admin/Seller specific management routes are in their respective route files
 
 // Get all categories (parent categories only by default)
-router.get("/", getCategories);
+router.get("/", optionalAuthenticate, getCategories);
 
 // Get all subcategories (across all categories)
 router.get("/subcategories", getAllSubcategories);

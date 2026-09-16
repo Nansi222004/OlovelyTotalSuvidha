@@ -132,7 +132,7 @@ export interface IOrder extends Document {
   cancelledAt?: Date;
   cancelledBy?: mongoose.Types.ObjectId;
 
-  deliveryOption: "Instant" | "Standard";
+  deliveryOption: "Instant" | "Standard" | "Courier";
   deliveryPreference?: "Self" | "Admin";
   tipAmount: number;
   giftPackaging: boolean;
@@ -180,6 +180,7 @@ export interface IFulfillmentGroup {
   };
   subtotal: number;
   shippingFee: number;
+  deliveryOption?: string;
 }
 
 const OrderSchema = new Schema<IOrder>(
@@ -524,7 +525,7 @@ const OrderSchema = new Schema<IOrder>(
     },
     deliveryOption: {
       type: String,
-      enum: ["Instant", "Standard"],
+      enum: ["Instant", "Standard", "Courier"],
       default: "Standard",
     },
     deliveryPreference: {
@@ -590,6 +591,7 @@ const OrderSchema = new Schema<IOrder>(
         },
         subtotal: { type: Number, default: 0 },
         shippingFee: { type: Number, default: 0 },
+        deliveryOption: { type: String, trim: true },
       },
     ],
   },

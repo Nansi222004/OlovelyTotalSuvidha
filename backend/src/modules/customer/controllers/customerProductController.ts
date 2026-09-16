@@ -4,8 +4,10 @@ import Category from "../../../models/Category";
 import SubCategory from "../../../models/SubCategory";
 import HeaderCategory from "../../../models/HeaderCategory";
 import mongoose from "mongoose";
+import Seller from "../../../models/Seller";
 import { findSellersWithinRange } from "../../../utils/locationHelper";
 import AppSettings from "../../../models/AppSettings";
+import { checkWholesaleEligibility } from "../../../utils/categoryChannelHelper";
 
 // Get products with filtering options (public)
 export const getProducts = async (req: Request, res: Response) => {
@@ -36,30 +38,6 @@ export const getProducts = async (req: Request, res: Response) => {
         { isShopByStoreOnly: { $exists: false } },
       ],
     };
-
-    const targetChannel = ((channel || productType) as string || "").toUpperCase();
-    if (targetChannel === 'QUICK_COMMERCE') {
-      query.productType = 'QUICK_COMMERCE';
-    } else if (targetChannel === 'ECOMMERCE') {
-      query.productType = 'ECOMMERCE';
-    }
-
-    // Location-based filtering
-    const userLat = latitude ? parseFloat(latitude as string) : null;
-    const userLng = longitude ? parseFloat(longitude as string) : null;
-
-    let nearbySellerIds: mongoose.Types.ObjectId[] = [];
-    if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
-      // Find sellers within user's location range
-      nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-
-      if (nearbySellerIds.length > 0) {
-        // Filter products by sellers within range for normal in-range browsing
-        query.seller = { $in: nearbySellerIds };
-      }
-      // When nearbySellerIds is empty (no sellers in area), we do NOT restrict query.seller to []
-      // allowing customers to browse the full catalog with isAvailable: false
-    }
 
     // Helper to resolve category/subcategory ID from slug or ID
     const resolveId = async (
@@ -178,6 +156,165 @@ export const getProducts = async (req: Request, res: Response) => {
       if (subcategoryId) query.subcategory = subcategoryId;
     }
 
+    const targetChannel = ((channel || productType) as string || "").toUpperCase();
+    if (targetChannel === 'QUICK_COMMERCE' || targetChannel === 'ECOMMERCE') {
+      query.productType = targetChannel;
+
+      // Restrict category to active categories permitting the requested channel
+      const permittedCats = await Category.find({
+        status: "Active",
+        commerceChannels: { $in: [targetChannel] },
+      }).select("_id").lean();
+      const permittedCatIds = permittedCats.map((c: any) => c._id);
+
+      if (query.category) {
+        if (Array.isArray(query.category)) {
+          query.category = { $in: query.category.filter((id: any) => permittedCatIds.some(pid => pid.toString() === id.toString())) };
+        } else if (typeof query.category === 'object' && (query.category as any).$in) {
+          (query.category as any).$in = (query.category as any).$in.filter((id: any) => permittedCatIds.some(pid => pid.toString() === id.toString()));
+        } else {
+          const isPermitted = permittedCatIds.some(pid => pid.toString() === query.category.toString());
+          if (!isPermitted) {
+            query.category = new mongoose.Types.ObjectId(); // Non-matching dummy ID
+          }
+        }
+      } else {
+        query.category = { $in: permittedCatIds };
+      }
+    }
+
+    // ── WHOLESALE / RETAIL SHOPPING MODE ENFORCEMENT ───────────────────────
+    // Normal retail browsing MUST exclude products where product.wholesaleEnabled === true.
+    // Wholesale browsing mode requires:
+    // Global wholesale enabled AND Seller wholesaleEnabled AND Category wholesaleEnabled AND Product wholesaleEnabled.
+    const isWholesaleMode =
+      (req.query.isWholesale as string)?.toLowerCase() === "true" ||
+      (req.query.wholesale as string)?.toLowerCase() === "true";
+
+    if (!isWholesaleMode) {
+      // Retail mode: MUST exclude all wholesaleEnabled products
+      query.wholesaleEnabled = { $ne: true };
+    } else {
+      // Wholesale mode: Enforce ALL 4 GATES server-side
+      const appSettings = await AppSettings.findOne();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+      if (!globalWholesaleEnabled) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+          message: "Wholesale shopping mode is currently disabled globally",
+        });
+      }
+
+      // Gate 2: Categories must have wholesaleEnabled: true
+      const eligibleCategories = await Category.find({ status: "Active", wholesaleEnabled: true }, { _id: 1 }).lean();
+      const eligibleCategoryIds = eligibleCategories.map((c) => c._id.toString());
+      if (eligibleCategoryIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+        });
+      }
+
+      // If category filter already exists, intersect with eligible categories
+      if (query.category) {
+        if (query.category.$in) {
+          const existingIds = query.category.$in.map((id: any) => id.toString());
+          const intersection = existingIds.filter((id: string) => eligibleCategoryIds.includes(id));
+          if (intersection.length === 0) {
+            return res.status(200).json({
+              success: true,
+              data: [],
+              pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+            });
+          }
+          query.category = { $in: intersection.map((id: string) => new mongoose.Types.ObjectId(id)) };
+        } else {
+          const catIdStr = query.category.toString();
+          if (!eligibleCategoryIds.includes(catIdStr)) {
+            return res.status(200).json({
+              success: true,
+              data: [],
+              pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+            });
+          }
+        }
+      } else {
+        query.category = { $in: eligibleCategoryIds.map((id) => new mongoose.Types.ObjectId(id)) };
+      }
+
+      // Gate 3: Sellers must have wholesaleEnabled: true
+      const eligibleSellers = await Seller.find({ status: "Approved", wholesaleEnabled: true }, { _id: 1 }).lean();
+      const eligibleSellerIds = eligibleSellers.map((s) => s._id.toString());
+      if (eligibleSellerIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+        });
+      }
+
+      if (query.seller && query.seller.$in) {
+        const existingSellerIds = query.seller.$in.map((id: any) => id.toString());
+        const sellerIntersection = existingSellerIds.filter((id: string) => eligibleSellerIds.includes(id));
+        if (sellerIntersection.length === 0) {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
+          });
+        }
+        query.seller = { $in: sellerIntersection.map((id: string) => new mongoose.Types.ObjectId(id)) };
+      } else {
+        query.seller = { $in: eligibleSellerIds.map((id) => new mongoose.Types.ObjectId(id)) };
+      }
+
+      // Gate 4: Product wholesaleEnabled: true
+      query.wholesaleEnabled = true;
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Location-based filtering:
+    // Only Quick Commerce products require local rider radius.
+    // Ecommerce products are shipped nationwide via courier / Shiprocket and must NEVER be filtered by nearby local store radius.
+    const userLat = latitude ? parseFloat(latitude as string) : null;
+    const userLng = longitude ? parseFloat(longitude as string) : null;
+
+    let nearbySellerIds: mongoose.Types.ObjectId[] = [];
+    if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
+      // Find sellers within user's location range
+      nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+
+      if (targetChannel === 'QUICK_COMMERCE') {
+        // Quick Commerce strictly requires nearby sellers
+        if (nearbySellerIds.length > 0) {
+          if (query.seller && query.seller.$in) {
+            const intersection = query.seller.$in.filter((id: any) =>
+              nearbySellerIds.some((nid) => nid.toString() === id.toString())
+            );
+            query.seller = { $in: intersection };
+          } else {
+            query.seller = { $in: nearbySellerIds };
+          }
+        }
+      } else if (targetChannel === 'ECOMMERCE') {
+        // Ecommerce products ship nationwide by courier; do NOT filter query.seller by nearbySellerIds
+      } else {
+        // Channel is ALL or Wholesale (which can be Quick Commerce or Ecommerce)
+        if (nearbySellerIds.length > 0) {
+          query.$and = query.$and || [];
+          query.$and.push({
+            $or: [
+              { productType: 'ECOMMERCE' },
+              { seller: { $in: nearbySellerIds } }
+            ]
+          });
+        }
+      }
+    }
+
     if (brand) {
       query.brand = brand;
     }
@@ -226,11 +363,13 @@ export const getProducts = async (req: Request, res: Response) => {
     const formattedProducts = products.map((p: any) => {
       const prodObj = p.toObject ? p.toObject() : { ...p };
       const sellerIdStr = prodObj.seller ? (typeof prodObj.seller === "object" ? prodObj.seller._id?.toString() : prodObj.seller.toString()) : null;
-      const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-        ? nearbySellerIds.some((id) => id && id.toString() === sellerIdStr)
-        : false;
-      prodObj.isAvailable = isAvailable;
       prodObj.productType = prodObj.productType || "QUICK_COMMERCE";
+      const isAvailable = prodObj.productType === 'ECOMMERCE'
+        ? true
+        : (nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+            ? nearbySellerIds.some((id) => id && id.toString() === sellerIdStr)
+            : false);
+      prodObj.isAvailable = isAvailable;
 
       if (prodObj.seller && typeof prodObj.seller === "object" && prodObj.seller.viewCustomerDetails === false) {
         delete prodObj.seller.storeName;
@@ -262,7 +401,7 @@ export const getProducts = async (req: Request, res: Response) => {
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { latitude, longitude } = req.query; // User location
+    const { latitude, longitude, channel, productType: queryProductType } = req.query; // User location & channel
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -276,12 +415,12 @@ export const getProductById = async (req: Request, res: Response) => {
       status: "Active",
       publish: true,
     })
-      .populate("category", "name")
+      .populate("category", "name commerceChannels wholesaleEnabled")
       .populate("subcategory", "name")
       .populate("brand", "name")
       .populate(
         "seller",
-        "sellerName storeName city fssaiLicNo address location serviceRadiusKm viewCustomerDetails"
+        "sellerName storeName city fssaiLicNo address location serviceRadiusKm viewCustomerDetails wholesaleEnabled"
       );
 
     if (!product) {
@@ -289,6 +428,72 @@ export const getProductById = async (req: Request, res: Response) => {
         success: false,
         message: "Product not found or unavailable",
       });
+    }
+
+    // ── WHOLESALE / RETAIL SHOPPING MODE ENFORCEMENT ON DIRECT RETRIEVAL ────
+    const isWholesaleMode =
+      (req.query.isWholesale as string)?.toLowerCase() === "true" ||
+      (req.query.wholesale as string)?.toLowerCase() === "true";
+
+    if (product.wholesaleEnabled === true) {
+      // Wholesale-enabled product: MUST NOT be accessible in retail mode
+      if (!isWholesaleMode) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in retail mode",
+        });
+      }
+
+      // Wholesale mode: Re-validate ALL 4 gates
+      const appSettings = await AppSettings.findOne();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+      const seller = product.seller as any;
+      const category = product.category as any;
+
+      const wholesaleEligibility = checkWholesaleEligibility({
+        globalWholesaleEnabled,
+        sellerWholesaleEnabled: !!seller?.wholesaleEnabled,
+        categoryWholesaleEnabled: !!category?.wholesaleEnabled,
+        productWholesaleEnabled: true,
+      });
+
+      if (!wholesaleEligibility.eligible) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in wholesale mode",
+        });
+      }
+    } else {
+      // Retail-only product: MUST NOT be accessible in wholesale mode
+      if (isWholesaleMode) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in wholesale mode",
+        });
+      }
+    }
+
+    // Server-side Channel & Category Compatibility Enforcement
+    const requestedChannel = (((channel || queryProductType) as string) || "").toUpperCase();
+    if (requestedChannel === "QUICK_COMMERCE" || requestedChannel === "ECOMMERCE") {
+      const prodType = product.productType || "QUICK_COMMERCE";
+      const catChannels: string[] = (product.category as any)?.commerceChannels || [];
+
+      // 1. Product's productType must match requested channel
+      if (prodType !== requestedChannel) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in this channel",
+        });
+      }
+
+      // 2. Category's commerceChannels must permit requested channel
+      if (catChannels.length > 0 && !catChannels.includes(requestedChannel)) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in this channel",
+        });
+      }
     }
 
     // Parse location
@@ -365,8 +570,8 @@ export const getProductById = async (req: Request, res: Response) => {
       similarProductsQuery.category = categoryId;
     }
 
-    // Filter similar products by location when sellers are in range
-    if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
+    // Filter similar products by location when sellers are in range (only for quick commerce)
+    if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng) && product.productType !== 'ECOMMERCE') {
       const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
       if (nearbySellerIds.length > 0) {
         similarProductsQuery.seller = { $in: nearbySellerIds };
@@ -376,7 +581,7 @@ export const getProductById = async (req: Request, res: Response) => {
     const similarProducts = await Product.find(similarProductsQuery)
       .limit(6)
       .select(
-        "productName price discPrice compareAtPrice mrp variations mainImage pack discount _id rating reviewsCount"
+        "productName price discPrice compareAtPrice mrp variations mainImage pack discount _id rating reviewsCount wholesaleEnabled wholesalePrice wholesaleMinimumQuantity productType"
       );
 
     const settings = await AppSettings.getSettings();

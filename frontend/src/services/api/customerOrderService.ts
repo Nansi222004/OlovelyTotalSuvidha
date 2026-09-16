@@ -19,6 +19,7 @@ export interface CreateOrderData {
         };
         quantity: number;
         variant?: string;
+        isWholesale?: boolean;
     }[];
     address: {
         addressLine?: string;
@@ -34,7 +35,8 @@ export interface CreateOrderData {
         deliveryFee: number;
         platformFee: number;
     };
-    deliveryOption?: 'Instant' | 'Standard';
+    deliveryOption?: 'Instant' | 'Standard' | 'Courier';
+    deliverySelections?: Record<string, string>;
 }
 
 export interface OrderResponse {

@@ -88,6 +88,9 @@ export interface ISeller extends Document {
     flatShippingFee?: number;
   };
 
+  // Wholesale Capability (set by Admin)
+  wholesaleEnabled: boolean;
+
   createdAt: Date;
   updatedAt: Date;
   // FCM Push Notification Tokens
@@ -344,6 +347,12 @@ const SellerSchema = new Schema<ISeller>(
       defaultCourier: { type: String, trim: true },
       freeShippingThreshold: { type: Number, default: 0 },
       flatShippingFee: { type: Number, default: 0 },
+    },
+    // Wholesale Capability (Admin-controlled per seller)
+    wholesaleEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
     // FCM Push Notification Tokens
     fcmTokens: {

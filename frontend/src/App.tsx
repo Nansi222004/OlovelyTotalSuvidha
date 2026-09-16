@@ -252,6 +252,12 @@ const AdminBestsellerCards = lazyWithRetry(
 const AdminPromoStrip = lazyWithRetry(
   () => import("./modules/admin/pages/AdminPromoStrip"), "AdminPromoStrip"
 );
+const AdminBanners = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminBanners"), "AdminBanners"
+);
+const AdminInventoryLedger = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminInventoryLedger"), "AdminInventoryLedger"
+);
 const AdminLowestPrices = lazyWithRetry(
   () => import("./modules/admin/pages/AdminLowestPrices"), "AdminLowestPrices"
 );
@@ -310,6 +316,9 @@ const AdminBillingSettings = lazyWithRetry(
 );
 const AdminAppSettings = lazyWithRetry(
   () => import("./modules/admin/pages/AdminAppSettings"), "AdminAppSettings"
+);
+const AdminWholesaleSettings = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminWholesaleSettings"), "AdminWholesaleSettings"
 );
 const AdminLanguages = lazyWithRetry(
   () => import("./modules/admin/pages/AdminLanguages"), "AdminLanguages"
@@ -740,7 +749,15 @@ function App() {
                                         element={<AdminStockManagement />}
                                       />
                                       <Route
+                                        path="inventory-ledger"
+                                        element={<AdminInventoryLedger />}
+                                      />
+                                      <Route
                                         path="product/edit/:id"
+                                        element={<AdminProductEdit />}
+                                      />
+                                      <Route
+                                        path="product/add"
                                         element={<AdminProductEdit />}
                                       />
                                       <Route
@@ -829,6 +846,10 @@ function App() {
                                         element={<AdminPromoStrip />}
                                       />
                                       <Route
+                                        path="banners"
+                                        element={<AdminBanners />}
+                                      />
+                                      <Route
                                         path="lowest-prices"
                                         element={<AdminLowestPrices />}
                                       />
@@ -904,6 +925,10 @@ function App() {
                                       <Route
                                         path="settings"
                                         element={<AdminAppSettings />}
+                                      />
+                                      <Route
+                                        path="wholesale-settings"
+                                        element={<AdminWholesaleSettings />}
                                       />
                                       <Route
                                         path="languages"

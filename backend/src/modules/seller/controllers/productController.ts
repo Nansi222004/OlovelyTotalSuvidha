@@ -7,6 +7,16 @@ import SubCategory from "../../../models/SubCategory";
 import Shop from "../../../models/Shop";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
+import {
+  isProductTypeAllowedForCategory,
+  validateProductChannelCompatibility,
+  checkWholesaleEligibility,
+  validateWholesalePrice,
+} from "../../../utils/categoryChannelHelper";
+import { validateBarcodeUniqueness } from "../../../utils/barcodeHelper";
+import AppSettings from "../../../models/AppSettings";
+import { mutateStock } from "../../../services/inventoryService";
+import { parseSafeBoolean } from "./sellerAuthController";
 
 /**
  * Validate that the seller is allowed to add products in the given header category.
@@ -72,20 +82,6 @@ export const createProduct = asyncHandler(
       targetProductType = sellerVendorType === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE";
     }
 
-    if (sellerVendorType === "ECOMMERCE" && targetProductType === "QUICK_COMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "ECOMMERCE-only seller cannot create QUICK_COMMERCE products",
-      });
-    }
-
-    if (sellerVendorType === "QUICK_COMMERCE" && targetProductType === "ECOMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "QUICK_COMMERCE-only seller cannot create ECOMMERCE products",
-      });
-    }
-
     // Validate Category & Subcategory hierarchy
     const targetCategoryId = productData.categoryId || productData.category;
     const targetSubcategoryId = productData.subcategoryId || productData.subcategory;
@@ -96,6 +92,20 @@ export const createProduct = asyncHandler(
         return res.status(400).json({
           success: false,
           message: "Invalid product category ID provided",
+        });
+      }
+
+      // Enforce Unified Channel Compatibility Check
+      const channelCheck = validateProductChannelCompatibility({
+        sellerVendorType,
+        productType: targetProductType,
+        categoryChannels: categoryObj.commerceChannels,
+        categoryName: categoryObj.name,
+      });
+      if (!channelCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelCheck.error,
         });
       }
 
@@ -274,6 +284,82 @@ export const createProduct = asyncHandler(
       // If shop by store only is true but no shopId provided, set to null
       newProductData.shopId = null;
     }
+
+    // ── WHOLESALE FIELD VALIDATION ───────────────────────────────────────────
+    newProductData.wholesaleEnabled = parseSafeBoolean(newProductData.wholesaleEnabled, false);
+    if (newProductData.wholesaleEnabled) {
+      // Seller must have wholesale enabled on their account
+      const sellerDoc = await Seller.findById(sellerId).select('wholesaleEnabled').lean();
+      if (!sellerDoc?.wholesaleEnabled) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your seller account does not have wholesale capability enabled. Contact admin.',
+        });
+      }
+
+      // Check global wholesale setting
+      const appSettings = await AppSettings.findOne();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+      // Category wholesale gate
+      const targetCatDoc = targetCategoryId ? await Category.findById(targetCategoryId).select('wholesaleEnabled').lean() : null;
+
+      const eligibility = checkWholesaleEligibility({
+        globalWholesaleEnabled,
+        sellerWholesaleEnabled: !!sellerDoc.wholesaleEnabled,
+        categoryWholesaleEnabled: !!targetCatDoc?.wholesaleEnabled,
+        productWholesaleEnabled: true,
+      });
+      if (!eligibility.eligible) {
+        return res.status(400).json({ success: false, message: eligibility.reason });
+      }
+
+      // Validate wholesale price
+      const wp = Number(newProductData.wholesalePrice);
+      if (!wp || isNaN(wp) || wp <= 0) {
+        return res.status(400).json({ success: false, message: 'Wholesale price must be greater than 0' });
+      }
+      const retailPrice = newProductData.price || newProductData.variations?.[0]?.price || 0;
+      const priceCheck = validateWholesalePrice(wp, retailPrice);
+      if (!priceCheck.valid) {
+        return res.status(400).json({ success: false, message: priceCheck.error });
+      }
+      newProductData.wholesalePrice = wp;
+
+      // Validate MOQ
+      const moq = newProductData.wholesaleMinimumQuantity !== undefined
+        ? Number(newProductData.wholesaleMinimumQuantity)
+        : 1;
+      if (isNaN(moq) || moq < 1) {
+        return res.status(400).json({ success: false, message: 'Wholesale minimum quantity must be at least 1' });
+      }
+      newProductData.wholesaleMinimumQuantity = moq;
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
+    // ── BARCODE UNIQUENESS VALIDATION ───────────────────────────────────────
+    const barcodesInPayload: { barcode: string; scopeLabel: string }[] = [];
+    if (newProductData.barcode) {
+      barcodesInPayload.push({ barcode: newProductData.barcode, scopeLabel: 'top-level barcode' });
+    }
+    if (newProductData.variations && Array.isArray(newProductData.variations)) {
+      for (const [idx, v] of newProductData.variations.entries()) {
+        if (v.barcode) {
+          barcodesInPayload.push({ barcode: v.barcode, scopeLabel: `variation[${idx}] barcode` });
+        }
+      }
+    }
+    for (const { barcode, scopeLabel } of barcodesInPayload) {
+      const barcodeCheck = await validateBarcodeUniqueness({ barcode, targetProductId: undefined });
+      if (!barcodeCheck.valid) {
+        return res.status(409).json({
+          success: false,
+          message: `Barcode "${barcode}" (${scopeLabel}) is already assigned to another product. Barcodes must be globally unique.`,
+          field: scopeLabel,
+        });
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     const product = await Product.create(newProductData);
 
@@ -615,12 +701,139 @@ export const updateProduct = asyncHandler(
       });
     }
 
+    // Enforce Category Commerce Channel Check on update
+    const effectiveCategoryId = updateData.category || product.category;
+    const effectiveProductType = updateData.productType || product.productType;
+
+    if (effectiveCategoryId && effectiveProductType) {
+      const categoryObj = await Category.findById(effectiveCategoryId);
+      if (!categoryObj) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product category ID provided",
+        });
+      }
+
+      const seller = await Seller.findById(sellerId).select("vendorType");
+      const sellerVendorType = seller?.vendorType || "QUICK_COMMERCE";
+
+      const channelCheck = validateProductChannelCompatibility({
+        sellerVendorType,
+        productType: effectiveProductType,
+        categoryChannels: categoryObj.commerceChannels,
+        categoryName: categoryObj.name,
+      });
+      if (!channelCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelCheck.error,
+        });
+      }
+
+      const effectiveSubcategoryId =
+        updateData.subcategory !== undefined
+          ? updateData.subcategory
+          : product.subcategory;
+      if (effectiveSubcategoryId && updateData.category) {
+        const childInCat = await Category.findOne({
+          _id: effectiveSubcategoryId,
+          parentId: effectiveCategoryId,
+        });
+        const childInSub = await SubCategory.findOne({
+          _id: effectiveSubcategoryId,
+          category: effectiveCategoryId,
+        });
+        if (!childInCat && !childInSub) {
+          return res.status(400).json({
+            success: false,
+            message: `Selected subcategory does not belong to category "${categoryObj.name}"`,
+          });
+        }
+      }
+    }
+
+    // Sanitize wholesaleEnabled if provided
+    if (updateData.wholesaleEnabled !== undefined) {
+      updateData.wholesaleEnabled = parseSafeBoolean(updateData.wholesaleEnabled, false);
+    }
+
     // Apply updates
     Object.assign(product, updateData);
 
     // If variations were updated, mark as modified
     if (updateData.variations) {
       product.markModified("variations");
+    }
+
+    // == WHOLESALE FIELD VALIDATION ON UPDATE ==
+    if ((product as any).wholesaleEnabled) {
+      const sellerDoc = await Seller.findById(sellerId).select('wholesaleEnabled').lean();
+      if (!sellerDoc?.wholesaleEnabled) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your seller account does not have wholesale capability enabled.',
+        });
+      }
+
+      // Check global and category wholesale settings
+      const appSettings = await AppSettings.findOne();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+      const catId = product.category;
+      const catDoc = catId ? await Category.findById(catId).select('wholesaleEnabled').lean() : null;
+
+      const eligibility = checkWholesaleEligibility({
+        globalWholesaleEnabled,
+        sellerWholesaleEnabled: !!sellerDoc.wholesaleEnabled,
+        categoryWholesaleEnabled: !!catDoc?.wholesaleEnabled,
+        productWholesaleEnabled: true,
+      });
+      if (!eligibility.eligible) {
+        return res.status(400).json({ success: false, message: eligibility.reason });
+      }
+
+      const wp = Number((product as any).wholesalePrice);
+      if (!wp || isNaN(wp) || wp <= 0) {
+        return res.status(400).json({ success: false, message: 'Wholesale price must be greater than 0' });
+      }
+      const retailPrice = (product as any).price || 0;
+      const priceCheck = validateWholesalePrice(wp, retailPrice);
+      if (!priceCheck.valid) {
+        return res.status(400).json({ success: false, message: priceCheck.error });
+      }
+
+      if ((product as any).wholesaleMinimumQuantity !== undefined) {
+        const moq = Number((product as any).wholesaleMinimumQuantity);
+        if (isNaN(moq) || moq < 1) {
+          return res.status(400).json({ success: false, message: 'Wholesale minimum quantity must be at least 1' });
+        }
+      }
+    }
+
+    // == BARCODE UNIQUENESS VALIDATION ON UPDATE ==
+    const updateBarcodesInPayload: { barcode: string; scopeLabel: string }[] = [];
+
+    if (updateData.barcode) {
+      updateBarcodesInPayload.push({ barcode: updateData.barcode, scopeLabel: 'top-level barcode' });
+    }
+    if (updateData.variations && Array.isArray(updateData.variations)) {
+      for (const [idx, v] of updateData.variations.entries()) {
+        if (v.barcode) {
+          updateBarcodesInPayload.push({ barcode: v.barcode, scopeLabel: `variation[${idx}] barcode` });
+        }
+      }
+    }
+    for (const { barcode, scopeLabel } of updateBarcodesInPayload) {
+      const barcodeCheck = await validateBarcodeUniqueness({
+        barcode,
+        targetProductId: product._id.toString(),
+      });
+      if (!barcodeCheck.valid) {
+        return res.status(409).json({
+          success: false,
+          message: `Barcode "${barcode}" (${scopeLabel}) is already assigned to another product.`,
+          field: scopeLabel,
+        });
+      }
     }
 
     await product.save();
@@ -702,26 +915,53 @@ export const updateStock = asyncHandler(async (req: Request, res: Response) => {
   }
 
   if (stock !== undefined) {
-    variation.stock = stock;
-    // Automatically update status based on stock
-    if (stock === 0) {
-      variation.status = "Sold out";
-    } else if (stock > 0 && variation.status === "Sold out") {
-      variation.status = "Available";
+    const targetStock = Number(stock);
+    const currentStock = Number(variation.stock) || 0;
+    const delta = targetStock - currentStock;
+
+    if (delta !== 0) {
+      await mutateStock({
+        productId: id,
+        variationId,
+        quantity: delta,
+        type: "ADJUSTMENT",
+        referenceType: "ADJUSTMENT",
+        performedBy: sellerId,
+        performedByRole: "SELLER",
+        note: "Seller variation stock update",
+      });
     }
-  }
-  if (status) {
-    variation.status = status;
+
+    // Automatically update status based on stock if needed
+    const statusUpdate: any = {};
+    if (targetStock === 0) {
+      statusUpdate["variations.$.status"] = "Sold out";
+    } else if (targetStock > 0 && variation.status === "Sold out") {
+      statusUpdate["variations.$.status"] = "Available";
+    }
+    if (status) {
+      statusUpdate["variations.$.status"] = status;
+    }
+
+    if (Object.keys(statusUpdate).length > 0) {
+      await Product.updateOne(
+        { _id: id, "variations._id": variationId },
+        { $set: statusUpdate }
+      );
+    }
+  } else if (status) {
+    await Product.updateOne(
+      { _id: id, "variations._id": variationId },
+      { $set: { "variations.$.status": status } }
+    );
   }
 
-  // Mark variations as modified since we updated a sub-document field
-  product.markModified("variations");
-  await product.save();
+  const updatedProduct = await Product.findById(id);
 
   return res.status(200).json({
     success: true,
     message: "Stock updated successfully",
-    data: product,
+    data: updatedProduct,
   });
 });
 
@@ -788,12 +1028,41 @@ export const bulkUpdateStock = asyncHandler(
           (v: any) => v._id?.toString() === variationId
         );
         if (variation) {
-          variation.stock = stock;
-          if (stock === 0) variation.status = "Sold out";
-          else if (stock > 0 && variation.status === "Sold out")
-            variation.status = "In stock";
+          const targetStock = Number(stock);
+          const currentStock = Number(variation.stock) || 0;
+          const delta = targetStock - currentStock;
 
-          await product.save();
+          if (delta !== 0) {
+            try {
+              await mutateStock({
+                productId,
+                variationId,
+                quantity: delta,
+                type: "ADJUSTMENT",
+                referenceType: "ADJUSTMENT",
+                performedBy: sellerId,
+                performedByRole: "SELLER",
+                note: "Seller bulk variation stock update",
+              });
+              variation.stock = targetStock;
+            } catch (err: any) {
+              results.push({ productId, variationId, success: false, message: err.message });
+              continue;
+            }
+          }
+
+          if (targetStock === 0) {
+            await Product.updateOne(
+              { _id: productId, "variations._id": variationId },
+              { $set: { "variations.$.status": "Sold out" } }
+            );
+          } else if (targetStock > 0 && variation.status === "Sold out") {
+            await Product.updateOne(
+              { _id: productId, "variations._id": variationId },
+              { $set: { "variations.$.status": "In stock" } }
+            );
+          }
+
           results.push({ productId, variationId, success: true });
         } else {
           results.push({

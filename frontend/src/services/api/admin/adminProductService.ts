@@ -26,6 +26,8 @@ export interface Category {
   createdAt?: string;
   updatedAt?: string;
   commissionRate?: number;
+  commerceChannels?: ("QUICK_COMMERCE" | "ECOMMERCE")[];
+  wholesaleEnabled?: boolean;
 }
 
 export interface CreateCategoryData {
@@ -39,6 +41,8 @@ export interface CreateCategoryData {
   headerCategoryId?: string | null;
   status?: "Active" | "Inactive";
   commissionRate?: number;
+  commerceChannels?: ("QUICK_COMMERCE" | "ECOMMERCE")[];
+  wholesaleEnabled?: boolean;
 }
 
 export interface UpdateCategoryData extends Partial<CreateCategoryData> { }
@@ -127,7 +131,11 @@ export interface Product {
     price?: number;
     stock?: number;
     sku?: string;
+    barcode?: string;
   }>;
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
   publish: boolean;
   popular: boolean;
   dealOfDay: boolean;
@@ -167,6 +175,9 @@ export interface CreateProductData {
   stock: number;
   sku?: string;
   barcode?: string;
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
   variationType?: string;
   variations?: Array<{
     name: string;
@@ -174,6 +185,7 @@ export interface CreateProductData {
     price?: number;
     stock?: number;
     sku?: string;
+    barcode?: string;
   }>;
   publish?: boolean;
   popular?: boolean;
@@ -460,7 +472,7 @@ export const deleteBrand = async (id: string): Promise<ApiResponse<void>> => {
  * Create a new product
  */
 export const createProduct = async (
-  data: CreateProductData
+  data: Partial<CreateProductData> | any
 ): Promise<ApiResponse<Product>> => {
   const response = await api.post<ApiResponse<Product>>(
     "/admin/products",
@@ -480,6 +492,7 @@ export const getProducts = async (
   });
   return response.data;
 };
+
 
 /**
  * Get product by ID

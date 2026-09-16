@@ -31,12 +31,14 @@ export interface IProduct extends Document {
   // Variations
   variationType?: string; // e.g., 'Size', 'Color', 'Weight'
   variations?: Array<{
+    _id?: mongoose.Types.ObjectId;
     name: string;
     value: string;
     price?: number;
     discPrice?: number;
     stock?: number;
     sku?: string;
+    barcode?: string;
     status?: string;
   }>;
 
@@ -109,6 +111,14 @@ export interface IProduct extends Document {
     dimensionsCm?: { length?: number; width?: number; height?: number };
     shippingClass?: string;
   };
+
+  // Wholesale Fields (product-level gate — 4th layer of hierarchy)
+  /** Whether this product can be purchased at wholesale price/MOQ. Admin/Seller-set. */
+  wholesaleEnabled: boolean;
+  /** Wholesale unit price — must be < retail price. Server-authoritative. */
+  wholesalePrice?: number;
+  /** Wholesale minimum order quantity — persisted independently of global default. */
+  wholesaleMinimumQuantity?: number;
 
   createdAt: Date;
   updatedAt: Date;
@@ -227,6 +237,10 @@ const ProductSchema = new Schema<IProduct>(
             default: "Available",
           },
           sku: String,
+          barcode: {
+            type: String,
+            trim: true,
+          },
         },
       ],
       default: [],
@@ -356,7 +370,6 @@ const ProductSchema = new Schema<IProduct>(
     productType: {
       type: String,
       enum: ['QUICK_COMMERCE', 'ECOMMERCE'],
-      default: 'QUICK_COMMERCE',
     },
     productSource: {
       type: String,
@@ -394,6 +407,20 @@ const ProductSchema = new Schema<IProduct>(
       ),
       required: false,
       default: undefined,
+    },
+    // Wholesale Fields (product-level gate — 4th layer of hierarchy)
+    wholesaleEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    wholesalePrice: {
+      type: Number,
+      min: [0.01, 'Wholesale price must be greater than 0'],
+    },
+    wholesaleMinimumQuantity: {
+      type: Number,
+      min: [1, 'Wholesale minimum quantity must be at least 1'],
     },
   },
   {

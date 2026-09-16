@@ -143,6 +143,7 @@ async function fetchSectionData(
       const query: any = {
         status: "Active",
         publish: true,
+        wholesaleEnabled: { $ne: true }, // Exclude wholesale-only products from retail home feeds
         // Exclude shop-by-store-only products from home sections
         $or: [
           { isShopByStoreOnly: { $ne: true } },
@@ -475,6 +476,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
             _id: { $in: validProdIds.slice(0, 4) },
             status: "Active",
             publish: true,
+            wholesaleEnabled: { $ne: true },
             ...(hasUserLocation && nearbySellerIds.length > 0 ? { seller: { $in: nearbySellerIds } } : {}),
           })
             .select("mainImage")
@@ -820,10 +822,15 @@ export const getHomeContent = async (req: Request, res: Response) => {
 export const getStoreProducts = async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
-    const { latitude, longitude } = req.query; // User location for filtering
+    const { latitude, longitude } = req.query;
+    const isWholesaleMode =
+      (req.query.isWholesale as string)?.toLowerCase() === "true" ||
+      (req.query.wholesale as string)?.toLowerCase() === "true";
+
     let query: any = {
       status: "Active",
       publish: true,
+      ...(isWholesaleMode ? { wholesaleEnabled: true } : { wholesaleEnabled: { $ne: true } }),
     };
 
     console.log(`[getStoreProducts] Looking for shop with storeId: ${storeId}`);

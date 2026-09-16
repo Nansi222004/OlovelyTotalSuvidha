@@ -104,6 +104,13 @@ export default function Cart() {
             <div className="p-4 space-y-4 divide-y divide-neutral-100">
               {qcItems.map((item) => {
                 const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                const isItemWholesale = Boolean(item.isWholesale);
+                const unitPrice = (isItemWholesale && item.wholesalePrice && item.wholesalePrice > 0)
+                  ? item.wholesalePrice
+                  : displayPrice;
+                const moq = item.wholesaleMinimumQuantity || item.product.wholesaleMinimumQuantity || 1;
+                const isBelowMoq = isItemWholesale && item.quantity < moq;
+
                 return (
                   <div
                     key={item.product.id || item.product._id}
@@ -121,26 +128,42 @@ export default function Cart() {
                           {item.product.name?.charAt(0).toUpperCase()}
                         </span>
                       )}
-                      <span className="absolute bottom-0 left-0 right-0 bg-emerald-700 text-white text-[9px] font-bold text-center py-0.5">
-                        ⚡ Quick
+                      <span className={`absolute bottom-0 left-0 right-0 text-white text-[9px] font-bold text-center py-0.5 ${
+                        isItemWholesale ? 'bg-purple-700' : 'bg-emerald-700'
+                      }`}>
+                        {isItemWholesale ? '🏷️ Wholesale' : '⚡ Quick'}
                       </span>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-neutral-900 mb-1 text-sm md:text-base line-clamp-2">
-                        {item.product.name}
-                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <h3 className="font-semibold text-neutral-900 text-sm md:text-base line-clamp-2">
+                          {item.product.name}
+                        </h3>
+                        {isItemWholesale && (
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                            Wholesale (MOQ: {moq})
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-neutral-500 mb-1">{item.product.pack}</p>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm md:text-base font-bold text-neutral-900">
-                          ₹{displayPrice.toLocaleString('en-IN')}
+                          ₹{unitPrice.toLocaleString('en-IN')}
                         </span>
-                        {hasDiscount && (
+                        {hasDiscount && !isItemWholesale && (
                           <span className="text-xs text-neutral-500 line-through">
                             ₹{mrp.toLocaleString('en-IN')}
                           </span>
                         )}
                       </div>
+
+                      {isBelowMoq && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded mb-2 flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>Quantity ({item.quantity}) is below wholesale MOQ ({moq} units)</span>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-3">
                         <Button
@@ -163,7 +186,7 @@ export default function Cart() {
                           +
                         </Button>
                         <div className="ml-auto text-right font-bold text-sm text-neutral-900">
-                          ₹{(displayPrice * item.quantity).toFixed(0)}
+                          ₹{(unitPrice * item.quantity).toFixed(0)}
                         </div>
                       </div>
                     </div>
@@ -202,6 +225,13 @@ export default function Cart() {
             <div className="p-4 space-y-4 divide-y divide-neutral-100">
               {ecomItems.map((item) => {
                 const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                const isItemWholesale = Boolean(item.isWholesale);
+                const unitPrice = (isItemWholesale && item.wholesalePrice && item.wholesalePrice > 0)
+                  ? item.wholesalePrice
+                  : displayPrice;
+                const moq = item.wholesaleMinimumQuantity || item.product.wholesaleMinimumQuantity || 1;
+                const isBelowMoq = isItemWholesale && item.quantity < moq;
+
                 return (
                   <div
                     key={item.product.id || item.product._id}
@@ -219,26 +249,42 @@ export default function Cart() {
                           {item.product.name?.charAt(0).toUpperCase()}
                         </span>
                       )}
-                      <span className="absolute bottom-0 left-0 right-0 bg-blue-700 text-white text-[9px] font-bold text-center py-0.5">
-                        📦 Courier
+                      <span className={`absolute bottom-0 left-0 right-0 text-white text-[9px] font-bold text-center py-0.5 ${
+                        isItemWholesale ? 'bg-purple-700' : 'bg-blue-700'
+                      }`}>
+                        {isItemWholesale ? '🏷️ Wholesale' : '📦 Courier'}
                       </span>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-neutral-900 mb-1 text-sm md:text-base line-clamp-2">
-                        {item.product.name}
-                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <h3 className="font-semibold text-neutral-900 text-sm md:text-base line-clamp-2">
+                          {item.product.name}
+                        </h3>
+                        {isItemWholesale && (
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                            Wholesale (MOQ: {moq})
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-neutral-500 mb-1">{item.product.pack}</p>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm md:text-base font-bold text-neutral-900">
-                          ₹{displayPrice.toLocaleString('en-IN')}
+                          ₹{unitPrice.toLocaleString('en-IN')}
                         </span>
-                        {hasDiscount && (
+                        {hasDiscount && !isItemWholesale && (
                           <span className="text-xs text-neutral-500 line-through">
                             ₹{mrp.toLocaleString('en-IN')}
                           </span>
                         )}
                       </div>
+
+                      {isBelowMoq && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded mb-2 flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>Quantity ({item.quantity}) is below wholesale MOQ ({moq} units)</span>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-3">
                         <Button
@@ -261,7 +307,7 @@ export default function Cart() {
                           +
                         </Button>
                         <div className="ml-auto text-right font-bold text-sm text-neutral-900">
-                          ₹{(displayPrice * item.quantity).toFixed(0)}
+                          ₹{(unitPrice * item.quantity).toFixed(0)}
                         </div>
                       </div>
                     </div>

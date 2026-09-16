@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Seller from "../../../models/Seller";
 import { asyncHandler } from "../../../utils/asyncHandler";
+import { parseSafeBoolean } from "./sellerAuthController";
 
 /**
  * Get all sellers (Admin only)
@@ -155,6 +156,11 @@ export const updateSeller = asyncHandler(
     ) {
       // If empty string or null is sent, remove it from updates to keep existing value
       delete updateData.serviceRadiusKm;
+    }
+
+    // Safe boolean parsing for wholesaleEnabled
+    if (updateData.wholesaleEnabled !== undefined) {
+      updateData.wholesaleEnabled = parseSafeBoolean(updateData.wholesaleEnabled, false);
     }
 
     const seller = await Seller.findByIdAndUpdate(id, updateData, {

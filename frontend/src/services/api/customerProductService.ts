@@ -18,6 +18,8 @@ export interface Category {
     subcategories?: Category[];
     headerCategoryId?: string | { _id: string; name?: string };
     totalProducts?: number;
+    commerceChannels?: ("QUICK_COMMERCE" | "ECOMMERCE")[];
+    wholesaleEnabled?: boolean;
 }
 
 export interface GetProductsParams {
@@ -33,6 +35,7 @@ export interface GetProductsParams {
     longitude?: number; // User location longitude
     channel?: string;
     productType?: string;
+    isWholesale?: boolean | string;
 }
 
 export interface ProductListResponse {
@@ -70,11 +73,19 @@ export const getProducts = async (params?: GetProductsParams): Promise<ProductLi
  * Get product details by ID (Public)
  * Location (latitude/longitude) is required to verify product availability
  */
-export const getProductById = async (id: string, latitude?: number, longitude?: number): Promise<ProductDetailResponse> => {
+export const getProductById = async (
+    id: string,
+    latitude?: number,
+    longitude?: number,
+    isWholesale?: boolean
+): Promise<ProductDetailResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
         params.latitude = latitude;
         params.longitude = longitude;
+    }
+    if (isWholesale) {
+        params.isWholesale = 'true';
     }
     const response = await api.get<ProductDetailResponse>(`/customer/products/${id}`, { params });
     return response.data;
@@ -93,17 +104,22 @@ export const getCategoryById = async (id: string): Promise<any> => {
  * Using /tree endpoint to get hierarchy if available, otherwise just /
  * Cached for 10 minutes as categories don't change frequently
  */
-export const getCategories = async (tree: boolean = false, skipCache: boolean = false): Promise<CategoryListResponse> => {
+export const getCategories = async (
+    tree: boolean = false,
+    skipCache: boolean = false,
+    channel?: "QUICK_COMMERCE" | "ECOMMERCE"
+): Promise<CategoryListResponse> => {
     const url = tree ? '/customer/categories/tree' : '/customer/categories';
+    const params = channel ? { channel } : undefined;
     if (skipCache) {
-        const response = await api.get<CategoryListResponse>(url);
+        const response = await api.get<CategoryListResponse>(url, { params });
         return response.data;
     }
-    const cacheKey = `customer-categories-v3-${tree ? 'tree' : 'list'}`;
+    const cacheKey = `customer-categories-v3-${tree ? 'tree' : 'list'}${channel ? `-${channel}` : ''}`;
     return apiCache.getOrFetch(
         cacheKey,
         async () => {
-            const response = await api.get<CategoryListResponse>(url);
+            const response = await api.get<CategoryListResponse>(url, { params });
             return response.data;
         },
         5 * 60 * 1000 // 5 minutes cache

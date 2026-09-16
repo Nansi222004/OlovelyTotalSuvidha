@@ -47,6 +47,15 @@ export interface AppSettingsData {
       description: string;
     }>;
   };
+  wholesaleSettings?: {
+    wholesaleEnabled?: boolean;
+    defaultWholesaleMinimumQuantity?: number;
+    wholesaleDisplayEnabled?: boolean;
+  };
+  inventorySettings?: {
+    lowStockThreshold?: number;
+    lowStockDisplayQuantity?: number;
+  };
 }
 
 interface AppSettingsContextType {
@@ -71,6 +80,15 @@ const defaultSettings: AppSettingsData = {
   platformFee: 2,
   deliveryCharges: 0,
   freeDeliveryThreshold: 500,
+  wholesaleSettings: {
+    wholesaleEnabled: false,
+    defaultWholesaleMinimumQuantity: 10,
+    wholesaleDisplayEnabled: true,
+  },
+  inventorySettings: {
+    lowStockThreshold: 10,
+    lowStockDisplayQuantity: 2,
+  },
 };
 
 const AppSettingsContext = createContext<AppSettingsContextType>({
@@ -93,6 +111,8 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
           appName: response.data.data.appName || prev.appName,
           appLogo: response.data.data.appLogo || prev.appLogo,
           estimatedDeliveryTime: response.data.data.estimatedDeliveryTime || prev.estimatedDeliveryTime,
+          wholesaleSettings: response.data.data.wholesaleSettings || prev.wholesaleSettings,
+          inventorySettings: response.data.data.inventorySettings || prev.inventorySettings,
         }));
       }
     } catch (error) {
@@ -104,6 +124,11 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   useEffect(() => {
     fetchSettings();
+    const handleSettingsUpdate = () => {
+      fetchSettings();
+    };
+    window.addEventListener('appSettingsUpdated', handleSettingsUpdate);
+    return () => window.removeEventListener('appSettingsUpdated', handleSettingsUpdate);
   }, []);
 
   // Sync favicon with website logo / custom favicon

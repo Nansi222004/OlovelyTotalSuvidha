@@ -46,6 +46,7 @@ interface Seller {
     requireProductApproval?: boolean;
     viewCustomerDetails?: boolean;
     vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+    wholesaleEnabled?: boolean;
     shippingConfig?: {
         warehouseAddress?: string;
         pickupAddress?: string;
@@ -136,6 +137,7 @@ const mapSellerToFrontend = (seller: SellerType): Seller => {
         requireProductApproval: seller.requireProductApproval,
         viewCustomerDetails: seller.viewCustomerDetails,
         vendorType: seller.vendorType,
+        wholesaleEnabled: Boolean(seller.wholesaleEnabled),
         shippingConfig: seller.shippingConfig,
         pickupAddress: seller.shippingConfig?.pickupAddress || '',
         pickupPincode: seller.shippingConfig?.pickupPincode || '',
@@ -359,6 +361,7 @@ export default function AdminManageSellerList() {
                 viewCustomerDetails: seller.viewCustomerDetails ?? true,
                 balance: seller.balance || 0,
                 vendorType: seller.vendorType,
+                wholesaleEnabled: Boolean(seller.wholesaleEnabled),
                 pickupAddress: seller.pickupAddress || seller.shippingConfig?.pickupAddress || seller.address || '',
                 pickupPincode: seller.pickupPincode || seller.shippingConfig?.pickupPincode || '',
             });
@@ -401,6 +404,7 @@ export default function AdminManageSellerList() {
                 requireProductApproval: editForm.requireProductApproval,
                 viewCustomerDetails: editForm.viewCustomerDetails,
                 balance: Number(editForm.balance) || 0,
+                wholesaleEnabled: Boolean(editForm.wholesaleEnabled),
             };
 
             // Update shippingConfig for Ecommerce and Hybrid sellers while keeping vendorType read-only
@@ -833,12 +837,23 @@ export default function AdminManageSellerList() {
                                                 {(() => {
                                                     const badge = getSellerTypeBadge(seller.vendorType);
                                                     return (
-                                                        <span
-                                                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${badge.className}`}
-                                                            title={badge.description}
-                                                        >
-                                                            {badge.label}
-                                                        </span>
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <span
+                                                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${badge.className}`}
+                                                                title={badge.description}
+                                                            >
+                                                                {badge.label}
+                                                            </span>
+                                                            <span
+                                                                className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap ${
+                                                                    seller.wholesaleEnabled
+                                                                        ? 'bg-teal-50 text-teal-800 border border-teal-300'
+                                                                        : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                                                                }`}
+                                                            >
+                                                                {seller.wholesaleEnabled ? '🏷️ Wholesale: Enabled' : '🏷️ Wholesale: Disabled'}
+                                                            </span>
+                                                        </div>
                                                     );
                                                 })()}
                                             </td>
@@ -1242,6 +1257,37 @@ export default function AdminManageSellerList() {
                                         />
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Wholesale Selling Capability */}
+                            <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                                        <span className="text-base">🏷️</span>
+                                        Wholesale Selling Capability
+                                    </h4>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                        editForm.wholesaleEnabled
+                                            ? 'bg-teal-100 text-teal-800'
+                                            : 'bg-neutral-200 text-neutral-600'
+                                    }`}>
+                                        {editForm.wholesaleEnabled ? 'Wholesale: Enabled' : 'Wholesale: Disabled'}
+                                    </span>
+                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer select-none mt-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(editForm.wholesaleEnabled)}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, wholesaleEnabled: e.target.checked }))}
+                                        className="w-4 h-4 text-teal-600 rounded border-neutral-300 focus:ring-teal-500 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-semibold text-neutral-800">
+                                        Enable wholesale selling for this seller
+                                    </span>
+                                </label>
+                                <p className="text-[11px] text-neutral-500 mt-1.5">
+                                    Wholesale is an optional selling capability. Your delivery method still depends on the product's commerce type.
+                                </p>
                             </div>
 
                             {/* Location & Fulfillment Configuration */}

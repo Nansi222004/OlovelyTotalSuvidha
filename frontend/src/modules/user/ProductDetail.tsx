@@ -25,6 +25,7 @@ import {
 import { useTranslation } from '../../hooks/useTranslation';
 import PageLoader from '../../components/PageLoader';
 import { checkPincodeServiceability, PincodeServiceabilityResult } from '../../services/api/customerShippingService';
+import { useCustomerChannel } from '../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
 
@@ -33,9 +34,22 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const { t, getTranslatedField } = useTranslation();
-  const { cart, addToCart, updateQuantity } = useCart();
+  const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
   const { showToast } = useToast();
   const { location } = useLocation();
+  const { isWholesale, setActiveChannel } = useCustomerChannel();
+  const searchParams = new URLSearchParams(routerLocation.search);
+  const isWholesaleFromUrl = searchParams.get('wholesale') === 'true' || searchParams.get('isWholesale') === 'true';
+  const isWholesaleFromState = (routerLocation.state as any)?.isWholesale === true;
+  const effectiveIsWholesale = isWholesale || isWholesaleFromUrl || isWholesaleFromState;
+
+  // Ensure CustomerChannelContext stays in sync if navigation carries wholesale intent
+  useEffect(() => {
+    if ((isWholesaleFromUrl || isWholesaleFromState) && !isWholesale) {
+      setActiveChannel('WHOLESALE');
+    }
+  }, [isWholesaleFromUrl, isWholesaleFromState, isWholesale, setActiveChannel]);
+
   const { startLoading, stopLoading } = useLoading();
   const { settings: appSettings } = useAppSettings();
   const addButtonRef = useRef<HTMLButtonElement>(null);
@@ -104,11 +118,12 @@ export default function ProductDetail() {
         // Check if navigation came from store page
         const fromStore = (routerLocation.state as any)?.fromStore === true;
 
-        // Fetch product details with location
+        // Fetch product details with location and wholesale mode
         const response = await getProductById(
           id,
           location?.latitude,
-          location?.longitude
+          location?.longitude,
+          effectiveIsWholesale
         );
         if (response.success && response.data) {
           const productData = response.data as any;
@@ -162,7 +177,7 @@ export default function ProductDetail() {
 
 
     fetchProduct();
-  }, [id, location?.latitude, location?.longitude]);
+  }, [id, location?.latitude, location?.longitude, isWholesale]);
 
   useEffect(() => {
     const fetchReviews = async () => {
@@ -209,6 +224,25 @@ export default function ProductDetail() {
   // Get selected variant
   const selectedVariant = product?.variations?.[selectedVariantIndex] || null;
   const { displayPrice: variantPrice, mrp: variantMrp, discount, hasDiscount } = calculateProductPrice(product, selectedVariantIndex);
+
+  // Authoritative Wholesale Pricing & MOQ for Product Detail
+  const isWholesaleActive = Boolean(
+    effectiveIsWholesale &&
+    product?.wholesaleEnabled &&
+    (product?.wholesalePrice || 0) > 0
+  );
+  const wholesaleMoq = Math.max(
+    1,
+    Number(product?.wholesaleMinimumQuantity) ||
+    Number(appSettings.wholesaleSettings?.defaultWholesaleMinimumQuantity) ||
+    10
+  );
+  const effectiveDisplayPrice = isWholesaleActive && product?.wholesalePrice ? product.wholesalePrice : variantPrice;
+  const effectiveMrp = isWholesaleActive ? (variantMrp || product?.mrp || variantPrice) : variantMrp;
+  const effectiveDiscount = isWholesaleActive
+    ? (effectiveMrp > effectiveDisplayPrice ? Math.round(((effectiveMrp - effectiveDisplayPrice) / effectiveMrp) * 100) : 0)
+    : discount;
+  const effectiveHasDiscount = isWholesaleActive ? effectiveMrp > effectiveDisplayPrice : hasDiscount;
 
   const variantStock = selectedVariant?.stock !== undefined ? selectedVariant.stock : (product?.stock || 0);
   const variantTitle = selectedVariant?.title || selectedVariant?.value || product?.pack || "Standard";
@@ -352,17 +386,21 @@ export default function ProductDetail() {
       showToast("This variant is currently out of stock.", "info");
       return;
     }
+    const initialQty = isWholesaleActive ? wholesaleMoq : 1;
     // Create product with selected variant info
     const productWithVariant = {
       ...product,
-      price: variantPrice,
-      mrp: variantMrp,
+      price: effectiveDisplayPrice,
+      mrp: effectiveMrp,
       pack: variantTitle,
       selectedVariant: selectedVariant,
       variantId: selectedVariant?._id,
       variantTitle: variantTitle,
+      wholesalePrice: product?.wholesalePrice,
+      wholesaleMinimumQuantity: product?.wholesaleMinimumQuantity,
+      wholesaleEnabled: product?.wholesaleEnabled,
     };
-    addToCart(productWithVariant, addButtonRef.current);
+    addToCart(productWithVariant, addButtonRef.current, initialQty, isWholesaleActive);
   };
 
   const handleBuyNow = async () => {
@@ -374,17 +412,21 @@ export default function ProductDetail() {
       showToast("This variant is currently out of stock.", "info");
       return;
     }
+    const initialQty = isWholesaleActive ? wholesaleMoq : 1;
     const productWithVariant = {
       ...product,
-      price: variantPrice,
-      mrp: variantMrp,
+      price: effectiveDisplayPrice,
+      mrp: effectiveMrp,
       pack: variantTitle,
       selectedVariant: selectedVariant,
       variantId: selectedVariant?._id,
       variantTitle: variantTitle,
+      wholesalePrice: product?.wholesalePrice,
+      wholesaleMinimumQuantity: product?.wholesaleMinimumQuantity,
+      wholesaleEnabled: product?.wholesaleEnabled,
     };
     if (inCartQty === 0) {
-      await addToCart(productWithVariant, addButtonRef.current);
+      await addToCart(productWithVariant, addButtonRef.current, initialQty, isWholesaleActive);
     }
     navigate('/checkout');
   };
@@ -722,23 +764,45 @@ export default function ProductDetail() {
           </p>
 
           {/* Price section */}
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-xl font-bold text-neutral-900">
-              ₹{variantPrice.toLocaleString('en-IN')}
-            </span>
-            {hasDiscount && (
-              <>
-                <span className="text-sm text-neutral-500 line-through">
-                  ₹{variantMrp.toLocaleString('en-IN')}
+          {isWholesaleActive ? (
+            <div className="mb-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-2xl font-bold text-neutral-900">
+                  ₹{effectiveDisplayPrice.toLocaleString('en-IN')}
                 </span>
-                {discount > 0 && (
-                  <Badge className="!bg-blue-500 !text-white !border-blue-500 text-xs px-1.5 py-0.5 rounded-full font-semibold">
-                    {discount}% OFF
-                  </Badge>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                  🏷️ Wholesale
+                </span>
+                {effectiveHasDiscount && (
+                  <span className="text-sm text-neutral-500 line-through">
+                    MRP ₹{effectiveMrp.toLocaleString('en-IN')}
+                  </span>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+              <div className="text-xs font-semibold text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5">
+                <span>📦</span>
+                <span>Minimum order: {wholesaleMoq} units</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-xl font-bold text-neutral-900">
+                ₹{variantPrice.toLocaleString('en-IN')}
+              </span>
+              {hasDiscount && (
+                <>
+                  <span className="text-sm text-neutral-500 line-through">
+                    ₹{variantMrp.toLocaleString('en-IN')}
+                  </span>
+                  {discount > 0 && (
+                    <Badge className="!bg-blue-500 !text-white !border-blue-500 text-xs px-1.5 py-0.5 rounded-full font-semibold">
+                      {discount}% OFF
+                    </Badge>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Stock Status */}
           {variantStock !== 0 && variantStock !== undefined && variantStock !== null && (
@@ -1474,19 +1538,25 @@ export default function ProductDetail() {
             {/* Second line - Price, MRP, and OFF */}
             <div className="flex items-center gap-1.5">
               <span className="text-base font-bold text-neutral-900">
-                ₹{variantPrice.toLocaleString('en-IN')}
+                ₹{effectiveDisplayPrice.toLocaleString('en-IN')}
               </span>
-              {hasDiscount && (
-                <>
-                  <span className="text-xs text-neutral-500 line-through">
-                    MRP ₹{variantMrp.toLocaleString('en-IN')}
-                  </span>
-                  {discount > 0 && (
-                    <Badge className="!bg-blue-500 !text-white !border-blue-500 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">
-                      {discount}% OFF
-                    </Badge>
-                  )}
-                </>
+              {isWholesaleActive ? (
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                  Wholesale (MOQ: {wholesaleMoq})
+                </span>
+              ) : (
+                effectiveHasDiscount && (
+                  <>
+                    <span className="text-xs text-neutral-500 line-through">
+                      MRP ₹{effectiveMrp.toLocaleString('en-IN')}
+                    </span>
+                    {effectiveDiscount > 0 && (
+                      <Badge className="!bg-blue-500 !text-white !border-blue-500 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">
+                        {effectiveDiscount}% OFF
+                      </Badge>
+                    )}
+                  </>
+                )
               )}
             </div>
             {/* Third line - Inclusive of all taxes */}
@@ -1532,13 +1602,20 @@ export default function ProductDetail() {
                       transition={{ duration: 0.2 }}
                       className="flex items-center gap-2 bg-white border-2 border-green-600 rounded-lg px-2 py-1 h-[38px]">
                       <motion.button
-                        whileTap={{ scale: 0.9 }}
+                        whileTap={!(isWholesaleActive && inCartQty <= wholesaleMoq) ? { scale: 0.9 } : undefined}
+                        disabled={isWholesaleActive && inCartQty <= wholesaleMoq}
                         onClick={() => {
+                          if (isWholesaleActive && inCartQty <= wholesaleMoq) return;
                           const productId = product.id || product._id;
                           const variantId = selectedVariant?._id;
                           updateQuantity(productId, inCartQty - 1, variantId, variantTitle);
                         }}
-                        className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
+                        className={`w-6 h-6 flex items-center justify-center font-bold rounded-full transition-colors border p-0 leading-none text-base ${
+                          isWholesaleActive && inCartQty <= wholesaleMoq
+                            ? "text-neutral-300 border-neutral-200 cursor-not-allowed"
+                            : "text-green-600 border-green-600 hover:bg-green-50"
+                        }`}
+                        title={isWholesaleActive && inCartQty <= wholesaleMoq ? `Minimum wholesale quantity is ${wholesaleMoq}` : "Decrease quantity"}
                         style={{ lineHeight: 1 }}>
                         <span className="relative top-[-1px]">−</span>
                       </motion.button>
@@ -1561,6 +1638,19 @@ export default function ProductDetail() {
                         style={{ lineHeight: 1 }}>
                         <span className="relative top-[-1px]">+</span>
                       </motion.button>
+                      {isWholesaleActive && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const productId = product.id || product._id;
+                            const cartItemId = (cartItem as any)?.id;
+                            removeFromCart(productId, cartItemId);
+                          }}
+                          className="text-[11px] text-red-500 hover:text-red-700 font-medium underline ml-0.5"
+                          title="Remove wholesale item from cart">
+                          Remove
+                        </button>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>

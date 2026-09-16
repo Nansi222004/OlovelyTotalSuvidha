@@ -21,6 +21,7 @@ export interface VerifyOTPResponse {
       address?: string;
       city?: string;
       vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+      wholesaleEnabled?: boolean;
       shippingConfig?: any;
     };
   };
@@ -41,6 +42,7 @@ export interface RegisterData {
   longitude?: string;
   serviceRadiusKm?: string | number;
   vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+  wholesaleEnabled?: boolean;
   shippingConfig?: {
     pickupAddress?: string;
     pickupPincode?: string;
@@ -64,6 +66,7 @@ export interface RegisterResponse {
       status: string;
       categories?: string[];
       vendorType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID';
+      wholesaleEnabled?: boolean;
       shippingConfig?: any;
     };
   };

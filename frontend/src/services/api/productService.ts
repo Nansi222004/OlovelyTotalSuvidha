@@ -22,6 +22,7 @@ export interface ProductVariation {
   stock: number;
   status: "Available" | "Sold out" | "In stock"; // Added In stock
   sku?: string;
+  barcode?: string;
 }
 
 export interface Product {
@@ -57,6 +58,11 @@ export interface Product {
   compareAtPrice?: number;
   mrp?: number;
   discount?: number;
+  stock?: number;
+  barcode?: string;
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
   variations: ProductVariation[];
   variationType?: string;
   createdAt?: string;
@@ -106,6 +112,13 @@ export interface CreateProductData {
   fssaiLicNo?: string;
   mainImageUrl?: string;
   galleryImageUrls?: string[];
+  price?: number;
+  discPrice?: number;
+  stock?: number;
+  barcode?: string;
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
   variations: ProductVariation[];
   variationType?: string;
   isShopByStoreOnly?: boolean;

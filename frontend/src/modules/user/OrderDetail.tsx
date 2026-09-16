@@ -1133,12 +1133,29 @@ export default function OrderDetail() {
 
               // Match order items belonging to this fulfillment group
               const groupItems = (order.items || []).filter((orderItem: any) => {
+                const orderItemId = String(orderItem._id || orderItem.id || '');
                 const orderItemProdId = String(orderItem.product?._id || orderItem.product?.id || orderItem.product || '');
-                const hasMatch = (group.items || []).some((gi: any) => {
-                  const giProdId = String(gi.product?._id || gi.product?.id || gi.product || '');
-                  return giProdId && orderItemProdId && giProdId === orderItemProdId;
-                });
-                if (hasMatch) return true;
+
+                // 1. Authoritative check: group.items contains the exact OrderItem IDs or Product IDs
+                if (group.items && group.items.length > 0) {
+                  return group.items.some((gi: any) => {
+                    const giId = String(gi?._id || gi?.id || gi || '');
+                    const giProdId = String(gi?.product?._id || gi?.product?.id || gi?.product || '');
+                    return (giId && orderItemId && giId === orderItemId) ||
+                           (giProdId && orderItemProdId && giProdId === orderItemProdId) ||
+                           (giId && orderItemProdId && giId === orderItemProdId);
+                  });
+                }
+
+                // 2. Fallback only if group.items is empty (legacy orders)
+                if (group.seller) {
+                  const groupSellerId = String(typeof group.seller === 'object' ? (group.seller._id || group.seller.id) : group.seller);
+                  const itemSellerId = String(orderItem.seller?._id || orderItem.seller?.id || orderItem.seller || orderItem.product?.seller || '');
+                  if (groupSellerId && itemSellerId && groupSellerId === itemSellerId) {
+                    return true;
+                  }
+                }
+
                 if (isEcommerce) {
                   return orderItem.product?.productType === 'ECOMMERCE';
                 } else {
@@ -1185,6 +1202,8 @@ export default function OrderDetail() {
                           ? 'bg-green-100 text-green-800'
                           : group.status === 'Cancelled'
                           ? 'bg-red-100 text-red-800'
+                          : group.status === 'Shipped' || group.status === 'OutForDelivery'
+                          ? 'bg-blue-100 text-blue-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}
                     >
@@ -1211,32 +1230,48 @@ export default function OrderDetail() {
                       Items in this shipment ({groupItems.length})
                     </span>
                     <div className="divide-y divide-neutral-100">
-                      {groupItems.map((item: any, itemIdx: number) => (
-                        <div key={itemIdx} className="py-2 first:pt-1 last:pb-0 flex items-center gap-2.5">
-                          <div className="w-10 h-10 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
-                            {item.product?.imageUrl ? (
-                              <img src={item.product.imageUrl} alt={item.product?.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 font-bold">
-                                {(item.product?.name || item.productName || '?').charAt(0)}
+                      {groupItems.map((item: any, itemIdx: number) => {
+                        const itemAmount = item.total != null
+                          ? item.total
+                          : ((item.unitPrice ?? item.price ?? item.product?.price ?? 0) * (item.quantity || 1));
+                        const displayImage = item.productImage || item.product?.imageUrl || item.product?.mainImage;
+                        const displayName = item.productName || item.product?.productName || item.product?.name || 'Product';
+
+                        return (
+                          <div key={itemIdx} className="py-2 first:pt-1 last:pb-0 flex items-center gap-2.5">
+                            <div className="w-10 h-10 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                              {displayImage ? (
+                                <img src={displayImage} alt={displayName} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 font-bold">
+                                  {displayName.charAt(0)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs font-semibold text-neutral-900 truncate">
+                                  {displayName}
+                                </p>
+                                {item.isWholesale && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">
+                                    Wholesale
+                                  </span>
+                                )}
                               </div>
-                            )}
+                              <p className="text-[11px] text-neutral-500">
+                                Qty: {item.quantity} {item.product?.pack ? `• ${item.product.pack}` : ''}
+                                {item.unitPrice ? ` (₹${item.unitPrice}/unit)` : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs font-bold text-neutral-900">
+                                ₹{Number(itemAmount).toLocaleString('en-IN')}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-neutral-900 truncate">
-                              {item.product?.name || item.productName || 'Product'}
-                            </p>
-                            <p className="text-[11px] text-neutral-500">
-                              Qty: {item.quantity} {item.product?.pack ? `• ${item.product.pack}` : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs font-bold text-neutral-900">
-                              ₹{(item.price || item.product?.price || 0) * (item.quantity || 1)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 

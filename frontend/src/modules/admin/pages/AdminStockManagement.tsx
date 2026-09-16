@@ -10,6 +10,7 @@ import {
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import { resolveImageUrl } from "../../../utils/imageUrl";
 
 interface ProductVariation {
   id: string;
@@ -157,6 +158,18 @@ export default function AdminStockManagement() {
     navigate(`/admin/product/edit/${productId}`);
   };
 
+  const getProductImage = (product: any): string => {
+    const candidate =
+      product.mainImage ||
+      product.mainImageUrl ||
+      product.imageUrl ||
+      (Array.isArray(product.galleryImages) && product.galleryImages[0]) ||
+      (Array.isArray(product.galleryImageUrls) && product.galleryImageUrls[0]) ||
+      (Array.isArray(product.images) && product.images[0]) ||
+      "";
+    return resolveImageUrl(candidate);
+  };
+
   // Flatten products with variations into individual rows
   const productVariations = useMemo(() => {
     const variations: ProductVariation[] = [];
@@ -181,6 +194,7 @@ export default function AdminStockManagement() {
           ? product.seller.storeName || product.seller.sellerName
           : "Unknown Seller";
       const sellerId = typeof product.seller === "object" ? "" : product.seller || "";
+      const productImage = getProductImage(product);
 
       // If product has variations, create a row for each variation
       if (product.variations && product.variations.length > 0) {
@@ -191,7 +205,7 @@ export default function AdminStockManagement() {
             name: product.productName,
             seller: sellerName,
             sellerId: sellerId,
-            image: product.mainImage || product.galleryImages[0] || "",
+            image: productImage,
             variation: `${variation.name}: ${variation.value}`,
             stock:
               variation.stock !== undefined
@@ -210,7 +224,7 @@ export default function AdminStockManagement() {
           name: product.productName,
           seller: sellerName,
           sellerId: sellerId,
-          image: product.mainImage || product.galleryImages[0] || "",
+          image: productImage,
           variation: "Default",
           stock: product.stock || 0,
           status: product.publish ? "Published" : "Unpublished",
@@ -489,6 +503,23 @@ export default function AdminStockManagement() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => navigate("/admin/product/add")}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1.5 transition-colors shadow-sm">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  Add Product
+                </button>
+                <button
                   onClick={handleExport}
                   className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1 transition-colors">
                   Export
@@ -618,21 +649,31 @@ export default function AdminStockManagement() {
                       <td className="p-4 align-middle">{product.name}</td>
                       <td className="p-4 align-middle">{product.seller}</td>
                       <td className="p-4 align-middle">
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="w-12 h-16 object-cover rounded"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="60" height="80"%3E%3Crect width="60" height="80" fill="%23e5e7eb"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="10"%3ENo Image%3C/text%3E%3C/svg%3E';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-12 h-16 bg-neutral-100 rounded flex items-center justify-center text-xs text-neutral-400">
-                            No Image
-                          </div>
-                        )}
+                        <div
+                          onClick={() => handleEdit(product.productId)}
+                          className="cursor-pointer group relative inline-block"
+                          title="Click to edit product and manage images">
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="w-12 h-16 object-cover rounded border border-neutral-200 group-hover:ring-2 group-hover:ring-teal-500 transition-all"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="60" height="80"%3E%3Crect width="60" height="80" fill="%23e5e7eb"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="10"%3ENo Image%3C/text%3E%3C/svg%3E';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-12 h-16 bg-neutral-50 hover:bg-neutral-100 border border-dashed border-neutral-300 hover:border-teal-500 rounded flex flex-col items-center justify-center text-xs text-neutral-400 hover:text-teal-600 transition-all p-1">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-0.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                              </svg>
+                              <span className="text-[10px] font-medium leading-none">Upload</span>
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="p-4 align-middle">{product.variation}</td>
                       <td className="p-4 align-middle">

@@ -77,10 +77,14 @@ export default function Checkout() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState<boolean>(false);
 
-  // Delivery Option State
-  const [deliveryOption, setDeliveryOption] = useState<"Instant" | "Standard">(
-    "Standard",
-  );
+  // Fulfillment-Aware Delivery Option State
+  const [deliverySelections, setDeliverySelections] = useState<{
+    quickCommerce: "Standard" | "Instant";
+    ecommerce: "Courier";
+  }>({
+    quickCommerce: "Standard",
+    ecommerce: "Courier",
+  });
   const hasSkippedInitialCartRefreshRef = useRef(false);
 
   // Refresh cart delivery fee when selected address or delivery option changes
@@ -94,11 +98,11 @@ export default function Checkout() {
       refreshCart(
         selectedAddress.latitude,
         selectedAddress.longitude,
-        deliveryOption,
+        deliverySelections.quickCommerce,
         { preserveItems: true },
       );
     }
-  }, [selectedAddress, deliveryOption, refreshCart]);
+  }, [selectedAddress, deliverySelections.quickCommerce, refreshCart]);
 
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [availableCoupons, setAvailableCoupons] = useState<ApiCoupon[]>([]);
@@ -140,6 +144,20 @@ export default function Checkout() {
   // Razorpay Payment State
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [showRazorpayCheckout, setShowRazorpayCheckout] = useState(false);
+
+  // Cart item removal feedback state
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+  const handleRemoveItem = async (productId?: string, cartItemId?: string) => {
+    if (!productId) return;
+    const targetKey = cartItemId || productId;
+    if (removingItemId) return;
+    setRemovingItemId(targetKey);
+    try {
+      await removeFromCart(productId, cartItemId);
+    } finally {
+      setRemovingItemId(null);
+    }
+  };
 
   // Check if user has placeholder data (needs profile completion)
   const isPlaceholderUser =
@@ -665,7 +683,11 @@ export default function Checkout() {
 
       couponCode: selectedCoupon?.code || undefined,
       giftPackaging: giftPackaging,
-      deliveryOption: deliveryOption,
+      deliveryOption: qcItems.length > 0 ? deliverySelections.quickCommerce : "Courier",
+      deliverySelections: {
+        ...(qcItems.length > 0 ? { quickCommerce: deliverySelections.quickCommerce } : {}),
+        ...(ecomItems.length > 0 ? { ecommerce: "Courier" } : {}),
+      },
       useWallet: useWallet && walletDeduction > 0,
       walletAmountUsed: walletDeduction,
     };
@@ -862,7 +884,7 @@ export default function Checkout() {
   };
 
   return (
-    <div className="bg-white min-h-screen flex flex-col">
+    <div className="bg-white min-h-screen flex flex-col pb-28 sm:pb-32">
       {/* Party Popper Animation */}
       <PartyPopper
         show={showPartyPopper}
@@ -1263,70 +1285,202 @@ export default function Checkout() {
       </div>
 
       {/* Grouped Fulfillment Cards */}
-      <div className="px-4 md:px-6 lg:px-8 py-2 md:py-3 bg-white border-b border-neutral-200 space-y-3">
+      <div className="px-3.5 sm:px-4 md:px-6 lg:px-8 py-2.5 md:py-3 bg-white border-b border-neutral-200 space-y-3.5">
         {/* Multi-Shipment Order Notice */}
         {qcItems.length > 0 && ecomItems.length > 0 && (
-          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-xs text-amber-900">
-            <span className="text-sm">ℹ️</span>
-            <span>
-              <strong>Multi-Shipment Order:</strong> Quick Delivery and Courier Delivery items will arrive in separate shipments.
+          <div className="px-3.5 py-2 bg-neutral-50 border border-neutral-200/70 rounded-xl flex items-center gap-2 text-neutral-600">
+            <span className="text-sm flex-shrink-0">📦</span>
+            <span className="text-xs text-neutral-600">
+              <strong className="font-medium text-neutral-800">Notice:</strong> Your items may arrive separately.
             </span>
           </div>
         )}
 
         {/* Quick Commerce Basket */}
         {qcItems.length > 0 && (
-          <div className="bg-white rounded-xl border-2 border-emerald-200 p-3 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-base">⚡</span>
-                <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
-                  QUICK DELIVERY
-                </span>
-                <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-                  {appSettings?.estimatedDeliveryTime || '12–15 mins'}
-                </span>
+          <div className="bg-white rounded-2xl border border-emerald-200/90 p-3 sm:p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-emerald-100/80">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center text-xs flex-shrink-0">
+                  ⚡
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                      ⚡ QUICK DELIVERY
+                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                      {deliverySelections.quickCommerce === 'Instant' ? '10–15 mins' : (cart.groups?.quickCommerce?.estimatedDeliveryTime || '1–2 days')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Local delivery
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] text-neutral-500 font-medium">
+              <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full flex-shrink-0">
                 {qcItems.length} {qcItems.length === 1 ? "item" : "items"}
               </span>
             </div>
-            <p className="text-[10px] text-neutral-500 mb-2 border-b border-neutral-100 pb-1.5">
-              Fulfilled locally from nearby store with live delivery partner tracking
-            </p>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {qcItems.map((item) => {
                 const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                const isItemWholesale = Boolean(item.isWholesale);
+                const unitPrice = (isItemWholesale && item.wholesalePrice && item.wholesalePrice > 0)
+                  ? item.wholesalePrice
+                  : displayPrice;
+                const lineTotal = unitPrice * (item.quantity || 1);
+                const moq = item.wholesaleMinimumQuantity || item.product?.wholesaleMinimumQuantity || 1;
+                const isBelowMoq = isItemWholesale && item.quantity < moq;
+                const isItemRemoving = removingItemId === (item.id || item.product?.id);
                 return (
-                  <div key={item.product?.id || Math.random()} className="flex gap-2">
-                    <div className="w-12 h-12 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                  <div
+                    key={item.id || item.product?.id || Math.random()}
+                    className={`p-3 rounded-xl border border-neutral-200/80 bg-white hover:border-neutral-300 transition-all flex gap-3 items-start ${
+                      isItemRemoving ? "opacity-40 pointer-events-none" : ""
+                    }`}
+                  >
+                    <div className="w-16 h-16 sm:w-18 sm:h-18 bg-neutral-50 rounded-xl border border-neutral-100/90 flex-shrink-0 overflow-hidden relative flex items-center justify-center p-1">
                       {item.product?.imageUrl ? (
-                        <img src={item.product?.imageUrl} alt={item.product?.name} className="w-full h-full object-contain" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
-                          {(item.product?.name || "").charAt(0)}
-                        </div>
-                      )}
+                        <img
+                          src={item.product?.imageUrl}
+                          alt={item.product?.name}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            const target = e.currentTarget as HTMLElement;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`w-full h-full items-center justify-center text-neutral-400 font-bold text-base ${
+                          item.product?.imageUrl ? 'hidden' : 'flex'
+                        }`}
+                      >
+                        {(item.product?.name || "P").charAt(0).toUpperCase()}
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                          ⚡ Quick
-                        </span>
-                      </div>
-                      <h3 className="text-xs font-semibold text-neutral-900 mb-0.5 line-clamp-2">{item.product?.name}</h3>
-                      <p className="text-[10px] text-neutral-600 mb-0.5">{item.quantity} × {item.product?.pack}</p>
-                      <button onClick={(e) => { e.stopPropagation(); handleMoveToWishlist(item.product); }} className="text-[10px] text-green-600 font-medium mb-1.5 hover:text-green-700 transition-colors">Move to wishlist</button>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <div className="flex items-center gap-1.5 bg-white border-2 border-green-600 rounded-full px-1.5 py-0.5">
-                          <button onClick={() => updateQuantity(item.product?.id, item.quantity - 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">−</button>
-                          <span className="text-xs font-bold text-green-600 min-w-[1.25rem] text-center">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.product?.id, item.quantity + 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">+</button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.2 rounded">
+                              ⚡ Quick
+                            </span>
+                            {isItemWholesale && (
+                              <span className="text-[9px] font-bold text-purple-800 bg-purple-50 border border-purple-200/70 px-1.5 py-0.2 rounded">
+                                🏷️ Wholesale
+                              </span>
+                            )}
+                            {item.product?.pack && (
+                              <span className="text-[11px] text-neutral-500 font-medium truncate">
+                                {item.product.pack}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-xs sm:text-sm font-semibold text-neutral-900 line-clamp-2 leading-snug">
+                            {item.product?.name}
+                          </h3>
+                          <div className="text-[11px] font-medium text-neutral-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span>₹{unitPrice.toLocaleString("en-IN")} <span className="text-neutral-400 font-normal">each</span></span>
+                            {hasDiscount && !isItemWholesale && (
+                              <span className="text-[10px] text-neutral-400 line-through">
+                                ₹{mrp.toLocaleString("en-IN")}
+                              </span>
+                            )}
+                            {isItemWholesale && (
+                              <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-1 rounded">
+                                MOQ: {moq}
+                              </span>
+                            )}
+                            {isBelowMoq && (
+                              <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                                ⚠️ Below MOQ ({moq})
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {hasDiscount && <span className="text-[10px] text-neutral-500 line-through">₹{mrp}</span>}
-                          <span className="text-sm font-bold text-neutral-900">₹{displayPrice}</span>
+
+                        <div className="text-right flex-shrink-0 pl-1.5">
+                          <div className="text-sm sm:text-base font-bold text-neutral-900">
+                            ₹{lineTotal.toLocaleString("en-IN")}
+                          </div>
+                          {item.quantity > 1 ? (
+                            <div className="text-[10px] font-medium text-neutral-500">
+                              ₹{unitPrice.toLocaleString("en-IN")} × {item.quantity}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-neutral-400">
+                              total
+                            </div>
+                          )}
+                          {hasDiscount && !isItemWholesale && (
+                            <div className="text-[10px] text-neutral-400 line-through">
+                              ₹{(mrp * item.quantity).toLocaleString("en-IN")}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-neutral-100">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            disabled={isItemRemoving}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                            title="Remove item from cart"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            {isItemRemoving ? "Removing..." : "Remove"}
+                          </button>
+                          <span className="text-neutral-200">|</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveToWishlist(item.product);
+                            }}
+                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors"
+                          >
+                            Wishlist
+                          </button>
+                        </div>
+
+                        {/* Connected Stepper Control */}
+                        <div className="flex items-center bg-white border border-emerald-600 rounded-lg shadow-2xs overflow-hidden">
+                          <button
+                            type="button"
+                            disabled={item.quantity <= 1}
+                            onClick={() => updateQuantity(item.product?.id, item.quantity - 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
+                            className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
+                              item.quantity <= 1
+                                ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95"
+                            }`}
+                            aria-label="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span className="text-sm font-bold text-emerald-950 min-w-[1.75rem] text-center select-none px-1">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(item.product?.id, item.quantity + 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
+                            className="w-7 h-7 flex items-center justify-center text-emerald-700 font-bold hover:bg-emerald-50 active:scale-95 text-sm transition-all"
+                            aria-label="Increase quantity"
+                          >
+                            +
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1339,57 +1493,189 @@ export default function Checkout() {
 
         {/* Ecommerce Basket */}
         {ecomItems.length > 0 && (
-          <div className="bg-white rounded-xl border-2 border-blue-200 p-3 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-base">📦</span>
-                <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">
-                  COURIER DELIVERY
-                </span>
-                <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">
-                  Delivery estimate shown at checkout
-                </span>
+          <div className="bg-white rounded-2xl border border-blue-200/90 p-3 sm:p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-blue-100/80">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center text-xs flex-shrink-0">
+                  📦
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                      📦 COURIER DELIVERY
+                    </span>
+                    <span className="text-[10px] font-semibold text-blue-800 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-full">
+                      {cart.groups?.ecommerce?.estimatedDeliveryTime || '3–5 days'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Courier shipping
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] text-neutral-500 font-medium">
+              <span className="text-[11px] font-semibold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full flex-shrink-0">
                 {ecomItems.length} {ecomItems.length === 1 ? "item" : "items"}
               </span>
             </div>
-            <p className="text-[10px] text-neutral-500 mb-2 border-b border-neutral-100 pb-1.5">
-              Dispatched nationwide via verified courier partner with AWB tracking
-            </p>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {ecomItems.map((item) => {
                 const { displayPrice, mrp, hasDiscount } = calculateProductPrice(item.product, item.variant);
+                const isItemWholesale = Boolean(item.isWholesale);
+                const unitPrice = (isItemWholesale && item.wholesalePrice && item.wholesalePrice > 0)
+                  ? item.wholesalePrice
+                  : displayPrice;
+                const lineTotal = unitPrice * (item.quantity || 1);
+                const moq = item.wholesaleMinimumQuantity || item.product?.wholesaleMinimumQuantity || 1;
+                const isBelowMoq = isItemWholesale && item.quantity < moq;
+                const isItemRemoving = removingItemId === (item.id || item.product?.id);
                 return (
-                  <div key={item.product?.id || Math.random()} className="flex gap-2">
-                    <div className="w-12 h-12 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                  <div
+                    key={item.id || item.product?.id || Math.random()}
+                    className={`p-3 rounded-xl border border-neutral-200/80 bg-white hover:border-neutral-300 transition-all flex gap-3 items-start ${
+                      isItemRemoving ? "opacity-40 pointer-events-none" : ""
+                    }`}
+                  >
+                    <div className="w-16 h-16 sm:w-18 sm:h-18 bg-neutral-50 rounded-xl border border-neutral-100/90 flex-shrink-0 overflow-hidden relative flex items-center justify-center p-1">
                       {item.product?.imageUrl ? (
-                        <img src={item.product?.imageUrl} alt={item.product?.name} className="w-full h-full object-contain" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
-                          {(item.product?.name || "").charAt(0)}
-                        </div>
-                      )}
+                        <img
+                          src={item.product?.imageUrl}
+                          alt={item.product?.name}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            const target = e.currentTarget as HTMLElement;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`w-full h-full items-center justify-center text-neutral-400 font-bold text-base ${
+                          item.product?.imageUrl ? 'hidden' : 'flex'
+                        }`}
+                      >
+                        {(item.product?.name || "P").charAt(0).toUpperCase()}
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
-                          📦 Courier
-                        </span>
-                      </div>
-                      <h3 className="text-xs font-semibold text-neutral-900 mb-0.5 line-clamp-2">{item.product?.name}</h3>
-                      <p className="text-[10px] text-neutral-600 mb-0.5">{item.quantity} × {item.product?.pack}</p>
-                      <button onClick={(e) => { e.stopPropagation(); handleMoveToWishlist(item.product); }} className="text-[10px] text-green-600 font-medium mb-1.5 hover:text-green-700 transition-colors">Move to wishlist</button>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <div className="flex items-center gap-1.5 bg-white border-2 border-green-600 rounded-full px-1.5 py-0.5">
-                          <button onClick={() => updateQuantity(item.product?.id, item.quantity - 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">−</button>
-                          <span className="text-xs font-bold text-green-600 min-w-[1.25rem] text-center">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.product?.id, item.quantity + 1)} className="w-5 h-5 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors text-xs">+</button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className="text-[9px] font-bold text-blue-800 bg-blue-50 border border-blue-200/70 px-1.5 py-0.2 rounded">
+                              📦 Courier
+                            </span>
+                            {isItemWholesale && (
+                              <span className="text-[9px] font-bold text-purple-800 bg-purple-50 border border-purple-200/70 px-1.5 py-0.2 rounded">
+                                🏷️ Wholesale
+                              </span>
+                            )}
+                            {item.product?.pack && (
+                              <span className="text-[11px] text-neutral-500 font-medium truncate">
+                                {item.product.pack}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-xs sm:text-sm font-semibold text-neutral-900 line-clamp-2 leading-snug">
+                            {item.product?.name}
+                          </h3>
+                          <div className="text-[11px] font-medium text-neutral-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span>₹{unitPrice.toLocaleString("en-IN")} <span className="text-neutral-400 font-normal">each</span></span>
+                            {hasDiscount && !isItemWholesale && (
+                              <span className="text-[10px] text-neutral-400 line-through">
+                                ₹{mrp.toLocaleString("en-IN")}
+                              </span>
+                            )}
+                            {isItemWholesale && (
+                              <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-1 rounded">
+                                MOQ: {moq}
+                              </span>
+                            )}
+                            {isBelowMoq && (
+                              <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                                ⚠️ Below MOQ ({moq})
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {hasDiscount && <span className="text-[10px] text-neutral-500 line-through">₹{mrp}</span>}
-                          <span className="text-sm font-bold text-neutral-900">₹{displayPrice}</span>
+
+                        <div className="text-right flex-shrink-0 pl-1.5">
+                          <div className="text-sm sm:text-base font-bold text-neutral-900">
+                            ₹{lineTotal.toLocaleString("en-IN")}
+                          </div>
+                          {item.quantity > 1 ? (
+                            <div className="text-[10px] font-medium text-neutral-500">
+                              ₹{unitPrice.toLocaleString("en-IN")} × {item.quantity}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-neutral-400">
+                              total
+                            </div>
+                          )}
+                          {hasDiscount && !isItemWholesale && (
+                            <div className="text-[10px] text-neutral-400 line-through">
+                              ₹{(mrp * item.quantity).toLocaleString("en-IN")}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-neutral-100">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            disabled={isItemRemoving}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                            title="Remove item from cart"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            {isItemRemoving ? "Removing..." : "Remove"}
+                          </button>
+                          <span className="text-neutral-200">|</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveToWishlist(item.product);
+                            }}
+                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors"
+                          >
+                            Wishlist
+                          </button>
+                        </div>
+
+                        {/* Connected Stepper Control */}
+                        <div className="flex items-center bg-white border border-emerald-600 rounded-lg shadow-2xs overflow-hidden">
+                          <button
+                            type="button"
+                            disabled={item.quantity <= 1}
+                            onClick={() => updateQuantity(item.product?.id, item.quantity - 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
+                            className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
+                              item.quantity <= 1
+                                ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95"
+                            }`}
+                            aria-label="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span className="text-sm font-bold text-emerald-950 min-w-[1.75rem] text-center select-none px-1">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(item.product?.id, item.quantity + 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
+                            className="w-7 h-7 flex items-center justify-center text-emerald-700 font-bold hover:bg-emerald-50 active:scale-95 text-sm transition-all"
+                            aria-label="Increase quantity"
+                          >
+                            +
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1772,70 +2058,216 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* Delivery Option Selection */}
+      {/* Fulfillment-Aware Delivery Option Selection */}
       <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200">
         <h2 className="text-sm font-bold text-neutral-900 mb-3">
           Select Delivery Option
         </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setDeliveryOption("Standard")}
-            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-              deliveryOption === "Standard"
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-            }`}>
-            <div
-              className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliveryOption === "Standard" ? "bg-green-600" : "bg-neutral-100"}`}>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={
-                  deliveryOption === "Standard" ? "white" : "currentColor"
-                }
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" />
-                <circle cx="5.5" cy="18.5" r="1.5" />
-                <circle cx="18.5" cy="18.5" r="1.5" />
-              </svg>
-            </div>
-            <span className="text-xs font-bold">Standard Delivery</span>
-            <p className="text-[8px] mt-0.5 opacity-70">
-              (Expected in 2-4 days)
-            </p>
-          </button>
 
-          <button
-            onClick={() => setDeliveryOption("Instant")}
-            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-              deliveryOption === "Instant"
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-            }`}>
-            <div
-              className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliveryOption === "Instant" ? "bg-green-600" : "bg-neutral-100"}`}>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={deliveryOption === "Instant" ? "white" : "currentColor"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
+        {/* Case 1: Quick Commerce Only */}
+        {qcItems.length > 0 && ecomItems.length === 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-emerald-800">
+              <span>⚡ Quick Commerce Local Delivery</span>
+              <span className="text-[10px] text-neutral-500 font-normal">({qcItems.length} {qcItems.length === 1 ? 'item' : 'items'})</span>
             </div>
-            <span className="text-xs font-bold">Instant Delivery</span>
-            <p className="text-[8px] mt-0.5 opacity-70">
-              (Expected in 10-15 mins)
-            </p>
-          </button>
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Standard" }))}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                  deliverySelections.quickCommerce === "Standard"
+                    ? "border-green-600 bg-green-50 text-green-700"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                }`}>
+                <div
+                  className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliverySelections.quickCommerce === "Standard" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round">
+                    <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" />
+                    <circle cx="5.5" cy="18.5" r="1.5" />
+                    <circle cx="18.5" cy="18.5" r="1.5" />
+                  </svg>
+                </div>
+                <span className="text-xs font-bold">Standard Delivery</span>
+                <p className="text-[9px] mt-0.5 opacity-70">
+                  (Expected in 1–2 days)
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Instant" }))}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                  deliverySelections.quickCommerce === "Instant"
+                    ? "border-green-600 bg-green-50 text-green-700"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                }`}>
+                <div
+                  className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliverySelections.quickCommerce === "Instant" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-bold">Instant Delivery</span>
+                <p className="text-[9px] mt-0.5 opacity-70">
+                  (Expected in 10–15 mins)
+                </p>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Case 2: Ecommerce Only (Current Bug Scenario) */}
+        {ecomItems.length > 0 && qcItems.length === 0 && (
+          <div>
+            <div className="flex items-center justify-between p-3.5 rounded-xl border-2 border-blue-600 bg-blue-50/50 text-blue-900 transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm shadow-xs flex-shrink-0">
+                  📦
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
+                    <span>Courier Delivery</span>
+                    <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200/60">
+                      Shiprocket
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Expected in 3–7 days
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-blue-700 bg-blue-100/60 px-2.5 py-1 rounded-lg">
+                Selected
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Case 3: Mixed Cart (QC + Ecommerce) */}
+        {qcItems.length > 0 && ecomItems.length > 0 && (
+          <div className="space-y-4">
+            {/* Quick Commerce Group */}
+            <div className="p-3 rounded-xl border border-emerald-200/90 bg-emerald-50/30">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                  <span>⚡ Quick Commerce</span>
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                  {qcItems.length} {qcItems.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Standard" }))}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all ${
+                    deliverySelections.quickCommerce === "Standard"
+                      ? "border-green-600 bg-white text-green-700 shadow-xs"
+                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                  }`}>
+                  <div
+                    className={`w-7 h-7 rounded-full mb-1.5 flex items-center justify-center ${deliverySelections.quickCommerce === "Standard" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round">
+                      <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" />
+                      <circle cx="5.5" cy="18.5" r="1.5" />
+                      <circle cx="18.5" cy="18.5" r="1.5" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold">Standard Delivery</span>
+                  <p className="text-[8px] mt-0.5 opacity-70">
+                    (Expected in 1–2 days)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Instant" }))}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all ${
+                    deliverySelections.quickCommerce === "Instant"
+                      ? "border-green-600 bg-white text-green-700 shadow-xs"
+                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                  }`}>
+                  <div
+                    className={`w-7 h-7 rounded-full mb-1.5 flex items-center justify-center ${deliverySelections.quickCommerce === "Instant" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold">Instant Delivery</span>
+                  <p className="text-[8px] mt-0.5 opacity-70">
+                    (Expected in 10–15 mins)
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Ecommerce Group */}
+            <div className="p-3 rounded-xl border border-blue-200/90 bg-blue-50/30">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-950 uppercase tracking-wide">
+                  <span>📦 Ecommerce</span>
+                </div>
+                <span className="text-[10px] font-semibold text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                  {ecomItems.length} {ecomItems.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-xl border-2 border-blue-600 bg-white text-blue-900 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs flex-shrink-0">
+                    📦
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
+                      <span>Courier Delivery</span>
+                      <span className="text-[9px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200/60">
+                        Shiprocket
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">
+                      Expected in 3–7 days
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
+                  Selected
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Wallet Balance Usage Toggle */}
@@ -1937,59 +2369,36 @@ export default function Checkout() {
         )}
       </div>
 
-      {/* Bill details */}
+      {/* Bill details / Order Summary */}
       <div className="px-4 md:px-6 lg:px-8 py-2.5 md:py-3 border-b border-neutral-200">
         <h2 className="text-base font-bold text-neutral-900 mb-2.5">
-          Bill details
+          Order summary
         </h2>
 
         <div className="space-y-2">
-          {/* Items total */}
+          {/* Subtotal */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-neutral-700">Items total</span>
+              <span className="text-xs text-neutral-700">Subtotal</span>
               {savedAmount > 0 && (
                 <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
-                  Saved ₹{savedAmount}
+                  Saved ₹{savedAmount.toLocaleString("en-IN")}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-1.5">
               {itemsTotal > discountedTotal && (
                 <span className="text-xs text-neutral-500 line-through">
-                  ₹{itemsTotal}
+                  ₹{itemsTotal.toLocaleString("en-IN")}
                 </span>
               )}
-              <span className="text-xs font-medium text-neutral-900">
-                ₹{discountedTotal}
+              <span className="text-xs font-semibold text-neutral-900">
+                ₹{discountedTotal.toLocaleString("en-IN")}
               </span>
             </div>
           </div>
 
-          {/* Handling charge */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                />
-              </svg>
-              <span className="text-xs text-neutral-700">Handling charge</span>
-            </div>
-            <span className="text-xs font-medium text-neutral-900">
-              ₹{handlingCharge}
-            </span>
-          </div>
-
-          {/* Delivery charge */}
+          {/* Delivery */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <svg
@@ -2007,18 +2416,40 @@ export default function Checkout() {
                 <circle cx="5.5" cy="18.5" r="1.5" fill="currentColor" />
                 <circle cx="18.5" cy="18.5" r="1.5" fill="currentColor" />
               </svg>
-              <span className="text-xs text-neutral-700">Delivery charge</span>
+              <span className="text-xs text-neutral-700">Delivery</span>
             </div>
             <div className="flex flex-col items-end">
               <span
-                className={`text-xs font-medium ${deliveryCharge === 0 ? "text-green-600" : "text-neutral-900"}`}>
-                {deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge}`}
+                className={`text-xs font-semibold ${deliveryCharge === 0 ? "text-green-600" : "text-neutral-900"}`}>
+                {deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge.toLocaleString("en-IN")}`}
               </span>
-              {deliveryCharge > 0 && null}
             </div>
           </div>
 
-          {/* Coupon discount */}
+          {/* Handling */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill="none"
+                />
+              </svg>
+              <span className="text-xs text-neutral-700">Handling</span>
+            </div>
+            <span className="text-xs font-semibold text-neutral-900">
+              ₹{handlingCharge.toLocaleString("en-IN")}
+            </span>
+          </div>
+
+          {/* Discount / Savings */}
           {selectedCoupon && currentCouponDiscount > 0 && (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -2037,13 +2468,13 @@ export default function Checkout() {
                   />
                 </svg>
                 <span className="text-xs text-neutral-700">
-                  Coupon discount
+                  Discount
                 </span>
                 <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">
                   {selectedCoupon.code}
                 </span>
               </div>
-              <span className="text-xs font-medium text-green-600">
+              <span className="text-xs font-semibold text-green-600">
                 -₹{currentCouponDiscount.toLocaleString("en-IN")}
               </span>
             </div>
@@ -2072,7 +2503,7 @@ export default function Checkout() {
                 </span>
               </div>
               <span className="text-xs font-medium text-neutral-900">
-                ₹{finalTipAmount}
+                ₹{finalTipAmount.toLocaleString("en-IN")}
               </span>
             </div>
           )}
@@ -2097,7 +2528,7 @@ export default function Checkout() {
                 <span className="text-xs text-neutral-700">Gift Packaging</span>
               </div>
               <span className="text-xs font-medium text-neutral-900">
-                ₹{giftPackagingFee}
+                ₹{giftPackagingFee.toLocaleString("en-IN")}
               </span>
             </div>
           )}
@@ -2105,7 +2536,7 @@ export default function Checkout() {
           {/* Grand total */}
           <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
             <span className="text-sm font-bold text-neutral-900">
-              Order Total
+              Total
             </span>
             <span className="text-sm font-bold text-neutral-900">
               ₹{Math.max(0, grandTotal).toFixed(2)}

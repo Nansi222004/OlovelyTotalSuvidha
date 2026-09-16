@@ -121,12 +121,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           },
           quantity: item.quantity,
           variant: item.variant, // Pass variant if available
+          isWholesale: (item as any).isWholesale || false,
         })),
         fees: {
           deliveryFee: order.fees?.deliveryFee || 0,
           platformFee: order.fees?.platformFee || 0,
         },
         deliveryOption: order.deliveryOption,
+        deliverySelections: (order as any).deliverySelections,
         couponCode: order.couponCode,
         tipAmount: order.tipAmount,
         giftPackaging: order.giftPackaging,

@@ -18,6 +18,8 @@ export interface Category {
   groupCategory?: string;
   totalSubcategory?: number;
   totalProduct?: number;
+  commerceChannels?: ("QUICK_COMMERCE" | "ECOMMERCE")[];
+  wholesaleEnabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -48,6 +50,7 @@ export interface CategoryWithSubcategories extends Category {
 export interface GetCategoriesParams {
   includeSubcategories?: boolean;
   search?: string;
+  channel?: "QUICK_COMMERCE" | "ECOMMERCE";
 }
 
 export interface GetSubcategoriesParams {

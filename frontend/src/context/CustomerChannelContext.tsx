@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type CustomerChannel = 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE';
+export type CustomerChannel = 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'WHOLESALE';
 
 export const CUSTOMER_CHANNEL_STORAGE_KEY = 'olovely_customer_active_channel';
 
 interface CustomerChannelContextType {
   activeChannel: CustomerChannel;
   setActiveChannel: (channel: CustomerChannel) => void;
+  isWholesale: boolean;
+  isQuickCommerce: boolean;
+  isEcommerce: boolean;
+  isAll: boolean;
 }
 
 const CustomerChannelContext = createContext<CustomerChannelContextType | undefined>(undefined);
@@ -15,7 +19,12 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
   const [activeChannel, setActiveChannelState] = useState<CustomerChannel>(() => {
     try {
       const stored = localStorage.getItem(CUSTOMER_CHANNEL_STORAGE_KEY);
-      if (stored === 'QUICK_COMMERCE' || stored === 'ECOMMERCE' || stored === 'ALL') {
+      if (
+        stored === 'QUICK_COMMERCE' ||
+        stored === 'ECOMMERCE' ||
+        stored === 'WHOLESALE' ||
+        stored === 'ALL'
+      ) {
         return stored;
       }
     } catch (e) {
@@ -40,6 +49,7 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
         if (
           event.newValue === 'QUICK_COMMERCE' ||
           event.newValue === 'ECOMMERCE' ||
+          event.newValue === 'WHOLESALE' ||
           event.newValue === 'ALL'
         ) {
           setActiveChannelState(event.newValue as CustomerChannel);
@@ -50,8 +60,22 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  const isWholesale = activeChannel === 'WHOLESALE';
+  const isQuickCommerce = activeChannel === 'QUICK_COMMERCE';
+  const isEcommerce = activeChannel === 'ECOMMERCE';
+  const isAll = activeChannel === 'ALL';
+
   return (
-    <CustomerChannelContext.Provider value={{ activeChannel, setActiveChannel }}>
+    <CustomerChannelContext.Provider
+      value={{
+        activeChannel,
+        setActiveChannel,
+        isWholesale,
+        isQuickCommerce,
+        isEcommerce,
+        isAll,
+      }}
+    >
       {children}
     </CustomerChannelContext.Provider>
   );

@@ -50,6 +50,8 @@ export default function CategoryFormModal({
     hasWarning: false,
     groupCategory: "",
     commissionRate: 0,
+    commerceChannels: ["QUICK_COMMERCE", "ECOMMERCE"] as ("QUICK_COMMERCE" | "ECOMMERCE")[],
+    wholesaleEnabled: false,
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -115,6 +117,11 @@ export default function CategoryFormModal({
           hasWarning: category.hasWarning || false,
           groupCategory: category.groupCategory || "",
           commissionRate: category.commissionRate || 0,
+          commerceChannels:
+            category.commerceChannels && category.commerceChannels.length > 0
+              ? category.commerceChannels
+              : ["QUICK_COMMERCE", "ECOMMERCE"],
+          wholesaleEnabled: category.wholesaleEnabled ?? false,
         });
         if (category.image) {
           setImagePreview(category.image);
@@ -157,6 +164,11 @@ export default function CategoryFormModal({
           hasWarning: false,
           groupCategory: "",
           commissionRate: 0,
+          commerceChannels:
+            parentCategory.commerceChannels && parentCategory.commerceChannels.length > 0
+              ? parentCategory.commerceChannels
+              : ["QUICK_COMMERCE", "ECOMMERCE"],
+          wholesaleEnabled: parentCategory.wholesaleEnabled ?? false,
         });
       } else {
         // Reset form for new category
@@ -171,6 +183,8 @@ export default function CategoryFormModal({
           hasWarning: false,
           groupCategory: "",
           commissionRate: 0,
+          commerceChannels: ["QUICK_COMMERCE", "ECOMMERCE"],
+          wholesaleEnabled: false,
         });
       }
       setImageFile(null);
@@ -363,6 +377,8 @@ export default function CategoryFormModal({
         hasWarning: formData.hasWarning,
         groupCategory: formData.groupCategory || undefined,
         commissionRate: formData.commissionRate,
+        commerceChannels: formData.commerceChannels,
+        wholesaleEnabled: formData.wholesaleEnabled,
       };
 
       await onSubmit(submitData);
@@ -585,6 +601,157 @@ export default function CategoryFormModal({
                 )}
               </div>
             )}
+          </div>
+
+          {/* Commerce Channels Selection */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Allowed Commerce Channels <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Quick Commerce */}
+              <label
+                className={`flex flex-col p-3 border rounded-xl cursor-pointer transition-all ${
+                  formData.commerceChannels.length === 1 &&
+                  formData.commerceChannels.includes("QUICK_COMMERCE")
+                    ? "border-emerald-500 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-500"
+                    : "border-neutral-200 hover:border-neutral-300 bg-white"
+                }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="radio"
+                    name="commerceChannelOption"
+                    value="QUICK_COMMERCE"
+                    checked={
+                      formData.commerceChannels.length === 1 &&
+                      formData.commerceChannels.includes("QUICK_COMMERCE")
+                    }
+                    onChange={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        commerceChannels: ["QUICK_COMMERCE"],
+                      }))
+                    }
+                    className="text-emerald-600 focus:ring-emerald-500"
+                    disabled={submitting}
+                  />
+                  <span className="font-semibold text-sm text-neutral-900 flex items-center gap-1">
+                    ⚡ Quick Commerce
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 pl-6">
+                  Only instant local delivery items (Milk, Fresh Veggies, Essentials)
+                </p>
+              </label>
+
+              {/* Ecommerce */}
+              <label
+                className={`flex flex-col p-3 border rounded-xl cursor-pointer transition-all ${
+                  formData.commerceChannels.length === 1 &&
+                  formData.commerceChannels.includes("ECOMMERCE")
+                    ? "border-blue-500 bg-blue-50/50 shadow-sm ring-1 ring-blue-500"
+                    : "border-neutral-200 hover:border-neutral-300 bg-white"
+                }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="radio"
+                    name="commerceChannelOption"
+                    value="ECOMMERCE"
+                    checked={
+                      formData.commerceChannels.length === 1 &&
+                      formData.commerceChannels.includes("ECOMMERCE")
+                    }
+                    onChange={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        commerceChannels: ["ECOMMERCE"],
+                      }))
+                    }
+                    className="text-blue-600 focus:ring-blue-500"
+                    disabled={submitting}
+                  />
+                  <span className="font-semibold text-sm text-neutral-900 flex items-center gap-1">
+                    📦 Ecommerce
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 pl-6">
+                  Only standard courier/national shipping (Fashion, Electronics)
+                </p>
+              </label>
+
+              {/* Both */}
+              <label
+                className={`flex flex-col p-3 border rounded-xl cursor-pointer transition-all ${
+                  formData.commerceChannels.length === 2 &&
+                  formData.commerceChannels.includes("QUICK_COMMERCE") &&
+                  formData.commerceChannels.includes("ECOMMERCE")
+                    ? "border-purple-500 bg-purple-50/50 shadow-sm ring-1 ring-purple-500"
+                    : "border-neutral-200 hover:border-neutral-300 bg-white"
+                }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="radio"
+                    name="commerceChannelOption"
+                    value="BOTH"
+                    checked={
+                      formData.commerceChannels.length === 2 &&
+                      formData.commerceChannels.includes("QUICK_COMMERCE") &&
+                      formData.commerceChannels.includes("ECOMMERCE")
+                    }
+                    onChange={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        commerceChannels: ["QUICK_COMMERCE", "ECOMMERCE"],
+                      }))
+                    }
+                    className="text-purple-600 focus:ring-purple-500"
+                    disabled={submitting}
+                  />
+                  <span className="font-semibold text-sm text-neutral-900 flex items-center gap-1">
+                    ⚡📦 Both Channels
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 pl-6">
+                  Permits products of either commerce channel (Authoritative on Product)
+                </p>
+              </label>
+            </div>
+            {errors.commerceChannels && (
+              <p className="mt-1 text-sm text-red-600">{errors.commerceChannels}</p>
+            )}
+          </div>
+
+          {/* Wholesale Capability Toggle (Independent from Commerce Channels) */}
+          <div className="mb-4 p-3.5 border border-neutral-200 rounded-xl bg-neutral-50/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <label
+                  htmlFor="categoryWholesaleEnabled"
+                  className="block text-sm font-semibold text-neutral-900 cursor-pointer">
+                  Wholesale Enabled
+                </label>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Allows wholesale-eligible products in this category to be purchased at wholesale prices and MOQ.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 ml-4">
+                <input
+                  type="checkbox"
+                  id="categoryWholesaleEnabled"
+                  name="wholesaleEnabled"
+                  checked={formData.wholesaleEnabled}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      wholesaleEnabled: e.target.checked,
+                    }))
+                  }
+                  className="sr-only peer"
+                  disabled={submitting}
+                />
+                <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+            </div>
           </div>
 
           {/* Category Image */}

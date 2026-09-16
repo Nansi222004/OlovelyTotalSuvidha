@@ -12,6 +12,8 @@ import { useLocation } from "../../hooks/useLocation";
 import PageLoader from "../../components/PageLoader";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useTranslation } from "../../hooks/useTranslation";
+import CommerceModeSwiper from "./components/CommerceModeSwiper";
+
 
 import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
 import { useCustomerChannel } from "../../context/CustomerChannelContext";
@@ -163,6 +165,8 @@ export default function Home() {
       list = list.filter((p) => p.productType === 'QUICK_COMMERCE');
     } else if (channelFilter === 'ECOMMERCE') {
       list = list.filter((p) => p.productType === 'ECOMMERCE');
+    } else if (channelFilter === 'WHOLESALE') {
+      list = list.filter((p) => p.wholesaleEnabled && (p.wholesalePrice || 0) > 0);
     }
     if (tabId === "all") {
       return list;
@@ -186,6 +190,9 @@ export default function Home() {
     }
     if (channelFilter === 'ECOMMERCE') {
       return list.filter((p: any) => p.productType === 'ECOMMERCE');
+    }
+    if (channelFilter === 'WHOLESALE') {
+      return list.filter((p: any) => p.wholesaleEnabled && (p.wholesalePrice || 0) > 0);
     }
     return list;
   }, [homeData.lowestPrices, channelFilter]);
@@ -250,6 +257,9 @@ export default function Home() {
           />
         )}
 
+        {/* Dynamic Commerce Mode Swiper — Communicates Quick Commerce, Ecommerce & Wholesale */}
+        {activeTab === "all" && <CommerceModeSwiper />}
+
         {/* Dynamic Home Sections - Render sections created by admin */}
         {homeData.homeSections && homeData.homeSections.length > 0 && (
           <>
@@ -260,6 +270,7 @@ export default function Home() {
               const sectionProducts = (section.data || []).filter((p: any) => {
                 if (channelFilter === 'QUICK_COMMERCE') return p.productType === 'QUICK_COMMERCE';
                 if (channelFilter === 'ECOMMERCE') return p.productType === 'ECOMMERCE';
+                if (channelFilter === 'WHOLESALE') return p.wholesaleEnabled && (p.wholesalePrice || 0) > 0;
                 return true;
               });
 

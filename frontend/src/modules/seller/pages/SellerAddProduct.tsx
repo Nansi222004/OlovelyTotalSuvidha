@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { uploadImage, uploadImages } from "../../../services/api/uploadService";
 import {
@@ -28,12 +28,20 @@ import { getBrands, Brand } from "../../../services/api/brandService";
 import { HeaderCategory } from "../../../services/api/headerCategoryService";
 import { useAuth } from "../../../context/AuthContext";
 import { useSellerChannel } from "../../../context/SellerChannelContext";
+import { useAppSettings } from "../../../context/AppSettingsContext";
 
 export default function SellerAddProduct() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useAuth();
   const { activeChannel, sellerVendorType } = useSellerChannel();
+  const { settings: appSettings } = useAppSettings();
+
+  // Safeguard: Compute strictly valid channel (never send HYBRID to category API)
+  const requestedChannel =
+    sellerVendorType === "HYBRID"
+      ? (activeChannel === "QUICK_COMMERCE" || activeChannel === "ECOMMERCE" ? activeChannel : undefined)
+      : (sellerVendorType === "QUICK_COMMERCE" || sellerVendorType === "ECOMMERCE" ? sellerVendorType : undefined);
 
   const [formData, setFormData] = useState({
     productName: "",
@@ -45,6 +53,10 @@ export default function SellerAddProduct() {
     popular: "No",
     dealOfDay: "No",
     brand: "",
+    barcode: "",
+    wholesaleEnabled: "No",
+    wholesalePrice: "",
+    wholesaleMinimumQuantity: "",
     smallDescription: "",
     seoTitle: "",
     seoKeywords: "",
@@ -62,7 +74,7 @@ export default function SellerAddProduct() {
     galleryImageUrls: [] as string[],
     isShopByStoreOnly: "No",
     shopId: "",
-    productType: ((activeChannel || sellerVendorType) === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE") as "QUICK_COMMERCE" | "ECOMMERCE",
+    productType: ((requestedChannel || activeChannel || sellerVendorType) === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE") as "QUICK_COMMERCE" | "ECOMMERCE",
     sku: "",
     weightKg: "",
     lengthCm: "",
@@ -77,6 +89,7 @@ export default function SellerAddProduct() {
     discPrice: "0",
     stock: "0",
     status: "Available" as "Available" | "Sold out",
+    barcode: "",
   });
 
   const [mainImageFile, setMainImageFile] = useState<File | null>(null);
@@ -87,6 +100,31 @@ export default function SellerAddProduct() {
   );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    productName?: boolean;
+    headerCategory?: boolean;
+    category?: boolean;
+    weightKg?: boolean;
+    variations?: boolean;
+  }>({});
+
+  const setErrorAndScroll = (msg: string, targetElementId?: string) => {
+    setUploadError(msg);
+    setTimeout(() => {
+      if (targetElementId) {
+        const el = document.getElementById(targetElementId);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus?.();
+          return;
+        }
+      }
+      const bottomBanner = document.getElementById("bottom-submit-error");
+      if (bottomBanner) {
+        bottomBanner.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  };
 
   // Synchronize productType with activeChannel for new products
   useEffect(() => {
@@ -97,6 +135,7 @@ export default function SellerAddProduct() {
       }));
     }
   }, [id, activeChannel]);
+
   const [successMessage, setSuccessMessage] = useState<string>("");
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -109,12 +148,70 @@ export default function SellerAddProduct() {
   );
   const [shops, setShops] = useState<Shop[]>([]);
 
+  // Find selected category object
+  const selectedCategory = categories.find(
+    (cat: any) => (cat._id || cat.id) === formData.category
+  );
+  const isCategoryQuickCommerceOnly =
+    selectedCategory?.commerceChannels?.length === 1 &&
+    selectedCategory.commerceChannels[0] === "QUICK_COMMERCE";
+  const isCategoryEcommerceOnly =
+    selectedCategory?.commerceChannels?.length === 1 &&
+    selectedCategory.commerceChannels[0] === "ECOMMERCE";
+
+  // Auto-switch productType if category supports only one channel
+  useEffect(() => {
+    if (selectedCategory && selectedCategory.commerceChannels?.length === 1) {
+      const requiredChannel = selectedCategory.commerceChannels[0];
+      if (
+        (sellerVendorType === "HYBRID" || sellerVendorType === requiredChannel) &&
+        formData.productType !== requiredChannel
+      ) {
+        setFormData((prev) => ({
+          ...prev,
+          productType: requiredChannel,
+        }));
+      }
+    }
+  }, [selectedCategory, sellerVendorType, formData.productType]);
+
+  // Immediately refresh category list when active channel changes
+  useEffect(() => {
+    const fetchFilteredCategories = async () => {
+      try {
+        const catRes = await getCategories(
+          requestedChannel ? { channel: requestedChannel } : undefined
+        );
+        if (catRes && catRes.success) {
+          setCategories(catRes.data);
+        }
+      } catch (err) {
+        console.error("Error refreshing categories for channel:", err);
+      }
+    };
+    fetchFilteredCategories();
+  }, [requestedChannel]);
+
+  // Reset category selection if it becomes incompatible with newly active channel
+  useEffect(() => {
+    if (formData.category && requestedChannel && selectedCategory?.commerceChannels) {
+      if (!selectedCategory.commerceChannels.includes(requestedChannel)) {
+        setFormData((prev) => ({
+          ...prev,
+          category: "",
+          subcategory: "",
+          subSubCategory: "",
+        }));
+      }
+    }
+  }, [requestedChannel, selectedCategory, formData.category]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Use Promise.allSettled to ensure one failing API doesn't break all others
         const results = await Promise.allSettled([
-          getCategories(),
+          getCategories(requestedChannel ? { channel: requestedChannel } : undefined),
           getActiveTaxes(),
           getBrands(),
           getAllowedHeaderCategories(),
@@ -192,6 +289,10 @@ export default function SellerAddProduct() {
               popular: product.popular ? "Yes" : "No",
               dealOfDay: product.dealOfDay ? "Yes" : "No",
               brand: (product.brand as any)?._id || product.brandId || "",
+              barcode: product.barcode || "",
+              wholesaleEnabled: (product as any).wholesaleEnabled ? "Yes" : "No",
+              wholesalePrice: (product as any).wholesalePrice?.toString() || "",
+              wholesaleMinimumQuantity: (product as any).wholesaleMinimumQuantity?.toString() || "",
               smallDescription: product.smallDescription || "",
               seoTitle: product.seoTitle || "",
               seoKeywords: product.seoKeywords || "",
@@ -217,7 +318,12 @@ export default function SellerAddProduct() {
               widthCm: (product as any).packageDetails?.dimensionsCm?.width?.toString() || "",
               heightCm: (product as any).packageDetails?.dimensionsCm?.height?.toString() || "",
             });
-            setVariations(product.variations);
+            setVariations(
+              (product.variations || []).map((v: any) => ({
+                ...v,
+                barcode: v.barcode || "",
+              }))
+            );
             if (product.mainImageUrl || product.mainImage) {
               setMainImagePreview(
                 product.mainImageUrl || product.mainImage || ""
@@ -319,6 +425,12 @@ export default function SellerAddProduct() {
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name as keyof typeof fieldErrors]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: false }));
+    }
+    if (uploadError) {
+      setUploadError("");
+    }
   };
 
   const handleMainImageChange = async (
@@ -381,6 +493,12 @@ export default function SellerAddProduct() {
     setGalleryImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const minRetailPrice = useMemo(() => {
+    if (!variations || variations.length === 0) return 0;
+    const prices = variations.map((v) => (v.discPrice > 0 ? v.discPrice : v.price)).filter((p) => p > 0);
+    return prices.length > 0 ? Math.min(...prices) : 0;
+  }, [variations]);
+
   const addVariation = () => {
     if (!variationForm.title || !variationForm.price) {
       setUploadError("Please fill in variation title and price");
@@ -402,15 +520,18 @@ export default function SellerAddProduct() {
       discPrice,
       stock,
       status: variationForm.status,
+      barcode: variationForm.barcode?.trim() || undefined,
     };
 
     setVariations([...variations, newVariation]);
+    setFieldErrors((prev) => ({ ...prev, variations: false }));
     setVariationForm({
       title: "",
       price: "",
       discPrice: "0",
       stock: "0",
       status: "Available",
+      barcode: "",
     });
     setUploadError("");
   };
@@ -422,21 +543,112 @@ export default function SellerAddProduct() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploadError("");
+    setFieldErrors({});
 
-    // Basic validation
+    // 1. Basic validation - Product Name
     if (!formData.productName.trim()) {
-      setUploadError("Please enter a product name.");
+      setFieldErrors({ productName: true });
+      setErrorAndScroll("Please enter a product name.", "input-product-name");
       return;
     }
 
-    // Only validate categories if NOT shop by store only
+    // 2. Category validation (if NOT shop by store only)
     if (formData.isShopByStoreOnly !== "Yes") {
       if (!formData.headerCategory) {
-        setUploadError("Please select a header category.");
+        setFieldErrors({ headerCategory: true });
+        setErrorAndScroll("Please select a header category.", "select-header-category");
         return;
       }
       if (!formData.category) {
-        setUploadError("Please select a category.");
+        setFieldErrors({ category: true });
+        setErrorAndScroll("Please select a category.", "select-category");
+        return;
+      }
+    }
+
+    // 3. Auto-commit pending variation if user typed title & price into inputs but forgot to click "Add Variation"
+    let currentVariations = [...variations];
+    if (currentVariations.length === 0 && variationForm.title.trim() && variationForm.price) {
+      const parsedPrice = parseFloat(variationForm.price);
+      if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+        const autoVar: ProductVariation = {
+          title: variationForm.title.trim(),
+          price: parsedPrice,
+          discPrice: parseFloat(variationForm.discPrice || "0") || 0,
+          stock: parseInt(variationForm.stock || "0", 10) || 0,
+          status: variationForm.status || "Available",
+          barcode: variationForm.barcode ? variationForm.barcode.trim() : undefined,
+        };
+        currentVariations = [autoVar];
+        setVariations(currentVariations);
+      }
+    }
+
+    // 4. Validate variations
+    if (currentVariations.length === 0) {
+      setFieldErrors({ variations: true });
+      setErrorAndScroll(
+        "Please add at least one product variation. Fill in Title and Price under 'Add Variation' and click 'Add Variation'.",
+        "section-variations"
+      );
+      return;
+    }
+
+    // 5. Validate Category Channel compatibility
+    if (selectedCategory && selectedCategory.commerceChannels && selectedCategory.commerceChannels.length > 0) {
+      if (!selectedCategory.commerceChannels.includes(formData.productType)) {
+        setErrorAndScroll(
+          `Category "${selectedCategory.name}" only allows ${
+            selectedCategory.commerceChannels.join(", ")
+          }. Cannot create ${formData.productType} product.`,
+          "select-category"
+        );
+        return;
+      }
+    }
+
+    // 6. Ecommerce package validation
+    if (formData.productType === "ECOMMERCE") {
+      if (!formData.weightKg || isNaN(parseFloat(formData.weightKg)) || parseFloat(formData.weightKg) <= 0) {
+        setFieldErrors({ weightKg: true });
+        setErrorAndScroll(
+          "Package weight is required and must be greater than 0 kg for Ecommerce products. Check 'Courier Shipping Package Dimensions'.",
+          "input-weight-kg"
+        );
+        return;
+      }
+      if (formData.lengthCm && (isNaN(parseFloat(formData.lengthCm)) || parseFloat(formData.lengthCm) <= 0)) {
+        setErrorAndScroll("Package length must be greater than 0 cm", "input-weight-kg");
+        return;
+      }
+      if (formData.widthCm && (isNaN(parseFloat(formData.widthCm)) || parseFloat(formData.widthCm) <= 0)) {
+        setErrorAndScroll("Package width must be greater than 0 cm", "input-weight-kg");
+        return;
+      }
+      if (formData.heightCm && (isNaN(parseFloat(formData.heightCm)) || parseFloat(formData.heightCm) <= 0)) {
+        setErrorAndScroll("Package height must be greater than 0 cm", "input-weight-kg");
+        return;
+      }
+    }
+
+    // 7. Wholesale validation
+    if (formData.wholesaleEnabled === "Yes") {
+      if (user?.wholesaleEnabled === false) {
+        setErrorAndScroll("Wholesale selling is not enabled for your seller account.");
+        return;
+      }
+      const wp = parseFloat(formData.wholesalePrice || "0");
+      const moq = parseInt(formData.wholesaleMinimumQuantity || "0", 10);
+      if (!wp || wp <= 0) {
+        setErrorAndScroll("Wholesale price must be greater than 0 when wholesale is enabled.");
+        return;
+      }
+      if (minRetailPrice > 0 && wp >= minRetailPrice) {
+        setErrorAndScroll(`Wholesale price (₹${wp}) must be strictly less than the lowest retail price (₹${minRetailPrice}).`);
+        return;
+      }
+      if (!moq || moq < 1) {
+        setErrorAndScroll("Wholesale Minimum Order Quantity (MOQ) must be at least 1.");
         return;
       }
     }
@@ -450,7 +662,6 @@ export default function SellerAddProduct() {
 
       // Upload main image if provided
       if (mainImageFile) {
-        // Compress image before upload to avoid timeouts
         const compressedMainImage = await compressImage(mainImageFile);
         const mainImageResult = await uploadImage(
           compressedMainImage,
@@ -465,7 +676,6 @@ export default function SellerAddProduct() {
 
       // Upload gallery images if provided
       if (galleryImageFiles.length > 0) {
-        // Compress gallery images
         const compressedGalleryFiles = await Promise.all(
           galleryImageFiles.map((file) => compressImage(file))
         );
@@ -477,39 +687,16 @@ export default function SellerAddProduct() {
         setFormData((prev) => ({ ...prev, galleryImageUrls }));
       }
 
-      // Validate variations
-      if (variations.length === 0) {
-        setUploadError("Please add at least one product variation");
-        setUploading(false);
-        return;
-      }
-
-      // Ecommerce package validation
-      if (formData.productType === "ECOMMERCE") {
-        if (!formData.weightKg || isNaN(parseFloat(formData.weightKg)) || parseFloat(formData.weightKg) <= 0) {
-          setUploadError("Package weight is required and must be greater than 0 kg for Ecommerce products");
-          setUploading(false);
-          return;
-        }
-        if (formData.lengthCm && (isNaN(parseFloat(formData.lengthCm)) || parseFloat(formData.lengthCm) <= 0)) {
-          setUploadError("Package length must be greater than 0 cm");
-          setUploading(false);
-          return;
-        }
-        if (formData.widthCm && (isNaN(parseFloat(formData.widthCm)) || parseFloat(formData.widthCm) <= 0)) {
-          setUploadError("Package width must be greater than 0 cm");
-          setUploading(false);
-          return;
-        }
-        if (formData.heightCm && (isNaN(parseFloat(formData.heightCm)) || parseFloat(formData.heightCm) <= 0)) {
-          setUploadError("Package height must be greater than 0 cm");
-          setUploading(false);
-          return;
-        }
+      // Auto-fallback: If no main image was uploaded, but gallery images exist, use first gallery image
+      if (!mainImageUrl && galleryImageUrls.length > 0) {
+        mainImageUrl = galleryImageUrls[0];
+        setFormData((prev) => ({
+          ...prev,
+          mainImageUrl,
+        }));
       }
 
       // Prepare product data for API
-
       const productData = {
         productName: formData.productName,
         headerCategoryId: formData.headerCategory || undefined,
@@ -520,6 +707,10 @@ export default function SellerAddProduct() {
         publish: formData.publish === "Yes",
         popular: formData.popular === "Yes",
         dealOfDay: formData.dealOfDay === "Yes",
+        barcode: formData.barcode ? formData.barcode.trim() : undefined,
+        wholesaleEnabled: formData.wholesaleEnabled === "Yes",
+        wholesalePrice: formData.wholesaleEnabled === "Yes" && formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : undefined,
+        wholesaleMinimumQuantity: formData.wholesaleEnabled === "Yes" && formData.wholesaleMinimumQuantity ? parseInt(formData.wholesaleMinimumQuantity, 10) : undefined,
         seoTitle: formData.seoTitle || undefined,
         seoKeywords: formData.seoKeywords || undefined,
         seoImageAlt: formData.seoImageAlt || undefined,
@@ -536,7 +727,10 @@ export default function SellerAddProduct() {
         fssaiLicNo: formData.fssaiLicNo || undefined,
         mainImageUrl: mainImageUrl || undefined,
         galleryImageUrls,
-        variations: variations,
+        variations: currentVariations.map((v) => ({
+          ...v,
+          barcode: v.barcode ? v.barcode.trim() : undefined,
+        })),
         variationType: formData.variationType || undefined,
         isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
         shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : undefined,
@@ -606,6 +800,10 @@ export default function SellerAddProduct() {
               lengthCm: "",
               widthCm: "",
               heightCm: "",
+              barcode: "",
+              wholesaleEnabled: "No",
+              wholesalePrice: "",
+              wholesaleMinimumQuantity: "",
             });
             setVariations([]);
             setMainImageFile(null);
@@ -618,14 +816,15 @@ export default function SellerAddProduct() {
           navigate("/seller/product/list");
         }, 1500);
       } else {
-        setUploadError(response.message || "Failed to create product");
+        setErrorAndScroll(response.message || "Failed to create product");
       }
     } catch (error: any) {
-      setUploadError(
+      console.error("[ADD_PRODUCT_ERROR]", error);
+      const errMsg =
         error.response?.data?.message ||
         error.message ||
-        "Failed to upload images. Please try again."
-      );
+        "Failed to upload images or save product. Please try again.";
+      setErrorAndScroll(errMsg);
     } finally {
       setUploading(false);
     }
@@ -635,7 +834,28 @@ export default function SellerAddProduct() {
     <div className="flex flex-col h-full">
       {/* Main Content */}
       <div className="flex-1">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} noValidate className="space-y-6">
+          {uploadError && (
+            <div
+              id="top-submit-error"
+              className="bg-red-50 border-2 border-red-400 text-red-900 px-4 py-3.5 rounded-xl shadow-sm flex items-start gap-3">
+              <div className="text-red-600 font-bold text-xl mt-0.5">⚠️</div>
+              <div className="flex-1">
+                <h4 className="font-bold text-sm text-red-950 uppercase tracking-wide">
+                  Action Required
+                </h4>
+                <p className="text-sm font-medium mt-0.5 text-red-800 leading-relaxed">
+                  {uploadError}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadError("")}
+                className="text-red-400 hover:text-red-700 font-bold text-xl px-1">
+                &times;
+              </button>
+            </div>
+          )}
           {/* Product Section */}
           <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
             <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
@@ -651,39 +871,67 @@ export default function SellerAddProduct() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
+                      disabled={isCategoryEcommerceOnly}
                       onClick={() => setFormData(prev => ({ ...prev, productType: "QUICK_COMMERCE" }))}
                       className={`p-2.5 rounded-lg border text-left transition-all ${
-                        formData.productType === "QUICK_COMMERCE"
+                        isCategoryEcommerceOnly
+                          ? "opacity-40 cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400"
+                          : formData.productType === "QUICK_COMMERCE"
                           ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
                           : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
                       }`}
                     >
-                      <div className="text-sm flex items-center gap-1.5">⚡ Quick Commerce</div>
+                      <div className="text-sm flex items-center gap-1.5">
+                        ⚡ Quick Commerce
+                        {isCategoryEcommerceOnly && (
+                          <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded">Category is Ecom only</span>
+                        )}
+                      </div>
                       <div className="text-xs text-neutral-500 mt-0.5">Hyperlocal local delivery (10–30 mins)</div>
                     </button>
                     <button
                       type="button"
+                      disabled={isCategoryQuickCommerceOnly}
                       onClick={() => setFormData(prev => ({ ...prev, productType: "ECOMMERCE" }))}
                       className={`p-2.5 rounded-lg border text-left transition-all ${
-                        formData.productType === "ECOMMERCE"
+                        isCategoryQuickCommerceOnly
+                          ? "opacity-40 cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400"
+                          : formData.productType === "ECOMMERCE"
                           ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
                           : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
                       }`}
                     >
-                      <div className="text-sm flex items-center gap-1.5">📦 Ecommerce</div>
+                      <div className="text-sm flex items-center gap-1.5">
+                        📦 Ecommerce
+                        {isCategoryQuickCommerceOnly && (
+                          <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">Category is QC only</span>
+                        )}
+                      </div>
                       <div className="text-xs text-neutral-500 mt-0.5">Courier shipping nationwide (3–7 days)</div>
                     </button>
                   </div>
                 ) : (
-                  <div className="text-sm font-medium text-neutral-800 flex items-center gap-2">
-                    {formData.productType === "ECOMMERCE" ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg">
-                        📦 Ecommerce (Courier Shipping)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-900 border border-teal-200 rounded-lg">
-                        ⚡ Quick Commerce (Hyperlocal Delivery)
-                      </span>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-800 flex items-center gap-2">
+                      {formData.productType === "ECOMMERCE" ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg">
+                          📦 Ecommerce (Courier Shipping)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-900 border border-teal-200 rounded-lg">
+                          ⚡ Quick Commerce (Hyperlocal Delivery)
+                        </span>
+                      )}
+                    </div>
+                    {sellerVendorType === "QUICK_COMMERCE" && isCategoryEcommerceOnly && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        ⚠️ This category is only available for Ecommerce, but your seller account is Quick Commerce only.
+                      </div>
+                    )}
+                    {sellerVendorType === "ECOMMERCE" && isCategoryQuickCommerceOnly && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        ⚠️ This category is only available for Quick Commerce, but your seller account is Ecommerce only.
+                      </div>
                     )}
                   </div>
                 )}
@@ -701,6 +949,7 @@ export default function SellerAddProduct() {
                         Package Weight (KG) <span className="text-red-500">*</span>
                       </label>
                       <input
+                        id="input-weight-kg"
                         type="number"
                         name="weightKg"
                         value={formData.weightKg}
@@ -708,9 +957,17 @@ export default function SellerAddProduct() {
                         placeholder="e.g. 0.5"
                         step="0.01"
                         min="0.01"
-                        required
-                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 ${
+                          fieldErrors.weightKg
+                            ? "border-red-500 ring-2 ring-red-200 bg-red-50/20"
+                            : "border-neutral-300 focus:ring-teal-500"
+                        }`}
                       />
+                      {fieldErrors.weightKg && (
+                        <p className="text-xs text-red-600 font-medium mt-1">
+                          Package weight is required for Ecommerce.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-neutral-700 mb-1">
@@ -777,16 +1034,26 @@ export default function SellerAddProduct() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Product Name
+                    Product Name <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="input-product-name"
                     type="text"
                     name="productName"
                     value={formData.productName}
                     onChange={handleChange}
                     placeholder="Enter Product Name"
-                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      fieldErrors.productName
+                        ? "border-red-500 ring-2 ring-red-200 bg-red-50/20"
+                        : "border-neutral-300 focus:ring-teal-500 focus:border-teal-500"
+                    }`}
                   />
+                  {fieldErrors.productName && (
+                    <p className="text-xs text-red-600 font-medium mt-1">
+                      Product name is required.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -794,10 +1061,15 @@ export default function SellerAddProduct() {
                     <span className="text-red-500">*</span>
                   </label>
                   <select
+                    id="select-header-category"
                     name="headerCategory"
                     value={formData.headerCategory}
                     onChange={handleChange}
-                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white ${
+                      fieldErrors.headerCategory
+                        ? "border-red-500 ring-2 ring-red-200 bg-red-50/20"
+                        : "border-neutral-300 focus:ring-teal-500 focus:border-teal-500"
+                    }`}>
                     <option value="">
                       {headerCategories.length > 0
                         ? "Select Header Category"
@@ -809,6 +1081,11 @@ export default function SellerAddProduct() {
                       </option>
                     ))}
                   </select>
+                  {fieldErrors.headerCategory && (
+                    <p className="text-xs text-red-600 font-medium mt-1">
+                      Header category is required.
+                    </p>
+                  )}
                   {headerCategories.length === 0 && (
                     <p className="mt-1 text-xs text-amber-600">
                       No allowed categories assigned. You can select categories in Store Settings or ask Admin.
@@ -817,7 +1094,7 @@ export default function SellerAddProduct() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Select Category
+                    Select Category <span className="text-red-500">*</span>
                     {!formData.headerCategory && (
                       <span className="text-xs text-neutral-500 ml-1">
                         (Select header category first)
@@ -825,11 +1102,16 @@ export default function SellerAddProduct() {
                     )}
                   </label>
                   <select
+                    id="select-category"
                     name="category"
                     value={formData.category}
                     onChange={handleChange}
                     disabled={!formData.headerCategory}
-                    className={`w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${!formData.headerCategory
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      fieldErrors.category
+                        ? "border-red-500 ring-2 ring-red-200 bg-red-50/20"
+                        : "border-neutral-300 focus:ring-teal-500 focus:border-teal-500"
+                    } ${!formData.headerCategory
                       ? "bg-neutral-100 cursor-not-allowed text-neutral-500"
                       : "bg-white"
                       }`}>
@@ -846,18 +1128,56 @@ export default function SellerAddProduct() {
                             typeof cat.headerCategoryId === "string"
                               ? cat.headerCategoryId
                               : cat.headerCategoryId?._id;
-                          return catHeaderId === formData.headerCategory;
+                          if (catHeaderId !== formData.headerCategory) return false;
+                        }
+                        // Enforce channel filtering in UI (defense-in-depth)
+                        if (requestedChannel === "ECOMMERCE") {
+                          return cat.commerceChannels?.includes("ECOMMERCE");
+                        }
+                        if (requestedChannel === "QUICK_COMMERCE") {
+                          return cat.commerceChannels?.includes("QUICK_COMMERCE");
+                        }
+                        if (sellerVendorType === "HYBRID") {
+                          return cat.commerceChannels?.some((c: string) => c === "QUICK_COMMERCE" || c === "ECOMMERCE");
                         }
                         return true;
                       })
-                      .map((cat: any) => (
-                        <option
-                          key={cat._id || cat.id}
-                          value={cat._id || cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
+                      .map((cat: any) => {
+                        const channelLabel =
+                          cat.commerceChannels?.length === 2
+                            ? "⚡📦 (Both)"
+                            : cat.commerceChannels?.includes("QUICK_COMMERCE")
+                            ? "⚡ (QC Only)"
+                            : cat.commerceChannels?.includes("ECOMMERCE")
+                            ? "📦 (Ecom Only)"
+                            : "";
+                        return (
+                          <option
+                            key={cat._id || cat.id}
+                            value={cat._id || cat.id}>
+                            {cat.name} {channelLabel}
+                          </option>
+                        );
+                      })}
                   </select>
+                  {selectedCategory && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                      <span className="text-neutral-500 font-medium">Channel support:</span>
+                      {selectedCategory.commerceChannels?.length === 2 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-800">
+                          ⚡📦 Both Quick Commerce & Ecommerce Permitted
+                        </span>
+                      ) : selectedCategory.commerceChannels?.includes("QUICK_COMMERCE") ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                          ⚡ Quick Commerce Only
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 text-blue-800">
+                          📦 Ecommerce Only
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -978,6 +1298,20 @@ export default function SellerAddProduct() {
                     </p>
                   )}
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    Product Barcode / EAN / UPC <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="barcode"
+                    value={formData.barcode}
+                    onChange={handleChange}
+                    placeholder="e.g. 8901234567890"
+                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -992,6 +1326,137 @@ export default function SellerAddProduct() {
                   className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Wholesale Configuration Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-teal-700 to-teal-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🏷️</span>
+                <h2 className="text-lg font-semibold">Wholesale Pricing & MOQ</h2>
+              </div>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${formData.wholesaleEnabled === "Yes" ? "bg-teal-300 text-teal-950 font-bold" : "bg-neutral-600 text-neutral-200"}`}>
+                {formData.wholesaleEnabled === "Yes" ? "Wholesale Enabled" : "Wholesale Disabled"}
+              </span>
+            </div>
+            <div className="p-4 sm:p-6 space-y-4">
+              {/* Informational Clarity Notice */}
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-900">
+                <p className="font-semibold">Wholesale Selling Capability</p>
+                <p className="text-teal-700 mt-0.5">
+                  Wholesale is an optional selling capability. Your delivery method still depends on the product's commerce type.
+                </p>
+                {formData.productType === "ECOMMERCE" ? (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 mt-2 font-medium">
+                    📦 Wholesale Ecommerce products are shipped by courier.
+                  </p>
+                ) : (
+                  <p className="text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-md px-2.5 py-1.5 mt-2 font-medium">
+                    ⚡ Wholesale Quick Commerce products are delivered by local delivery.
+                  </p>
+                )}
+              </div>
+
+              {/* Status and Eligibility Warnings */}
+              <div className="space-y-2">
+                {user?.wholesaleEnabled === false && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+                    <span className="text-base">🔒</span>
+                    <div>
+                      <p className="font-bold">Wholesale selling is not enabled for your seller account.</p>
+                      <p className="text-amber-800 mt-0.5">
+                        Your account currently does not have wholesale capabilities active. Contact the platform administrator to request wholesale selling access.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {appSettings.wholesaleSettings?.wholesaleEnabled === false && (
+                  <div className="p-3 bg-neutral-100 border border-neutral-300 rounded-lg text-xs text-neutral-700 flex items-center gap-2">
+                    <span>ℹ️</span>
+                    <span><strong>Global Wholesale Disabled:</strong> Wholesale is currently disabled platform-wide by Admin.</span>
+                  </div>
+                )}
+                {formData.category && selectedCategory && selectedCategory.wholesaleEnabled === false && (
+                  <div className="p-3 bg-neutral-100 border border-neutral-300 rounded-lg text-xs text-neutral-700 flex items-center gap-2">
+                    <span>ℹ️</span>
+                    <span><strong>Category Wholesale Inactive:</strong> The category &ldquo;{selectedCategory.name}&rdquo; has wholesale disabled.</span>
+                  </div>
+                )}
+              </div>
+
+              {user?.wholesaleEnabled === false ? (
+                <div className="p-4 bg-neutral-50 rounded-lg border border-neutral-200 text-sm text-neutral-500 italic">
+                  Wholesale configuration is disabled because your seller account is not wholesale-enabled.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Enable Wholesale for this Product?
+                    </label>
+                    <select
+                      name="wholesaleEnabled"
+                      value={formData.wholesaleEnabled}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                      <option value="No">No (Retail Only)</option>
+                      <option value="Yes">Yes (Wholesale Available)</option>
+                    </select>
+                  </div>
+
+                  {formData.wholesaleEnabled === "Yes" && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">
+                          Wholesale Unit Price (₹) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          name="wholesalePrice"
+                          value={formData.wholesalePrice}
+                          onChange={handleChange}
+                          placeholder="e.g. 150"
+                          required={formData.wholesaleEnabled === "Yes"}
+                          className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                        {minRetailPrice > 0 && (
+                          <p className="text-xs text-neutral-500 mt-1">
+                            Must be strictly less than retail price (Lowest Retail: ₹{minRetailPrice})
+                          </p>
+                        )}
+                        {formData.wholesalePrice && minRetailPrice > 0 && parseFloat(formData.wholesalePrice) >= minRetailPrice && (
+                          <p className="text-xs text-red-600 font-semibold mt-1">
+                            ⚠️ Wholesale price (₹{formData.wholesalePrice}) must be strictly less than retail price (₹{minRetailPrice}).
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">
+                          Wholesale Minimum Order Qty (MOQ) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          name="wholesaleMinimumQuantity"
+                          value={formData.wholesaleMinimumQuantity}
+                          onChange={handleChange}
+                          placeholder={appSettings.wholesaleSettings?.defaultWholesaleMinimumQuantity?.toString() || "10"}
+                          required={formData.wholesaleEnabled === "Yes"}
+                          className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                        <p className="text-xs text-neutral-500 mt-1">
+                          Minimum units per wholesale order (Default: {appSettings.wholesaleSettings?.defaultWholesaleMinimumQuantity || 10})
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1057,11 +1522,25 @@ export default function SellerAddProduct() {
           </div>
 
           {/* Add Variation Section */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+          <div
+            id="section-variations"
+            className={`bg-white rounded-lg shadow-sm border overflow-hidden ${
+              fieldErrors.variations
+                ? "border-red-500 ring-2 ring-red-200"
+                : "border-neutral-200"
+            }`}>
             <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
               <h2 className="text-lg font-semibold">Add Variation</h2>
             </div>
             <div className="p-4 sm:p-6 space-y-4">
+              {fieldErrors.variations && variations.length === 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>
+                    At least one variation is required. Enter Title (e.g. 100g or Standard) and Price below, then click "Add Variation".
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Select Product Variation Type
@@ -1080,7 +1559,7 @@ export default function SellerAddProduct() {
               </div>
 
               {/* Variation Form */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-neutral-50 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 bg-neutral-50 rounded-lg">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Title (e.g., 100g)
@@ -1149,6 +1628,23 @@ export default function SellerAddProduct() {
                     className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    Barcode (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={variationForm.barcode}
+                    onChange={(e) =>
+                      setVariationForm({
+                        ...variationForm,
+                        barcode: e.target.value,
+                      })
+                    }
+                    placeholder="Variation Barcode"
+                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
                 <div className="flex items-end">
                   <button
                     type="button"
@@ -1176,6 +1672,11 @@ export default function SellerAddProduct() {
                           {variation.discPrice > 0 && (
                             <span className="text-green-600 ml-2">
                               (₹{variation.discPrice})
+                            </span>
+                          )}
+                          {variation.barcode && (
+                            <span className="text-neutral-500 text-xs ml-3 font-mono bg-neutral-100 px-1.5 py-0.5 rounded">
+                              Barcode: {variation.barcode}
                             </span>
                           )}
                           <span className="ml-4 text-sm text-neutral-600">
@@ -1540,20 +2041,43 @@ export default function SellerAddProduct() {
           </div>
 
           {/* Submit Button */}
-          <div className="flex justify-end pb-6">
-            <button
-              type="submit"
-              disabled={uploading}
-              className={`px-8 py-3 rounded-lg font-medium text-lg transition-colors shadow-sm ${uploading
-                ? "bg-neutral-400 cursor-not-allowed text-white"
-                : "bg-teal-600 hover:bg-teal-700 text-white"
-                }`}>
-              {uploading
-                ? "Processing..."
-                : id
-                  ? "Update Product"
-                  : "Add Product"}
-            </button>
+          <div className="pb-6">
+            {uploadError && (
+              <div
+                id="bottom-submit-error"
+                className="mb-4 bg-red-50 border-2 border-red-400 text-red-900 px-4 py-3.5 rounded-xl shadow-lg flex items-start gap-3">
+                <div className="text-red-600 font-bold text-xl mt-0.5">⚠️</div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-sm text-red-950 uppercase tracking-wide">
+                    Cannot Add Product
+                  </h4>
+                  <p className="text-sm font-medium mt-0.5 text-red-800 leading-relaxed">
+                    {uploadError}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUploadError("")}
+                  className="text-red-400 hover:text-red-700 font-bold text-xl px-1">
+                  &times;
+                </button>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={uploading}
+                className={`px-8 py-3 rounded-lg font-medium text-lg transition-colors shadow-sm ${uploading
+                  ? "bg-neutral-400 cursor-not-allowed text-white"
+                  : "bg-teal-600 hover:bg-teal-700 text-white"
+                  }`}>
+                {uploading
+                  ? "Processing..."
+                  : id
+                    ? "Update Product"
+                    : "Add Product"}
+              </button>
+            </div>
           </div>
         </form>
       </div >

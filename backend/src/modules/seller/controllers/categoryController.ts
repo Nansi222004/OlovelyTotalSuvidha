@@ -48,7 +48,7 @@ const findCategoryByIdOrSlug = async (idOrSlug: string) => {
  */
 export const getCategories = asyncHandler(
   async (req: Request, res: Response) => {
-    const { includeSubcategories, search, status } = req.query;
+    const { includeSubcategories, search, status, channel } = req.query;
 
     // Build query - by default, get only parent categories (no parentId)
     const query: any = { parentId: null };
@@ -68,19 +68,41 @@ export const getCategories = asyncHandler(
       query.name = { $regex: search as string, $options: "i" };
     }
 
-    // Seller isolation check: If request comes from an authenticated seller, filter by allowed Header Categories
+    // Seller isolation and channel filtering check:
+    // If request comes from an authenticated seller, enforce vendorType and allowed Header Categories
     const userId = (req as any).user?.userId;
+    const userType = (req as any).user?.userType;
     const userRole = (req as any).user?.role;
 
-    if (userId && (userRole === "Seller" || !userRole)) {
-      const seller = await Seller.findById(userId).select("categories");
-      if (seller && seller.categories && seller.categories.length > 0) {
-        const allowedHeaderCats = await HeaderCategory.find({
-          name: { $in: seller.categories },
-          status: "Published",
-        }).select("_id");
-        const allowedHeaderIds = allowedHeaderCats.map((h) => h._id);
-        query.headerCategoryId = { $in: allowedHeaderIds };
+    if (userId && (userType === "Seller" || userRole === "Seller" || (!userRole && !userType))) {
+      const seller = await Seller.findById(userId).select("categories vendorType");
+      if (seller) {
+        // Enforce authoritative category visibility based on seller vendorType / active channel
+        if (seller.vendorType === "ECOMMERCE") {
+          query.commerceChannels = { $in: ["ECOMMERCE"] };
+        } else if (seller.vendorType === "QUICK_COMMERCE") {
+          query.commerceChannels = { $in: ["QUICK_COMMERCE"] };
+        } else if (seller.vendorType === "HYBRID") {
+          if (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE") {
+            query.commerceChannels = { $in: [channel] };
+          } else {
+            query.commerceChannels = { $in: ["QUICK_COMMERCE", "ECOMMERCE"] };
+          }
+        }
+
+        if (seller.categories && seller.categories.length > 0) {
+          const allowedHeaderCats = await HeaderCategory.find({
+            name: { $in: seller.categories },
+            status: "Published",
+          }).select("_id");
+          const allowedHeaderIds = allowedHeaderCats.map((h) => h._id);
+          query.headerCategoryId = { $in: allowedHeaderIds };
+        }
+      }
+    } else {
+      // Unauthenticated or non-seller: if channel query param is specified, filter by it
+      if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
+        query.commerceChannels = { $in: [channel] };
       }
     }
 

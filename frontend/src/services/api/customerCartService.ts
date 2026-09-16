@@ -9,9 +9,16 @@ export interface CartItem {
         mainImage: string;
         stock: number;
         pack?: string;
+        wholesaleEnabled?: boolean;
+        wholesalePrice?: number;
+        wholesaleMinimumQuantity?: number;
     };
     quantity: number;
     variation?: string;
+    isWholesale?: boolean;
+    wholesalePrice?: number;
+    wholesaleMinimumQuantity?: number;
+    price?: number;
 }
 
 export interface Cart {
@@ -50,7 +57,15 @@ export const getCart = async (params?: CartLocationParams): Promise<CartResponse
 /**
  * Add item to cart
  */
-export const addToCart = async (productId: string, quantity: number = 1, variation?: string, latitude?: number, longitude?: number, deliveryOption?: string): Promise<CartResponse> => {
+export const addToCart = async (
+    productId: string,
+    quantity: number = 1,
+    variation?: string,
+    latitude?: number,
+    longitude?: number,
+    deliveryOption?: string,
+    isWholesale?: boolean
+): Promise<CartResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
         params.latitude = latitude;
@@ -63,7 +78,8 @@ export const addToCart = async (productId: string, quantity: number = 1, variati
         productId,
         quantity,
         variation,
-        deliveryOption
+        deliveryOption,
+        isWholesale
     }, { params });
     return response.data;
 };

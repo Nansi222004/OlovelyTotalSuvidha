@@ -4,6 +4,7 @@ import { getHeaderCategoriesPublic, HeaderCategory } from "../../services/api/he
 import { getCategories, Category as ApiCategory } from "../../services/api/customerProductService";
 import { getIconByName } from "../../utils/iconLibrary";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useCustomerChannel } from "../../context/CustomerChannelContext";
 import { motion, AnimatePresence } from "framer-motion";
 import "./styles/Categories.css";
 
@@ -14,6 +15,7 @@ interface GroupedCategory extends HeaderCategory {
 export default function Categories() {
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
+  const { activeChannel } = useCustomerChannel();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +37,10 @@ export default function Categories() {
         setLoading(true);
         setError(null);
 
+        const channelParam = (activeChannel === "QUICK_COMMERCE" || activeChannel === "ECOMMERCE") ? activeChannel : undefined;
         const [headers, catRes] = await Promise.all([
           getHeaderCategoriesPublic(true),
-          getCategories(false, true), // Flat list of categories
+          getCategories(false, true, channelParam), // Flat list of categories
         ]);
 
         setHeaderCategories(headers || []);
@@ -51,7 +54,7 @@ export default function Categories() {
     };
 
     fetchData();
-  }, []);
+  }, [activeChannel]);
 
   // Dynamically group categories by Header Category ID
   const allGroups = useMemo<GroupedCategory[]>(() => {
@@ -64,6 +67,13 @@ export default function Categories() {
         const matchingCategories = allCategories.filter((cat) => {
           // Only show top-level categories (no parentId) under headers
           if (cat.parentId) return false;
+
+          // Filter by active customer channel if active
+          if ((activeChannel === "QUICK_COMMERCE" || activeChannel === "ECOMMERCE") && cat.commerceChannels && cat.commerceChannels.length > 0) {
+            if (!cat.commerceChannels.includes(activeChannel)) return false;
+          } else if (activeChannel === "WHOLESALE") {
+            if (cat.wholesaleEnabled === false) return false;
+          }
 
           // headerCategoryId might be an object or a string
           const headerId =

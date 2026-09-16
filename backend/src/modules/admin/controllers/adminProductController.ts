@@ -8,6 +8,15 @@ import Inventory from "../../../models/Inventory";
 import Seller from "../../../models/Seller";
 import HeaderCategory from "../../../models/HeaderCategory";
 import { cache } from "../../../utils/cache";
+import AppSettings from "../../../models/AppSettings";
+import { validateBarcodeUniqueness } from "../../../utils/barcodeHelper";
+import {
+  validateAndNormalizeCommerceChannels,
+  isProductTypeAllowedForCategory,
+  validateProductChannelCompatibility,
+  checkWholesaleEligibility,
+  validateWholesalePrice,
+} from "../../../utils/categoryChannelHelper";
 
 // ==================== Category Controllers ====================
 
@@ -26,6 +35,7 @@ export const createCategory = asyncHandler(
       parentId,
       headerCategoryId,
       status = "Active",
+      commerceChannels,
     } = req.body;
 
     if (!name) {
@@ -33,6 +43,21 @@ export const createCategory = asyncHandler(
         success: false,
         message: "Category name is required",
       });
+    }
+
+    let finalCommerceChannels: ("QUICK_COMMERCE" | "ECOMMERCE")[] = [
+      "QUICK_COMMERCE",
+      "ECOMMERCE",
+    ];
+    if (commerceChannels !== undefined) {
+      const channelValidation = validateAndNormalizeCommerceChannels(commerceChannels);
+      if (!channelValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelValidation.error,
+        });
+      }
+      finalCommerceChannels = channelValidation.normalized!;
     }
 
     let finalHeaderCategoryId = headerCategoryId;
@@ -127,12 +152,15 @@ export const createCategory = asyncHandler(
       headerCategoryId: finalHeaderCategoryId || null,
       commissionRate: req.body.commissionRate || 0,
       status,
+      commerceChannels: finalCommerceChannels,
     });
 
     // Invalidate category caches
     cache.delete("customer-categories-list");
+    cache.delete("customer-categories-list-v2");
     cache.delete("customer-categories-tree");
-    cache.invalidatePattern(/^customer-category-/);
+    cache.invalidatePattern(/^customer-categor/);
+    cache.invalidatePattern(/^categories/);
 
     return res.status(201).json({
       success: true,
@@ -155,6 +183,7 @@ export const getCategories = asyncHandler(
       includeChildren = "false",
       status,
       headerCategoryId,
+      channel,
     } = req.query;
 
     const query: any = {};
@@ -173,6 +202,9 @@ export const getCategories = asyncHandler(
     }
     if (headerCategoryId) {
       query.headerCategoryId = headerCategoryId;
+    }
+    if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
+      query.commerceChannels = { $in: [channel] };
     }
 
     const sort: any = {};
@@ -243,12 +275,69 @@ export const updateCategory = asyncHandler(
     const { id } = req.params;
     const updateData = req.body;
 
+    if (updateData.commerceChannels !== undefined) {
+      const channelValidation = validateAndNormalizeCommerceChannels(updateData.commerceChannels);
+      if (!channelValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelValidation.error,
+        });
+      }
+      updateData.commerceChannels = channelValidation.normalized!;
+    }
+
     const category = await Category.findById(id);
     if (!category) {
       return res.status(404).json({
         success: false,
         message: "Category not found",
       });
+    }
+
+    // Category Update Safety Check:
+    // If commerceChannels is being changed, verify existing products in this category
+    if (updateData.commerceChannels !== undefined) {
+      const targetChannels = updateData.commerceChannels;
+      const existingProducts = await Product.find({
+        $or: [{ category: id }, { categoryId: id }],
+      })
+        .select("_id productName name productType")
+        .lean();
+
+      let legacyCount = 0;
+      const incompatibleProducts: any[] = [];
+
+      for (const p of existingProducts) {
+        if (!p.productType) {
+          legacyCount++;
+          continue; // Ignore legacy products with null/missing productType for compatibility purposes
+        }
+
+        const allowedCheck = isProductTypeAllowedForCategory(
+          targetChannels,
+          p.productType as any
+        );
+        if (!allowedCheck.allowed) {
+          incompatibleProducts.push({
+            id: p._id,
+            name: (p as any).productName || (p as any).name,
+            productType: p.productType,
+          });
+        }
+      }
+
+      if (incompatibleProducts.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot update category commerce channels. ${incompatibleProducts.length} existing product(s) would become incompatible with the requested channels.`,
+          categoryId: id,
+          requestedChannels: targetChannels,
+          currentChannels: category.commerceChannels,
+          incompatibleProductCount: incompatibleProducts.length,
+          legacyProductCount: legacyCount,
+          affectedProductsSample: incompatibleProducts.slice(0, 5),
+        });
+      }
     }
 
     // Validate parent change if parentId is being updated
@@ -322,10 +411,17 @@ export const updateCategory = asyncHandler(
       .populate("parentId", "name")
       .populate("headerCategoryId", "name status");
 
-    // Invalidate category caches
+    // Invalidate all category caches
     cache.delete("customer-categories-list");
+    cache.delete("customer-categories-list-v2");
     cache.delete("customer-categories-tree");
-    cache.invalidatePattern(/^customer-category-/);
+    cache.delete("customer-categories-list-v2-QUICK_COMMERCE");
+    cache.delete("customer-categories-list-v2-ECOMMERCE");
+    cache.delete("customer-categories-tree-QUICK_COMMERCE");
+    cache.delete("customer-categories-tree-ECOMMERCE");
+    cache.delete(`customer-category-${id}`);
+    cache.invalidatePattern(/^customer-categor/);
+    cache.invalidatePattern(/^categories/);
 
     return res.status(200).json({
       success: true,
@@ -862,10 +958,119 @@ export const createProduct = asyncHandler(
         });
       }
 
-      // All products are published automatically without approval
-      productData.status = "Active";
-      productData.publish = true;
-      productData.requiresApproval = false;
+      // Verify category exists and channel compatibility
+      const category = await Category.findById(productData.category);
+      if (!category) {
+        return res.status(400).json({
+          success: false,
+          message: "Category not found",
+        });
+      }
+
+      const targetProductType = productData.productType || "QUICK_COMMERCE";
+      const channelCompat = validateProductChannelCompatibility({
+        sellerVendorType: seller.vendorType,
+        productType: targetProductType,
+        categoryChannels: category.commerceChannels,
+        categoryName: category.name,
+      });
+
+      if (!channelCompat.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelCompat.error,
+        });
+      }
+      productData.productType = targetProductType;
+
+      // ── BARCODE NORMALIZATION & INTRA-PAYLOAD VALIDATION ──────────────────────
+      const payloadBarcodes: { barcode: string; scopeLabel: string }[] = [];
+      if (productData.barcode !== undefined && productData.barcode !== null) {
+        productData.barcode = String(productData.barcode).trim();
+        if (productData.barcode) {
+          payloadBarcodes.push({ barcode: productData.barcode, scopeLabel: "top-level barcode" });
+        } else {
+          delete productData.barcode;
+        }
+      }
+
+      if (productData.variations && Array.isArray(productData.variations)) {
+        for (const [idx, v] of productData.variations.entries()) {
+          if (v.barcode !== undefined && v.barcode !== null) {
+            v.barcode = String(v.barcode).trim();
+            if (v.barcode) {
+              payloadBarcodes.push({ barcode: v.barcode, scopeLabel: `variation[${idx}] barcode` });
+            } else {
+              delete v.barcode;
+            }
+          }
+        }
+      }
+
+      // Check for duplicates within the same payload (top-level vs variation, variation vs variation)
+      const seenBarcodes = new Map<string, string>();
+      for (const { barcode, scopeLabel } of payloadBarcodes) {
+        if (seenBarcodes.has(barcode)) {
+          const priorScope = seenBarcodes.get(barcode);
+          return res.status(409).json({
+            success: false,
+            message: `Duplicate barcode "${barcode}" found within the same product payload (${priorScope} and ${scopeLabel}). Barcodes must be unique.`,
+            field: scopeLabel,
+          });
+        }
+        seenBarcodes.set(barcode, scopeLabel);
+      }
+
+      // Cross-product DB uniqueness checks (product-level and variation-level across all products)
+      for (const { barcode, scopeLabel } of payloadBarcodes) {
+        const barcodeCheck = await validateBarcodeUniqueness({ barcode, targetProductId: undefined });
+        if (!barcodeCheck.valid) {
+          return res.status(409).json({
+            success: false,
+            message: `Barcode "${barcode}" (${scopeLabel}) is already assigned to another product. Barcodes must be globally unique.`,
+            field: scopeLabel,
+            error: barcodeCheck.error,
+          });
+        }
+      }
+
+      // ── WHOLESALE SERVER-SIDE VALIDATION ────────────────────────────────────
+      if (productData.wholesaleEnabled) {
+        const appSettings = await AppSettings.findOne();
+        const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+        const wholesaleCheck = checkWholesaleEligibility({
+          globalWholesaleEnabled,
+          sellerWholesaleEnabled: !!seller.wholesaleEnabled,
+          categoryWholesaleEnabled: !!category.wholesaleEnabled,
+          productWholesaleEnabled: true,
+        });
+
+        if (!wholesaleCheck.eligible) {
+          return res.status(400).json({
+            success: false,
+            message: wholesaleCheck.reason || "Product is not eligible for wholesale",
+          });
+        }
+
+        const retailPrice = Number(productData.price) || Number(productData.variations?.[0]?.price) || 0;
+        const wholesalePrice = Number(productData.wholesalePrice);
+        const priceValidation = validateWholesalePrice(wholesalePrice, retailPrice);
+        if (!priceValidation.valid) {
+          return res.status(400).json({
+            success: false,
+            message: priceValidation.error,
+          });
+        }
+
+        const moq = Number(productData.wholesaleMinimumQuantity);
+        if (isNaN(moq) || moq < 1 || !Number.isInteger(moq)) {
+          return res.status(400).json({
+            success: false,
+            message: "Wholesale minimum quantity must be a valid integer >= 1",
+          });
+        }
+      }
 
       const product = await Product.create(productData);
 
@@ -1130,6 +1335,168 @@ export const updateProduct = asyncHandler(
       });
     }
 
+    // Category Commerce Channel Validation on update
+    const effectiveCategoryId = updateData.category || product.category;
+    const effectiveProductType = updateData.productType || product.productType;
+
+    if (effectiveCategoryId && effectiveProductType) {
+      const categoryObj = await Category.findById(effectiveCategoryId);
+      if (!categoryObj) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product category ID provided",
+        });
+      }
+
+      const seller = await Seller.findById(product.seller).select("vendorType");
+      const channelCompat = validateProductChannelCompatibility({
+        sellerVendorType: seller?.vendorType,
+        productType: effectiveProductType,
+        categoryChannels: categoryObj.commerceChannels,
+        categoryName: categoryObj.name,
+      });
+
+      if (!channelCompat.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelCompat.error,
+        });
+      }
+    }
+
+    // ── LEGACY PRODUCT TYPE PRESERVATION ──────────────────────────────────
+    // Do not mutate legacy products' unset productType unless explicitly provided
+    if (product.productType === undefined && updateData.productType === undefined) {
+      delete updateData.productType;
+    }
+
+    // ── BARCODE NORMALIZATION & COLLISION VALIDATION ON UPDATE ──────────────
+    const updatePayloadBarcodes: { barcode: string; scopeLabel: string }[] = [];
+    if (updateData.barcode !== undefined && updateData.barcode !== null) {
+      updateData.barcode = String(updateData.barcode).trim();
+      if (updateData.barcode) {
+        updatePayloadBarcodes.push({ barcode: updateData.barcode, scopeLabel: "top-level barcode" });
+      } else {
+        updateData.barcode = null;
+      }
+    }
+
+    if (updateData.variations && Array.isArray(updateData.variations)) {
+      for (const [idx, v] of updateData.variations.entries()) {
+        if (v.barcode !== undefined && v.barcode !== null) {
+          v.barcode = String(v.barcode).trim();
+          if (v.barcode) {
+            updatePayloadBarcodes.push({ barcode: v.barcode, scopeLabel: `variation[${idx}] barcode` });
+          } else {
+            delete v.barcode;
+          }
+        }
+      }
+    }
+
+    // 1. Check intra-payload duplicates
+    const updateSeenBarcodes = new Map<string, string>();
+    for (const { barcode, scopeLabel } of updatePayloadBarcodes) {
+      if (updateSeenBarcodes.has(barcode)) {
+        const priorScope = updateSeenBarcodes.get(barcode);
+        return res.status(409).json({
+          success: false,
+          message: `Duplicate barcode "${barcode}" found within the same product payload (${priorScope} and ${scopeLabel}).`,
+          field: scopeLabel,
+        });
+      }
+      updateSeenBarcodes.set(barcode, scopeLabel);
+    }
+
+    // 2. Intra-product cross-scope check with existing variations/top-level if not replaced in payload
+    if (updateData.barcode && !updateData.variations && product.variations?.length) {
+      const collisionVar = product.variations.find((v: any) => v.barcode && v.barcode === updateData.barcode);
+      if (collisionVar) {
+        return res.status(409).json({
+          success: false,
+          message: `Top-level barcode "${updateData.barcode}" collides with existing variation "${(collisionVar as any).title || collisionVar.name || collisionVar.value}" on the same product.`,
+          field: "barcode",
+        });
+      }
+    }
+    if (updateData.variations && !updateData.barcode && product.barcode) {
+      const collisionVar = updateData.variations.find((v: any) => v.barcode && v.barcode === product.barcode);
+      if (collisionVar) {
+        return res.status(409).json({
+          success: false,
+          message: `Variation barcode "${collisionVar.barcode}" collides with top-level barcode on the same product.`,
+          field: "variations",
+        });
+      }
+    }
+
+    // 3. Cross-product DB uniqueness checks (product-level and variation-level)
+    for (const { barcode, scopeLabel } of updatePayloadBarcodes) {
+      const barcodeCheck = await validateBarcodeUniqueness({
+        barcode,
+        targetProductId: product._id.toString(),
+      });
+      if (!barcodeCheck.valid) {
+        return res.status(409).json({
+          success: false,
+          message: `Barcode "${barcode}" (${scopeLabel}) is already assigned to another product.`,
+          field: scopeLabel,
+          error: barcodeCheck.error,
+        });
+      }
+    }
+
+    // ── WHOLESALE SERVER-SIDE VALIDATION ON UPDATE ──────────────────────────
+    const effectiveWholesaleEnabled = updateData.wholesaleEnabled !== undefined ? updateData.wholesaleEnabled : product.wholesaleEnabled;
+    if (effectiveWholesaleEnabled) {
+      const appSettings = await AppSettings.findOne();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+      const sellerDoc = await Seller.findById(product.seller).select("wholesaleEnabled");
+      const categoryDoc = await Category.findById(effectiveCategoryId).select("wholesaleEnabled");
+
+      const wholesaleCheck = checkWholesaleEligibility({
+        globalWholesaleEnabled,
+        sellerWholesaleEnabled: !!sellerDoc?.wholesaleEnabled,
+        categoryWholesaleEnabled: !!categoryDoc?.wholesaleEnabled,
+        productWholesaleEnabled: true,
+      });
+
+      if (!wholesaleCheck.eligible) {
+        return res.status(400).json({
+          success: false,
+          message: wholesaleCheck.reason || "Product is not eligible for wholesale",
+        });
+      }
+
+      const effectiveWholesalePrice = updateData.wholesalePrice !== undefined
+        ? Number(updateData.wholesalePrice)
+        : Number(product.wholesalePrice);
+      const effectiveRetailPrice = updateData.price !== undefined
+        ? Number(updateData.price)
+        : (updateData.variations?.[0]?.price !== undefined
+          ? Number(updateData.variations[0].price)
+          : (Number(product.price) || Number(product.variations?.[0]?.price) || 0));
+
+      const priceValidation = validateWholesalePrice(effectiveWholesalePrice, effectiveRetailPrice);
+      if (!priceValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: priceValidation.error,
+        });
+      }
+
+      const effectiveMoq = updateData.wholesaleMinimumQuantity !== undefined
+        ? Number(updateData.wholesaleMinimumQuantity)
+        : Number(product.wholesaleMinimumQuantity);
+      if (isNaN(effectiveMoq) || effectiveMoq < 1 || !Number.isInteger(effectiveMoq)) {
+        return res.status(400).json({
+          success: false,
+          message: "Wholesale minimum quantity must be a valid integer >= 1",
+        });
+      }
+    }
+
     Object.assign(product, updateData);
 
     if (updateData.variations) {
@@ -1258,71 +1625,98 @@ export const bulkImportProducts = asyncHandler(
       });
     }
 
-    const results = {
-      success: 0,
-      failed: 0,
-      errors: [] as any[],
-    };
+    const validationErrors: Array<{ index: number; error: string }> = [];
+    const validatedItems: Array<{ productData: any; seller: any; category: any }> = [];
 
+    // Phase 1: Validate entire batch first
     for (let i = 0; i < products.length; i++) {
-      try {
-        const productData = products[i];
+      const productData = products[i];
 
-        // Validate required fields
-        if (
-          !productData.productName ||
-          !productData.category ||
-          !productData.seller ||
-          !productData.price
-        ) {
-          results.failed++;
-          results.errors.push({
-            index: i,
-            error: "Missing required fields",
-          });
-          continue;
-        }
-
-        // Verify seller exists
-        const seller = await Seller.findById(productData.seller);
-        if (!seller) {
-          results.failed++;
-          results.errors.push({
-            index: i,
-            error: "Seller not found",
-          });
-          continue;
-        }
-
-        // All products are published automatically without approval
-        productData.status = "Active";
-        productData.publish = true;
-        productData.requiresApproval = false;
-
-        const product = await Product.create(productData);
-
-        // Create inventory record
-        await Inventory.create({
-          product: product._id,
-          seller: productData.seller,
-          currentStock: productData.stock || 0,
-          availableStock: productData.stock || 0,
-        });
-
-        results.success++;
-      } catch (error: any) {
-        results.failed++;
-        results.errors.push({
+      if (
+        !productData.productName ||
+        !productData.category ||
+        !productData.seller ||
+        !productData.price
+      ) {
+        validationErrors.push({
           index: i,
-          error: error.message,
+          error: "Missing required fields (productName, category, seller, price)",
         });
+        continue;
       }
+
+      const seller = await Seller.findById(productData.seller);
+      if (!seller) {
+        validationErrors.push({
+          index: i,
+          error: "Seller not found",
+        });
+        continue;
+      }
+
+      const category = await Category.findById(productData.category);
+      if (!category) {
+        validationErrors.push({
+          index: i,
+          error: "Category not found",
+        });
+        continue;
+      }
+
+      const targetProductType = productData.productType || "QUICK_COMMERCE";
+      const channelCompat = validateProductChannelCompatibility({
+        sellerVendorType: seller.vendorType,
+        productType: targetProductType,
+        categoryChannels: category.commerceChannels,
+        categoryName: category.name,
+      });
+
+      if (!channelCompat.valid) {
+        validationErrors.push({
+          index: i,
+          error: channelCompat.error || "Channel compatibility validation failed",
+        });
+        continue;
+      }
+
+      productData.productType = targetProductType;
+      validatedItems.push({ productData, seller, category });
     }
 
-    return res.status(200).json({
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Bulk import validation failed: ${validationErrors.length} product(s) invalid. No products were imported.`,
+        errors: validationErrors,
+      });
+    }
+
+    // Phase 2: All items valid, write batch to database
+    const createdProducts = [];
+    for (const item of validatedItems) {
+      const productData = item.productData;
+      productData.status = "Active";
+      productData.publish = true;
+      productData.requiresApproval = false;
+
+      const product = await Product.create(productData);
+      await Inventory.create({
+        product: product._id,
+        seller: productData.seller,
+        currentStock: productData.stock || 0,
+        availableStock: productData.stock || 0,
+      });
+      createdProducts.push(product);
+    }
+
+    return res.status(201).json({
       success: true,
-      message: `Bulk import completed: ${results.success} succeeded, ${results.failed} failed`,
-      data: results,
+      message: `Bulk import completed: ${createdProducts.length} products imported successfully`,
+      data: {
+        success: createdProducts.length,
+        failed: 0,
+        errors: [],
+      },
     });
   }
 );
@@ -1346,6 +1740,38 @@ export const bulkUpdateProducts = asyncHandler(
         success: false,
         message: "Update data is required",
       });
+    }
+
+    // If updateData changes category or productType, validate channel compatibility for every affected product first
+    if (updateData.category !== undefined || updateData.productType !== undefined) {
+      const affectedProducts = await Product.find({ _id: { $in: productIds } });
+      for (const p of affectedProducts) {
+        const effectiveCatId = updateData.category || p.category;
+        const effectiveType = updateData.productType || p.productType;
+
+        if (effectiveCatId && effectiveType) {
+          const categoryObj = await Category.findById(effectiveCatId);
+          if (!categoryObj) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid category ID for product ${p._id}`,
+            });
+          }
+          const seller = await Seller.findById(p.seller).select("vendorType");
+          const compat = validateProductChannelCompatibility({
+            sellerVendorType: seller?.vendorType,
+            productType: effectiveType,
+            categoryChannels: categoryObj.commerceChannels,
+            categoryName: categoryObj.name,
+          });
+          if (!compat.valid) {
+            return res.status(400).json({
+              success: false,
+              message: `Bulk update rejected: Product "${(p as any).productName || (p as any).name}" (${p._id}) would become incompatible. ${compat.error}`,
+            });
+          }
+        }
+      }
     }
 
     const result = await Product.updateMany(

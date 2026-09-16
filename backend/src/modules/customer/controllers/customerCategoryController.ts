@@ -9,17 +9,23 @@ import { cache } from "../../../utils/cache";
 // Get all categories (public) - with caching
 export const getCategories = async (_req: Request, res: Response) => {
   try {
-    const cacheKey = "customer-categories-list-v2";
+    const channel = _req.query.channel as string;
+    const cacheKey = channel ? `customer-categories-list-v2-${channel}` : "customer-categories-list-v2";
 
     // Try cache first
     let categories = cache.get(cacheKey);
 
     if (!categories) {
-      categories = await Category.find({
+      const filter: any = {
         status: "Active", // Only return active categories
-      })
+      };
+      if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
+        filter.commerceChannels = { $in: [channel] };
+      }
+
+      categories = await Category.find(filter)
         .sort({ order: 1 })
-        .select("name image icon description color slug _id headerCategoryId order translations")
+        .select("name image icon description color slug _id headerCategoryId order translations commerceChannels")
         .lean(); // Use lean() for better performance
 
       // Cache for 10 minutes
@@ -42,7 +48,8 @@ export const getCategories = async (_req: Request, res: Response) => {
 // Get all categories with their subcategories (for menu/sidebar) - with caching
 export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
   try {
-    const cacheKey = "customer-categories-tree";
+    const channel = _req.query.channel as string;
+    const cacheKey = channel ? `customer-categories-tree-${channel}` : "customer-categories-tree";
 
     // Try cache first
     let categoriesWithSubs = cache.get(cacheKey);
@@ -54,12 +61,28 @@ export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
       });
     }
 
-    const categories = await Category.find({ status: "Active" })
+    const filter: any = { status: "Active" };
+    if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
+      filter.commerceChannels = { $in: [channel] };
+    }
+
+    const categories = await Category.find(filter)
       .sort({ order: 1 })
       .lean();
 
     // Build product count maps to filter categories/subcategories that actually have products
-    const activeProductMatch = { status: "Active", publish: true };
+    const isWholesaleMode =
+      (_req.query.isWholesale as string)?.toLowerCase() === "true" ||
+      (_req.query.wholesale as string)?.toLowerCase() === "true";
+
+    const activeProductMatch: any = {
+      status: "Active",
+      publish: true,
+      wholesaleEnabled: isWholesaleMode ? true : { $ne: true },
+    };
+    if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
+      activeProductMatch.productType = channel;
+    }
 
     const [categoryCounts, subcategoryCounts] = await Promise.all([
       Product.aggregate([
@@ -261,7 +284,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
           headerCategoryId: headerCat._id,
           status: "Active",
         })
-          .select("name image order slug icon translations")
+          .select("name image order slug icon translations commerceChannels")
           .sort({ order: 1 })
           .lean();
 
@@ -321,7 +344,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
           parentId: { $in: [parentCatId, parentCatId.toString()] },
           status: "Active",
         })
-          .select("name image order slug icon translations")
+          .select("name image order slug icon translations commerceChannels")
           .sort({
             order: 1,
           });
@@ -363,7 +386,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
       parentId: { $in: [catId, catId.toString()] },
       status: "Active",
     })
-      .select("name image order slug icon translations")
+      .select("name image order slug icon translations commerceChannels")
       .sort({
         order: 1,
       });

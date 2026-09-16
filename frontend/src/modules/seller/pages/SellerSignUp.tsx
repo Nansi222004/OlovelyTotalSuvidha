@@ -20,6 +20,7 @@ export default function SellerSignUp() {
     category: '',
     categories: [] as string[],
     vendorType: 'QUICK_COMMERCE' as 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID',
+    wholesaleEnabled: false,
     address: '',
     city: '',
     pickupPincode: '',
@@ -165,6 +166,7 @@ export default function SellerSignUp() {
         category: formData.categories[0], // primary
         categories: formData.categories,
         vendorType: formData.vendorType,
+        wholesaleEnabled: formData.wholesaleEnabled,
         address: formData.address || formData.searchLocation,
         city: formData.city,
         searchLocation: formData.searchLocation,
@@ -316,6 +318,29 @@ export default function SellerSignUp() {
                         Both Channels
                       </div>
                     </button>
+                  </div>
+
+                  {/* Wholesale Selling Capability */}
+                  <div className="mt-3 p-3.5 bg-neutral-50 rounded-lg border border-neutral-200">
+                    <span className="block text-xs font-bold text-neutral-800">Wholesale Selling</span>
+                    <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={formData.wholesaleEnabled}
+                        onChange={(e) => setFormData(prev => ({ ...prev, wholesaleEnabled: e.target.checked }))}
+                        className="w-4 h-4 text-teal-600 rounded border-neutral-300 focus:ring-teal-500 cursor-pointer"
+                        disabled={loading}
+                      />
+                      <span className="text-xs font-medium text-neutral-700">
+                        I want to sell wholesale products
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      Offer bulk products with special wholesale pricing and minimum order quantities.
+                    </p>
+                    <p className="text-[10px] text-neutral-400 mt-1.5 italic">
+                      Wholesale is an optional selling capability. Your delivery method still depends on the product's commerce type.
+                    </p>
                   </div>
                 </div>
 

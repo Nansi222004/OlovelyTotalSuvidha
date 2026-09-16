@@ -78,7 +78,8 @@ export interface OrderDetail {
   paymentMethod: string;
   paymentStatus: string;
   deliveryAddress: DeliveryAddress;
-  deliveryOption?: 'Instant' | 'Standard';
+  deliveryOption?: 'Instant' | 'Standard' | 'Courier';
+  deliverySelections?: Record<string, string>;
   deliveryPreference?: 'Self' | 'Admin' | string;
   orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
   fulfillmentGroups?: any[];

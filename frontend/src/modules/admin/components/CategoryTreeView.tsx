@@ -176,6 +176,23 @@ export default function CategoryTreeView({
                           {category.status}
                         </span>
 
+                        {/* Channel Badge */}
+                        {category.commerceChannels && (
+                          category.commerceChannels.length === 2 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              ⚡📦 Both Channels
+                            </span>
+                          ) : category.commerceChannels.includes("QUICK_COMMERCE") ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                              ⚡ Quick Commerce
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              📦 Ecommerce
+                            </span>
+                          )
+                        )}
+
                         {/* Header Category Badge */}
                         {category.headerCategory ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">

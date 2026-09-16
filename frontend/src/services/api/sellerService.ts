@@ -43,6 +43,7 @@ export interface Seller {
   requireProductApproval?: boolean;
   viewCustomerDetails?: boolean;
   vendorType?: "QUICK_COMMERCE" | "ECOMMERCE" | "HYBRID";
+  wholesaleEnabled?: boolean;
   shippingConfig?: {
     warehouseAddress?: string;
     pickupAddress?: string;

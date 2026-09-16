@@ -55,6 +55,7 @@ export interface IFulfillmentGroup {
   };
   subtotal: number;
   shippingFee: number;
+  deliveryOption?: string;
 }
 
 export interface Order {
@@ -72,7 +73,8 @@ export interface Order {
   donationAmount?: number;
   couponCode?: string;
   giftPackaging?: boolean;
-  deliveryOption?: 'Instant' | 'Standard';
+  deliveryOption?: 'Instant' | 'Standard' | 'Courier';
+  deliverySelections?: Record<string, string>;
   useWallet?: boolean;
   walletAmountUsed?: number;
   orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';

@@ -43,6 +43,9 @@ import migrationRoutes from "./migrationRoutes";
 import languageRoutes from "./languageRoutes";
 import adminLanguageRoutes from "./adminLanguageRoutes";
 import shippingRoutes from "./shippingRoutes";
+import adminInventoryRoutes from "./adminInventoryRoutes";
+import adminBannerRoutes from "./adminBannerRoutes";
+import customerBannerRoutes from "./customerBannerRoutes";
 
 import {
   createOrder,
@@ -133,6 +136,8 @@ router.use("/customer/home", customerHomeRoutes);
 router.use("/customer/cart", customerCartRoutes);
 router.use("/customer/wishlist", wishlistRoutes);
 router.use("/customer/reviews", productReviewRoutes);
+// Customer Banners (public — no auth required)
+router.use("/customer/banners", customerBannerRoutes);
 // General customer route (must be last to avoid intercepting specific routes)
 router.use("/customer", customerRoutes);
 
@@ -148,6 +153,10 @@ router.use("/sellers", sellerRoutes);
 // Admin routes (protected, admin only)
 router.use("/admin", adminRoutes);
 router.use("/admin", migrationRoutes);
+// Admin Inventory Management routes
+router.use("/admin/inventory", adminInventoryRoutes);
+// Admin Banner Management routes
+router.use("/admin/banners", adminBannerRoutes);
 
 // Upload routes (protected)
 router.use("/upload", uploadRoutes);

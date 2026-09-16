@@ -124,8 +124,23 @@ export default function CategoryListView({
                   )}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="text-sm font-medium text-neutral-900">
-                    {category.name}
+                  <div className="text-sm font-medium text-neutral-900 flex items-center gap-2">
+                    <span>{category.name}</span>
+                    {category.commerceChannels && (
+                      category.commerceChannels.length === 2 ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700" title="Available in Quick Commerce & Ecommerce">
+                          ⚡📦 Both
+                        </span>
+                      ) : category.commerceChannels.includes("QUICK_COMMERCE") ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700" title="Quick Commerce Only">
+                          ⚡ QC
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700" title="Ecommerce Only">
+                          📦 Ecom
+                        </span>
+                      )
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">

@@ -121,6 +121,15 @@ export interface AppSettings {
       description: string;
     }>;
   };
+  wholesaleSettings?: {
+    wholesaleEnabled: boolean;
+    defaultWholesaleMinimumQuantity: number;
+    wholesaleDisplayEnabled?: boolean;
+  };
+  inventorySettings?: {
+    lowStockThreshold: number;
+    lowStockDisplayQuantity: number;
+  };
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;

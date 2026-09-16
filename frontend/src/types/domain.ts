@@ -26,6 +26,7 @@ export interface Product {
     discPrice?: number;
     stock?: number;
     status?: string;
+    barcode?: string;
     _id?: { $oid: string } | string;
   }>;
   imageUrl?: string;
@@ -45,6 +46,10 @@ export interface Product {
   fssaiLicNo?: string;
   isReturnable?: boolean;
   maxReturnDays?: number;
+  barcode?: string;
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
   sellerId?: string;
   seller?: {
     _id?: string;

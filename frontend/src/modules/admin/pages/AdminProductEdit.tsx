@@ -9,16 +9,19 @@ import {
 import {
   getProductById,
   updateProduct,
+  createProduct,
   getCategories,
   getBrands,
   type Category,
   type Brand,
 } from "../../../services/api/admin/adminProductService";
+import { resolveImageUrl } from "../../../utils/imageUrl";
 import { getHeaderCategoriesAdmin, type HeaderCategory } from "../../../services/api/headerCategoryService";
 import { getSubcategories, getSubSubCategories, type SubCategory, type SubSubCategory } from "../../../services/api/categoryService";
 import { getTaxes, type Tax } from "../../../services/api/admin/adminTaxService";
 import { getShopByStores, type ShopByStore } from "../../../services/api/admin/adminMiscService";
 import { useToast } from "../../../context/ToastContext";
+import { useAppSettings } from "../../../context/AppSettingsContext";
 
 interface VariationItem {
   _id?: string;
@@ -30,12 +33,15 @@ interface VariationItem {
   stock: number;
   status: "Available" | "Sold out" | "In stock";
   sku?: string;
+  barcode?: string;
 }
 
 export default function AdminProductEdit() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const isAddMode = !id || id === "add" || id === "new";
   const { showToast } = useToast();
+  const { settings: appSettings } = useAppSettings();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +58,10 @@ export default function AdminProductEdit() {
     popular: "No",
     dealOfDay: "No",
     brand: "",
+    barcode: "",
+    wholesaleEnabled: "No",
+    wholesalePrice: "",
+    wholesaleMinimumQuantity: "",
     smallDescription: "",
     seoTitle: "",
     seoKeywords: "",
@@ -78,6 +88,7 @@ export default function AdminProductEdit() {
     discPrice: "0",
     stock: "0",
     status: "Available" as "Available" | "Sold out",
+    barcode: "",
   });
 
   const [mainImageFile, setMainImageFile] = useState<File | null>(null);
@@ -138,15 +149,18 @@ export default function AdminProductEdit() {
     fetchMasterData();
   }, []);
 
-  // 2. Load product details by ID
+  // 2. Load product details by ID (in edit mode)
   useEffect(() => {
-    if (!id) return;
+    if (isAddMode) {
+      setLoading(false);
+      return;
+    }
 
     const fetchProduct = async () => {
       try {
         setLoading(true);
         setUploadError("");
-        const response = await getProductById(id);
+        const response = await getProductById(id!);
 
         if (response.success && response.data) {
           const product: any = response.data;
@@ -210,6 +224,10 @@ export default function AdminProductEdit() {
             popular: product.popular ? "Yes" : "No",
             dealOfDay: product.dealOfDay ? "Yes" : "No",
             brand: brandId,
+            barcode: product.barcode || "",
+            wholesaleEnabled: product.wholesaleEnabled ? "Yes" : "No",
+            wholesalePrice: product.wholesalePrice?.toString() || "",
+            wholesaleMinimumQuantity: product.wholesaleMinimumQuantity?.toString() || "",
             smallDescription: product.smallDescription || "",
             seoTitle: product.seoTitle || "",
             seoKeywords: product.seoKeywords || "",
@@ -231,12 +249,13 @@ export default function AdminProductEdit() {
 
           // Preload main image preview
           if (product.mainImage || product.mainImageUrl) {
-            setMainImagePreview(product.mainImage || product.mainImageUrl);
+            setMainImagePreview(resolveImageUrl(product.mainImage || product.mainImageUrl));
           }
 
           // Preload gallery previews
-          if (product.galleryImages?.length > 0 || product.galleryImageUrls?.length > 0) {
-            setGalleryImagePreviews(product.galleryImages || product.galleryImageUrls || []);
+          const rawGallery = product.galleryImages || product.galleryImageUrls || [];
+          if (rawGallery.length > 0) {
+            setGalleryImagePreviews(rawGallery.map((img: string) => resolveImageUrl(img)));
           }
 
           // Preload variations
@@ -250,6 +269,7 @@ export default function AdminProductEdit() {
                 discPrice: Number(v.discPrice) || 0,
                 stock: Number(v.stock) || 0,
                 status: v.status || (v.stock > 0 ? "Available" : "Sold out"),
+                barcode: v.barcode || "",
               }))
             );
           } else if (product.price !== undefined) {
@@ -497,6 +517,16 @@ export default function AdminProductEdit() {
     setGalleryImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const minRetailPrice = useMemo(() => {
+    if (!variations || variations.length === 0) return 0;
+    const prices = variations.map((v) => (v.discPrice > 0 ? v.discPrice : v.price)).filter((p) => p > 0);
+    return prices.length > 0 ? Math.min(...prices) : 0;
+  }, [variations]);
+
+  const selectedCategoryObj = useMemo(() => {
+    return categories.find((c) => c._id === formData.category);
+  }, [categories, formData.category]);
+
   const addVariation = () => {
     if (!variationForm.title || !variationForm.price) {
       setUploadError("Please fill in variation title and price");
@@ -519,6 +549,7 @@ export default function AdminProductEdit() {
       discPrice,
       stock,
       status: variationForm.status,
+      barcode: variationForm.barcode?.trim() || undefined,
     };
 
     setVariations((prev) => [...prev, newVariation]);
@@ -528,6 +559,7 @@ export default function AdminProductEdit() {
       discPrice: "0",
       stock: "0",
       status: "Available",
+      barcode: "",
     });
     setUploadError("");
   };
@@ -563,6 +595,23 @@ export default function AdminProductEdit() {
       return;
     }
 
+    if (formData.wholesaleEnabled === "Yes") {
+      const wp = parseFloat(formData.wholesalePrice || "0");
+      const moq = parseInt(formData.wholesaleMinimumQuantity || "0", 10);
+      if (!wp || wp <= 0) {
+        setUploadError("Wholesale price must be greater than 0 when wholesale is enabled.");
+        return;
+      }
+      if (minRetailPrice > 0 && wp >= minRetailPrice) {
+        setUploadError(`Wholesale price (₹${wp}) must be strictly less than the lowest retail price (₹${minRetailPrice}).`);
+        return;
+      }
+      if (!moq || moq < 1) {
+        setUploadError("Wholesale Minimum Order Quantity (MOQ) must be at least 1.");
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -596,6 +645,10 @@ export default function AdminProductEdit() {
         publish: formData.publish === "Yes",
         popular: formData.popular === "Yes",
         dealOfDay: formData.dealOfDay === "Yes",
+        barcode: formData.barcode ? formData.barcode.trim() : undefined,
+        wholesaleEnabled: formData.wholesaleEnabled === "Yes",
+        wholesalePrice: formData.wholesaleEnabled === "Yes" && formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : undefined,
+        wholesaleMinimumQuantity: formData.wholesaleEnabled === "Yes" && formData.wholesaleMinimumQuantity ? parseInt(formData.wholesaleMinimumQuantity, 10) : undefined,
         seoTitle: formData.seoTitle || "",
         seoKeywords: formData.seoKeywords || "",
         seoImageAlt: formData.seoImageAlt || "",
@@ -608,8 +661,12 @@ export default function AdminProductEdit() {
         maxReturnDays: formData.maxReturnDays ? parseInt(formData.maxReturnDays, 10) : undefined,
         totalAllowedQuantity: parseInt(formData.totalAllowedQuantity || "10", 10),
         fssaiLicNo: formData.fssaiLicNo || "",
+        mainImage: mainImageUrl || undefined,
         mainImageUrl: mainImageUrl || undefined,
+        galleryImages: galleryImageUrls,
         galleryImageUrls: galleryImageUrls,
+        price: variations[0]?.price || 0,
+        category: formData.category || undefined,
         variations: variations.map((v) => ({
           name: v.name || "Variation",
           value: v.value || v.title || "Default",
@@ -618,22 +675,30 @@ export default function AdminProductEdit() {
           discPrice: v.discPrice || 0,
           stock: v.stock || 0,
           status: v.status || "Available",
+          barcode: v.barcode ? v.barcode.trim() : undefined,
         })),
         variationType: formData.variationType || undefined,
         isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
         shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : null,
       };
 
-      const res = await updateProduct(id, productPayload);
+      const res = isAddMode
+        ? await createProduct(productPayload)
+        : await updateProduct(id!, productPayload);
 
       if (res.success) {
-        showToast("Product updated successfully!", "success");
+        showToast(
+          isAddMode
+            ? "Product and images created successfully!"
+            : "Product and images updated successfully!",
+          "success"
+        );
         navigate("/admin/product/list");
       } else {
-        setUploadError(res.message || "Failed to update product");
+        setUploadError(res.message || "Failed to save product");
       }
     } catch (err: any) {
-      console.error("Error updating product:", err);
+      console.error("Error saving product:", err);
       setUploadError(
         err.response?.data?.message || err.message || "An error occurred while saving the product"
       );
@@ -674,9 +739,15 @@ export default function AdminProductEdit() {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-bold text-neutral-800">Edit Product</h1>
+            <h1 className="text-xl font-bold text-neutral-800">
+              {isAddMode ? "Add New Product" : "Edit Product"}
+            </h1>
             <p className="text-xs text-neutral-500">
-              Update details for product ID: <span className="font-mono text-neutral-700">{id}</span>
+              {isAddMode ? (
+                "Create a new product with images, pricing, and variations"
+              ) : (
+                <>Update details for product ID: <span className="font-mono text-neutral-700">{id}</span></>
+              )}
             </p>
           </div>
         </div>
@@ -880,6 +951,20 @@ export default function AdminProductEdit() {
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Product Barcode / EAN / UPC <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  name="barcode"
+                  value={formData.barcode}
+                  onChange={handleChange}
+                  placeholder="e.g. 8901234567890"
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
+                />
+              </div>
             </div>
 
             <div>
@@ -894,6 +979,103 @@ export default function AdminProductEdit() {
                 rows={3}
                 className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Wholesale Configuration Card */}
+        <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-teal-700 to-teal-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🏷️</span>
+              <h2 className="text-base sm:text-lg font-semibold">Wholesale Configuration</h2>
+            </div>
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${formData.wholesaleEnabled === "Yes" ? "bg-teal-300 text-teal-950 font-bold" : "bg-neutral-600 text-neutral-200"}`}>
+              {formData.wholesaleEnabled === "Yes" ? "Wholesale Enabled" : "Wholesale Disabled"}
+            </span>
+          </div>
+          <div className="p-4 sm:p-6 space-y-4">
+            {/* Eligibility notices */}
+            <div className="space-y-2">
+              {appSettings.wholesaleSettings?.wholesaleEnabled === false && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span><strong>Global Wholesale Disabled:</strong> Wholesale is currently disabled in Global Wholesale Settings. Products will not be purchasable at wholesale prices by customers until global wholesale is re-enabled.</span>
+                </div>
+              )}
+              {formData.category && selectedCategoryObj && selectedCategoryObj.wholesaleEnabled === false && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span><strong>Category Wholesale Inactive:</strong> The category &ldquo;{selectedCategoryObj.name}&rdquo; has wholesale disabled. This product will not be eligible for wholesale orders until category wholesale is enabled.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Enable Wholesale for this Product?
+                </label>
+                <select
+                  name="wholesaleEnabled"
+                  value={formData.wholesaleEnabled}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                  <option value="No">No (Retail Only)</option>
+                  <option value="Yes">Yes (Wholesale Available)</option>
+                </select>
+              </div>
+
+              {formData.wholesaleEnabled === "Yes" && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Wholesale Unit Price (₹) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="any"
+                      name="wholesalePrice"
+                      value={formData.wholesalePrice}
+                      onChange={handleChange}
+                      placeholder="e.g. 150"
+                      required={formData.wholesaleEnabled === "Yes"}
+                      className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                    {minRetailPrice > 0 && (
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Must be strictly less than retail price (Lowest Retail: ₹{minRetailPrice})
+                      </p>
+                    )}
+                    {formData.wholesalePrice && minRetailPrice > 0 && parseFloat(formData.wholesalePrice) >= minRetailPrice && (
+                      <p className="text-xs text-red-600 font-semibold mt-1">
+                        ⚠️ Wholesale price (₹{formData.wholesalePrice}) must be strictly less than retail price (₹{minRetailPrice}).
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Wholesale Minimum Order Qty (MOQ) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      name="wholesaleMinimumQuantity"
+                      value={formData.wholesaleMinimumQuantity}
+                      onChange={handleChange}
+                      placeholder={appSettings.wholesaleSettings?.defaultWholesaleMinimumQuantity?.toString() || "10"}
+                      required={formData.wholesaleEnabled === "Yes"}
+                      className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Minimum units per order (Global default: {appSettings.wholesaleSettings?.defaultWholesaleMinimumQuantity || 10})
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -922,7 +1104,7 @@ export default function AdminProductEdit() {
             </div>
 
             {/* Add Variation Inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
                   Title (e.g., 500g, Large) <span className="text-red-500">*</span>
@@ -976,6 +1158,18 @@ export default function AdminProductEdit() {
                   className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  Barcode (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={variationForm.barcode}
+                  onChange={(e) => setVariationForm({ ...variationForm, barcode: e.target.value })}
+                  placeholder="Variation Barcode"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
               <div className="flex items-end">
                 <button
                   type="button"
@@ -1007,6 +1201,11 @@ export default function AdminProductEdit() {
                           {variation.discPrice > 0 && (
                             <span className="text-teal-600 text-xs ml-1.5 font-medium">
                               (Disc: ₹{variation.discPrice})
+                            </span>
+                          )}
+                          {variation.barcode && (
+                            <span className="text-neutral-500 text-xs ml-2 font-mono bg-neutral-100 px-1.5 py-0.5 rounded">
+                              Barcode: {variation.barcode}
                             </span>
                           )}
                         </div>
@@ -1401,7 +1600,7 @@ export default function AdminProductEdit() {
                 ? "bg-neutral-400 cursor-not-allowed"
                 : "bg-teal-600 hover:bg-teal-700 active:scale-95"
             }`}>
-            {submitting ? "Saving Changes..." : "Update Product"}
+            {submitting ? "Saving Changes..." : isAddMode ? "Create Product" : "Update Product"}
           </button>
         </div>
       </form>

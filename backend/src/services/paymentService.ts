@@ -698,19 +698,38 @@ const handlePaymentFailed = async (payload: any) => {
                 }
                 await order.save();
 
-                // Restore stock for all items
+                // Restore stock for all items — use mutateStock for atomicity and variation isolation
                 const OrderItem = (await import('../models/OrderItem')).default;
                 const Product = (await import('../models/Product')).default;
+                const { mutateStock } = await import('./inventoryService');
                 for (const itemId of order.items) {
                     const item = await OrderItem.findById(itemId);
                     if (item && item.product) {
-                        await Product.findByIdAndUpdate(item.product, {
-                            $inc: { stock: item.quantity },
-                        });
+                        const resolvedVariationId = (item as any).variationId
+                            ? (item as any).variationId.toString()
+                            : null;
+
+                        try {
+                            await mutateStock({
+                                productId: item.product.toString(),
+                                variationId: resolvedVariationId,
+                                quantity: +item.quantity,   // positive = restore
+                                type: 'RETURN',
+                                referenceType: 'RETURN',
+                                referenceId: order._id.toString(),
+                                orderItemId: item._id.toString(),
+                                performedByRole: 'SYSTEM',
+                                note: 'Payment failed stock restore',
+                            });
+                        } catch (stockErr: any) {
+                            console.warn(`[PaymentFailed] Stock restore failed for product ${item.product}:`, stockErr.message);
+                        }
+
                         item.status = 'Cancelled';
                         await item.save();
                     }
                 }
+
                 console.log(`🔒 [Payment Failed] Order ${order.orderNumber} cancelled and inventory restored atomically`);
             }
         }

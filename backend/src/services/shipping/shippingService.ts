@@ -70,6 +70,10 @@ export async function createEcommerceShipment(
     throw new Error(`Fulfillment group '${groupId}' not found in order ${orderId}`);
   }
 
+  if (group.fulfillmentType === 'LOCAL_DELIVERY') {
+    throw new Error(`Shiprocket shipment rejected: Group '${groupId}' has fulfillmentType LOCAL_DELIVERY (not an Ecommerce courier shipping group)`);
+  }
+
   if (group.fulfillmentType !== 'COURIER_SHIPPING' && group.fulfillmentType !== 'THIRD_PARTY_API') {
     throw new Error(`Group '${groupId}' is not an Ecommerce courier shipping group`);
   }

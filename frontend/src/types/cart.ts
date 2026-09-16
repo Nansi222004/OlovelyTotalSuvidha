@@ -1,9 +1,14 @@
 import { Product } from './domain';
 
 export interface CartItem {
+  id?: string;
   product: Product;
   quantity: number;
   variant?: any;
+  isWholesale?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
+  price?: number;
 }
 
 export interface Cart {
@@ -22,14 +27,16 @@ export interface Cart {
       items: any[];
       subtotal: number;
       fulfillmentType: string;
-      estimatedDelivery: string;
+      estimatedDelivery?: string;
+      estimatedDeliveryTime?: string;
       deliveryFee: number;
     };
     ecommerce?: {
       items: any[];
       subtotal: number;
       fulfillmentType: string;
-      estimatedDelivery: string;
+      estimatedDelivery?: string;
+      estimatedDeliveryTime?: string;
       shippingFee: number;
       note?: string;
     };

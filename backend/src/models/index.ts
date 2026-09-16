@@ -16,6 +16,8 @@ export { default as Order } from "./Order";
 export { default as OrderItem } from "./OrderItem";
 export { default as Coupon } from "./Coupon";
 export { default as Inventory } from "./Inventory";
+export { default as InventoryTransaction } from "./InventoryTransaction";
+export { default as Banner } from "./Banner";
 export { default as Payment } from "./Payment";
 export { default as HomeSection } from "./HomeSection";
 export { default as Notification } from "./Notification";

@@ -13,6 +13,9 @@ export interface ICategory extends Document {
   status: "Active" | "Inactive";
   parentId?: mongoose.Types.ObjectId;
   headerCategoryId?: mongoose.Types.ObjectId;
+  commerceChannels: ("QUICK_COMMERCE" | "ECOMMERCE")[];
+  /** Admin-controlled: whether this category permits wholesale products. Default false. */
+  wholesaleEnabled: boolean;
   translations?: Record<string, Record<string, string>>;
   createdAt: Date;
   updatedAt: Date;
@@ -87,6 +90,18 @@ const CategorySchema = new Schema<ICategory>(
       ref: "HeaderCategory",
       default: null,
     },
+    commerceChannels: {
+      type: [String],
+      enum: ["QUICK_COMMERCE", "ECOMMERCE"],
+      default: ["QUICK_COMMERCE", "ECOMMERCE"],
+      required: true,
+    },
+    // Wholesale gate for this category (Admin-controlled)
+    wholesaleEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     translations: {
       type: Schema.Types.Mixed,
       default: {},
@@ -102,6 +117,7 @@ CategorySchema.index({ order: 1 });
 CategorySchema.index({ parentId: 1 });
 CategorySchema.index({ status: 1 });
 CategorySchema.index({ headerCategoryId: 1 });
+CategorySchema.index({ commerceChannels: 1 });
 // Compound indexes for common queries
 CategorySchema.index({ status: 1, order: 1 }); // For getCategories
 CategorySchema.index({ parentId: 1, status: 1 }); // For getCategoryById subcategories

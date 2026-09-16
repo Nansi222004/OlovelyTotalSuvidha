@@ -8,6 +8,8 @@ import { useTranslation } from '../../../hooks/useTranslation';
 import Button from '../../../components/ui/button';
 import Badge from '../../../components/ui/badge';
 import StarRating from '../../../components/ui/StarRating';
+import { useAppSettings } from '../../../context/AppSettingsContext';
+import { useCustomerChannel } from '../../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../../utils/priceUtils';
 
@@ -43,10 +45,15 @@ export default function ProductCard({
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
   const { cart, addToCart, updateQuantity } = useCart();
+  const { settings } = useAppSettings();
+  const { isWholesale } = useCustomerChannel();
   const imageRef = useRef<HTMLImageElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   // Single ref to track any cart operation in progress for this product
   const isOperationPendingRef = useRef(false);
+
+  const isWholesaleActive = Boolean(isWholesale && product.wholesaleEnabled && (product.wholesalePrice || 0) > 0);
+  const wholesaleMoq = product.wholesaleMinimumQuantity || settings.wholesaleSettings?.defaultWholesaleMinimumQuantity || 1;
 
   // Stabilize IDs
   const productId = useMemo(() => ((product as any).id || product._id) as string, [product.id, product._id]);
@@ -65,6 +72,8 @@ export default function ProductCard({
   // Get Price and MRP using utility - Memoized to prevent re-calc
   const priceDetails = useMemo(() => calculateProductPrice(product), [product]);
   const { displayPrice, mrp, discount } = priceDetails;
+  const effectiveDisplayPrice = isWholesaleActive && product.wholesalePrice ? product.wholesalePrice : displayPrice;
+  const effectiveMrp = isWholesaleActive ? (mrp || displayPrice) : mrp;
 
   const isEcommerce = useMemo(() => {
     return product.productType === 'ECOMMERCE';
@@ -113,7 +122,6 @@ export default function ProductCard({
     e.stopPropagation();
     e.preventDefault();
 
-    // Prevent any operation while another is in progress
     if (isOperationPendingRef.current) {
       return;
     }
@@ -121,18 +129,17 @@ export default function ProductCard({
     isOperationPendingRef.current = true;
 
     try {
-      await addToCart(product, addButtonRef.current);
+      const initialQty = isWholesaleActive ? wholesaleMoq : 1;
+      await addToCart(product, addButtonRef.current, initialQty, isWholesaleActive);
     } finally {
-      // Reset the flag after the operation truly completes
       isOperationPendingRef.current = false;
     }
-  }, [product, addToCart]);
+  }, [product, addToCart, isWholesaleActive, wholesaleMoq]);
 
   const handleDecrease = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
-    // Prevent any operation while another is in progress
     if (isOperationPendingRef.current || inCartQty <= 0) {
       return;
     }
@@ -140,18 +147,20 @@ export default function ProductCard({
     isOperationPendingRef.current = true;
 
     try {
-      await updateQuantity(productId, inCartQty - 1);
+      if (isWholesaleActive && inCartQty <= wholesaleMoq) {
+        await updateQuantity(productId, 0);
+      } else {
+        await updateQuantity(productId, inCartQty - 1);
+      }
     } finally {
-      // Reset the flag after the operation truly completes
       isOperationPendingRef.current = false;
     }
-  }, [productId, inCartQty, updateQuantity]);
+  }, [productId, inCartQty, updateQuantity, isWholesaleActive, wholesaleMoq]);
 
   const handleIncrease = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
-    // Prevent any operation while another is in progress
     if (isOperationPendingRef.current) {
       return;
     }
@@ -162,13 +171,13 @@ export default function ProductCard({
       if (inCartQty > 0) {
         await updateQuantity(productId, inCartQty + 1);
       } else {
-        await addToCart(product, addButtonRef.current);
+        const initialQty = isWholesaleActive ? wholesaleMoq : 1;
+        await addToCart(product, addButtonRef.current, initialQty, isWholesaleActive);
       }
     } finally {
-      // Reset the flag after the operation truly completes
       isOperationPendingRef.current = false;
     }
-  }, [product, productId, inCartQty, updateQuantity, addToCart]);
+  }, [product, productId, inCartQty, updateQuantity, addToCart, isWholesaleActive, wholesaleMoq]);
 
   // Memoize class names
   const cardClassName = useMemo(() => 
@@ -179,11 +188,18 @@ export default function ProductCard({
     `w-full aspect-square bg-neutral-50/70 flex items-center justify-center p-0 relative overflow-hidden flex-shrink-0 cursor-pointer`
   , []);
 
-  const isOutOfStock = product.status === "Sold out" || (
-    product.variations && product.variations.length > 0
-      ? product.variations.every((v: any) => v.status === "Sold out" || (v.stock !== undefined && v.stock !== null && v.stock < 0))
-      : (product.stock !== undefined && product.stock !== null && product.stock < 0)
-  );
+  const effectiveStock = useMemo(() => {
+    if (product.variations && product.variations.length > 0) {
+      return product.variations.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
+    }
+    return Number(product.stock) || 0;
+  }, [product.variations, product.stock]);
+
+  const isOutOfStock = product.status === "Sold out" || effectiveStock <= 0;
+
+  const lowStockThreshold = settings.inventorySettings?.lowStockThreshold ?? 10;
+  const lowStockDisplayQuantity = settings.inventorySettings?.lowStockDisplayQuantity ?? 2;
+  const isLowStock = !isOutOfStock && effectiveStock > 0 && effectiveStock <= lowStockThreshold;
 
   return (
     <motion.div
@@ -201,20 +217,41 @@ export default function ProductCard({
       >
         {/* Top Badges - top left */}
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start pointer-events-none">
-          <span
-            className={`text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight ${
-              isEcommerce ? 'bg-blue-600 text-white' : 'bg-emerald-700 text-white'
-            }`}
-          >
-            <span>{isEcommerce ? '📦' : '⚡'}</span>
-            <span>{isEcommerce ? 'Courier' : 'Quick'}</span>
-          </span>
-          {showBadge && discount > 0 && (
+          {isWholesaleActive ? (
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight bg-purple-700 text-white">
+              <span>🏷️</span>
+              <span>Wholesale</span>
+            </span>
+          ) : (
+            <span
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight ${
+                isEcommerce ? 'bg-blue-600 text-white' : 'bg-emerald-700 text-white'
+              }`}
+            >
+              <span>{isEcommerce ? '📦' : '⚡'}</span>
+              <span>{isEcommerce ? 'Courier' : 'Quick'}</span>
+            </span>
+          )}
+          {showBadge && discount > 0 && !isWholesaleActive && (
             <div className="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
               {discount}% OFF
             </div>
           )}
+          {isWholesaleActive && (
+            <div className="bg-purple-900/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
+              MOQ: {wholesaleMoq}
+            </div>
+          )}
         </div>
+
+        {/* Out of Stock Overlay */}
+        {isOutOfStock && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] z-20 flex items-center justify-center">
+            <span className="bg-neutral-800 text-white text-[11px] sm:text-xs font-black px-2.5 py-1 rounded shadow uppercase tracking-wider">
+              Out of Stock
+            </span>
+          </div>
+        )}
 
         {/* Wishlist Heart Icon */}
         {showHeartIcon && (
@@ -338,20 +375,33 @@ export default function ProductCard({
         )}
 
         {/* 6. Discount Text (Single Instance) */}
-        {discount > 0 && (
+        {discount > 0 && !isWholesaleActive && (
           <div className="text-xs font-bold text-green-700 mb-0.5">
             {discount}% OFF
           </div>
         )}
 
+        {/* Low Stock Alert */}
+        {isLowStock && (
+          <div className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded flex items-center gap-1 mb-1">
+            <span>⚠️</span>
+            <span>Only {lowStockDisplayQuantity} items left!</span>
+          </div>
+        )}
+
         {/* 7. Price Row */}
-        <div className="mt-auto flex items-baseline gap-1.5 pt-1 mb-1">
+        <div className="mt-auto flex items-baseline gap-1.5 pt-1 mb-1 flex-wrap">
           <span className="text-base sm:text-lg font-black text-neutral-900">
-            ₹{displayPrice.toLocaleString('en-IN')}
+            ₹{effectiveDisplayPrice.toLocaleString('en-IN')}
           </span>
-          {mrp && mrp > displayPrice && (
+          {isWholesaleActive && (
+            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+              Wholesale
+            </span>
+          )}
+          {effectiveMrp && effectiveMrp > effectiveDisplayPrice && (
             <span className="text-xs sm:text-sm text-neutral-400 line-through font-normal">
-              ₹{mrp.toLocaleString('en-IN')}
+              ₹{effectiveMrp.toLocaleString('en-IN')}
             </span>
           )}
         </div>
@@ -371,11 +421,13 @@ export default function ProductCard({
             }}
             className={`w-full border-2 rounded-lg font-bold text-xs sm:text-sm h-9 sm:h-10 uppercase tracking-wider transition-colors cursor-pointer ${
               isOutOfStock
-                ? 'border-neutral-200 text-neutral-400 bg-neutral-50 cursor-not-allowed'
+                ? 'border-neutral-200 text-neutral-400 bg-neutral-100 cursor-not-allowed'
+                : isWholesaleActive
+                ? 'border-purple-600 text-purple-700 bg-white hover:bg-purple-50 active:bg-purple-100 shadow-2xs'
                 : 'border-green-600 text-green-700 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs'
             }`}
           >
-            {isOutOfStock ? 'Out of Stock' : 'ADD'}
+            {isOutOfStock ? 'Out of Stock' : isWholesaleActive ? `ADD (${wholesaleMoq})` : 'ADD'}
           </Button>
         ) : (
           <div className="flex items-center justify-between bg-green-600 text-white rounded-lg px-2 h-9 sm:h-10 w-full shadow-2xs">

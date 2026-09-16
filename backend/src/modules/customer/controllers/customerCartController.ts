@@ -2,11 +2,15 @@ import { Request, Response } from 'express';
 import Cart from '../../../models/Cart';
 import CartItem from '../../../models/CartItem';
 import Product from '../../../models/Product';
+import Category from '../../../models/Category';
+// Ensure Category model is registered for populate
+void Category;
 import { findSellersWithinRange } from '../../../utils/locationHelper';
 import mongoose from 'mongoose';
 import AppSettings from '../../../models/AppSettings';
 import { getRoadDistances } from '../../../services/mapService';
 import Seller from '../../../models/Seller';
+import { checkWholesaleEligibility, validateWholesalePrice } from '../../../utils/categoryChannelHelper';
 
 // Helper to calculate item price matching frontend logic
 const calculateItemPrice = (product: any, variationSelector: any) => {
@@ -145,7 +149,39 @@ const buildUnifiedCartResponse = async (
         }
 
         const itemProductType = item.productType || product.productType || 'QUICK_COMMERCE';
-        const price = calculateItemPrice(product, item.variation);
+        let price = calculateItemPrice(product, item.variation);
+
+        // Authoritative Wholesale Pricing & 4-Gate Eligibility Revalidation
+        if (item.isWholesale) {
+            const seller = await Seller.findById(product.seller).select('wholesaleEnabled').lean();
+            const category = await Category.findById(product.category).select('wholesaleEnabled').lean();
+            const appSettings = await AppSettings.findOne().select('wholesaleSettings').lean();
+            const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+            const eligibility = checkWholesaleEligibility({
+                globalWholesaleEnabled,
+                sellerWholesaleEnabled: !!seller?.wholesaleEnabled,
+                categoryWholesaleEnabled: !!category?.wholesaleEnabled,
+                productWholesaleEnabled: !!product.wholesaleEnabled,
+            });
+
+            if (!eligibility.eligible) {
+                // Wholesale capability was revoked after item was added to cart
+                // DO NOT silently convert to retail pricing! Mark unavailable.
+                unavailableItems.push({
+                    ...(item.toObject ? item.toObject() : item),
+                    unavailableReason: `Wholesale ineligible: ${eligibility.reason}`,
+                });
+                continue;
+            }
+
+            // Authoritative wholesale price from DB
+            const dbWholesalePrice = Number(product.wholesalePrice);
+            if (dbWholesalePrice && dbWholesalePrice > 0) {
+                price = dbWholesalePrice;
+            }
+        }
+
         const itemTotal = price * item.quantity;
 
         if (itemProductType === 'ECOMMERCE') {
@@ -179,11 +215,24 @@ const buildUnifiedCartResponse = async (
         await cart.save();
     }
 
-    // Quick Commerce fees
-    const qcFees = await calculateDeliveryStuff(qcSubtotal, qcItems, userLat, userLng, deliveryOption);
+    const settings = await AppSettings.findOne();
+
+    // Quick Commerce fees: only calculate if qcItems exist
+    const qcDeliveryOption = deliveryOption?.toLowerCase() === 'instant' ? 'Instant' : 'Standard';
+    let qcDeliveryFee = 0;
+    let platformFee = settings?.platformFee ?? 2;
+    let freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
+    let minimumOrderValue = settings?.minimumOrderValue ?? 0;
+
+    if (qcItems.length > 0) {
+        const qcFees = await calculateDeliveryStuff(qcSubtotal, qcItems, userLat, userLng, qcDeliveryOption);
+        qcDeliveryFee = qcFees.estimatedDeliveryFee;
+        platformFee = qcFees.platformFee;
+        freeDeliveryThreshold = qcFees.freeDeliveryThreshold;
+        minimumOrderValue = qcFees.minimumOrderValue;
+    }
 
     // Ecommerce shipping fee (dynamically configured from AppSettings)
-    const settings = await AppSettings.findOne();
     const ecomFreeThreshold = Number.isFinite(settings?.ecommerceFreeShippingThreshold)
         ? Number(settings?.ecommerceFreeShippingThreshold)
         : 499;
@@ -195,7 +244,7 @@ const buildUnifiedCartResponse = async (
         ecomShippingFee = ecomSubtotal >= ecomFreeThreshold ? 0 : ecomDefaultFee;
     }
 
-    const combinedDeliveryFee = qcFees.estimatedDeliveryFee + ecomShippingFee;
+    const combinedDeliveryFee = qcDeliveryFee + ecomShippingFee;
 
     const groups = {
         quickCommerce: {
@@ -204,7 +253,20 @@ const buildUnifiedCartResponse = async (
             estimatedDeliveryTime: '10–30 min',
             items: qcItems,
             subtotal: Number(qcSubtotal.toFixed(2)),
-            deliveryFee: qcFees.estimatedDeliveryFee,
+            deliveryFee: qcDeliveryFee,
+            allowedDeliveryOptions: [
+                {
+                    id: 'Standard',
+                    label: 'Standard Delivery',
+                    estimatedTime: 'Expected in 1–2 days',
+                },
+                {
+                    id: 'Instant',
+                    label: 'Instant Delivery',
+                    estimatedTime: 'Expected in 10–15 mins',
+                },
+            ],
+            selectedDeliveryOption: qcDeliveryOption,
         },
         ecommerce: {
             fulfillmentType: 'COURIER_SHIPPING',
@@ -213,6 +275,14 @@ const buildUnifiedCartResponse = async (
             items: ecomItems,
             subtotal: Number(ecomSubtotal.toFixed(2)),
             shippingFee: ecomShippingFee,
+            allowedDeliveryOptions: [
+                {
+                    id: 'Courier',
+                    label: 'Courier Delivery',
+                    estimatedTime: 'Expected in 3–7 days',
+                },
+            ],
+            selectedDeliveryOption: 'Courier',
         },
     };
 
@@ -223,11 +293,11 @@ const buildUnifiedCartResponse = async (
         groups,
         total: totalProductSubtotal,
         estimatedDeliveryFee: combinedDeliveryFee,
-        qcDeliveryFee: qcFees.estimatedDeliveryFee,
+        qcDeliveryFee,
         ecomShippingFee,
-        platformFee: qcFees.platformFee,
-        freeDeliveryThreshold: qcFees.freeDeliveryThreshold,
-        minimumOrderValue: qcFees.minimumOrderValue,
+        platformFee,
+        freeDeliveryThreshold,
+        minimumOrderValue,
         giftPackagingFee: settings?.giftPackagingFee ?? 30,
     };
 };
@@ -253,7 +323,7 @@ export const getCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -271,6 +341,11 @@ export const getCart = async (req: Request, res: Response) => {
                             items: [],
                             subtotal: 0,
                             deliveryFee: 0,
+                            allowedDeliveryOptions: [
+                                { id: 'Standard', label: 'Standard Delivery', estimatedTime: 'Expected in 1–2 days' },
+                                { id: 'Instant', label: 'Instant Delivery', estimatedTime: 'Expected in 10–15 mins' },
+                            ],
+                            selectedDeliveryOption: 'Standard',
                         },
                         ecommerce: {
                             fulfillmentType: 'COURIER_SHIPPING',
@@ -279,6 +354,10 @@ export const getCart = async (req: Request, res: Response) => {
                             items: [],
                             subtotal: 0,
                             shippingFee: 0,
+                            allowedDeliveryOptions: [
+                                { id: 'Courier', label: 'Courier Delivery', estimatedTime: 'Expected in 3–7 days' },
+                            ],
+                            selectedDeliveryOption: 'Courier',
                         },
                     },
                 },
@@ -312,18 +391,67 @@ export const getCart = async (req: Request, res: Response) => {
 export const addToCart = async (req: Request, res: Response) => {
     try {
         const userId = req.user?.userId;
-        const { productId, quantity = 1, variation } = req.body;
+        const { productId, quantity = 1, variation, isWholesale: clientRequestsWholesale = false } = req.body;
         const { latitude, longitude } = req.query;
 
         if (!productId) {
             return res.status(400).json({ success: false, message: 'Product ID is required' });
         }
 
-        // Verify product exists
-        const product = await Product.findOne({ _id: productId, status: 'Active', publish: true }).populate('seller');
+        // Verify product exists — also populate seller and category for wholesale gate
+        const product = await Product.findOne({ _id: productId, status: 'Active', publish: true })
+            .populate('seller')
+            .populate('category');
         if (!product) {
             return res.status(404).json({ success: false, message: 'Product not found or unavailable' });
         }
+
+        // ── WHOLESALE ELIGIBILITY GATE ─────────────────────────────────────────
+        // Server enforces all 4 layers: Global → Seller → Category → Product
+        // Client can signal intent with isWholesale=true but server validates it.
+        let serverIsWholesale = false;
+        let serverWholesalePrice: number | undefined = undefined;
+        let serverWholesaleMOQ: number | undefined = undefined;
+
+        if (clientRequestsWholesale) {
+            const settings = await AppSettings.findOne().select('wholesaleSettings').lean();
+            const globalEnabled = settings?.wholesaleSettings?.wholesaleEnabled ?? false;
+            const seller = product.seller as any;
+            const category = product.category as any;
+
+            const eligibility = checkWholesaleEligibility({
+                globalWholesaleEnabled: globalEnabled,
+                sellerWholesaleEnabled: seller?.wholesaleEnabled ?? false,
+                categoryWholesaleEnabled: category?.wholesaleEnabled ?? false,
+                productWholesaleEnabled: (product as any).wholesaleEnabled ?? false,
+            });
+
+            if (!eligibility.eligible) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Wholesale not available: ${eligibility.reason}`,
+                });
+            }
+
+            // Validate wholesale price server-side
+            const wp = (product as any).wholesalePrice;
+            const rp = (product as any).price || 0;
+            if (!wp || wp <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'This product does not have a wholesale price configured',
+                });
+            }
+            const priceCheck = validateWholesalePrice(wp, rp);
+            if (!priceCheck.valid) {
+                return res.status(400).json({ success: false, message: priceCheck.error });
+            }
+
+            serverIsWholesale = true;
+            serverWholesalePrice = wp;
+            serverWholesaleMOQ = (product as any).wholesaleMinimumQuantity ?? 1;
+        }
+        // ──────────────────────────────────────────────────────────────────────
 
         const isEcommerceProduct = product.productType === 'ECOMMERCE';
 
@@ -378,16 +506,54 @@ export const addToCart = async (req: Request, res: Response) => {
             variation: variation || null
         });
 
+        let sanitizedQuantity = parseInt(quantity as any, 10);
+        if (isNaN(sanitizedQuantity) || sanitizedQuantity < 1) {
+            sanitizedQuantity = 1;
+        }
+
+        // ── MOQ ENFORCEMENT ───────────────────────────────────────────────────
+        // If wholesale, re-read server MOQ and enforce. Never trust client quantity alone.
+        if (serverIsWholesale && serverWholesaleMOQ && sanitizedQuantity < serverWholesaleMOQ) {
+            return res.status(400).json({
+                success: false,
+                message: `Minimum order quantity for wholesale is ${serverWholesaleMOQ} units. You requested ${sanitizedQuantity}.`,
+                data: { minimumQuantity: serverWholesaleMOQ, requested: sanitizedQuantity },
+            });
+        }
+        // ──────────────────────────────────────────────────────────────────────
+
+        const maxStock = typeof (product as any).stock === 'number' && (product as any).stock > 0 ? (product as any).stock : 999;
+        const maxAllowedQty = (!serverIsWholesale && (product as any).totalAllowedQuantity && (product as any).totalAllowedQuantity > 0)
+            ? Math.min(maxStock, (product as any).totalAllowedQuantity)
+            : maxStock;
+
         if (cartItem) {
-            cartItem.quantity += quantity;
+            const newQty = cartItem.quantity + sanitizedQuantity;
+            // Re-enforce MOQ on updates too
+            if (serverIsWholesale && serverWholesaleMOQ && newQty < serverWholesaleMOQ) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Wholesale minimum order quantity is ${serverWholesaleMOQ} units.`,
+                    data: { minimumQuantity: serverWholesaleMOQ },
+                });
+            }
+            cartItem.quantity = Math.min(maxAllowedQty, newQty);
+            if (serverIsWholesale) {
+                (cartItem as any).isWholesale = true;
+                (cartItem as any).wholesalePrice = serverWholesalePrice;
+                (cartItem as any).wholesaleMinimumQuantity = serverWholesaleMOQ;
+            }
             await cartItem.save();
         } else {
             cartItem = await CartItem.create({
                 cart: cart._id,
                 product: productId,
-                quantity,
+                quantity: Math.min(maxAllowedQty, sanitizedQuantity),
                 variation: variation || null,
                 productType: product.productType || 'QUICK_COMMERCE',
+                isWholesale: serverIsWholesale,
+                wholesalePrice: serverWholesalePrice,
+                wholesaleMinimumQuantity: serverWholesaleMOQ,
             });
             cart.items.push(cartItem._id as any);
             await cart.save();
@@ -398,7 +564,7 @@ export const addToCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -472,14 +638,36 @@ export const updateCartItem = async (req: Request, res: Response) => {
             }
         }
 
-        cartItem.quantity = quantity;
+        let parsedQuantity = parseInt(quantity as any, 10);
+        if (isNaN(parsedQuantity) || parsedQuantity < 1) {
+            return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
+        }
+
+        // Enforce Wholesale MOQ on update (No silent adjustments)
+        if (cartItem.isWholesale) {
+            const authoritativeMoq = Math.max(1, Number(product?.wholesaleMinimumQuantity) || Number((cartItem as any).wholesaleMinimumQuantity) || 1);
+            if (parsedQuantity < authoritativeMoq) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Minimum order quantity for wholesale is ${authoritativeMoq} units. You requested ${parsedQuantity}.`,
+                    data: { minimumQuantity: authoritativeMoq, requested: parsedQuantity },
+                });
+            }
+        }
+
+        const maxStock = typeof product?.stock === 'number' && product.stock > 0 ? product.stock : 999;
+        const maxAllowedQty = (!cartItem.isWholesale && product?.totalAllowedQuantity && product.totalAllowedQuantity > 0)
+            ? Math.min(maxStock, product.totalAllowedQuantity)
+            : maxStock;
+
+        cartItem.quantity = Math.min(maxAllowedQty, parsedQuantity);
         await cartItem.save();
 
         const updatedCart = await Cart.findById(cart._id).populate({
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -536,7 +724,7 @@ export const removeFromCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails'
+                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 

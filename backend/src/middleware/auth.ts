@@ -206,4 +206,26 @@ export const requireApprovedUser = async (req: Request, res: Response, next: Nex
 export const requireApprovedSeller = [authenticate, requireUserType('Seller'), requireApprovedUser];
 export const requireApprovedDelivery = [authenticate, requireUserType('Delivery'), requireApprovedUser];
 
+/**
+ * Optional authentication: Attaches req.user if a valid Bearer token is present,
+ * but allows the request to continue unauthenticated if no token or an invalid token is provided.
+ */
+export const optionalAuthenticate = (req: Request, _res: Response, next: NextFunction): void => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded = verifyToken(token);
+        req.user = decoded;
+      } catch (err) {
+        // Ignore token errors for optional auth
+      }
+    }
+    next();
+  } catch (error) {
+    next();
+  }
+};
+
 

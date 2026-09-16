@@ -5,7 +5,14 @@ export interface ICartItem extends Document {
   product: mongoose.Types.ObjectId;
   quantity: number;
   variation?: string;
+  variationId?: mongoose.Types.ObjectId;
   productType?: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  /** Whether this item is being purchased at wholesale terms. */
+  isWholesale: boolean;
+  /** Authoritative wholesale price snapshot at time of add-to-cart. Server-set. */
+  wholesalePrice?: number;
+  /** MOQ persisted per cart item — used for frontend display and checkout validation. */
+  wholesaleMinimumQuantity?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,10 +38,26 @@ const CartItemSchema = new Schema<ICartItem>(
       type: String,
       trim: true,
     },
+    variationId: {
+      type: Schema.Types.ObjectId,
+    },
     productType: {
       type: String,
       enum: ['QUICK_COMMERCE', 'ECOMMERCE'],
       default: 'QUICK_COMMERCE',
+    },
+    // Wholesale tracking
+    isWholesale: {
+      type: Boolean,
+      default: false,
+    },
+    wholesalePrice: {
+      type: Number,
+      min: [0.01, 'Wholesale price must be positive'],
+    },
+    wholesaleMinimumQuantity: {
+      type: Number,
+      min: [1, 'Wholesale minimum quantity must be at least 1'],
     },
   },
   {

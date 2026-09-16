@@ -22,9 +22,20 @@ interface AddToCartEvent {
 
 interface CartContextType {
   cart: Cart;
-  addToCart: (product: Product, sourceElement?: HTMLElement | null) => Promise<void>;
-  removeFromCart: (productId: string) => Promise<void>;
-  updateQuantity: (productId: string, quantity: number, variantId?: string, variantTitle?: string) => Promise<void>;
+  addToCart: (
+    product: Product,
+    sourceElement?: HTMLElement | null,
+    initialQuantity?: number,
+    isWholesale?: boolean
+  ) => Promise<void>;
+  removeFromCart: (productId: string, cartItemId?: string) => Promise<void>;
+  updateQuantity: (
+    productId: string,
+    quantity: number,
+    variantId?: string,
+    variantTitle?: string,
+    cartItemId?: string
+  ) => Promise<void>;
   clearCart: () => Promise<void>;
   refreshCart: (
     latitude?: number,
@@ -89,9 +100,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
           productType: item.product.productType || 'QUICK_COMMERCE',
           packageDetails: item.product.packageDetails,
           seller: item.product.seller,
+          wholesaleEnabled: item.product.wholesaleEnabled,
+          wholesalePrice: item.product.wholesalePrice,
+          wholesaleMinimumQuantity: item.product.wholesaleMinimumQuantity,
         },
         quantity: item.quantity,
-        variant: item.variation // Also preserve it here for order placement
+        variant: item.variation, // Also preserve it here for order placement
+        isWholesale: item.isWholesale,
+        wholesalePrice: item.wholesalePrice,
+        wholesaleMinimumQuantity: item.wholesaleMinimumQuantity,
+        price: item.price,
       }));
   }, []);
 
@@ -184,15 +202,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, user?.userType, fetchCart]);
 
-  // Sync localStorage items to backend on mount (one-time sync)
+  // Sync localStorage items to backend on mount (one-time sync for guest items only)
   useEffect(() => {
     const syncLocalCartToBackend = async () => {
       if (isAuthenticated && user?.userType === 'Customer' && !hasSyncedRef.current) {
-        const localItems = items.filter(item => item?.product);
+        hasSyncedRef.current = true;
+        // ONLY sync genuine guest items that were added without a server id!
+        // Items loaded from backend already have item.id (the CartItem _id) and must NEVER be re-added!
+        const guestItems = items.filter(item => item?.product && !item.id);
         
-        if (localItems.length > 0) {
+        if (guestItems.length > 0) {
           try {
-            for (const item of localItems) {
+            for (const item of guestItems) {
               const productId = item.product.id || item.product._id;
               if (!productId) continue;
 
@@ -205,7 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
               try {
                 await apiAddToCart(
                   productId,
-                  item.quantity,
+                  Math.max(1, item.quantity || 1),
                   variation,
                   location?.latitude,
                   location?.longitude
@@ -215,21 +236,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 console.warn(`[CartSync] Skipped unserviceable item ${productId}`);
               }
             }
-            hasSyncedRef.current = true;
-            // Refresh cart to get updated data from backend
-            await fetchCart();
           } catch (error) {
             console.warn("Local cart sync completed with warnings:", error);
           }
-        } else {
-          hasSyncedRef.current = true;
         }
+        // Always fetch the authoritative cart from backend for authenticated customer
+        await fetchCart();
       }
     };
     
     syncLocalCartToBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [isAuthenticated, user?.userType]);
 
   // State for estimate delivery fee
   const [estimatedFee, setEstimatedFee] = useState<number | undefined>(undefined);
@@ -244,8 +262,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     
     // Compute total and item count in a single pass for performance
     const { total, itemCount } = validItems.reduce((acc, item) => {
-      const { displayPrice } = calculateProductPrice(item.product, item.variant);
-      acc.total += displayPrice * (item.quantity || 0);
+      let unitPrice = 0;
+      if (item.isWholesale && item.wholesalePrice && item.wholesalePrice > 0) {
+        unitPrice = item.wholesalePrice;
+      } else {
+        const { displayPrice } = calculateProductPrice(item.product, item.variant);
+        unitPrice = displayPrice;
+      }
+      acc.total += unitPrice * (item.quantity || 0);
       acc.itemCount += (item.quantity || 0);
       return acc;
     }, { total: 0, itemCount: 0 });
@@ -264,7 +288,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [items, estimatedFee, platformFee, freeDeliveryThreshold, minimumOrderValue, cartGroups]);
 
-  const addToCart = async (product: Product, sourceElement?: HTMLElement | null) => {
+  const addToCart = async (
+    product: Product,
+    sourceElement?: HTMLElement | null,
+    initialQuantity?: number,
+    isWholesale?: boolean
+  ) => {
     if (!isAuthenticated) {
       showToast("Please login first to add items to cart", "info");
       window.location.href = "/login";
@@ -279,6 +308,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return;
     }
     pendingOperationsRef.current.add(productId);
+
+    const isWholesaleMode = Boolean(isWholesale);
+    const moq = isWholesaleMode ? (product.wholesaleMinimumQuantity || 1) : 1;
+    const quantityToAdd = initialQuantity && initialQuantity >= moq ? initialQuantity : (isWholesaleMode ? moq : 1);
 
     // Normalize product to always have 'id' property for consistency
     const normalizedProduct: Product = {
@@ -318,22 +351,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
         variantTitle = (firstVar as any).title || (firstVar as any).value || variantTitle;
       }
 
-      // Find existing item - match by product ID and variant (if variant exists)
+      // Find existing item - match by product ID and variant (if variant exists) and wholesale mode
       const existingItem = validItems.find((item) => {
         const itemProductId = item.product.id || item.product._id;
         const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
         const itemVariantTitle = (item.product as any).variantTitle || (item.product as any).pack;
+        const matchWholesale = Boolean(item.isWholesale) === isWholesaleMode;
+
+        if (!matchWholesale) return false;
 
         // If both have variants, match by variant ID or title
         if (variantId || (itemVariantId && itemVariantId !== itemProductId)) {
-          // Match by ID if both have it
           if (variantId && itemVariantId) {
             return itemProductId === productId && (itemVariantId === variantId || itemVariantTitle === variantTitle);
           }
-          // Fallback to title
           return itemProductId === productId && itemVariantTitle === variantTitle;
         }
-        // If no variant, match by product ID only
         return itemProductId === productId && !itemVariantId && !itemVariantTitle;
       });
 
@@ -342,26 +375,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const itemProductId = item.product.id || item.product._id;
           const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
           const itemVariantTitle = (item.product as any).variantTitle || (item.product as any).pack;
+          const matchWholesale = Boolean(item.isWholesale) === isWholesaleMode;
 
-          // Match by product ID and variant
+          if (!matchWholesale) return item;
+
           const isMatch = (variantId || (itemVariantId && itemVariantId !== itemProductId))
             ? itemProductId === productId && (itemVariantId === variantId || itemVariantTitle === variantTitle)
             : itemProductId === productId && !itemVariantId && !itemVariantTitle;
 
           return isMatch
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { ...item, quantity: item.quantity + (isWholesaleMode ? moq : 1) }
             : item;
         });
       }
-      return [...validItems, { product: normalizedProduct, quantity: 1 }];
+      return [
+        ...validItems,
+        {
+          product: normalizedProduct,
+          quantity: quantityToAdd,
+          isWholesale: isWholesaleMode,
+          wholesalePrice: isWholesaleMode ? product.wholesalePrice : undefined,
+          wholesaleMinimumQuantity: isWholesaleMode ? moq : undefined,
+          price: isWholesaleMode && product.wholesalePrice ? product.wholesalePrice : product.price,
+        },
+      ];
     });
 
     // Only sync to API if user is authenticated
     if (isAuthenticated && user?.userType === 'Customer') {
       try {
-        // Pass variation info to API if available
-        // If product has variations but no variantId/selectedVariant is provided (e.g. from Home page),
-        // use the ID of the first variation to ensure consistency with ProductDetail page
         let variation = (product as any).variantId || (product as any).selectedVariant?._id || (product as any).variantTitle;
 
         if (!variation && product.variations && product.variations.length > 0) {
@@ -369,17 +411,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
           variation = (firstVar as any)._id || (firstVar as any).id || (firstVar as any).title || (firstVar as any).value;
         }
 
-        // Final fallback to pack
         if (!variation) {
           variation = product.pack;
         }
 
         const response = await apiAddToCart(
           productId,
-          1,
+          quantityToAdd,
           variation,
           location?.latitude,
-          location?.longitude
+          location?.longitude,
+          undefined,
+          isWholesaleMode
         );
         if (response && response.data && response.data.items) {
           // Atomic update from server response
@@ -412,18 +455,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const removeFromCart = async (productId: string) => {
-    // Prevent concurrent operations on the same product
-    if (pendingOperationsRef.current.has(productId)) {
+  const removeFromCart = async (productId: string, cartItemId?: string) => {
+    // Prevent concurrent operations on the same product/item
+    const operationKey = cartItemId || productId;
+    if (pendingOperationsRef.current.has(operationKey)) {
       return;
     }
-    pendingOperationsRef.current.add(productId);
+    pendingOperationsRef.current.add(operationKey);
 
-    // Find item matching either id or _id
-    const itemToRemove = items.find(item => item?.product && (item.product.id === productId || item.product._id === productId));
+    // Find target item to remove
+    const itemToRemove = items.find((item) => {
+      if (!item?.product) return false;
+      if (cartItemId && item.id === cartItemId) return true;
+      const itemProductId = item.product.id || item.product._id;
+      return itemProductId === productId;
+    });
 
     const previousItems = [...items];
-    setItems((prevItems) => prevItems.filter((item) => item?.product && item.product.id !== productId && item.product._id !== productId));
+    setItems((prevItems) =>
+      prevItems.filter((item) => {
+        if (!item?.product) return false;
+        if (cartItemId && item.id) {
+          return item.id !== cartItemId;
+        }
+        const itemProductId = item.product.id || item.product._id;
+        return itemProductId !== productId;
+      })
+    );
 
     // Only sync to API if user is authenticated and item has CartItemID
     if (isAuthenticated && user?.userType === 'Customer' && itemToRemove?.id) {
@@ -433,92 +491,93 @@ export function CartProvider({ children }: { children: ReactNode }) {
           location?.latitude,
           location?.longitude
         );
-        if (response && response.data && response.data.items) {
-          setItems(mapApiItemsToState(response.data.items));
+        if (response && response.data) {
+          if (Array.isArray(response.data.items)) {
+            setItems(mapApiItemsToState(response.data.items));
+          } else {
+            setItems([]);
+          }
           setEstimatedFee(response.data.estimatedDeliveryFee);
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
-          if (response.data.groups) {
-            setCartGroups(response.data.groups);
-          }
+          setCartGroups(response.data.groups || undefined);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Remove from cart failed", error);
         setItems(previousItems);
+        showToast(error.response?.data?.message || "Failed to remove item", "error");
       } finally {
-        // Remove from pending operations
-        pendingOperationsRef.current.delete(productId);
+        pendingOperationsRef.current.delete(operationKey);
       }
     } else {
-      // For unregistered users, remove from pending operations immediately
-      pendingOperationsRef.current.delete(productId);
+      pendingOperationsRef.current.delete(operationKey);
     }
   };
 
-  const updateQuantity = async (productId: string, quantity: number, variantId?: string, variantTitle?: string) => {
-    if (quantity <= 0) {
-      removeFromCart(productId);
+  const updateQuantity = async (
+    productId: string,
+    quantity: number,
+    variantId?: string,
+    variantTitle?: string,
+    cartItemId?: string
+  ) => {
+    const intQty = Math.floor(quantity);
+    if (intQty < 1) {
       return;
     }
 
     if (!isAuthenticated) {
-      showToast("Please login first to add items to cart", "info");
+      showToast("Please login first to update cart items", "info");
       window.location.href = "/login";
       return;
     }
 
-    // Create a unique operation key for this product/variant combination
-    const operationKey = variantId ? `${productId}-${variantId}` : (variantTitle ? `${productId}-${variantTitle}` : productId);
+    // Create a unique operation key for this operation
+    const operationKey = cartItemId || (variantId ? `${productId}-${variantId}` : (variantTitle ? `${productId}-${variantTitle}` : productId));
 
-    // Prevent concurrent operations on the same product
     if (pendingOperationsRef.current.has(operationKey)) {
       return;
     }
     pendingOperationsRef.current.add(operationKey);
 
-    // Find item matching product ID and variant (if variant info provided)
-    const itemToUpdate = items.find(item => {
+    // Find item matching cartItemId, or product ID and variant
+    const itemToUpdate = items.find((item) => {
       if (!item?.product) return false;
+      if (cartItemId && item.id === cartItemId) return true;
       const itemProductId = item.product.id || item.product._id;
       if (itemProductId !== productId) return false;
 
-      // If variant info provided, match by variant
       if (variantId || variantTitle) {
         const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
         const itemVariantTitle = (item.product as any).variantTitle || (item.product as any).pack;
-        return itemVariantId === variantId || itemVariantTitle === variantTitle;
+        return (
+          (variantId && (itemVariantId === variantId || item.variant === variantId)) ||
+          (variantTitle && (itemVariantTitle === variantTitle || item.variant === variantTitle))
+        );
       }
 
-      // If no variant info, match items without variants
-      const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
-      const itemVariantTitle = (item.product as any).variantTitle;
-      return !itemVariantId && !itemVariantTitle;
+      // If no variant info specified, match this item
+      return true;
     });
+
+    if (!itemToUpdate) {
+      pendingOperationsRef.current.delete(operationKey);
+      return;
+    }
 
     const previousItems = [...items];
     setItems((prevItems) =>
-      prevItems.filter(item => item?.product).map((item) => {
-        const itemProductId = item.product.id || item.product._id;
-        if (itemProductId !== productId) return item;
+      prevItems
+        .filter((item) => item?.product)
+        .map((item) => {
+          const isTarget = itemToUpdate.id && item.id
+            ? item.id === itemToUpdate.id
+            : (item.product.id === productId || item.product._id === productId);
 
-        // If variant info provided, match by variant
-        if (variantId || variantTitle) {
-          const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
-          const itemVariantTitle = (item.product as any).variantTitle || (item.product as any).pack;
-          if (itemVariantId === variantId || itemVariantTitle === variantTitle) {
-            return { ...item, quantity };
-          }
-        } else {
-          // If no variant info, match items without variants
-          const itemVariantId = (item.product as any).variantId || (item.product as any).selectedVariant?._id;
-          const itemVariantTitle = (item.product as any).variantTitle;
-          if (!itemVariantId && !itemVariantTitle) {
-            return { ...item, quantity };
-          }
-        }
-        return item;
-      })
+          if (!isTarget) return item;
+          return { ...item, quantity: intQty };
+        })
     );
 
     // Only sync to API if user is authenticated and item has CartItemID
@@ -526,7 +585,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiUpdateCartItem(
           itemToUpdate.id as string,
-          quantity,
+          intQty,
           location?.latitude,
           location?.longitude
         );
@@ -540,15 +599,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
             setCartGroups(response.data.groups);
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Update quantity failed", error);
         setItems(previousItems);
+        showToast(error.response?.data?.message || "Failed to update quantity", "error");
       } finally {
-        // Remove from pending operations
         pendingOperationsRef.current.delete(operationKey);
       }
     } else {
-      // For unregistered users, remove from pending operations immediately
       pendingOperationsRef.current.delete(operationKey);
     }
   };

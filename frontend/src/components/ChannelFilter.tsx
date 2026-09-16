@@ -1,8 +1,9 @@
 import React from 'react';
 import { getTheme, Theme } from '../utils/themes';
 import { useThemeContext } from '../context/ThemeContext';
+import { useAppSettings } from '../context/AppSettingsContext';
 
-export type ChannelFilterValue = 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE';
+export type ChannelFilterValue = 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'WHOLESALE';
 
 interface ChannelFilterProps {
   value: ChannelFilterValue;
@@ -11,6 +12,7 @@ interface ChannelFilterProps {
     all?: number;
     quickCommerce?: number;
     ecommerce?: number;
+    wholesale?: number;
   };
   className?: string;
   theme?: Theme;
@@ -27,6 +29,9 @@ export default function ChannelFilter({
   activeTab,
   variant = 'header',
 }: ChannelFilterProps) {
+  const { settings: appSettings } = useAppSettings();
+  const showWholesale = appSettings.wholesaleSettings?.wholesaleDisplayEnabled !== false;
+
   // If light variant requested (e.g. for Category page with white cards/background)
   if (variant === 'light') {
     return (
@@ -114,6 +119,34 @@ export default function ChannelFilter({
               </span>
             )}
           </button>
+
+          {showWholesale && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={value === 'WHOLESALE'}
+              onClick={() => onChange('WHOLESALE')}
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+                value === 'WHOLESALE'
+                  ? 'bg-white text-green-800 shadow-xs ring-1 ring-black/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <span className="text-xs">🏷️</span>
+              <span>Wholesale</span>
+              {counts?.wholesale !== undefined && (
+                <span
+                  className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
+                    value === 'WHOLESALE'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {counts.wholesale}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -248,6 +281,37 @@ export default function ChannelFilter({
             </span>
           )}
         </button>
+
+        {showWholesale && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={value === 'WHOLESALE'}
+            onClick={() => onChange('WHOLESALE')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+              value === 'WHOLESALE'
+                ? 'bg-white shadow-xs ring-1 ring-black/5 font-extrabold'
+                : 'hover:bg-white/15'
+            }`}
+            style={{
+              color: value === 'WHOLESALE' ? selectedTextColor : unselectedTextColor,
+            }}
+          >
+            <span className="text-xs">🏷️</span>
+            <span>Wholesale</span>
+            {counts?.wholesale !== undefined && (
+              <span
+                className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors"
+                style={{
+                  backgroundColor: value === 'WHOLESALE' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.12)',
+                  color: value === 'WHOLESALE' ? selectedTextColor : unselectedTextColor,
+                }}
+              >
+                {counts.wholesale}
+              </span>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
