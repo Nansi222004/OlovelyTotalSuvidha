@@ -2092,7 +2092,11 @@ export default function OrderDetail() {
       {showRazorpayCheckout && order && (
         <RazorpayCheckout
           orderId={order._id || order.id || id!}
-          amount={order.totalAmount || order.total || 0}
+          amount={
+            order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0
+              ? order.onlineAmountPaid
+              : (order.totalAmount || order.total || 0)
+          }
           customerDetails={{
             name: user?.name || order.customerName || order.address?.name || "Customer",
             email: user?.email || order.customerEmail || "customer@olovely.com",

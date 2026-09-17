@@ -42,6 +42,44 @@ export async function notifySellersOfOrderUpdate(
             // Get only items belonging to this seller
             const sellerSpecificItems = orderItems.filter((item: any) => extractSellerId(item) === sellerId);
 
+            let sellerHasQc = false;
+            let sellerHasEcom = false;
+
+            const mappedItems = sellerSpecificItems.map((item: any) => {
+                // Determine item fulfillment channel safely
+                const group = (order.fulfillmentGroups || []).find((g: any) =>
+                    Array.isArray(g.items) && g.items.some((itId: any) => itId.toString() === item._id.toString())
+                );
+                const isEcom = group
+                    ? group.fulfillmentType === 'COURIER_SHIPPING' || group.fulfillmentType === 'THIRD_PARTY_API'
+                    : (item.productType === 'ECOMMERCE' || (order.orderType === 'ECOMMERCE'));
+
+                if (isEcom) {
+                    sellerHasEcom = true;
+                } else {
+                    sellerHasQc = true;
+                }
+
+                return {
+                    productName: item.productName,
+                    quantity: item.quantity,
+                    price: item.unitPrice,
+                    total: item.total,
+                    variation: item.variation,
+                    productType: isEcom ? 'ECOMMERCE' : 'QUICK_COMMERCE',
+                    fulfillmentType: isEcom ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+                    isWholesale: Boolean(item.isWholesale),
+                    wholesalePrice: item.wholesalePrice,
+                    wholesaleMinimumQuantity: item.wholesaleMinimumQuantity,
+                };
+            });
+
+            const sellerFulfillmentType = (sellerHasQc && sellerHasEcom)
+                ? 'MIXED'
+                : sellerHasQc
+                    ? 'LOCAL_DELIVERY'
+                    : 'COURIER_SHIPPING';
+
             const notificationData = {
                 type,
                 orderId: order._id,
@@ -54,16 +92,14 @@ export async function notifySellersOfOrderUpdate(
                     phone: order.customerPhone,
                     address: order.deliveryAddress
                 },
-                deliveryOption: order.deliveryOption || 'Standard',
-                items: sellerSpecificItems.map((item: any) => ({
-                    productName: item.productName,
-                    quantity: item.quantity,
-                    price: item.unitPrice,
-                    total: item.total,
-                    variation: item.variation
-                })),
+                deliveryOption: sellerHasQc ? (order.deliveryOption || 'Standard') : 'Courier',
+                items: mappedItems,
                 totalAmount: sellerSpecificItems.reduce((acc: number, item: any) => acc + item.total, 0),
-                timestamp: new Date()
+                timestamp: new Date(),
+                hasQcItems: sellerHasQc,
+                hasEcomItems: sellerHasEcom,
+                requiresLocalDelivery: sellerHasQc,
+                fulfillmentType: sellerFulfillmentType,
             };
 
             // Emit to seller-specific room

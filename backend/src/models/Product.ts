@@ -459,6 +459,36 @@ ProductSchema.pre("save", function (next) {
   } else {
     this.discount = 0;
   }
+
+  // Auto-assign image based on product name if not provided / uploaded
+  if (!this.mainImage || this.mainImage.trim() === '' || this.mainImage === '/placeholder.png') {
+    const name = (this.productName || '').toLowerCase();
+    let assignedImage = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600';
+    if (name.includes('masala') || name.includes('spice') || name.includes('chilli') || name.includes('mirch') || name.includes('haldi')) {
+      assignedImage = '/assets/product-bulk-masala.jpg';
+    } else if (name.includes('electronic') || name.includes('gadget') || name.includes('smart') || name.includes('watch') || name.includes('earbud') || name.includes('phone')) {
+      assignedImage = '/assets/product-smart-electronics.jpg';
+    } else if (name.includes('flour') || name.includes('atta') || name.includes('wheat') || name.includes('besan') || name.includes('grain')) {
+      assignedImage = '/assets/product-organic-flour.jpg';
+    } else if (name.includes('cookware') || name.includes('pan') || name.includes('pot') || name.includes('utensil') || name.includes('kitchen') || name.includes('cooker')) {
+      assignedImage = '/assets/product-cookware-set.jpg';
+    } else if (name.includes('milk') || name.includes('dairy') || name.includes('butter') || name.includes('cheese') || name.includes('ghee')) {
+      assignedImage = 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&q=80&w=600';
+    } else if (name.includes('tomato') || name.includes('potato') || name.includes('onion') || name.includes('vegetable')) {
+      assignedImage = 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600';
+    } else if (name.includes('fruit') || name.includes('mango') || name.includes('apple') || name.includes('banana')) {
+      assignedImage = 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?auto=format&fit=crop&q=80&w=600';
+    } else if (name.includes('rice') || name.includes('poha') || name.includes('basmati')) {
+      assignedImage = 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&q=80&w=600';
+    } else if (name.includes('snack') || name.includes('chip') || name.includes('namkeen') || name.includes('biscuit')) {
+      assignedImage = 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&q=80&w=600';
+    }
+    this.mainImage = assignedImage;
+    if (!this.galleryImages || this.galleryImages.length === 0) {
+      this.galleryImages = [assignedImage];
+    }
+  }
+
   next();
 });
 

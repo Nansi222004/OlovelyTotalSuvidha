@@ -632,22 +632,54 @@ export const createOrder = async (req: Request, res: Response) => {
     let deliveryDistanceKm = 0;
 
     // --- Delivery Charge Calculation (Standard vs Instant) ---
-    try {
-      const freeDeliveryThreshold = settings?.freeDeliveryThreshold || 0;
+    const freeDeliveryThreshold = Number(settings?.freeDeliveryThreshold) || 0;
+    const isEligibleForFreeDelivery = freeDeliveryThreshold > 0 && calculatedSubtotal >= freeDeliveryThreshold;
 
-      // Check for Free Delivery eligibility first
-      if (
-        freeDeliveryThreshold > 0 &&
-        qcSubtotal >= freeDeliveryThreshold
-      ) {
+    try {
+      if (isEligibleForFreeDelivery) {
+        // Global Free Delivery Threshold: waives ALL delivery charges (Standard, Instant distance-based, and Courier shipping)
         deliveryFee = 0;
-      }
-      // Standard Delivery flow: Always Fixed Price
-      else if (resolvedQcOption === "Standard") {
-        deliveryFee = settings.deliveryCharges ?? 0;
-      }
-      // Instant Delivery flow: Distance Based calculation
-      else if (resolvedQcOption === "Instant" && settings.deliveryConfig) {
+
+        // Optionally capture delivery distance for Instant delivery audit/records
+        if (resolvedQcOption === "Instant" && settings?.deliveryConfig && deliveryLat && deliveryLng) {
+          try {
+            const config = settings.deliveryConfig;
+            const sellerLocations: { lat: number; lng: number }[] = [];
+            const uniqueSellerIds = Array.from(sellerIds).map(
+              (id) => new mongoose.Types.ObjectId(id),
+            );
+            const sellers = await Seller.find({
+              _id: { $in: uniqueSellerIds },
+            }).select("location latitude longitude storeName");
+
+            sellers.forEach((seller) => {
+              let lat, lng;
+              if (seller.location?.coordinates?.length === 2) {
+                lng = seller.location.coordinates[0];
+                lat = seller.location.coordinates[1];
+              } else if (seller.latitude && seller.longitude) {
+                lat = parseFloat(seller.latitude);
+                lng = parseFloat(seller.longitude);
+              }
+              if (lat && lng) sellerLocations.push({ lat, lng });
+            });
+
+            if (sellerLocations.length > 0) {
+              const distances = await getRoadDistances(
+                sellerLocations,
+                { lat: deliveryLat, lng: deliveryLng },
+                config.googleMapsKey,
+              );
+              if (distances.length > 0) {
+                deliveryDistanceKm = Math.max(...distances);
+              }
+            }
+          } catch (distanceErr) {
+            console.warn("Distance lookup warning for free instant delivery:", distanceErr);
+          }
+        }
+      } else if (resolvedQcOption === "Instant" && settings?.deliveryConfig) {
+        // Instant Delivery flow: Distance Based calculation (below free-delivery threshold)
         const config = settings.deliveryConfig;
 
         // Collect seller locations
@@ -698,8 +730,9 @@ export const createOrder = async (req: Request, res: Response) => {
             `DEBUG: Instant Delivery (Distance-based): MaxDistance=${deliveryDistanceKm}km, Fee=${deliveryFee} (Base: ${config.baseCharge}, Rate: ${config.kmRate}/km)`,
           );
         }
+      } else if (resolvedQcOption === "Standard") {
+        deliveryFee = settings?.deliveryCharges ?? 0;
       } else {
-        // Fallback: If no settings or unhandled option, use provided fee or default
         const providedDeliveryFee = Number(fees?.deliveryFee);
         deliveryFee = Number.isFinite(providedDeliveryFee)
           ? providedDeliveryFee
@@ -707,11 +740,7 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     } catch (calcError) {
       console.error("Error calculating delivery fee:", calcError);
-      // Fallback to provided fee or settings default (using pre-fetched settings)
-      const providedDeliveryFee = Number(fees?.deliveryFee);
-      deliveryFee = Number.isFinite(providedDeliveryFee)
-        ? providedDeliveryFee
-        : settings?.deliveryCharges ?? 0;
+      deliveryFee = isEligibleForFreeDelivery ? 0 : (settings?.deliveryCharges ?? 0);
     }
 
     // If no Quick Commerce items, QC delivery fee is 0
@@ -719,16 +748,13 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryFee = 0;
     }
 
-    // Ecommerce Shipping Fee (dynamically configured from AppSettings)
+    // Ecommerce Shipping Fee: Governed by the single global freeDeliveryThreshold on combined subtotal!
     let ecomShippingFee = 0;
     if (ecomItemIds.length > 0) {
-      const freeShippingThreshold = Number.isFinite(settings?.ecommerceFreeShippingThreshold)
-        ? Number(settings.ecommerceFreeShippingThreshold)
-        : 499;
       const defaultShippingFee = Number.isFinite(settings?.ecommerceShippingFee)
         ? Number(settings.ecommerceShippingFee)
         : 40;
-      ecomShippingFee = ecomSubtotal >= freeShippingThreshold ? 0 : defaultShippingFee;
+      ecomShippingFee = isEligibleForFreeDelivery ? 0 : defaultShippingFee;
     }
 
     const combinedShippingFee = deliveryFee + ecomShippingFee;

@@ -274,7 +274,7 @@ export default function SellerOrderDetail() {
       xPos = margin;
       const rowData = [
         item.srNo.toString(),
-        item.product,
+        item.product + (item.isWholesale ? ` [Wholesale${item.wholesaleMinimumQuantity ? ` MOQ ${item.wholesaleMinimumQuantity}` : ''}]` : ''),
         `₹${item.price.toFixed(2)}`,
         `${item.tax.toFixed(2)} (${item.taxPercent.toFixed(2)}%)`,
         item.qty.toString(),
@@ -418,17 +418,24 @@ export default function SellerOrderDetail() {
   };
 
   const hasQcGroup = Boolean(
-    orderDetail?.orderType === 'QUICK_COMMERCE' ||
-    orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') ||
-    (!orderDetail?.orderType && !orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING'))
+    orderDetail?.hasQcItems !== undefined
+      ? orderDetail.hasQcItems
+      : (
+          orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') ||
+          orderDetail?.orderType === 'QUICK_COMMERCE'
+        )
   );
 
   const hasEcomGroup = Boolean(
-    orderDetail?.orderType === 'ECOMMERCE' ||
-    orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API')
+    orderDetail?.hasEcomItems !== undefined
+      ? orderDetail.hasEcomItems
+      : (
+          orderDetail?.fulfillmentGroups?.some((g: any) => g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API') ||
+          orderDetail?.orderType === 'ECOMMERCE'
+        )
   );
 
-  const isMixedOrder = Boolean(orderDetail?.orderType === 'MIXED' || (hasQcGroup && hasEcomGroup));
+  const isMixedOrder = Boolean(hasQcGroup && hasEcomGroup);
   const isPureEcommerce = hasEcomGroup && !hasQcGroup;
   const isPureQc = hasQcGroup && !hasEcomGroup;
 
@@ -891,6 +898,11 @@ export default function SellerOrderDetail() {
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                           <span>⚡</span> Quick Commerce
+                        </span>
+                      )}
+                      {item.isWholesale && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 ml-1.5">
+                          <span>🏷️</span> Wholesale{item.wholesaleMinimumQuantity ? ` (MOQ ${item.wholesaleMinimumQuantity})` : ''}
                         </span>
                       )}
                     </td>

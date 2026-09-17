@@ -9,6 +9,7 @@ import BestsellerCard from "../../../models/BestsellerCard";
 import LowestPricesProduct from "../../../models/LowestPricesProduct";
 import PromoStrip from "../../../models/PromoStrip";
 import Seller from "../../../models/Seller";
+import AppSettings from "../../../models/AppSettings";
 import mongoose from "mongoose";
 import { cache } from "../../../utils/cache";
 import { findSellersWithinRange } from "../../../utils/locationHelper";
@@ -21,9 +22,14 @@ async function fetchSectionData(
 ): Promise<any[]> {
   try {
     const { categories, subCategories, displayType, limit } = section;
+    const isBeautySection =
+      section.slug === "beauty-personal-care" ||
+      (typeof section.title === "string" && section.title.toLowerCase().includes("beauty"));
+
+    const effectiveDisplayType = isBeautySection ? "products" : displayType;
 
     // If displayType is "subcategories", fetch subcategories
-    if (displayType === "subcategories") {
+    if (effectiveDisplayType === "subcategories") {
       let subcategoryQuery: any = {};
       let specificIds: string[] = [];
       let results: any[] = [];
@@ -139,33 +145,81 @@ async function fetchSectionData(
     }
 
     // If displayType is "products", fetch products
-    if (displayType === "products") {
+    if (effectiveDisplayType === "products") {
+      let categoryIds: any[] = [];
+      if (categories && categories.length > 0) {
+        categoryIds = categories
+          .map((cat: any) => (cat ? cat._id || cat : null))
+          .filter(Boolean);
+      }
+
+      // If Beauty section and no valid categories linked, dynamically resolve authoritative categories
+      if (isBeautySection && categoryIds.length === 0) {
+        const beautyCats = await Category.find({
+          name: { $in: ["Cosmetics Item, Bath & Body", "Skins Face Hair", "Baby Care Products"] },
+          status: "Active"
+        }).select("_id").lean();
+        categoryIds = beautyCats.map(c => c._id);
+      }
+
+      // Check global wholesale setting and seller/category eligibility
+      const settings = await AppSettings.findOne().select("wholesaleSettings").lean();
+      const globalWholesaleEnabled = settings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+      let eligibleWholesaleSellerIds: any[] = [];
+      let eligibleWholesaleCategoryIds: any[] = [];
+
+      if (globalWholesaleEnabled) {
+        const [eligibleSellers, eligibleCategories] = await Promise.all([
+          Seller.find({ status: "Approved", wholesaleEnabled: true }, { _id: 1 }).lean(),
+          Category.find({ status: "Active", wholesaleEnabled: true }, { _id: 1 }).lean()
+        ]);
+        eligibleWholesaleSellerIds = eligibleSellers.map((s: any) => s._id);
+        eligibleWholesaleCategoryIds = eligibleCategories.map((c: any) => c._id);
+      }
+
       const query: any = {
         status: "Active",
         publish: true,
-        wholesaleEnabled: { $ne: true }, // Exclude wholesale-only products from retail home feeds
-        // Exclude shop-by-store-only products from home sections
-        $or: [
-          { isShopByStoreOnly: { $ne: true } },
-          { isShopByStoreOnly: { $exists: false } },
-        ],
+        $and: [
+          {
+            $or: [
+              { isShopByStoreOnly: { $ne: true } },
+              { isShopByStoreOnly: { $exists: false } },
+            ]
+          }
+        ]
       };
 
-      // If we have a user location and nearby sellers, filter products by seller service radius.
-      // Otherwise, show all products but mark availability status.
-      if (hasUserLocation && nearbySellerIds && nearbySellerIds.length > 0) {
-        query.seller = { $in: nearbySellerIds };
+      // In All mode: allow eligible retail products OR eligible wholesale products
+      if (globalWholesaleEnabled && eligibleWholesaleSellerIds.length > 0 && eligibleWholesaleCategoryIds.length > 0) {
+        query.$and.push({
+          $or: [
+            { wholesaleEnabled: { $ne: true } },
+            {
+              wholesaleEnabled: true,
+              seller: { $in: eligibleWholesaleSellerIds },
+              category: { $in: eligibleWholesaleCategoryIds }
+            }
+          ]
+        });
+      } else {
+        query.wholesaleEnabled = { $ne: true };
       }
 
-      // Only filter by category if categories are explicitly selected
-      if (categories && categories.length > 0) {
-        const categoryIds = categories
-          .map((cat: any) => (cat ? cat._id || cat : null))
-          .filter(Boolean);
+      // If location is provided, QC items check nearby sellers, while Ecommerce items ship nationwide
+      if (hasUserLocation && nearbySellerIds && nearbySellerIds.length > 0) {
+        query.$and.push({
+          $or: [
+            { productType: "ECOMMERCE" },
+            { seller: { $in: nearbySellerIds } }
+          ]
+        });
+      }
 
-        if (categoryIds.length > 0) {
-          query.category = { $in: categoryIds };
-        }
+      // Only filter by category if categories are explicitly selected or resolved
+      if (categoryIds.length > 0) {
+        query.category = { $in: categoryIds };
       }
 
       // Only filter by subcategory if subcategories are explicitly selected
@@ -182,16 +236,18 @@ async function fetchSectionData(
       const products = await Product.find(query)
         .sort({ createdAt: -1 }) // Show newest items first
         .limit(limit || 8)
-        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations productType packageDetails")
+        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity")
         .populate("seller", "storeName sellerName viewCustomerDetails")
         .populate("shopId", "name")
         .lean();
 
       return products.map((p: any) => {
         const sellerIdStr = p.seller ? (typeof p.seller === 'object' && p.seller !== null ? p.seller._id?.toString() : p.seller.toString()) : null;
-        const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-          ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
-          : false;
+        const isAvailable = p.productType === 'ECOMMERCE'
+          ? true
+          : (nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+              ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
+              : false);
 
         const sellerObj = typeof p.seller === 'object' && p.seller !== null ? p.seller : null;
         const shopObj = typeof p.shopId === 'object' && p.shopId !== null ? p.shopId : null;
@@ -224,6 +280,9 @@ async function fetchSectionData(
           type: "product",
           productType: p.productType || "QUICK_COMMERCE",
           packageDetails: p.packageDetails,
+          wholesaleEnabled: Boolean(p.wholesaleEnabled),
+          wholesalePrice: p.wholesalePrice,
+          wholesaleMinimumQuantity: p.wholesaleMinimumQuantity,
           isAvailable,
           seller: p.seller,
           storeName,
@@ -389,7 +448,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .populate({
         path: "product",
         select:
-          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId translations productType packageDetails",
+          "productName mainImage price discPrice compareAtPrice mrp discount status publish category subcategory seller variations shopId translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity",
         populate: [
           { path: "seller", select: "storeName sellerName" },
           { path: "shopId", select: "name" },
@@ -408,10 +467,12 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .map((item: any) => {
         const product = item.product;
         const sellerIdStr = product.seller ? (typeof product.seller === 'object' && product.seller !== null ? product.seller._id?.toString() : product.seller.toString()) : null;
-        // Check if the product's seller is within range
-        const isAvailable = nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-          ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
-          : false;
+        // Check if the product's seller is within range (Ecommerce ships nationwide)
+        const isAvailable = product.productType === 'ECOMMERCE'
+          ? true
+          : (nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+              ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
+              : false);
 
         const sellerObj = typeof product.seller === 'object' && product.seller !== null ? product.seller : null;
         const shopObj = typeof product.shopId === 'object' && product.shopId !== null ? product.shopId : null;
@@ -437,6 +498,9 @@ export const getHomeContent = async (req: Request, res: Response) => {
           publish: product.publish,
           productType: product.productType || "QUICK_COMMERCE",
           packageDetails: product.packageDetails,
+          wholesaleEnabled: Boolean(product.wholesaleEnabled),
+          wholesalePrice: product.wholesalePrice,
+          wholesaleMinimumQuantity: product.wholesaleMinimumQuantity,
           isAvailable,
           seller: product.seller,
           storeName,
@@ -459,50 +523,93 @@ export const getHomeContent = async (req: Request, res: Response) => {
       .select("name image icon color slug translations")
       .sort({ order: 1 });
 
-    // 4. Shop By Store - Fetch from database
-    const shopDocuments = await Shop.find({ isActive: true })
-      .populate("category", "name slug translations")
-      .sort({ order: 1, createdAt: -1 })
+    // 4. Shop By Store - Fetch real approved, open sellers from database
+    const sellerQuery: any = {
+      status: "Approved",
+      isShopOpen: { $ne: false },
+    };
+
+    // Location filtering if user coordinates provided:
+    // Ecommerce/Hybrid sellers ship nationwide; Quick Commerce sellers check radius if user location provided
+    if (hasUserLocation && nearbySellerIds && nearbySellerIds.length > 0) {
+      sellerQuery.$or = [
+        { vendorType: { $in: ["ECOMMERCE", "HYBRID"] } },
+        { _id: { $in: nearbySellerIds } },
+      ];
+    }
+
+    const allApprovedSellers = await Seller.find(sellerQuery)
+      .select("_id storeName sellerName logo profile storeBanner city vendorType wholesaleEnabled storeDescription category createdAt")
       .lean();
 
-    // Transform shop data to match frontend expected format and include preview images
-    const shops = await Promise.all(
-      shopDocuments.map(async (shop: any) => {
-        let productImages: string[] = [];
+    // Aggregate active products count and preview images per seller
+    const sellerProductsAgg = await Product.aggregate([
+      {
+        $match: {
+          status: "Active",
+          publish: true,
+          seller: { $in: allApprovedSellers.map((s: any) => s._id) },
+        },
+      },
+      {
+        $group: {
+          _id: "$seller",
+          count: { $sum: 1 },
+          images: { $push: "$mainImage" },
+        },
+      },
+    ]);
 
-        if (shop.products && shop.products.length > 0) {
-          const validProdIds = shop.products.filter(Boolean);
-          const shopProducts = await Product.find({
-            _id: { $in: validProdIds.slice(0, 4) },
-            status: "Active",
-            publish: true,
-            wholesaleEnabled: { $ne: true },
-            ...(hasUserLocation && nearbySellerIds.length > 0 ? { seller: { $in: nearbySellerIds } } : {}),
-          })
-            .select("mainImage")
-            .lean();
+    const productCountMap = new Map<string, number>();
+    const previewImagesMap = new Map<string, string[]>();
 
-          productImages = shopProducts.map((p: any) => p.mainImage).filter(Boolean);
-        }
+    sellerProductsAgg.forEach((item: any) => {
+      if (item._id) {
+        const idStr = item._id.toString();
+        productCountMap.set(idStr, item.count || 0);
+        const validImgs = (item.images || []).filter((img: string) => img && typeof img === 'string' && img.trim() !== "");
+        previewImagesMap.set(idStr, validImgs.slice(0, 4));
+      }
+    });
 
-        return {
-          id: shop.storeId || (shop._id ? shop._id.toString() : ""),
-          name: shop.name || "",
-          image: shop.image || "",
-          productImages, // Include preview images irrespective of location
-          slug: shop.storeId || (shop._id ? shop._id.toString() : ""),
-          category: shop.category,
-          productIds: (shop.products || []).filter(Boolean).map((p: any) => (typeof p === 'object' && p !== null && p._id ? p._id.toString() : p ? p.toString() : "")),
-          bgColor: shop.bgColor || "bg-neutral-50",
-          translations: shop.translations || {},
-        };
-      })
-    );
+    // Map sellers to shop card format
+    const realStoreCards = allApprovedSellers.map((seller: any) => {
+      const sellerIdStr = seller._id.toString();
+      const storeName = seller.storeName || seller.sellerName || "Store";
+      const count = productCountMap.get(sellerIdStr) || 0;
+      const previewImages = previewImagesMap.get(sellerIdStr) || [];
+      const image = seller.logo || seller.profile || seller.storeBanner || (previewImages.length > 0 ? previewImages[0] : "");
 
-    // When location is known and sellers are in range, filter shops that have in-range products.
-    const visibleShops = (hasUserLocation && nearbySellerIds.length > 0)
-      ? shops.filter((s: any) => Array.isArray(s.productImages) && s.productImages.length > 0)
-      : shops;
+      return {
+        id: sellerIdStr,
+        _id: sellerIdStr,
+        name: storeName,
+        storeName,
+        image,
+        logo: seller.logo || seller.profile || "",
+        storeBanner: seller.storeBanner || "",
+        productImages: previewImages,
+        slug: sellerIdStr,
+        vendorType: seller.vendorType || "QUICK_COMMERCE",
+        wholesaleEnabled: Boolean(seller.wholesaleEnabled),
+        city: seller.city || "",
+        description: seller.storeDescription || seller.category || "",
+        productCount: count,
+        bgColor: "bg-neutral-50",
+        translations: {},
+      };
+    });
+
+    // Sort: stores with active products first, then by createdAt desc
+    realStoreCards.sort((a: any, b: any) => {
+      if (b.productCount !== a.productCount) {
+        return b.productCount - a.productCount;
+      }
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+    // Take top 12 for the Home page preview
+    const visibleShops = realStoreCards.slice(0, 12);
 
     // 5. Trending Items (Fetch some popular categories or products)
     const trendingCategories = await Category.find({
@@ -725,14 +832,14 @@ export const getHomeContent = async (req: Request, res: Response) => {
       })
     );
 
-    // 10. Fetch PromoStrip for the current header category (with caching)
+    // 10. Fetch PromoStrip and Featured Products for the current header category (with caching)
     const currentHeaderCategorySlug = (headerCategorySlug as string) || "all";
     const promoStripCacheKey = `rawPromoStrip-${currentHeaderCategorySlug.toLowerCase()}`;
 
     // Try to get raw un-mutated doc from cache first
     let rawPromoStrip = cache.get(promoStripCacheKey) as any;
 
-    if (rawPromoStrip === undefined) {
+    if (!rawPromoStrip) {
       const now = new Date();
       const promoStripDoc = await PromoStrip.findOne({
         headerCategorySlug: currentHeaderCategorySlug.toLowerCase(),
@@ -741,7 +848,11 @@ export const getHomeContent = async (req: Request, res: Response) => {
         endDate: { $gte: now },
       })
         .populate("categoryCards.categoryId", "name slug image translations")
-        .populate("featuredProducts", "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller variations translations")
+        .populate({
+          path: "featuredProducts",
+          select: "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller category subcategory variations translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity status publish isShopByStoreOnly stock",
+          populate: { path: "seller", select: "storeName sellerName vendorType wholesaleEnabled viewCustomerDetails" },
+        })
         .sort({ order: 1 })
         .lean();
 
@@ -751,22 +862,53 @@ export const getHomeContent = async (req: Request, res: Response) => {
     }
 
     let promoStrip = null;
+    let featuredThisWeekProducts: any[] = [];
+
     if (rawPromoStrip) {
       // Clone to avoid mutating cached object across different user locations
       promoStrip = JSON.parse(JSON.stringify(rawPromoStrip));
 
       if (promoStrip.featuredProducts && Array.isArray(promoStrip.featuredProducts)) {
-        promoStrip.featuredProducts = promoStrip.featuredProducts
-          .filter((p: any) => p && typeof p === 'object')
+        featuredThisWeekProducts = promoStrip.featuredProducts
+          .filter((p: any) => p && typeof p === 'object' && p.status === 'Active' && p.publish !== false)
           .map((p: any) => {
-            const sellerIdStr = p.seller
-              ? (typeof p.seller === 'object' && p.seller !== null ? p.seller._id?.toString() : p.seller.toString())
-              : null;
-            const isAvailable =
-              nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
-                ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
-                : false;
-            return { ...p, isAvailable };
+            const sellerObj = typeof p.seller === 'object' && p.seller !== null ? p.seller : null;
+            const sellerIdStr = sellerObj?._id ? sellerObj._id.toString() : (p.seller ? p.seller.toString() : null);
+            const isAvailable = p.productType === 'ECOMMERCE'
+              ? true
+              : (nearbySellerIds && nearbySellerIds.length > 0 && sellerIdStr
+                  ? nearbySellerIds.some(id => id && id.toString() === sellerIdStr)
+                  : false);
+            const storeName = sellerObj?.storeName || sellerObj?.sellerName || null;
+
+            return {
+              id: p._id ? p._id.toString() : "",
+              _id: p._id ? p._id.toString() : "",
+              productName: p.productName || "",
+              name: p.productName || "",
+              mainImage: p.mainImage || p.mainImageUrl || (p.galleryImageUrls && p.galleryImageUrls[0]) || "",
+              imageUrl: p.mainImage || p.mainImageUrl || (p.galleryImageUrls && p.galleryImageUrls[0]) || "",
+              price: p.price,
+              discPrice: p.discPrice || 0,
+              compareAtPrice: p.compareAtPrice || p.mrp || p.price,
+              mrp: p.mrp || p.compareAtPrice || p.price,
+              discount: p.discount || (p.mrp && p.price && p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0),
+              variations: p.variations || [],
+              categoryId: p.category ? (typeof p.category === 'object' && p.category !== null ? p.category._id?.toString() || "" : p.category.toString()) : "",
+              subcategory: p.subcategory ? (typeof p.subcategory === 'object' && p.subcategory !== null ? p.subcategory._id?.toString() || "" : p.subcategory.toString()) : "",
+              status: p.status,
+              publish: p.publish,
+              productType: p.productType || "QUICK_COMMERCE",
+              packageDetails: p.packageDetails,
+              wholesaleEnabled: Boolean(p.wholesaleEnabled),
+              wholesalePrice: p.wholesalePrice,
+              wholesaleMinimumQuantity: p.wholesaleMinimumQuantity,
+              stock: p.stock !== undefined ? p.stock : 999,
+              isAvailable,
+              seller: p.seller,
+              storeName,
+              translations: p.translations || {},
+            };
           })
           // When sellers are in range, prefer in-range products; otherwise show preview products
           .filter((p: any) => {
@@ -775,6 +917,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
             }
             return true;
           });
+
+        promoStrip.featuredProducts = featuredThisWeekProducts;
       }
     }
 
@@ -805,6 +949,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
         cookingIdeas,
         promoCards: finalPromoCards, // Return dynamic or fallback cards
         promoStrip: promoStrip || null, // PromoStrip data for the current header category
+        featuredThisWeek: featuredThisWeekProducts, // Explicit dynamic featured products for FeaturedThisWeek section
       },
     });
   } catch (error: any) {
@@ -817,7 +962,165 @@ export const getHomeContent = async (req: Request, res: Response) => {
   }
 };
 
-// Get Products for a specific "Store" (Campaign/Collection)
+// Get All Stores / Vendors (Public with pagination, search, and channel filtering)
+export const getAllStores = async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 12));
+    const search = (req.query.search as string)?.trim();
+    const channel = (req.query.channel as string)?.toUpperCase() || "ALL";
+    const { latitude, longitude } = req.query;
+
+    const userLat = latitude ? parseFloat(latitude as string) : null;
+    const userLng = longitude ? parseFloat(longitude as string) : null;
+    const hasUserLocation = Boolean(userLat && userLng && !isNaN(userLat) && !isNaN(userLng));
+
+    let nearbySellerIds: mongoose.Types.ObjectId[] = [];
+    if (hasUserLocation) {
+      nearbySellerIds = await findSellersWithinRange(userLat!, userLng!);
+    }
+
+    const sellerQuery: any = {
+      status: "Approved",
+      isShopOpen: { $ne: false },
+    };
+
+    // Channel filtering according to existing architecture
+    if (channel === "QUICK_COMMERCE") {
+      sellerQuery.vendorType = { $in: ["QUICK_COMMERCE", "HYBRID"] };
+    } else if (channel === "ECOMMERCE") {
+      sellerQuery.vendorType = { $in: ["ECOMMERCE", "HYBRID"] };
+    } else if (channel === "WHOLESALE") {
+      sellerQuery.wholesaleEnabled = true;
+    }
+
+    // Location filtering if user provided coordinates:
+    // Ecommerce/Hybrid sellers ship nationwide; QC sellers check radius
+    if (hasUserLocation && nearbySellerIds.length > 0) {
+      sellerQuery.$or = [
+        { vendorType: { $in: ["ECOMMERCE", "HYBRID"] } },
+        { _id: { $in: nearbySellerIds } },
+      ];
+    }
+
+    // Search query
+    if (search) {
+      const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const searchConditions: any[] = [
+        { storeName: searchRegex },
+        { sellerName: searchRegex },
+        { city: searchRegex },
+        { category: searchRegex },
+        { storeDescription: searchRegex },
+      ];
+      if (sellerQuery.$or) {
+        sellerQuery.$and = [
+          { $or: sellerQuery.$or },
+          { $or: searchConditions }
+        ];
+        delete sellerQuery.$or;
+      } else {
+        sellerQuery.$or = searchConditions;
+      }
+    }
+
+    // Fetch all eligible sellers matching query
+    const allMatchingSellers = await Seller.find(sellerQuery)
+      .select("_id storeName sellerName logo profile storeBanner city vendorType wholesaleEnabled storeDescription category createdAt")
+      .lean();
+
+    // Aggregate product counts and preview images
+    const sellerIds = allMatchingSellers.map((s: any) => s._id);
+    const productAgg = await Product.aggregate([
+      {
+        $match: {
+          status: "Active",
+          publish: true,
+          seller: { $in: sellerIds },
+        },
+      },
+      {
+        $group: {
+          _id: "$seller",
+          count: { $sum: 1 },
+          images: { $push: "$mainImage" },
+        },
+      },
+    ]);
+
+    const countMap = new Map<string, number>();
+    const previewMap = new Map<string, string[]>();
+
+    productAgg.forEach((item: any) => {
+      if (item._id) {
+        const idStr = item._id.toString();
+        countMap.set(idStr, item.count || 0);
+        const validImgs = (item.images || []).filter((img: string) => img && typeof img === 'string' && img.trim() !== "");
+        previewMap.set(idStr, validImgs.slice(0, 4));
+      }
+    });
+
+    // Format seller cards
+    const mappedSellers = allMatchingSellers.map((seller: any) => {
+      const sellerIdStr = seller._id.toString();
+      const storeName = seller.storeName || seller.sellerName || "Store";
+      const productCount = countMap.get(sellerIdStr) || 0;
+      const previewImages = previewMap.get(sellerIdStr) || [];
+      const image = seller.logo || seller.profile || seller.storeBanner || (previewImages.length > 0 ? previewImages[0] : "");
+
+      return {
+        id: sellerIdStr,
+        _id: sellerIdStr,
+        name: storeName,
+        storeName,
+        image,
+        logo: seller.logo || seller.profile || "",
+        storeBanner: seller.storeBanner || "",
+        description: seller.storeDescription || seller.category || "",
+        vendorType: seller.vendorType || "QUICK_COMMERCE",
+        wholesaleEnabled: Boolean(seller.wholesaleEnabled),
+        city: seller.city || "",
+        productCount,
+        productImages: previewImages,
+        slug: sellerIdStr,
+        createdAt: seller.createdAt,
+      };
+    });
+
+    // Sort: stores with active products first, then by createdAt desc
+    mappedSellers.sort((a: any, b: any) => {
+      if (b.productCount !== a.productCount) {
+        return b.productCount - a.productCount;
+      }
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+    const total = mappedSellers.length;
+    const totalPages = Math.ceil(total / limit);
+    const startIndex = (page - 1) * limit;
+    const paginatedStores = mappedSellers.slice(startIndex, startIndex + limit);
+
+    return res.status(200).json({
+      success: true,
+      data: paginatedStores,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in getAllStores:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching stores",
+      error: error.message,
+    });
+  }
+};
+
+// Get Products for a specific "Store" (Campaign/Collection/Seller)
 // Fetch products based on store configuration from database
 export const getStoreProducts = async (req: Request, res: Response) => {
   try {
@@ -833,98 +1136,120 @@ export const getStoreProducts = async (req: Request, res: Response) => {
       ...(isWholesaleMode ? { wholesaleEnabled: true } : { wholesaleEnabled: { $ne: true } }),
     };
 
-    console.log(`[getStoreProducts] Looking for shop with storeId: ${storeId}`);
-
-    // Build shop query - only include _id if storeId is a valid ObjectId
-    const shopQuery: any = { isActive: true };
-    if (mongoose.Types.ObjectId.isValid(storeId)) {
-      shopQuery.$or = [
-        { storeId: storeId.toLowerCase() },
-        { _id: new mongoose.Types.ObjectId(storeId) }
-      ];
-    } else {
-      shopQuery.storeId = storeId.toLowerCase();
-    }
-
-    // Find the shop by storeId or _id
-    const shop = await Shop.findOne(shopQuery)
-      .populate("category", "_id name slug image")
-      .populate("subCategory", "_id name")
-      .lean();
-
-    console.log(`[getStoreProducts] Shop found:`, shop ? { name: shop.name, productsCount: shop.products?.length || 0, category: shop.category, image: shop.image } : 'NOT FOUND');
+    console.log(`[getStoreProducts] Looking for store with storeId: ${storeId}`);
 
     let shopData: any = null;
 
-    if (shop) {
+    // 1. Primary Lookup: Direct Seller match by ObjectId, exact storeName, or slug
+    const sellerOrConditions: any[] = [];
+    if (mongoose.Types.ObjectId.isValid(storeId)) {
+      sellerOrConditions.push({ _id: new mongoose.Types.ObjectId(storeId) });
+    }
+    const cleanSlug = storeId.replace(/-/g, " ").trim();
+    sellerOrConditions.push(
+      { storeName: new RegExp(`^${cleanSlug}$`, "i") },
+      { storeName: new RegExp(`^${storeId.trim()}$`, "i") }
+    );
+
+    const directSeller = await Seller.findOne({
+      status: "Approved",
+      isShopOpen: { $ne: false },
+      $or: sellerOrConditions,
+    }).lean();
+
+    if (directSeller) {
+      console.log(`[getStoreProducts] Direct seller found: ${directSeller.storeName} (${directSeller._id})`);
       shopData = {
-        name: shop.name,
-        image: shop.image,
-        description: shop.description || '',
-        category: shop.category,
+        id: directSeller._id.toString(),
+        _id: directSeller._id.toString(),
+        name: directSeller.storeName || directSeller.sellerName || "Store",
+        image: directSeller.storeBanner || directSeller.logo || directSeller.profile || '',
+        logo: directSeller.logo || directSeller.profile || '',
+        storeBanner: directSeller.storeBanner || '',
+        description: directSeller.storeDescription || directSeller.category || '',
+        category: directSeller.category ? { name: directSeller.category } : null,
+        vendorType: directSeller.vendorType || "QUICK_COMMERCE",
+        wholesaleEnabled: Boolean(directSeller.wholesaleEnabled),
+        city: directSeller.city || '',
       };
-
-      // Convert products array to ObjectIds if needed
-      // When using .lean(), products array contains ObjectIds directly
-      let productIds: mongoose.Types.ObjectId[] = [];
-      if (shop.products && shop.products.length > 0) {
-        productIds = shop.products.map((p: any) => {
-          // Handle different formats: ObjectId, string, or object with _id
-          if (mongoose.Types.ObjectId.isValid(p)) {
-            return typeof p === 'string' ? new mongoose.Types.ObjectId(p) : p;
-          }
-          return p._id ? (typeof p._id === 'string' ? new mongoose.Types.ObjectId(p._id) : p._id) : p;
-        }).filter(Boolean);
-      }
-
-      console.log(`[getStoreProducts] Shop has ${productIds.length} products assigned`);
-
-      // Get shop ID for filtering
-      const shopId = (shop as any)._id;
-
-      // Find matching seller by store name / storeId
-      const matchingSeller = await Seller.findOne({
-        $or: [
-          { storeName: new RegExp(`^${(shop.name || "").trim()}$`, "i") },
-          { storeName: new RegExp(`^${storeId.replace(/-/g, " ").trim()}$`, "i") },
-          { storeName: new RegExp((shop.name || "").trim().replace(/\s+/g, ".*"), "i") },
-        ]
-      }).select("_id");
-
-      if (matchingSeller) {
-        console.log(`[getStoreProducts] Matching seller found: ${matchingSeller._id}`);
-        if (productIds.length > 0) {
-          query.$or = [
-            { _id: { $in: productIds } },
-            { seller: matchingSeller._id }
-          ];
-        } else {
-          query.seller = matchingSeller._id;
-        }
-      } else if (productIds.length > 0) {
-        query._id = { $in: productIds };
-        console.log(`[getStoreProducts] Filtering by assigned product IDs: ${productIds.length} products`);
-      } else {
-        const orConditions: any[] = [
-          { shopId: shopId },
-          { isShopByStoreOnly: true }
-        ];
-
-        if (shop.category) {
-          const categoryId = (shop.category as any)._id || (shop.category as any);
-          orConditions.push({ category: categoryId });
-
-          if (shop.subCategory) {
-            const subCategoryId = (shop.subCategory as any)._id || (shop.subCategory as any);
-            orConditions.push({ subcategory: subCategoryId });
-          }
-        }
-        query.$or = orConditions;
-        console.log(`[getStoreProducts] Filtering by shop fallback conditions`);
-      }
+      query.seller = directSeller._id;
     } else {
+      // 2. Secondary Lookup: Legacy Shop document
+      const shopQuery: any = { isActive: true };
+      if (mongoose.Types.ObjectId.isValid(storeId)) {
+        shopQuery.$or = [
+          { storeId: storeId.toLowerCase() },
+          { _id: new mongoose.Types.ObjectId(storeId) }
+        ];
+      } else {
+        shopQuery.storeId = storeId.toLowerCase();
+      }
 
-      // Fallback: try to match by category name (legacy support)
+      const shop = await Shop.findOne(shopQuery)
+        .populate("category", "_id name slug image")
+        .populate("subCategory", "_id name")
+        .lean();
+
+      console.log(`[getStoreProducts] Legacy Shop found:`, shop ? { name: shop.name, productsCount: shop.products?.length || 0 } : 'NOT FOUND');
+
+      if (shop) {
+        shopData = {
+          name: shop.name,
+          image: shop.image,
+          description: shop.description || '',
+          category: shop.category,
+        };
+
+        let productIds: mongoose.Types.ObjectId[] = [];
+        if (shop.products && shop.products.length > 0) {
+          productIds = shop.products.map((p: any) => {
+            if (mongoose.Types.ObjectId.isValid(p)) {
+              return typeof p === 'string' ? new mongoose.Types.ObjectId(p) : p;
+            }
+            return p._id ? (typeof p._id === 'string' ? new mongoose.Types.ObjectId(p._id) : p._id) : p;
+          }).filter(Boolean);
+        }
+
+        const shopId = (shop as any)._id;
+
+        const matchingSeller = await Seller.findOne({
+          $or: [
+            { storeName: new RegExp(`^${(shop.name || "").trim()}$`, "i") },
+            { storeName: new RegExp(`^${storeId.replace(/-/g, " ").trim()}$`, "i") },
+            { storeName: new RegExp((shop.name || "").trim().replace(/\s+/g, ".*"), "i") },
+          ]
+        }).select("_id");
+
+        if (matchingSeller) {
+          if (productIds.length > 0) {
+            query.$or = [
+              { _id: { $in: productIds } },
+              { seller: matchingSeller._id }
+            ];
+          } else {
+            query.seller = matchingSeller._id;
+          }
+        } else if (productIds.length > 0) {
+          query._id = { $in: productIds };
+        } else {
+          const orConditions: any[] = [
+            { shopId: shopId },
+            { isShopByStoreOnly: true }
+          ];
+
+          if (shop.category) {
+            const categoryId = (shop.category as any)._id || (shop.category as any);
+            orConditions.push({ category: categoryId });
+
+            if (shop.subCategory) {
+              const subCategoryId = (shop.subCategory as any)._id || (shop.subCategory as any);
+              orConditions.push({ subcategory: subCategoryId });
+            }
+          }
+          query.$or = orConditions;
+        }
+      } else {
+        // Fallback: try to match by category name (legacy support)
       const categoryId = await getCategoryIdByName(storeId);
       if (categoryId) {
         query.category = categoryId;
@@ -948,6 +1273,7 @@ export const getStoreProducts = async (req: Request, res: Response) => {
         });
       }
     }
+  }
 
     // Location-based filtering: Only show products from sellers within user's range
     const userLat = latitude ? parseFloat(latitude as string) : null;
@@ -970,10 +1296,9 @@ export const getStoreProducts = async (req: Request, res: Response) => {
     console.log(`[getStoreProducts] Final query:`, JSON.stringify(query, null, 2));
 
     const products = await Product.find(query)
-      .populate("category", "name icon image")
+      .populate("category", "name icon image slug")
       .populate("subcategory", "name")
-      .populate("brand", "name")
-      .populate("seller", "storeName")
+      .populate("seller", "storeName sellerName vendorType wholesaleEnabled")
       .sort({ createdAt: -1 })
       .limit(50)
       .lean({ virtuals: true });

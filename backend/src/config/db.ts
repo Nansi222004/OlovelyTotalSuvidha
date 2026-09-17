@@ -1,7 +1,16 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import dns from 'node:dns';
 
 dotenv.config();
+
+// Ensure reliable SRV and IPv4 resolution on Windows networks
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch {
+  // Ignore if platform restrictions apply
+}
 
 const connectDB = async (): Promise<void> => {
   try {

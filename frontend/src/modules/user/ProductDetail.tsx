@@ -28,6 +28,7 @@ import { checkPincodeServiceability, PincodeServiceabilityResult } from '../../s
 import { useCustomerChannel } from '../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
+import { getProductImage } from '../../utils/productImageHelper';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,18 +38,20 @@ export default function ProductDetail() {
   const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
   const { showToast } = useToast();
   const { location } = useLocation();
-  const { isWholesale, setActiveChannel } = useCustomerChannel();
+  const { isWholesale, isAll, setActiveChannel } = useCustomerChannel();
   const searchParams = new URLSearchParams(routerLocation.search);
   const isWholesaleFromUrl = searchParams.get('wholesale') === 'true' || searchParams.get('isWholesale') === 'true';
   const isWholesaleFromState = (routerLocation.state as any)?.isWholesale === true;
+  const isFromAll = searchParams.get('mode') === 'ALL' || (routerLocation.state as any)?.fromAll === true;
   const effectiveIsWholesale = isWholesale || isWholesaleFromUrl || isWholesaleFromState;
 
-  // Ensure CustomerChannelContext stays in sync if navigation carries wholesale intent
+  // Ensure CustomerChannelContext stays in sync if navigation carries wholesale intent,
+  // unless user arrived from ALL mode.
   useEffect(() => {
-    if ((isWholesaleFromUrl || isWholesaleFromState) && !isWholesale) {
+    if ((isWholesaleFromUrl || isWholesaleFromState) && !isWholesale && !isFromAll) {
       setActiveChannel('WHOLESALE');
     }
-  }, [isWholesaleFromUrl, isWholesaleFromState, isWholesale, setActiveChannel]);
+  }, [isWholesaleFromUrl, isWholesaleFromState, isWholesale, isFromAll, setActiveChannel]);
 
   const { startLoading, stopLoading } = useLoading();
   const { settings: appSettings } = useAppSettings();
@@ -132,8 +135,9 @@ export default function ProductDetail() {
           setIsAvailableAtLocation(productData.isAvailableAtLocation !== false);
 
           // Get all images (main + gallery)
+          const primaryImage = productData.mainImage || productData.imageUrl || getProductImage(productData);
           const allImages = [
-            productData.mainImage || productData.imageUrl || "",
+            primaryImage,
             ...(productData.galleryImages || productData.galleryImageUrls || []),
           ].filter(Boolean);
 
@@ -142,7 +146,7 @@ export default function ProductDetail() {
             // Ensure all critical fields have safe defaults
             id: productData._id || productData.id,
             name: productData.productName || productData.name || "Product",
-            imageUrl: productData.mainImage || productData.imageUrl || "",
+            imageUrl: primaryImage,
             allImages: allImages,
             price: productData.price || 0,
             mrp: productData.mrp || productData.price || 0,
@@ -177,7 +181,7 @@ export default function ProductDetail() {
 
 
     fetchProduct();
-  }, [id, location?.latitude, location?.longitude, isWholesale]);
+  }, [id, location?.latitude, location?.longitude, effectiveIsWholesale]);
 
   useEffect(() => {
     const fetchReviews = async () => {

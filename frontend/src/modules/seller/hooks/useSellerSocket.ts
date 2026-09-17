@@ -9,6 +9,10 @@ export interface SellerNotification {
     orderNumber: string;
     status: string;
     paymentStatus: string;
+    hasQcItems?: boolean;
+    hasEcomItems?: boolean;
+    requiresLocalDelivery?: boolean;
+    fulfillmentType?: 'LOCAL_DELIVERY' | 'COURIER_SHIPPING' | 'MIXED';
     customer: {
         name: string;
         email: string;
@@ -27,6 +31,11 @@ export interface SellerNotification {
         price: number;
         total: number;
         variation?: string;
+        productType?: string;
+        fulfillmentType?: string;
+        isWholesale?: boolean;
+        wholesalePrice?: number;
+        wholesaleMinimumQuantity?: number;
     }>;
     totalAmount: number;
     deliveryOption?: string;

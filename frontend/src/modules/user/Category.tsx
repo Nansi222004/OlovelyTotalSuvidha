@@ -168,9 +168,10 @@ export default function CategoryPage() {
       if (channelFilter === 'QUICK_COMMERCE' || channelFilter === 'ECOMMERCE') {
         params.channel = channelFilter;
         params.productType = channelFilter;
-      }
-      if (channelFilter === 'WHOLESALE') {
+      } else if (channelFilter === 'WHOLESALE') {
         params.isWholesale = 'true';
+      } else {
+        params.channel = 'ALL';
       }
       // Include user location for seller service radius filtering
       if (userLocation?.latitude && userLocation?.longitude) {

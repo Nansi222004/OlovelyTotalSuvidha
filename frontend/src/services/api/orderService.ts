@@ -46,6 +46,9 @@ export interface OrderItem {
   subtotal: number;
   productType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | string;
   fulfillmentType?: 'LOCAL_DELIVERY' | 'COURIER_SHIPPING' | string;
+  isWholesale?: boolean;
+  wholesalePrice?: number;
+  wholesaleMinimumQuantity?: number;
 }
 
 export interface DeliveryAddress {
@@ -84,6 +87,9 @@ export interface OrderDetail {
   orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
   fulfillmentGroups?: any[];
   trackingNumber?: string;
+  hasQcItems?: boolean;
+  hasEcomItems?: boolean;
+  requiresLocalDelivery?: boolean;
 }
 
 export interface AvailableDeliveryPartner {

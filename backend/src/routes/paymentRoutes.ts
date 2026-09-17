@@ -40,6 +40,13 @@ router.post('/create-order', authenticate, requireUserType('Customer'), async (r
             ? order.onlineAmountPaid
             : (order.walletAmountUsed ? Math.max(0, order.total - order.walletAmountUsed) : order.total);
 
+        if (order.paymentStatus === 'Paid' || payableAmount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Order is already fully paid',
+            });
+        }
+
         const result = await createRazorpayOrder(orderId, payableAmount);
 
         if (!result.success) {
