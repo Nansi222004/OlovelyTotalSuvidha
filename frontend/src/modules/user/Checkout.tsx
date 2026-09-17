@@ -449,6 +449,8 @@ export default function Checkout() {
       const { displayPrice } = calculateProductPrice(
         item.product,
         item.variant,
+        item.isWholesale,
+        item.wholesalePrice,
       );
       return sum + displayPrice * (item.quantity || 0);
     }, 0),
@@ -463,6 +465,8 @@ export default function Checkout() {
 
   const freeDeliveryThreshold =
     cart.freeDeliveryThreshold ?? appConfig.freeDeliveryThreshold;
+  const isEligibleForFreeDelivery =
+    freeDeliveryThreshold > 0 && (displayCart.total || 0) >= freeDeliveryThreshold;
   const amountNeededForFreeDelivery = Math.max(
     0,
     freeDeliveryThreshold - (displayCart.total || 0),
@@ -481,15 +485,21 @@ export default function Checkout() {
 
   const itemsTotal = displayItems.reduce((sum, item) => {
     if (!item?.product) return sum;
-    const { mrp } = calculateProductPrice(item.product, item.variant);
+    const { mrp } = calculateProductPrice(
+      item.product,
+      item.variant,
+      item.isWholesale,
+      item.wholesalePrice,
+    );
     return sum + mrp * (item.quantity || 0);
   }, 0);
 
   const discountedTotal = displayCart.total;
   const savedAmount = itemsTotal - discountedTotal;
   const handlingCharge = cart.platformFee ?? appConfig.platformFee;
-  const deliveryCharge = cart.estimatedDeliveryFee ??
-    (displayCart.total >= freeDeliveryThreshold ? 0 : appConfig.deliveryFee);
+  const deliveryCharge = isEligibleForFreeDelivery
+    ? 0
+    : (cart.estimatedDeliveryFee !== undefined ? cart.estimatedDeliveryFee : appConfig.deliveryFee);
 
   // Recalculate or use validated discount
   // If we have a selected coupon, we should re-validate if cart total changes,
@@ -697,14 +707,14 @@ export default function Checkout() {
       // Create the order
       const placedId = await addOrder(order);
       if (placedId) {
-        if (paymentMethod === "COD") {
-          // For COD, proceed directly to success
+        if (paymentMethod === "COD" || finalPayable === 0 || (useWallet && walletDeduction >= grandTotal)) {
+          // For COD or 100% Wallet paid, proceed directly to success
           setPlacedOrderId(placedId);
           clearCart();
           setShowOrderSuccess(true);
           showGlobalToast("Order placed successfully!", "success");
         } else {
-          // For Online, trigger Razorpay payment
+          // For Online with remaining payable, trigger Razorpay payment
           setPendingOrderId(placedId);
           setShowRazorpayCheckout(true);
         }
@@ -1941,8 +1951,25 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Get FREE delivery banner */}
-      {deliveryCharge > 0 && (
+      {/* FREE Delivery Banner */}
+      {isEligibleForFreeDelivery ? (
+        <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-200/80">
+          <div className="flex items-center gap-2">
+            <span className="text-base flex-shrink-0">🎉</span>
+            <div className="flex-1">
+              <span className="text-xs font-bold text-emerald-800">
+                You've unlocked FREE Delivery!
+              </span>
+              <p className="text-[10px] text-emerald-700 mt-0.5">
+                Delivery charges waived across all options (Standard, Instant & Courier).
+              </p>
+            </div>
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+              Free Delivery
+            </span>
+          </div>
+        </div>
+      ) : deliveryCharge > 0 && (
         <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
           <div className="flex items-center gap-2 mb-1.5">
             <svg
@@ -1981,7 +2008,7 @@ export default function Checkout() {
                 </svg>
               </div>
               <p className="text-[10px] text-blue-600 mt-0.5">
-                Add products worth ₹{amountNeededForFreeDelivery} more
+                Add products worth ₹{amountNeededForFreeDelivery.toFixed(0)} more for FREE delivery
               </p>
             </div>
           </div>
@@ -1990,7 +2017,7 @@ export default function Checkout() {
             <div
               className="h-full bg-blue-600 transition-all duration-300"
               style={{
-                width: `${Math.min(100, ((199 - amountNeededForFreeDelivery) / 199) * 100)}%`,
+                width: `${Math.min(100, freeDeliveryThreshold > 0 ? (((freeDeliveryThreshold - amountNeededForFreeDelivery) / freeDeliveryThreshold) * 100) : 100)}%`,
               }}
             />
           </div>
@@ -2100,6 +2127,15 @@ export default function Checkout() {
                 <p className="text-[9px] mt-0.5 opacity-70">
                   (Expected in 1–2 days)
                 </p>
+                {isEligibleForFreeDelivery ? (
+                  <span className="inline-block mt-1 text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                    FREE
+                  </span>
+                ) : (
+                  <span className="inline-block mt-1 text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                    ₹{cart.qcDeliveryFee ?? 25}
+                  </span>
+                )}
               </button>
 
               <button
@@ -2128,6 +2164,15 @@ export default function Checkout() {
                 <p className="text-[9px] mt-0.5 opacity-70">
                   (Expected in 10–15 mins)
                 </p>
+                {isEligibleForFreeDelivery ? (
+                  <span className="inline-block mt-1 text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                    FREE
+                  </span>
+                ) : (
+                  <span className="inline-block mt-1 text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                    Distance-based
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -2153,9 +2198,20 @@ export default function Checkout() {
                   </p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-blue-700 bg-blue-100/60 px-2.5 py-1 rounded-lg">
-                Selected
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-xs font-bold text-blue-700 bg-blue-100/60 px-2.5 py-1 rounded-lg">
+                  Selected
+                </span>
+                {isEligibleForFreeDelivery ? (
+                  <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                    FREE
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
+                    ₹{cart.ecomShippingFee ?? 40}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2202,6 +2258,15 @@ export default function Checkout() {
                   <p className="text-[8px] mt-0.5 opacity-70">
                     (Expected in 1–2 days)
                   </p>
+                  {isEligibleForFreeDelivery ? (
+                    <span className="inline-block mt-1 text-[8px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                      FREE
+                    </span>
+                  ) : (
+                    <span className="inline-block mt-1 text-[8px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                      ₹{cart.qcDeliveryFee ?? 25}
+                    </span>
+                  )}
                 </button>
 
                 <button
@@ -2230,6 +2295,15 @@ export default function Checkout() {
                   <p className="text-[8px] mt-0.5 opacity-70">
                     (Expected in 10–15 mins)
                   </p>
+                  {isEligibleForFreeDelivery ? (
+                    <span className="inline-block mt-1 text-[8px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                      FREE
+                    </span>
+                  ) : (
+                    <span className="inline-block mt-1 text-[8px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                      Distance-based
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -2261,9 +2335,20 @@ export default function Checkout() {
                     </p>
                   </div>
                 </div>
-                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
-                  Selected
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
+                    Selected
+                  </span>
+                  {isEligibleForFreeDelivery ? (
+                    <span className="text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                      FREE
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                      ₹{cart.ecomShippingFee ?? 40}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

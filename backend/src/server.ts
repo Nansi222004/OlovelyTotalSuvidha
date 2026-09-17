@@ -13,7 +13,7 @@ import { initializeSocket } from "./socket/socketService";
 import { initializeFirebaseAdmin } from "./services/firebaseAdmin";
 
 // Load environment variables - reloaded for Phase 2
-// Reload timestamp: 2026-09-11T15:49:00
+// Reload timestamp: 2026-09-17T11:31:00
 dotenv.config();
 
 // Server Instance

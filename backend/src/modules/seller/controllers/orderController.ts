@@ -142,26 +142,61 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   // Get total count for pagination
   const total = await Order.countDocuments(query);
 
-  // Format response for frontend
+  // Format response for frontend - scoped strictly to this authenticated seller's items & groups
+  const orderIds = orders.map((o) => o._id);
+  const allSellerItems = await OrderItem.find({
+    order: { $in: orderIds },
+    seller: sellerId,
+  }).populate("product", "productType");
+
+  const itemsByOrderId = new Map<string, any[]>();
+  for (const it of allSellerItems) {
+    const oId = it.order.toString();
+    if (!itemsByOrderId.has(oId)) itemsByOrderId.set(oId, []);
+    itemsByOrderId.get(oId)!.push(it);
+  }
+
   const formattedOrders = orders.map((order) => {
-    // Derive fulfillment summary safely from fulfillmentGroups or orderType
-    const groups = order.fulfillmentGroups || [];
-    const qcGroup = groups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY');
-    const ecomGroup = groups.find((g: any) => g.fulfillmentType === 'COURIER_SHIPPING');
+    const sellerItemsForOrder = itemsByOrderId.get(order._id.toString()) || [];
+    const sellerItemIds = new Set(sellerItemsForOrder.map((it: any) => it._id.toString()));
 
-    const hasQcGroup = !!qcGroup || order.orderType === 'QUICK_COMMERCE';
-    const hasEcomGroup = !!ecomGroup || order.orderType === 'ECOMMERCE';
-    const isMixedOrder = order.orderType === 'MIXED' || (hasQcGroup && hasEcomGroup);
-    const isPureQc = !isMixedOrder && (hasQcGroup || order.orderType === 'QUICK_COMMERCE');
-    const isPureEcommerce = !isMixedOrder && (hasEcomGroup || order.orderType === 'ECOMMERCE');
+    const sellerScopedGroups = (order.fulfillmentGroups || []).filter((g: any) => {
+      const isOwnSeller = g.seller && g.seller.toString() === sellerId.toString();
+      const hasOwnItems = Array.isArray(g.items) && g.items.some((itId: any) => sellerItemIds.has(itId.toString()));
+      return isOwnSeller || hasOwnItems;
+    });
 
-    const qcItemCount = qcGroup?.items?.length || (isPureQc ? (order.items?.length || 1) : 0);
-    const ecomItemCount = ecomGroup?.items?.length || (isPureEcommerce ? (order.items?.length || 1) : 0);
+    let sellerHasQc = false;
+    let sellerHasEcom = false;
+    for (const it of sellerItemsForOrder) {
+      const prod = it.product as any;
+      const group = (order.fulfillmentGroups || []).find((g: any) =>
+        Array.isArray(g.items) && g.items.some((itId: any) => itId.toString() === it._id.toString())
+      );
+      const isEcom = group
+        ? group.fulfillmentType === 'COURIER_SHIPPING' || group.fulfillmentType === 'THIRD_PARTY_API'
+        : (prod?.productType === 'ECOMMERCE' || (order.orderType === 'ECOMMERCE'));
+      if (isEcom) {
+        sellerHasEcom = true;
+      } else {
+        sellerHasQc = true;
+      }
+    }
+
+    const isMixedOrder = sellerHasQc && sellerHasEcom;
+    const isPureQc = sellerHasQc && !sellerHasEcom;
+    const isPureEcommerce = sellerHasEcom && !sellerHasQc;
+
+    const qcGroup = sellerScopedGroups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY');
+    const ecomGroup = sellerScopedGroups.find((g: any) => g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API');
+
+    const qcItemCount = qcGroup?.items?.filter((id: any) => sellerItemIds.has(id.toString())).length || (isPureQc ? sellerItemsForOrder.length : 0);
+    const ecomItemCount = ecomGroup?.items?.filter((id: any) => sellerItemIds.has(id.toString())).length || (isPureEcommerce ? sellerItemsForOrder.length : 0);
 
     const fulfillmentSummary = {
       type: isMixedOrder ? 'MIXED' : isPureQc ? 'QUICK_COMMERCE' : 'ECOMMERCE',
-      hasQuickCommerce: isMixedOrder ? true : isPureQc,
-      hasEcommerce: isMixedOrder ? true : isPureEcommerce,
+      hasQuickCommerce: sellerHasQc,
+      hasEcommerce: sellerHasEcom,
       isMixed: isMixedOrder,
       isPureQc,
       isPureEcommerce,
@@ -170,6 +205,8 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
       qcStatus: qcGroup?.status,
       ecomStatus: ecomGroup?.status,
     };
+
+    const sellerTotal = sellerItemsForOrder.reduce((sum: number, it: any) => sum + (it.total || 0), 0);
 
     return {
       id: order._id,
@@ -193,17 +230,22 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
         minute: "2-digit",
       }),
       status: order.status === "On the way" ? "On the way" : order.status,
-      amount: order.total,
+      amount: sellerTotal > 0 ? sellerTotal : order.total,
+      orderTotal: order.total,
       customerName: (order.customer as any)?.name || order.customerName || "",
       customerPhone: (order.customer as any)?.phone || order.customerPhone || "",
-      deliveryBoyName: (order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : ""),
-      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || "",
-      deliveryPreference: order.deliveryPreference,
+      deliveryBoyName: sellerHasQc ? ((order.deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assign' : "")) : "",
+      deliveryBoyPhone: sellerHasQc ? ((order.deliveryBoy as any)?.mobile || "") : "",
+      deliveryPreference: sellerHasQc ? order.deliveryPreference : undefined,
       paymentMethod: order.paymentMethod,
-      orderType: order.orderType || "QUICK_COMMERCE",
+      orderType: isMixedOrder ? 'MIXED' : isPureQc ? 'QUICK_COMMERCE' : 'ECOMMERCE',
+      parentOrderType: order.orderType,
       trackingNumber: order.trackingNumber || "",
-      fulfillmentGroups: order.fulfillmentGroups || [],
+      fulfillmentGroups: sellerScopedGroups,
       fulfillmentSummary,
+      hasQcItems: sellerHasQc,
+      hasEcomItems: sellerHasEcom,
+      requiresLocalDelivery: sellerHasQc,
     };
   });
 
@@ -433,15 +475,24 @@ export const getOrderById = asyncHandler(
 
     // Get only this seller's order items
     const orderItems = sellerItems;
+    const sellerItemIds = new Set(orderItems.map((it) => it._id.toString()));
 
-    // Format order items for frontend
+    // Filter fulfillment groups to ONLY groups containing this seller's items
+    const sellerScopedGroups = (order.fulfillmentGroups || []).filter((g: any) => {
+      const isOwnSeller = g.seller && g.seller.toString() === sellerId.toString();
+      const hasOwnItems = Array.isArray(g.items) && g.items.some((itId: any) => sellerItemIds.has(itId.toString()));
+      return isOwnSeller || hasOwnItems;
+    });
+
+    let sellerHasQc = false;
+    let sellerHasEcom = false;
+
     // Format order items for frontend
     const formattedItems = orderItems.map((item) => {
       let unit = item.variation || "N/A";
       let variationMatched = false;
 
       // Try to resolve variation value from product if it exists
-      // item.product is populated now
       const product = item.product as any;
       if (product && product.variations && Array.isArray(product.variations)) {
         // 1. Try to match by ID or Value if validation is present
@@ -473,14 +524,24 @@ export const getOrderById = asyncHandler(
             unit = variationByPrice.value;
             variationMatched = true;
           } else if (product.variations.length === 1) {
-            // 3. Last Resort: If there is only one variation, assume it's that one
             unit = product.variations[0].value;
           }
         }
       }
 
-      const prodType = (product as any)?.productType || 
-        (order.fulfillmentGroups?.find((g: any) => g.items?.some((it: any) => it.toString() === item._id.toString()))?.fulfillmentType === 'COURIER_SHIPPING' ? 'ECOMMERCE' : 'QUICK_COMMERCE');
+      // Determine item fulfillment channel safely
+      const group = (order.fulfillmentGroups || []).find((g: any) =>
+        Array.isArray(g.items) && g.items.some((itId: any) => itId.toString() === item._id.toString())
+      );
+      const isEcom = group
+        ? group.fulfillmentType === 'COURIER_SHIPPING' || group.fulfillmentType === 'THIRD_PARTY_API'
+        : ((product as any)?.productType === 'ECOMMERCE' || (order.orderType === 'ECOMMERCE'));
+
+      if (isEcom) {
+        sellerHasEcom = true;
+      } else {
+        sellerHasQc = true;
+      }
 
       return {
         id: item._id,
@@ -493,16 +554,23 @@ export const getOrderById = asyncHandler(
         taxPercent: 0,
         qty: item.quantity || 0,
         subtotal: item.total || 0,
-        productType: prodType,
-        fulfillmentType: prodType === 'ECOMMERCE' ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+        productType: isEcom ? 'ECOMMERCE' : 'QUICK_COMMERCE',
+        fulfillmentType: isEcom ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+        isWholesale: Boolean(item.isWholesale),
+        wholesalePrice: item.wholesalePrice,
+        wholesaleMinimumQuantity: item.wholesaleMinimumQuantity,
       };
     });
 
-    // Format order data for frontend
+    const isMixedOrder = sellerHasQc && sellerHasEcom;
+    const sellerOrderType = isMixedOrder ? 'MIXED' : sellerHasQc ? 'QUICK_COMMERCE' : 'ECOMMERCE';
+
+    // Format order data for frontend - strictly scoped to this seller
     const orderDetail = {
       id: order._id,
-      orderType: order.orderType || "QUICK_COMMERCE",
-      fulfillmentGroups: order.fulfillmentGroups || [],
+      orderType: sellerOrderType,
+      parentOrderType: order.orderType || "QUICK_COMMERCE",
+      fulfillmentGroups: sellerScopedGroups,
       trackingNumber: order.trackingNumber || "",
       invoiceNumber: order.invoiceNumber || order.orderNumber || "N/A",
       orderDate: order.orderDate
@@ -516,20 +584,29 @@ export const getOrderById = asyncHandler(
       customerName: (order.customer as any)?.name || order.customerName || "",
       customerEmail:
         (order.customer as any)?.email || order.customerEmail || "",
-      deliveryBoyName: (order.deliveryBoy as any)?.name || 
-        (order.fulfillmentGroups?.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.name || 
-        (order.deliveryPreference === 'Self' ? 'Self Assign' : ''),
-      deliveryBoyPhone: (order.deliveryBoy as any)?.mobile || 
-        (order.fulfillmentGroups?.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.mobile || '',
-      deliveryPreference: order.deliveryPreference,
+      deliveryBoyName: sellerHasQc
+        ? ((order.deliveryBoy as any)?.name || 
+           (sellerScopedGroups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.name || 
+           (order.deliveryPreference === 'Self' ? 'Self Assign' : ''))
+        : '',
+      deliveryBoyPhone: sellerHasQc
+        ? ((order.deliveryBoy as any)?.mobile || 
+           (sellerScopedGroups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY')?.deliveryBoy as any)?.mobile || '')
+        : '',
+      deliveryPreference: sellerHasQc ? order.deliveryPreference : undefined,
       deliveryOption: order.deliveryOption,
       items: formattedItems,
-      subtotal: order.subtotal || 0,
+      subtotal: formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
+      orderSubtotal: order.subtotal || 0,
       tax: order.tax || 0,
-      grandTotal: order.total || 0,
+      grandTotal: formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
+      orderGrandTotal: order.total || 0,
       paymentMethod: order.paymentMethod || "N/A",
       paymentStatus: order.paymentStatus || "Pending",
       deliveryAddress: order.deliveryAddress || {},
+      hasQcItems: sellerHasQc,
+      hasEcomItems: sellerHasEcom,
+      requiresLocalDelivery: sellerHasQc,
     };
 
     return res.status(200).json({
@@ -631,8 +708,16 @@ export const updateOrderStatus = asyncHandler(
         (order.sellerResponses as any[]).push({ seller: sellerObjId, status, respondedAt: new Date() });
       }
 
-      // Apply delivery preference from the accepting seller before recomputing fulfillment.
-      if (deliveryPreference && status === "Accepted") {
+      // Check if this seller has QC items requiring local delivery assignment
+      const qcGroup = (order.fulfillmentGroups || []).find((g: any) => g.fulfillmentType === "LOCAL_DELIVERY");
+      const sellerHasQcItem = qcGroup ? await OrderItem.exists({
+        order: id,
+        seller: sellerId,
+        _id: { $in: qcGroup.items },
+      }) : (order.orderType === "QUICK_COMMERCE");
+
+      // Apply delivery preference ONLY if this seller actually owns QC items!
+      if (deliveryPreference && status === "Accepted" && sellerHasQcItem) {
         if (order.deliveryOption === "Instant" && deliveryPreference === "Admin") {
           order.deliveryPreference = undefined;
         } else {
@@ -642,9 +727,33 @@ export const updateOrderStatus = asyncHandler(
           order.deliveryBoy = undefined;
         }
       }
+
+      // For Ecommerce fulfillment groups belonging to this seller: advance Pending to Processing on Accept
+      if (status === "Accepted" && order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+        const sellerItemsList = await OrderItem.find({ order: id, seller: sellerId }).select('_id');
+        const sellerItemIds = new Set(sellerItemsList.map((i: any) => i._id.toString()));
+
+        for (const fg of order.fulfillmentGroups) {
+          const isOwnGroup = (fg.seller && fg.seller.toString() === sellerIdStr) ||
+            (Array.isArray(fg.items) && fg.items.some((itId: any) => sellerItemIds.has(itId.toString())));
+          if (isOwnGroup && (fg.fulfillmentType === 'COURIER_SHIPPING' || fg.fulfillmentType === 'THIRD_PARTY_API')) {
+            if (fg.status === 'Pending') {
+              fg.status = 'Processing';
+            }
+            if (order.paymentStatus === 'Paid' || order.paymentMethod === 'COD') {
+              try {
+                const { createEcommerceShipment } = await import("../../../services/shipping/shippingService");
+                await createEcommerceShipment(order._id.toString(), fg.groupId);
+              } catch (shipErr) {
+                console.warn(`Shipment creation on seller accept (${fg.groupId}):`, (shipErr as any)?.message);
+              }
+            }
+          }
+        }
+      }
       await order.save();
 
-      const io: SocketIOServer = req.app.get("io") as SocketIOServer;
+      const io: SocketIOServer = req.app?.get ? (req.app.get("io") as SocketIOServer) : (null as any);
       const fulfillment = await recomputeOrderFulfillment(id, io);
 
       if (fulfillment.outcome === "all_rejected") {
@@ -739,11 +848,13 @@ export const updateOrderStatus = asyncHandler(
         const { sendOrderStatusNotification } = await import(
           "../../../services/notificationService"
         );
-        const io: SocketIOServer = req.app.get("io") as SocketIOServer;
+        const io: SocketIOServer = req.app?.get ? (req.app.get("io") as SocketIOServer) : (null as any);
         const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
-        sendOrderStatusNotification(order._id.toString(), customerId, order.status, io).catch((e) =>
-          console.error("Error sending customer order status notification:", e)
-        );
+        if (io) {
+          sendOrderStatusNotification(order._id.toString(), customerId, order.status, io).catch((e) =>
+            console.error("Error sending customer order status notification:", e)
+          );
+        }
       } catch (notifErr) {
         console.error("Error importing notificationService:", notifErr);
       }
@@ -821,7 +932,7 @@ export const getAvailableDeliveryPartners = asyncHandler(
         seller: sellerId,
         _id: { $in: qcGroup.items },
       });
-      if (!sellerHasQcItem && qcGroup.seller && qcGroup.seller.toString() !== sellerId.toString()) {
+      if (!sellerHasQcItem) {
         return res.status(400).json({
           success: false,
           message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
@@ -976,7 +1087,7 @@ export const assignDeliveryBoySeller = asyncHandler(
         seller: sellerId,
         _id: { $in: qcGroup.items },
       });
-      if (!sellerHasQcItem && qcGroup.seller && qcGroup.seller.toString() !== sellerId.toString()) {
+      if (!sellerHasQcItem) {
         return res.status(400).json({
           success: false,
           message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",

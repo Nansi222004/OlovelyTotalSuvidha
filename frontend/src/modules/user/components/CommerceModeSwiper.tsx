@@ -7,21 +7,15 @@
  *   2. 📦 Ecommerce (Shop electronics, fashion, lifestyle & more)
  *   3. 🏷️ Wholesale (Bulk shopping with special wholesale pricing)
  * 
- * Key Highlights:
- * - Clean "Shop Your Way" section header with subtitle.
- * - 3 dedicated, beautiful fallback banners using local high-resolution assets:
- *   - /assets/fallback-quick-commerce.jpg
- *   - /assets/fallback-ecommerce.jpg
- *   - /assets/fallback-wholesale.jpg
- * - Dynamic Theme Integration: Card background gradient, subtle borders, ambient glow,
- *   active pagination dots, and CTA buttons dynamically inherit colors from ThemeContext.
- * - Admin Banner Override: If an admin creates/uploads an active banner for a mode,
- *   that image and copy take priority.
- * - Robust Error Handling: Broken/inaccessible admin images automatically fall back
- *   to the local mode asset without breaking layout.
- * - CustomerChannelContext Integration: Clicking a slide updates the customer commerce channel
- *   state (QUICK_COMMERCE, ECOMMERCE, WHOLESALE) and persists across navigation/refresh.
- * - Responsive: Full touch swipe on mobile, desktop prev/next controls, and pagination dots.
+ * Features:
+ * - Autoplay every ~4s with pause-on-hover / pause-on-drag and clean unmount.
+ * - Natural touch swipe on mobile & mouse drag on desktop.
+ * - Drag displacement threshold (>8px) prevents accidental CTA click navigation during swipe/drag.
+ * - Visible navigation arrows removed on mobile and desktop for a clean, clutter-free look.
+ * - Responsive layout crafted for 320px, 375px, 390px, 414px, and Desktop screens.
+ * - Keyboard navigation (ArrowLeft / ArrowRight / Enter / Space) and screen-reader accessibility.
+ * - Respects prefers-reduced-motion.
+ * - Dynamic theme integration and admin-managed banner support with local fallback assets.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -78,7 +72,7 @@ interface Props {
 
 export default function CommerceModeSwiper({
   className = "",
-  autoSlideInterval = 5000,
+  autoSlideInterval = 4000,
 }: Props) {
   const navigate = useNavigate();
   const { currentTheme } = useThemeContext();
@@ -92,11 +86,27 @@ export default function CommerceModeSwiper({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [imgErrorMap, setImgErrorMap] = useState<Record<string, boolean>>({});
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Touch gesture tracking for mobile swipe
-  const touchStartXRef = useRef<number | null>(null);
-  const touchEndXRef = useRef<number | null>(null);
+  // Drag & Swipe gesture tracking
+  const isMouseDownRef = useRef(false);
+  const dragStartXRef = useRef<number | null>(null);
+  const dragCurrentXRef = useRef<number | null>(null);
+  const dragDistanceRef = useRef<number>(0);
+  const hasDraggedBeyondThresholdRef = useRef(false);
+  const DRAG_THRESHOLD = 8; // >8px displacement is treated as swipe/drag, suppressing CTA click
+
+  // Check prefers-reduced-motion
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, []);
 
   // Fetch admin banners for each mode on mount
   useEffect(() => {
@@ -117,15 +127,15 @@ export default function CommerceModeSwiper({
     };
   }, []);
 
-  // Auto-slide advance
+  // Auto-slide advance with ~4s interval
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!isPaused) {
+    if (!isPaused && !prefersReducedMotion) {
       timerRef.current = setInterval(() => {
         setCurrentIndex((prev) => (prev + 1) % MODE_CONFIGS.length);
       }, autoSlideInterval);
     }
-  }, [isPaused, autoSlideInterval]);
+  }, [isPaused, prefersReducedMotion, autoSlideInterval]);
 
   useEffect(() => {
     startTimer();
@@ -134,53 +144,132 @@ export default function CommerceModeSwiper({
     };
   }, [startTimer]);
 
+  // Pause autoplay when document is hidden (user switched tabs)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsPaused(true);
+      } else {
+        setIsPaused(false);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   const goToSlide = (index: number) => {
     setCurrentIndex(index);
     startTimer();
   };
 
-  const handlePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev === 0 ? MODE_CONFIGS.length - 1 : prev - 1));
-    startTimer();
-  };
-
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev + 1) % MODE_CONFIGS.length);
-    startTimer();
-  };
-
-  // Touch swipe handlers
+  // --- TOUCH SWIPE HANDLERS (Mobile) ---
   const handleTouchStart = (e: React.TouchEvent) => {
     setIsPaused(true);
-    touchStartXRef.current = e.targetTouches[0].clientX;
+    const clientX = e.touches[0].clientX;
+    dragStartXRef.current = clientX;
+    dragCurrentXRef.current = clientX;
+    dragDistanceRef.current = 0;
+    hasDraggedBeyondThresholdRef.current = false;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndXRef.current = e.targetTouches[0].clientX;
+    if (dragStartXRef.current === null) return;
+    const clientX = e.touches[0].clientX;
+    dragCurrentXRef.current = clientX;
+    const delta = dragStartXRef.current - clientX;
+    dragDistanceRef.current = delta;
+    if (Math.abs(delta) > DRAG_THRESHOLD) {
+      hasDraggedBeyondThresholdRef.current = true;
+    }
   };
 
   const handleTouchEnd = () => {
-    setIsPaused(false);
-    if (!touchStartXRef.current || !touchEndXRef.current) return;
-    const distance = touchStartXRef.current - touchEndXRef.current;
-    const minSwipeDistance = 45;
+    const delta = dragDistanceRef.current;
+    const minSwipeDistance = 35;
 
-    if (distance > minSwipeDistance) {
+    if (delta > minSwipeDistance) {
       // Swiped left -> Next
       setCurrentIndex((prev) => (prev + 1) % MODE_CONFIGS.length);
-    } else if (distance < -minSwipeDistance) {
+    } else if (delta < -minSwipeDistance) {
       // Swiped right -> Prev
       setCurrentIndex((prev) => (prev === 0 ? MODE_CONFIGS.length - 1 : prev - 1));
     }
 
-    touchStartXRef.current = null;
-    touchEndXRef.current = null;
+    dragStartXRef.current = null;
+    dragCurrentXRef.current = null;
+    dragDistanceRef.current = 0;
+
+    // Reset drag threshold flag after click event cycle concludes
+    setTimeout(() => {
+      hasDraggedBeyondThresholdRef.current = false;
+      setIsPaused(false);
+    }, 120);
   };
 
-  // Click / CTA navigation
-  const handleSlideClick = (config: ModeSlideConfig) => {
+  // --- MOUSE DRAG HANDLERS (Desktop) ---
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Left button only
+    isMouseDownRef.current = true;
+    setIsPaused(true);
+    dragStartXRef.current = e.clientX;
+    dragCurrentXRef.current = e.clientX;
+    dragDistanceRef.current = 0;
+    hasDraggedBeyondThresholdRef.current = false;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || dragStartXRef.current === null) return;
+    const clientX = e.clientX;
+    dragCurrentXRef.current = clientX;
+    const delta = dragStartXRef.current - clientX;
+    dragDistanceRef.current = delta;
+    if (Math.abs(delta) > DRAG_THRESHOLD) {
+      hasDraggedBeyondThresholdRef.current = true;
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    const delta = dragDistanceRef.current;
+    const minDragDistance = 35;
+
+    if (delta > minDragDistance) {
+      // Dragged left -> Next
+      setCurrentIndex((prev) => (prev + 1) % MODE_CONFIGS.length);
+    } else if (delta < -minDragDistance) {
+      // Dragged right -> Prev
+      setCurrentIndex((prev) => (prev === 0 ? MODE_CONFIGS.length - 1 : prev - 1));
+    }
+
+    dragStartXRef.current = null;
+    dragCurrentXRef.current = null;
+    dragDistanceRef.current = 0;
+
+    setTimeout(() => {
+      hasDraggedBeyondThresholdRef.current = false;
+      setIsPaused(false);
+    }, 120);
+  };
+
+  const handleMouseLeave = () => {
+    if (isMouseDownRef.current) {
+      handleMouseUp();
+    }
+    setIsPaused(false);
+  };
+
+  // --- CLICK & NAVIGATION ---
+  const handleSlideClick = (config: ModeSlideConfig, e?: React.MouseEvent) => {
+    // If the user was dragging/swiping, suppress the click navigation
+    if (hasDraggedBeyondThresholdRef.current) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+
     // 1. Authoritatively set customer channel state in CustomerChannelContext
     setActiveChannel(config.mode as CustomerChannel);
 
@@ -206,6 +295,22 @@ export default function CommerceModeSwiper({
       document.querySelector("main");
     if (targetEl && targetEl !== document.querySelector("main")) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  // Keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setCurrentIndex((prev) => (prev === 0 ? MODE_CONFIGS.length - 1 : prev - 1));
+      startTimer();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setCurrentIndex((prev) => (prev + 1) % MODE_CONFIGS.length);
+      startTimer();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleSlideClick(MODE_CONFIGS[currentIndex]);
     }
   };
 
@@ -238,99 +343,90 @@ export default function CommerceModeSwiper({
       : primaryColor;
 
   // Dynamic card background gradient tinted with the active header/category atmosphere
-  const dynamicCardGradient = `linear-gradient(135deg, ${primaryColor}15 0%, #ffffff 45%, ${secondaryColor}10 100%)`;
+  const dynamicCardGradient = `linear-gradient(135deg, ${primaryColor}15 0%, #ffffff 50%, ${secondaryColor}10 100%)`;
   const dynamicBorderColor = `${primaryColor}28`;
   const dynamicGlowColor = `${primaryColor}18`;
 
   return (
     <section
+      aria-roledescription="carousel"
       aria-label="Shop Your Way - Commerce Shopping Modes"
-      className={`relative w-full px-4 md:px-6 lg:px-8 my-5 md:my-7 select-none ${className}`}
+      className={`relative w-full px-3 sm:px-4 md:px-6 lg:px-8 my-4 sm:my-5 md:my-7 select-none ${className}`}
       onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Section Header */}
-      <div className="mb-3 md:mb-4 px-1">
-        <h2 className="text-lg md:text-2xl font-bold text-neutral-900 tracking-tight">
+      <div className="mb-2.5 sm:mb-3 md:mb-4 px-0.5">
+        <h2 className="text-base sm:text-lg md:text-2xl font-bold text-neutral-900 tracking-tight">
           Shop Your Way
         </h2>
-        <p className="text-xs md:text-sm text-neutral-500 mt-0.5">
+        <p className="text-[11px] sm:text-xs md:text-sm text-neutral-500 mt-0.5">
           Three ways to shop, one trusted platform
         </p>
       </div>
 
-      {/* Swiper Relative Container (Holding Card + Arrows) */}
-      <div className="relative w-full">
-        {/* Previous Arrow Button */}
-        <button
-          type="button"
-          onClick={handlePrev}
-          aria-label="Previous mode"
-          className="absolute -left-2.5 sm:-left-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 backdrop-blur-sm border border-neutral-200/90 shadow-md text-neutral-700 hover:text-neutral-950 hover:bg-white flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-
-        {/* Next Arrow Button */}
-        <button
-          type="button"
-          onClick={handleNext}
-          aria-label="Next mode"
-          className="absolute -right-2.5 sm:-right-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 backdrop-blur-sm border border-neutral-200/90 shadow-md text-neutral-700 hover:text-neutral-950 hover:bg-white flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-
-        {/* Main Swiper Card */}
+      {/* Swiper Container with Touch and Mouse Dragging */}
+      <div
+        className="relative w-full touch-pan-y cursor-grab active:cursor-grabbing outline-none"
+        tabIndex={0}
+        role="region"
+        aria-label={`Slide ${currentIndex + 1} of ${MODE_CONFIGS.length}: ${displayTitle}`}
+        onKeyDown={handleKeyDown}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
+        {/* Main Swiper Card - Responsive design for 320px, 375px, 390px, 414px & Desktop */}
         <div
-          className="relative w-full rounded-2xl md:rounded-3xl border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden cursor-pointer group"
+          className="relative w-full rounded-2xl md:rounded-3xl border shadow-2xs hover:shadow-md transition-all duration-300 overflow-hidden group"
           style={{
             background: dynamicCardGradient,
             borderColor: dynamicBorderColor,
             boxShadow: `0 4px 20px -2px ${dynamicGlowColor}`,
           }}
-          onClick={() => handleSlideClick(activeConfig)}
+          onClick={(e) => handleSlideClick(activeConfig, e)}
         >
           <AnimatePresence mode="wait">
             <motion.div
               key={activeConfig.mode}
-              initial={{ opacity: 0, x: 18 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -18 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="w-full flex flex-col sm:flex-row items-center justify-between min-h-[170px] sm:min-h-[190px] md:min-h-[220px] p-4 sm:p-6 md:p-8 gap-4 sm:gap-6"
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 18 }}
+              animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: -18 }}
+              transition={{ duration: prefersReducedMotion ? 0.05 : 0.28, ease: "easeOut" }}
+              className="w-full flex flex-row items-center justify-between min-h-[120px] sm:min-h-[160px] md:min-h-[200px] p-3 sm:p-5 md:p-7 gap-2.5 sm:gap-4 md:gap-6"
             >
-              {/* Left Content Area (Icon, Title, Subtitle, CTA) */}
-              <div className="flex-1 flex flex-col justify-center items-start text-left z-10 w-full sm:w-auto">
-                {/* Title with Icon */}
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-2xl sm:text-3xl">{activeConfig.icon}</span>
-                  <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-extrabold text-neutral-900 tracking-tight leading-tight">
-                    {displayTitle}
-                  </h3>
+              {/* Left Content Area (Badge, Title with Icon, Subtitle, CTA) */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center items-start text-left z-10 pr-1 sm:pr-2">
+                {/* Mode Category Badge */}
+                <div className="mb-1 sm:mb-1.5">
+                  <span className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] md:text-xs font-bold px-2 py-0.5 rounded-full bg-black/5 text-neutral-700 tracking-tight">
+                    <span>{activeConfig.icon}</span>
+                    <span>{activeConfig.badge}</span>
+                  </span>
                 </div>
 
+                {/* Title */}
+                <h3 className="text-sm sm:text-lg md:text-2xl font-black text-neutral-900 tracking-tight leading-snug line-clamp-1 sm:line-clamp-2">
+                  {displayTitle}
+                </h3>
+
                 {/* Subtitle */}
-                <p className="text-xs sm:text-sm md:text-base text-neutral-600 font-medium max-w-sm sm:max-w-md line-clamp-2 leading-relaxed">
+                <p className="text-[11px] sm:text-xs md:text-sm text-neutral-600 font-medium line-clamp-2 mt-0.5 sm:mt-1 leading-tight sm:leading-relaxed max-w-[220px] sm:max-w-sm md:max-w-md">
                   {displaySubtitle}
                 </p>
 
                 {/* CTA Button */}
-                <div className="mt-3.5 sm:mt-5">
+                <div className="mt-2 sm:mt-3 md:mt-4">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleSlideClick(activeConfig);
+                      handleSlideClick(activeConfig, e);
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold text-white transition-all duration-200 group-hover:scale-105 shadow-sm active:scale-95"
+                    className="inline-flex items-center gap-1 sm:gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 md:px-5 md:py-2.5 rounded-full text-[11px] sm:text-xs md:text-sm font-bold text-white transition-transform duration-200 hover:scale-105 active:scale-95 shadow-2xs"
                     style={{
                       backgroundColor: accentColor,
                     }}
@@ -341,11 +437,11 @@ export default function CommerceModeSwiper({
               </div>
 
               {/* Right Visual Area (Fallback Asset or Admin Uploaded Image) */}
-              <div className="relative w-full sm:w-5/12 md:w-1/2 flex items-center justify-center sm:justify-end overflow-hidden max-h-[150px] sm:max-h-[180px] md:max-h-[210px]">
+              <div className="relative w-24 sm:w-36 md:w-48 lg:w-56 h-24 sm:h-36 md:h-44 flex-shrink-0 flex items-center justify-center overflow-hidden">
                 <img
                   src={activeImgSrc}
                   alt={displayTitle}
-                  className="w-auto h-full max-h-[140px] sm:max-h-[175px] md:max-h-[200px] object-contain rounded-xl transition-transform duration-500 group-hover:scale-105 drop-shadow-sm"
+                  className="w-full h-full object-contain rounded-xl transition-transform duration-500 group-hover:scale-105 drop-shadow-sm pointer-events-none"
                   loading="lazy"
                   onError={() => {
                     // Mark admin image as failed so it reverts to safe local fallback image
@@ -359,20 +455,22 @@ export default function CommerceModeSwiper({
       </div>
 
       {/* Pagination Indicators Below Card */}
-      <div className="flex items-center justify-center gap-2 mt-3">
-        {MODE_CONFIGS.map((_, i) => (
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mt-2.5 sm:mt-3" role="tablist" aria-label="Slide controls">
+        {MODE_CONFIGS.map((config, i) => (
           <button
-            key={i}
+            key={config.mode}
             type="button"
+            role="tab"
+            aria-selected={i === currentIndex}
             onClick={() => goToSlide(i)}
-            aria-label={`Go to mode ${i + 1}`}
-            className="p-1 focus:outline-none"
+            aria-label={`Go to ${config.defaultTitle} slide`}
+            className="p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-full"
           >
             <div
               className={`rounded-full transition-all duration-300 ${
                 i === currentIndex
-                  ? "w-6 h-2 shadow-xs"
-                  : "w-2 h-2 bg-neutral-300 hover:bg-neutral-400"
+                  ? "w-6 sm:w-7 h-1.5 sm:h-2 shadow-xs"
+                  : "w-1.5 sm:w-2 h-1.5 sm:h-2 bg-neutral-300 hover:bg-neutral-400"
               }`}
               style={{
                 backgroundColor: i === currentIndex ? accentColor : undefined,

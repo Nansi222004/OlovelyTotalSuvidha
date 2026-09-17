@@ -160,6 +160,54 @@ export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
   }
 };
 
+export const SLUG_ALIASES: Record<string, string> = {
+  // Fruits & Vegetables
+  "fruits-veg": "fruits-vegetables",
+  "fruit-veg": "fruits-vegetables",
+  "fruits-vegetable": "fruits-vegetables",
+  "fruit-vegetables": "fruits-vegetables",
+  "vegetables-fruits": "fruits-vegetables",
+  "veg-fruits": "fruits-vegetables",
+  "fruits": "fruits-vegetables",
+  "vegetables": "fruits-vegetables",
+  "fresh-arrivals": "fruits-vegetables",
+
+  // Dairy
+  "dairy-breakfast": "dairy-milk",
+  "dairy": "dairy-milk",
+  "milk": "dairy-milk",
+
+  // Snacks & Drinks
+  "snacks": "snacks-drinks",
+  "drinks": "snacks-drinks",
+  "cold-drinks": "chips-namkeen-and-cold-drinks",
+
+  // Bakery & Biscuits
+  "biscuits-bakery": "bakery-biscuits",
+  "bakery": "bakery-biscuits",
+  "biscuits": "bakery-biscuits",
+
+  // Personal Care & Beauty
+  "personal-care": "beauty",
+  "beauty-personal-care": "beauty",
+
+  // Grocery & Spices
+  "grocery": "all-grocery-mart",
+  "spices": "rani-masala-spices-all",
+  "masala-oil": "oils-ghee",
+  "atta-rice": "all-grocery-mart",
+
+  // Specialty stores
+  "health-pharma": "medical-health-pharma",
+  "pharma": "medical-health-pharma",
+  "pet": "pet-store-products",
+  "toys": "toys-sports",
+  "sports": "toys-sports",
+  "hobby": "stationery-and-games-item",
+  "spiritual": "puja-item",
+  "egifts": "festival-item",
+};
+
 // Get single category details with subcategories - with caching
 export const getCategoryById = async (req: Request, res: Response) => {
   try {
@@ -176,7 +224,14 @@ export const getCategoryById = async (req: Request, res: Response) => {
     }
 
     console.log(`[getCategoryById] Looking for category with id/slug: ${id}`);
-    let category;
+    let category: any = null;
+
+    const normalizedId = (id || "").trim().toLowerCase();
+    const slugCandidates = [id];
+    const alias = SLUG_ALIASES[normalizedId];
+    if (alias && !slugCandidates.includes(alias)) {
+      slugCandidates.push(alias);
+    }
 
     // Try to find by ObjectId first (only active categories for public endpoint)
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -186,38 +241,39 @@ export const getCategoryById = async (req: Request, res: Response) => {
       }).lean();
     }
 
-    // If not found by ID, try by slug (case-insensitive, only active categories)
+    // If not found by ID, try by slug/alias candidates (case-insensitive, active)
     if (!category) {
-      // Try exact slug match first
-      category = await Category.findOne({
-        slug: id,
-        status: "Active",
-      }).lean();
-
-      // Try case-insensitive slug match
-      if (!category) {
+      for (const cand of slugCandidates) {
+        // Try exact slug match first
         category = await Category.findOne({
-          slug: { $regex: new RegExp(`^${id}$`, "i") },
+          slug: cand,
           status: "Active",
         }).lean();
-      }
+        if (category) break;
 
-      // Try name match as fallback (case-insensitive)
-      if (!category) {
-        // First try standard replacement
-        let namePattern = id.replace(/[-_]/g, " ");
+        // Try case-insensitive slug match
+        category = await Category.findOne({
+          slug: { $regex: new RegExp(`^${cand}$`, "i") },
+          status: "Active",
+        }).lean();
+        if (category) break;
+
+        // Try name match as fallback (case-insensitive)
+        let namePattern = cand.replace(/[-_]/g, " ");
         category = await Category.findOne({
           name: { $regex: new RegExp(`^${namePattern}$`, "i") },
           status: "Active",
         }).lean();
+        if (category) break;
 
-        // If not found, try replacing " and " with " & " specifically for categories like "Vegetables & Fruits"
-        if (!category && id.includes("and")) {
-          const withAmpersand = id.replace(/-and-/g, " & ").replace(/-/g, " ");
+        // Try replacing " and " with " & "
+        if (cand.includes("and")) {
+          const withAmpersand = cand.replace(/-and-/g, " & ").replace(/-/g, " ");
           category = await Category.findOne({
             name: { $regex: new RegExp(`^${withAmpersand}$`, "i") },
             status: "Active",
           }).lean();
+          if (category) break;
         }
       }
     }
@@ -251,31 +307,74 @@ export const getCategoryById = async (req: Request, res: Response) => {
       }
 
       // Check if it's a HeaderCategory
-      let headerCat = null;
+      let headerCat: any = null;
       if (mongoose.Types.ObjectId.isValid(id)) {
         headerCat = await HeaderCategory.findOne({
           _id: id,
           status: "Published",
         }).lean();
       }
+
       if (!headerCat) {
-        headerCat = await HeaderCategory.findOne({
-          slug: id,
-          status: "Published",
-        }).lean();
+        for (const cand of slugCandidates) {
+          headerCat = await HeaderCategory.findOne({
+            slug: cand,
+            status: "Published",
+          }).lean();
+          if (headerCat) break;
+
+          headerCat = await HeaderCategory.findOne({
+            slug: { $regex: new RegExp(`^${cand}$`, "i") },
+            status: "Published",
+          }).lean();
+          if (headerCat) break;
+
+          const namePattern = cand.replace(/[-_]/g, " ");
+          headerCat = await HeaderCategory.findOne({
+            name: { $regex: new RegExp(`^${namePattern}$`, "i") },
+            status: "Published",
+          }).lean();
+          if (headerCat) break;
+
+          if (cand.includes("and")) {
+            const withAmpersand = cand.replace(/-and-/g, " & ").replace(/-/g, " ");
+            headerCat = await HeaderCategory.findOne({
+              name: { $regex: new RegExp(`^${withAmpersand}$`, "i") },
+              status: "Published",
+            }).lean();
+            if (headerCat) break;
+          }
+        }
       }
+
+      // Fuzzy keyword match fallback for HeaderCategory
       if (!headerCat) {
-        headerCat = await HeaderCategory.findOne({
-          slug: { $regex: new RegExp(`^${id}$`, "i") },
-          status: "Published",
-        }).lean();
+        const words = normalizedId.split(/[-_\s]+/).filter((w: string) => w.length >= 3);
+        if (words.length > 0) {
+          const allHeaderCats = await HeaderCategory.find({ status: "Published" }).lean();
+          for (const hc of allHeaderCats) {
+            const hcSlug = (hc.slug || "").toLowerCase();
+            const hcName = (hc.name || "").toLowerCase();
+            const allMatch = words.every((w: string) => {
+              const stem = w.slice(0, 3);
+              return hcSlug.includes(stem) || hcName.includes(stem);
+            });
+            if (allMatch) {
+              headerCat = hc;
+              break;
+            }
+          }
+        }
       }
+
+      // If still not found, check unpublished HeaderCategory with matching slug
       if (!headerCat) {
-        const namePattern = id.replace(/[-_]/g, " ");
-        headerCat = await HeaderCategory.findOne({
-          name: { $regex: new RegExp(`^${namePattern}$`, "i") },
-          status: "Published",
-        }).lean();
+        for (const cand of slugCandidates) {
+          headerCat = await HeaderCategory.findOne({
+            slug: { $regex: new RegExp(`^${cand}$`, "i") },
+          }).lean();
+          if (headerCat) break;
+        }
       }
 
       if (headerCat) {
@@ -309,11 +408,31 @@ export const getCategoryById = async (req: Request, res: Response) => {
         });
       }
 
-      console.log(`[getCategoryById] Category not found: ${id}`);
-      return res.status(404).json({
-        success: false,
-        message: `Category not found: ${id}`,
-      });
+      // Also try fuzzy keyword fallback on Category if not a header category
+      const words = normalizedId.split(/[-_\s]+/).filter((w: string) => w.length >= 3);
+      if (words.length > 0) {
+        const allCats = await Category.find({ status: "Active" }).lean();
+        for (const c of allCats) {
+          const cSlug = (c.slug || "").toLowerCase();
+          const cName = (c.name || "").toLowerCase();
+          const allMatch = words.every((w: string) => {
+            const stem = w.slice(0, 3);
+            return cSlug.includes(stem) || cName.includes(stem);
+          });
+          if (allMatch) {
+            category = c;
+            break;
+          }
+        }
+      }
+
+      if (!category) {
+        console.log(`[getCategoryById] Category not found: ${id}`);
+        return res.status(404).json({
+          success: false,
+          message: `Category not found: ${id}`,
+        });
+      }
     }
 
     console.log(

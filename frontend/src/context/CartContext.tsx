@@ -165,6 +165,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setItems(newItems);
         }
         setEstimatedFee(response.data.estimatedDeliveryFee);
+        setQcDeliveryFee(response.data.qcDeliveryFee);
+        setEcomShippingFee(response.data.ecomShippingFee);
         setPlatformFee(response.data.platformFee);
         setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
         setMinimumOrderValue(response.data.minimumOrderValue);
@@ -175,12 +177,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setItems([]);
         setCartGroups(undefined);
         setEstimatedFee(undefined);
+        setQcDeliveryFee(undefined);
+        setEcomShippingFee(undefined);
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
         setMinimumOrderValue(undefined);
       } else {
         setCartGroups(undefined);
         setEstimatedFee(undefined);
+        setQcDeliveryFee(undefined);
+        setEcomShippingFee(undefined);
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
         setMinimumOrderValue(undefined);
@@ -251,6 +257,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // State for estimate delivery fee
   const [estimatedFee, setEstimatedFee] = useState<number | undefined>(undefined);
+  const [qcDeliveryFee, setQcDeliveryFee] = useState<number | undefined>(undefined);
+  const [ecomShippingFee, setEcomShippingFee] = useState<number | undefined>(undefined);
   const [platformFee, setPlatformFee] = useState<number | undefined>(undefined);
   const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number | undefined>(undefined);
   const [minimumOrderValue, setMinimumOrderValue] = useState<number | undefined>(undefined);
@@ -279,6 +287,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       total,
       itemCount,
       estimatedDeliveryFee: estimatedFee,
+      qcDeliveryFee,
+      ecomShippingFee,
       platformFee,
       freeDeliveryThreshold,
       minimumOrderValue,
@@ -286,7 +296,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       backendTotal: (items as any).backendTotal,
       groups: cartGroups,
     };
-  }, [items, estimatedFee, platformFee, freeDeliveryThreshold, minimumOrderValue, cartGroups]);
+  }, [items, estimatedFee, qcDeliveryFee, ecomShippingFee, platformFee, freeDeliveryThreshold, minimumOrderValue, cartGroups]);
 
   const addToCart = async (
     product: Product,
@@ -592,6 +602,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         if (response && response.data && response.data.items) {
           setItems(mapApiItemsToState(response.data.items));
           setEstimatedFee(response.data.estimatedDeliveryFee);
+          setQcDeliveryFee(response.data.qcDeliveryFee);
+          setEcomShippingFee(response.data.ecomShippingFee);
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
@@ -615,6 +627,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clearCart = async () => {
     setItems([]);
     setCartGroups(undefined);
+    setEstimatedFee(undefined);
+    setQcDeliveryFee(undefined);
+    setEcomShippingFee(undefined);
     try {
       await apiClearCart();
     } catch (error) {

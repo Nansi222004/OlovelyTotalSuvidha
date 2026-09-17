@@ -13,6 +13,8 @@ import PageLoader from "../../components/PageLoader";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useTranslation } from "../../hooks/useTranslation";
 import CommerceModeSwiper from "./components/CommerceModeSwiper";
+import ChannelProductRow from "./components/ChannelProductRow";
+import { getProducts } from "../../services/api/customerProductService";
 
 
 import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
@@ -43,6 +45,12 @@ export default function Home() {
 
   const [products, setProducts] = useState<any[]>([]);
   const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
+
+  // Channel products state for dedicated Quick Commerce, Ecommerce & Wholesale rows
+  const [qcProducts, setQcProducts] = useState<any[]>([]);
+  const [ecomProducts, setEcomProducts] = useState<any[]>([]);
+  const [wholesaleProducts, setWholesaleProducts] = useState<any[]>([]);
+  const [channelProductsLoading, setChannelProductsLoading] = useState(false);
 
   // Function to save scroll position before navigation
   const saveScrollPosition = () => {
@@ -89,6 +97,68 @@ export default function Home() {
     fetchData();
 
   }, [location?.latitude, location?.longitude, activeTab]);
+
+  // Fetch dedicated channel products for Quick Commerce, Ecommerce & Wholesale
+  useEffect(() => {
+    let isMounted = true;
+    const fetchChannelProducts = async () => {
+      setChannelProductsLoading(true);
+      try {
+        const [qcRes, ecomRes, wsRes] = await Promise.all([
+          getProducts({
+            channel: 'QUICK_COMMERCE',
+            limit: 10,
+            latitude: location?.latitude,
+            longitude: location?.longitude,
+          }).catch((err) => {
+            console.error('Failed to fetch QC products for home row', err);
+            return { success: false, data: [] };
+          }),
+          getProducts({
+            channel: 'ECOMMERCE',
+            limit: 10,
+          }).catch((err) => {
+            console.error('Failed to fetch Ecommerce products for home row', err);
+            return { success: false, data: [] };
+          }),
+          getProducts({
+            channel: 'WHOLESALE',
+            isWholesale: true,
+            limit: 10,
+          }).catch((err) => {
+            console.error('Failed to fetch Wholesale products for home row', err);
+            return { success: false, data: [] };
+          }),
+        ]);
+
+        if (isMounted) {
+          if (qcRes.success && qcRes.data) {
+            setQcProducts(qcRes.data as any[]);
+          }
+          if (ecomRes.success && ecomRes.data) {
+            setEcomProducts(ecomRes.data as any[]);
+          }
+          if (wsRes.success && wsRes.data) {
+            setWholesaleProducts(wsRes.data as any[]);
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching channel products for home', e);
+      } finally {
+        if (isMounted) {
+          setChannelProductsLoading(false);
+        }
+      }
+    };
+
+    if (activeTab === 'all') {
+      fetchChannelProducts();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab, location?.latitude, location?.longitude]);
 
   // Restore scroll position when returning to this page
   useEffect(() => {
@@ -260,6 +330,54 @@ export default function Home() {
         {/* Dynamic Commerce Mode Swiper — Communicates Quick Commerce, Ecommerce & Wholesale */}
         {activeTab === "all" && <CommerceModeSwiper />}
 
+        {/* Dedicated Commerce Mode Product Rows */}
+        {activeTab === "all" && (
+          <>
+            {/* Section A: Quick Commerce */}
+            {(channelFilter === 'ALL' || channelFilter === 'QUICK_COMMERCE') && (
+              <ChannelProductRow
+                id="section-quick-commerce"
+                title="Quick Commerce"
+                subtitle="Everyday essentials, delivered locally"
+                viewAllLink="/shop/quick-commerce"
+                products={qcProducts}
+                loading={channelProductsLoading}
+                icon="⚡"
+                themeColor="emerald"
+              />
+            )}
+
+            {/* Section B: Ecommerce */}
+            {(channelFilter === 'ALL' || channelFilter === 'ECOMMERCE') && (
+              <ChannelProductRow
+                id="section-ecommerce"
+                title="Ecommerce"
+                subtitle="Explore fashion, electronics, lifestyle and more"
+                viewAllLink="/shop/ecommerce"
+                products={ecomProducts}
+                loading={channelProductsLoading}
+                icon="📦"
+                themeColor="blue"
+              />
+            )}
+
+            {/* Section C: Wholesale Deals */}
+            {(channelFilter === 'ALL' || channelFilter === 'WHOLESALE') && (
+              <ChannelProductRow
+                id="section-wholesale"
+                title="Wholesale Deals"
+                subtitle="Bulk buying with special wholesale prices"
+                viewAllLink="/shop/wholesale"
+                products={wholesaleProducts}
+                loading={channelProductsLoading}
+                isWholesale={true}
+                icon="🏷️"
+                themeColor="purple"
+              />
+            )}
+          </>
+        )}
+
         {/* Dynamic Home Sections - Render sections created by admin */}
         {homeData.homeSections && homeData.homeSections.length > 0 && (
           <>
@@ -274,7 +392,11 @@ export default function Home() {
                 return true;
               });
 
-              if (section.displayType === "products" && sectionProducts.length > 0) {
+              if (section.displayType === "products") {
+                if (sectionProducts.length === 0) {
+                  return null;
+                }
+
                 // Strict column mapping as requested - applies to ALL screen sizes including mobile
                 const gridClass = {
                   2: "grid-cols-2",
@@ -312,6 +434,10 @@ export default function Home() {
                     </div>
                   </div>
                 );
+              }
+
+              if (!section.data || section.data.length === 0) {
+                return null;
               }
 
               return (
@@ -353,65 +479,102 @@ export default function Home() {
         {activeTab === "all" && (
           <>
             {/* Featured this week Section */}
-            <FeaturedThisWeek />
+            <FeaturedThisWeek products={homeData.featuredThisWeek || homeData.promoStrip?.featuredProducts || []} />
 
             {/* Shop by Store Section */}
-            <div className="mb-6 mt-6 md:mb-8 md:mt-8">
-              <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 mb-3 md:mb-6 px-4 md:px-6 lg:px-8 tracking-tight">
-                {t("home.shopByStore", "Shop by Store")}
-              </h2>
-              <div className="px-4 md:px-6 lg:px-8">
-                <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4">
-                  {(homeData.shops || []).map((tile: any) => {
-                    const hasImages =
-                      tile.image ||
-                      (tile.productImages &&
-                        tile.productImages.filter(Boolean).length > 0);
-                    const storeName = getTranslatedField(tile, "name") || tile.name;
+            {(homeData.shops || []).length > 0 && (
+              <div className="mb-6 mt-6 md:mb-8 md:mt-8">
+                <div className="flex items-center justify-between mb-3 md:mb-4 px-4 md:px-6 lg:px-8">
+                  <div>
+                    <h2 className="text-lg md:text-2xl font-semibold text-neutral-900 tracking-tight">
+                      {t("home.shopByStore", "Shop by Store")}
+                    </h2>
+                    <p className="text-xs md:text-sm text-neutral-500 mt-0.5">
+                      {t("home.shopByStoreSubtitle", "Explore verified local & national vendors")}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      saveScrollPosition();
+                      navigate("/stores");
+                    }}
+                    className="inline-flex items-center gap-1 text-xs md:text-sm font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-full transition-colors"
+                  >
+                    <span>{t("common.viewAll", "View All")}</span>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
 
-                    return (
-                      <div key={tile.id} className="flex flex-col">
+                <div className="px-4 md:px-6 lg:px-8">
+                  {/* Mobile: Horizontal smooth scroll; Desktop: Responsive grid */}
+                  <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 md:gap-4 scroll-smooth">
+                    {(homeData.shops || []).map((tile: any) => {
+                      const storeName = getTranslatedField(tile, "name") || tile.name || tile.storeName || "Store";
+                      const storeImage = tile.logo || tile.image || tile.storeBanner || (tile.productImages && tile.productImages[0]) || "";
+                      const hasProducts = tile.productCount > 0;
+
+                      return (
                         <div
+                          key={tile.id || tile._id}
                           onClick={() => {
-                            const storeSlug =
-                              tile.slug || tile.id.replace("-store", "");
+                            const storeSlug = tile.id || tile._id || tile.slug;
                             saveScrollPosition();
                             navigate(`/store/${storeSlug}`);
                           }}
-                          className="block bg-white rounded-xl shadow-sm border border-neutral-200 hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
-                          {hasImages ? (
-                            <img
-                              src={
-                                tile.image ||
-                                (tile.productImages
-                                  ? tile.productImages[0]
-                                  : "")
-                              }
-                              alt={storeName}
-                              className="w-full h-16 object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div
-                              className={`w-full h-16 flex items-center justify-center text-3xl text-neutral-300 ${tile.bgColor || "bg-neutral-50"
-                                }`}>
-                              {storeName.charAt(0)}
-                            </div>
-                          )}
-                        </div>
+                          className="flex-shrink-0 w-[120px] md:w-auto bg-white rounded-xl p-2.5 border border-neutral-200 shadow-sm hover:shadow-md hover:border-green-300 transition-all cursor-pointer flex flex-col justify-between group"
+                        >
+                          <div>
+                            {/* Logo / Image Container */}
+                            <div className="w-full aspect-square rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden mb-2 relative">
+                              {storeImage ? (
+                                <img
+                                  src={storeImage}
+                                  alt={storeName}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = "none";
+                                    const parent = (e.target as HTMLElement).parentElement;
+                                    if (parent) {
+                                      parent.innerHTML = `<span class="text-2xl font-bold text-neutral-400">${storeName.charAt(0).toUpperCase()}</span>`;
+                                    }
+                                  }}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-neutral-400">
+                                  {storeName.charAt(0).toUpperCase()}
+                                </div>
+                              )}
 
-                        {/* Tile name - outside card */}
-                        <div className="mt-1.5 text-center">
-                          <span className="text-xs font-semibold text-neutral-900 line-clamp-2 leading-tight">
-                            {storeName}
-                          </span>
+                              {/* Vendor Type Badge */}
+                              {tile.vendorType && (
+                                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white/90 text-neutral-800 shadow-sm backdrop-blur-xs">
+                                  {tile.vendorType === "QUICK_COMMERCE" ? "⚡ QC" : tile.vendorType === "ECOMMERCE" ? "🚚 Ecom" : "🔄 Hybrid"}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Store Name */}
+                            <h3 className="text-xs font-semibold text-neutral-900 line-clamp-1 group-hover:text-green-700 transition-colors text-center">
+                              {storeName}
+                            </h3>
+                          </div>
+
+                          {/* Product Count or City */}
+                          <div className="mt-1 text-center">
+                            <span className="text-[10px] text-neutral-500 font-medium">
+                              {hasProducts ? `${tile.productCount} items` : (tile.city || "Store Open")}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>

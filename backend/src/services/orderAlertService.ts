@@ -29,10 +29,18 @@ export interface SellerOrderAlert {
     price: number;
     total: number;
     variation?: string;
+    productType?: string;
+    fulfillmentType?: string;
+    isWholesale?: boolean;
+    wholesalePrice?: number;
   }>;
   totalAmount: number;
   deliveryOption?: string;
   timestamp: Date;
+  hasQcItems?: boolean;
+  hasEcomItems?: boolean;
+  requiresLocalDelivery?: boolean;
+  fulfillmentType?: "LOCAL_DELIVERY" | "COURIER_SHIPPING" | "MIXED";
 }
 
 export interface DeliveryOrderAlert {
@@ -105,6 +113,43 @@ export async function getSellerPendingOrderAlerts(
 
     if (sellerItems.length === 0) continue;
 
+    let sellerHasQc = false;
+    let sellerHasEcom = false;
+
+    const mappedItems = sellerItems.map((item) => {
+      const group = (order.fulfillmentGroups || []).find((g: any) =>
+        Array.isArray(g.items) && g.items.some((itId: any) => itId.toString() === item._id.toString())
+      );
+      const isEcom = group
+        ? group.fulfillmentType === 'COURIER_SHIPPING' || group.fulfillmentType === 'THIRD_PARTY_API'
+        : ((item as any).productType === 'ECOMMERCE' || (order.orderType === 'ECOMMERCE'));
+
+      if (isEcom) {
+        sellerHasEcom = true;
+      } else {
+        sellerHasQc = true;
+      }
+
+      return {
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.unitPrice,
+        total: item.total,
+        variation: item.variation,
+        productType: isEcom ? 'ECOMMERCE' : 'QUICK_COMMERCE',
+        fulfillmentType: isEcom ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+        isWholesale: Boolean(item.isWholesale),
+        wholesalePrice: item.wholesalePrice,
+      };
+    });
+
+    const sellerFulfillmentType: "LOCAL_DELIVERY" | "COURIER_SHIPPING" | "MIXED" =
+      (sellerHasQc && sellerHasEcom)
+        ? "MIXED"
+        : sellerHasQc
+          ? "LOCAL_DELIVERY"
+          : "COURIER_SHIPPING";
+
     alerts.push({
       type: "NEW_ORDER",
       orderId: order._id.toString(),
@@ -117,16 +162,14 @@ export async function getSellerPendingOrderAlerts(
         phone: order.customerPhone,
         address: order.deliveryAddress,
       },
-      deliveryOption: order.deliveryOption || "Standard",
-      items: sellerItems.map((item) => ({
-        productName: item.productName,
-        quantity: item.quantity,
-        price: item.unitPrice,
-        total: item.total,
-        variation: item.variation,
-      })),
+      deliveryOption: sellerHasQc ? (order.deliveryOption || "Standard") : "Courier",
+      items: mappedItems,
       totalAmount: sellerItems.reduce((acc, item) => acc + item.total, 0),
       timestamp: order.createdAt,
+      hasQcItems: sellerHasQc,
+      hasEcomItems: sellerHasEcom,
+      requiresLocalDelivery: sellerHasQc,
+      fulfillmentType: sellerFulfillmentType,
     });
   }
 

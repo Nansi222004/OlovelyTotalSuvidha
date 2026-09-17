@@ -36,6 +36,10 @@ export default function CategoryTileSection({
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
 
+  if (!tiles || tiles.length === 0) {
+    return null;
+  }
+
   const handleTileClick = (tile: CategoryTile) => {
     if (onTileClick) {
         onTileClick(tile);

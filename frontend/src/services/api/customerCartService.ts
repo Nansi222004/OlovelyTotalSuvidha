@@ -26,6 +26,8 @@ export interface Cart {
     items: CartItem[];
     total: number;
     estimatedDeliveryFee?: number;
+    qcDeliveryFee?: number;
+    ecomShippingFee?: number;
     platformFee?: number;
     freeDeliveryThreshold?: number;
     minimumOrderValue?: number;

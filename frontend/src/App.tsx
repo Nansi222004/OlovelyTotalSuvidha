@@ -42,6 +42,7 @@ const OrderAgain = lazyWithRetry(() => import("./modules/user/OrderAgain"), "Ord
 const Account = lazyWithRetry(() => import("./modules/user/Account"), "Account");
 const Categories = lazyWithRetry(() => import("./modules/user/Categories"), "Categories");
 const Category = lazyWithRetry(() => import("./modules/user/Category"), "Category");
+const ShopListing = lazyWithRetry(() => import("./modules/user/ShopListing"), "ShopListing");
 const Invoice = lazyWithRetry(() => import("./modules/user/Invoice"), "Invoice");
 const Login = lazyWithRetry(() => import("./modules/user/Login"), "Login");
 const LanguageSelection = lazyWithRetry(() => import("./modules/user/pages/LanguageSelection"), "LanguageSelection");
@@ -62,6 +63,7 @@ const FashionStore = lazyWithRetry(() => import("./modules/user/FashionStore"), 
 const ToyStore = lazyWithRetry(() => import("./modules/user/ToyStore"), "ToyStore");
 const HobbyStore = lazyWithRetry(() => import("./modules/user/HobbyStore"), "HobbyStore");
 const StorePage = lazyWithRetry(() => import("./modules/user/StorePage"), "StorePage");
+const AllStores = lazyWithRetry(() => import("./modules/user/AllStores"), "AllStores");
 const CustomerWallet = lazyWithRetry(() => import("./modules/Customer/pages/CustomerWallet"), "CustomerWallet");
 
 // Lazy load delivery routes
@@ -1009,6 +1011,22 @@ function App() {
                                       path="/category/:id"
                                       element={<Category />}
                                     />
+                                     <Route
+                                       path="/shop/:mode"
+                                       element={<ShopListing />}
+                                     />
+                                     <Route
+                                       path="/shop/quick-commerce"
+                                       element={<ShopListing mode="quick-commerce" />}
+                                     />
+                                     <Route
+                                       path="/shop/ecommerce"
+                                       element={<ShopListing mode="ecommerce" />}
+                                     />
+                                     <Route
+                                       path="/shop/wholesale"
+                                       element={<ShopListing mode="wholesale" />}
+                                     />
                                     <Route
                                       path="/address-book"
                                       element={<AddressBook />}
@@ -1037,6 +1055,10 @@ function App() {
                                     <Route
                                       path="/addresses"
                                       element={<Addresses />}
+                                    />
+                                    <Route
+                                      path="/stores"
+                                      element={<AllStores />}
                                     />
                                     <Route
                                       path="/store/:slug"

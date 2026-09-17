@@ -13,6 +13,18 @@ export interface HomeContentResponse {
     promoStrip?: any; // PromoStrip data from backend
     lowestPrices?: any[];
     homeSections?: any[];
+    featuredThisWeek?: any[];
+  };
+}
+
+export interface StoresResponse {
+  success: boolean;
+  data: any[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
   };
 }
 
@@ -81,5 +93,20 @@ export const checkServiceability = async (
       params: { latitude, longitude }
     }
   );
+  return response.data;
+};
+
+/**
+ * Get all stores/vendors with pagination, search, and channel filtering
+ */
+export const getAllStores = async (params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  channel?: string;
+  latitude?: number;
+  longitude?: number;
+}): Promise<StoresResponse> => {
+  const response = await api.get<StoresResponse>("/customer/home/stores", { params });
   return response.data;
 };

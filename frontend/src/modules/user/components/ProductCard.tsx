@@ -12,6 +12,7 @@ import { useAppSettings } from '../../../context/AppSettingsContext';
 import { useCustomerChannel } from '../../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../../utils/priceUtils';
+import { getProductImage } from '../../../utils/productImageHelper';
 
 interface ProductCardProps {
   product: Product;
@@ -26,6 +27,7 @@ interface ProductCardProps {
   optionsCount?: number;
   compact?: boolean;
   categoryStyle?: boolean;
+  forceWholesale?: boolean;
 }
 
 export default function ProductCard({
@@ -41,18 +43,19 @@ export default function ProductCard({
   optionsCount = 2,
   compact = false,
   categoryStyle = false,
+  forceWholesale = false,
 }: ProductCardProps) {
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
   const { cart, addToCart, updateQuantity } = useCart();
   const { settings } = useAppSettings();
-  const { isWholesale } = useCustomerChannel();
+  const { isWholesale, isAll } = useCustomerChannel();
   const imageRef = useRef<HTMLImageElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   // Single ref to track any cart operation in progress for this product
   const isOperationPendingRef = useRef(false);
 
-  const isWholesaleActive = Boolean(isWholesale && product.wholesaleEnabled && (product.wholesalePrice || 0) > 0);
+  const isWholesaleActive = Boolean((forceWholesale || isWholesale || isAll) && product.wholesaleEnabled && (product.wholesalePrice || 0) > 0);
   const wholesaleMoq = product.wholesaleMinimumQuantity || settings.wholesaleSettings?.defaultWholesaleMinimumQuantity || 1;
 
   // Stabilize IDs
@@ -115,8 +118,14 @@ export default function ProductCard({
   }, [packText, productName]);
 
   const handleCardClick = useCallback(() => {
-    navigate(`/product/${productId}`);
-  }, [navigate, productId]);
+    if (isWholesaleActive || product.wholesaleEnabled) {
+      navigate(`/product/${productId}?wholesale=true`, {
+        state: { isWholesale: true, fromAll: isAll },
+      });
+    } else {
+      navigate(`/product/${productId}`);
+    }
+  }, [navigate, productId, isWholesaleActive, product.wholesaleEnabled, isAll]);
 
   const handleAdd = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -217,12 +226,7 @@ export default function ProductCard({
       >
         {/* Top Badges - top left */}
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start pointer-events-none">
-          {isWholesaleActive ? (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight bg-purple-700 text-white">
-              <span>🏷️</span>
-              <span>Wholesale</span>
-            </span>
-          ) : (
+          <div className="flex items-center gap-1 flex-wrap">
             <span
               className={`text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight ${
                 isEcommerce ? 'bg-blue-600 text-white' : 'bg-emerald-700 text-white'
@@ -231,7 +235,13 @@ export default function ProductCard({
               <span>{isEcommerce ? '📦' : '⚡'}</span>
               <span>{isEcommerce ? 'Courier' : 'Quick'}</span>
             </span>
-          )}
+            {isWholesaleActive && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1 uppercase tracking-tight bg-purple-700 text-white">
+                <span>🏷️</span>
+                <span>Wholesale</span>
+              </span>
+            )}
+          </div>
           {showBadge && discount > 0 && !isWholesaleActive && (
             <div className="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
               {discount}% OFF
@@ -239,7 +249,7 @@ export default function ProductCard({
           )}
           {isWholesaleActive && (
             <div className="bg-purple-900/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
-              MOQ: {wholesaleMoq}
+              Min. {wholesaleMoq} units
             </div>
           )}
         </div>
@@ -284,31 +294,21 @@ export default function ProductCard({
         )}
 
         {/* Product Image */}
-        {product.imageUrl || product.mainImage ? (
-          <img
-            ref={imageRef}
-            src={product.imageUrl || product.mainImage}
-            alt={productName || 'Product'}
-            className="w-full h-full max-h-full max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent && !parent.querySelector('.fallback-icon')) {
-                const fallback = document.createElement('div');
-                fallback.className = 'w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-3xl font-bold fallback-icon';
-                fallback.textContent = (productName || '?').charAt(0).toUpperCase();
-                parent.appendChild(fallback);
-              }
-            }}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-3xl font-bold">
-            {(productName || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <img
+          ref={imageRef}
+          src={getProductImage(product)}
+          alt={productName || 'Product'}
+          className="w-full h-full max-h-full max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            const fallback = getProductImage(product);
+            if (target.src !== fallback) {
+              target.src = fallback;
+            }
+          }}
+        />
 
         {(product.variations?.length || 0) >= 2 && (
           <div className="absolute bottom-1.5 left-2 z-10">

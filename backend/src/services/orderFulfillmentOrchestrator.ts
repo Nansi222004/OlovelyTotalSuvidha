@@ -205,7 +205,10 @@ export async function recomputeOrderFulfillment(
   }
 
   if (!shouldTriggerAssignment) {
-    if (!["Assigned", "Queued", "Searching"].includes(order.deliveryAssignmentStatus || "")) {
+    const hasQc = (order.fulfillmentGroups || []).some((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY') || (order.orderType === 'QUICK_COMMERCE');
+    if (!hasQc) {
+      order.deliveryAssignmentStatus = "Cancelled";
+    } else if (!["Assigned", "Queued", "Searching"].includes(order.deliveryAssignmentStatus || "")) {
       order.deliveryAssignmentStatus = order.deliveryBoy ? "Assigned" : "NotStarted";
     }
     order.deliveryAssignmentResolvedAt = order.deliveryBoy ? new Date() : order.deliveryAssignmentResolvedAt;

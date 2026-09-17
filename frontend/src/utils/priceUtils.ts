@@ -7,7 +7,12 @@ export interface CalculatedPrice {
   hasDiscount: boolean;
 }
 
-export const calculateProductPrice = (product: any, variationSelector?: number | string): CalculatedPrice => {
+export const calculateProductPrice = (
+  product: any,
+  variationSelector?: number | string,
+  isWholesale?: boolean,
+  wholesalePrice?: number
+): CalculatedPrice => {
   if (!product) {
     return {
       displayPrice: 0,
@@ -25,17 +30,24 @@ export const calculateProductPrice = (product: any, variationSelector?: number |
   }
 
   // Fallback to first variation if no specific one selected/found but variations exist
-  // Only if variationSelector was NOT provided (undefined). If it was provided but not found, we probably shouldn't default to 0?
-  // Current behavior was: if index undefined, use index 0.
+  // Only if variationSelector was NOT provided (undefined).
   if (!variation && product.variations?.length > 0 && variationSelector === undefined) {
     variation = product.variations[0];
   }
 
-  const displayPrice = (variation?.discPrice && variation.discPrice > 0)
+  let displayPrice = (variation?.discPrice && variation.discPrice > 0)
     ? variation.discPrice
     : (product.discPrice && product.discPrice > 0)
     ? product.discPrice
     : (variation?.price || product.price || 0);
+
+  // Authoritative wholesale pricing overrides retail pricing when item is wholesale
+  if (isWholesale) {
+    const wp = Number(wholesalePrice) || Number(product.wholesalePrice);
+    if (wp > 0) {
+      displayPrice = wp;
+    }
+  }
 
   const mrp = variation?.price || product.mrp || product.compareAtPrice || product.price || 0;
 

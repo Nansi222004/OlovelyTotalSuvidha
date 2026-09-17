@@ -426,7 +426,7 @@ export default function LowestPricesEver({ activeTab = 'all', products: adminPro
     if (activeTab !== 'all') {
       if (activeTab === 'grocery') {
         filtered = products.filter((p) =>
-          ['snacks', 'atta-rice', 'dairy-breakfast', 'masala-oil', 'biscuits-bakery', 'cold-drinks', 'fruits-veg'].includes(p.categoryId)
+          ['snacks', 'atta-rice', 'dairy-breakfast', 'masala-oil', 'biscuits-bakery', 'cold-drinks', 'fruits-veg', 'fruits-vegetables', 'vegetable-and-fruits-fresh'].includes(p.categoryId)
         );
       } else {
         filtered = products.filter((p) => p.categoryId === activeTab);

@@ -8,6 +8,7 @@ import Seller from "../../../models/Seller";
 import { findSellersWithinRange } from "../../../utils/locationHelper";
 import AppSettings from "../../../models/AppSettings";
 import { checkWholesaleEligibility } from "../../../utils/categoryChannelHelper";
+import { SLUG_ALIASES } from "./customerCategoryController";
 
 // Get products with filtering options (public)
 export const getProducts = async (req: Request, res: Response) => {
@@ -45,7 +46,7 @@ export const getProducts = async (req: Request, res: Response) => {
       value: string,
       modelName: string = ""
     ) => {
-      if (mongoose.Types.ObjectId.isValid(value)) return value;
+      if (!value) return null;
 
       const baseQuery: any = {};
       if (modelName === "Category") {
@@ -54,41 +55,73 @@ export const getProducts = async (req: Request, res: Response) => {
         baseQuery.status = "Published";
       }
 
-      let item = await model
-        .findOne({ ...baseQuery, slug: value })
-        .select("_id")
-        .lean();
-      if (item) return item._id;
+      if (mongoose.Types.ObjectId.isValid(value)) {
+        const item = await model
+          .findOne({ ...baseQuery, _id: value })
+          .select("_id")
+          .lean();
+        if (item) return item._id;
+      }
 
-      item = await model
-        .findOne({
-          ...baseQuery,
-          slug: { $regex: new RegExp(`^${value}$`, "i") },
-        })
-        .select("_id")
-        .lean();
-      if (item) return item._id;
+      const slugCandidates = [value];
+      const alias = SLUG_ALIASES[value.toLowerCase().trim()];
+      if (alias && !slugCandidates.includes(alias)) {
+        slugCandidates.push(alias);
+      }
 
-      let namePattern = value.replace(/[-_]/g, " ");
-      item = await model
-        .findOne({
-          ...baseQuery,
-          name: { $regex: new RegExp(`^${namePattern}$`, "i") },
-        })
-        .select("_id")
-        .lean();
-      if (item) return item._id;
+      for (const cand of slugCandidates) {
+        let item = await model
+          .findOne({ ...baseQuery, slug: cand })
+          .select("_id")
+          .lean();
+        if (item) return item._id;
 
-      if ((modelName === "Category" || modelName === "HeaderCategory") && value.includes("and")) {
-        const withAmpersand = value.replace(/-and-/g, " & ").replace(/-/g, " ");
         item = await model
           .findOne({
             ...baseQuery,
-            name: { $regex: new RegExp(`^${withAmpersand}$`, "i") },
+            slug: { $regex: new RegExp(`^${cand}$`, "i") },
           })
           .select("_id")
           .lean();
         if (item) return item._id;
+
+        let namePattern = cand.replace(/[-_]/g, " ");
+        item = await model
+          .findOne({
+            ...baseQuery,
+            name: { $regex: new RegExp(`^${namePattern}$`, "i") },
+          })
+          .select("_id")
+          .lean();
+        if (item) return item._id;
+
+        if ((modelName === "Category" || modelName === "HeaderCategory") && cand.includes("and")) {
+          const withAmpersand = cand.replace(/-and-/g, " & ").replace(/-/g, " ");
+          item = await model
+            .findOne({
+              ...baseQuery,
+              name: { $regex: new RegExp(`^${withAmpersand}$`, "i") },
+            })
+            .select("_id")
+            .lean();
+          if (item) return item._id;
+        }
+      }
+
+      if (modelName === "HeaderCategory" || modelName === "Category") {
+        const words = value.toLowerCase().split(/[-_\s]+/).filter((w: string) => w.length >= 3);
+        if (words.length > 0) {
+          const items = await model.find(baseQuery).select("_id name slug").lean();
+          for (const it of items) {
+            const itSlug = (it.slug || "").toLowerCase();
+            const itName = (it.name || "").toLowerCase();
+            const allMatch = words.every((w: string) => {
+              const stem = w.slice(0, 3);
+              return itSlug.includes(stem) || itName.includes(stem);
+            });
+            if (allMatch) return it._id;
+          }
+        }
       }
 
       return null;
@@ -153,7 +186,15 @@ export const getProducts = async (req: Request, res: Response) => {
           "SubCategory"
         );
       }
-      if (subcategoryId) query.subcategory = subcategoryId;
+      if (subcategoryId) {
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { subcategory: subcategoryId },
+            { category: subcategoryId }
+          ]
+        });
+      }
     }
 
     const targetChannel = ((channel || productType) as string || "").toUpperCase();
@@ -178,21 +219,74 @@ export const getProducts = async (req: Request, res: Response) => {
             query.category = new mongoose.Types.ObjectId(); // Non-matching dummy ID
           }
         }
-      } else {
+      } else if (!category) {
         query.category = { $in: permittedCatIds };
       }
     }
 
     // ── WHOLESALE / RETAIL SHOPPING MODE ENFORCEMENT ───────────────────────
-    // Normal retail browsing MUST exclude products where product.wholesaleEnabled === true.
+    // Individual retail browsing MUST exclude products where product.wholesaleEnabled === true.
     // Wholesale browsing mode requires:
     // Global wholesale enabled AND Seller wholesaleEnabled AND Category wholesaleEnabled AND Product wholesaleEnabled.
+    // In ALL mode: include eligible retail products AND eligible wholesale products.
     const isWholesaleMode =
       (req.query.isWholesale as string)?.toLowerCase() === "true" ||
-      (req.query.wholesale as string)?.toLowerCase() === "true";
+      (req.query.wholesale as string)?.toLowerCase() === "true" ||
+      targetChannel === 'WHOLESALE';
+    const isAllMode = targetChannel === 'ALL' || (!targetChannel && !isWholesaleMode);
 
-    if (!isWholesaleMode) {
-      // Retail mode: MUST exclude all wholesaleEnabled products
+    if (isAllMode) {
+      // ── ALL SHOPPING MODE ────────────────────────────────────────────────
+      // Displays eligible retail Quick Commerce, retail Ecommerce, AND eligible wholesale products.
+      const appSettings = await AppSettings.findOne().select("wholesaleSettings").lean();
+      const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
+
+      let eligibleWholesaleSellerIds: mongoose.Types.ObjectId[] = [];
+      let eligibleWholesaleCategoryIds: mongoose.Types.ObjectId[] = [];
+
+      if (globalWholesaleEnabled) {
+        const [eligibleSellers, eligibleCategories] = await Promise.all([
+          Seller.find({ status: "Approved", wholesaleEnabled: true }, { _id: 1 }).lean(),
+          Category.find({ status: "Active", wholesaleEnabled: true }, { _id: 1 }).lean(),
+        ]);
+        eligibleWholesaleSellerIds = eligibleSellers.map((s) => s._id);
+        eligibleWholesaleCategoryIds = eligibleCategories.map((c) => c._id);
+      }
+
+      // Enforce category-channel compatibility across active categories
+      const [qcCats, ecomCats] = await Promise.all([
+        Category.find({ status: "Active", commerceChannels: "QUICK_COMMERCE" }, { _id: 1 }).lean(),
+        Category.find({ status: "Active", commerceChannels: "ECOMMERCE" }, { _id: 1 }).lean(),
+      ]);
+      const qcCatIds = qcCats.map((c) => c._id);
+      const ecomCatIds = ecomCats.map((c) => c._id);
+
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { productType: "QUICK_COMMERCE", category: { $in: qcCatIds } },
+          { productType: "ECOMMERCE", category: { $in: ecomCatIds } },
+          { productType: { $exists: false } },
+          { productType: null },
+        ],
+      });
+
+      if (globalWholesaleEnabled && eligibleWholesaleSellerIds.length > 0 && eligibleWholesaleCategoryIds.length > 0) {
+        query.$and.push({
+          $or: [
+            { wholesaleEnabled: { $ne: true } },
+            {
+              wholesaleEnabled: true,
+              seller: { $in: eligibleWholesaleSellerIds },
+              category: { $in: eligibleWholesaleCategoryIds },
+            },
+          ],
+        });
+      } else {
+        query.wholesaleEnabled = { $ne: true };
+      }
+    } else if (!isWholesaleMode) {
+      // Retail mode for individual channels: MUST exclude all wholesaleEnabled products
       query.wholesaleEnabled = { $ne: true };
     } else {
       // Wholesale mode: Enforce ALL 4 GATES server-side
@@ -435,16 +529,21 @@ export const getProductById = async (req: Request, res: Response) => {
       (req.query.isWholesale as string)?.toLowerCase() === "true" ||
       (req.query.wholesale as string)?.toLowerCase() === "true";
 
+    const isAllMode =
+      (req.query.mode as string)?.toUpperCase() === "ALL" ||
+      (req.query.channel as string)?.toUpperCase() === "ALL" ||
+      (req.query.fromAll as string)?.toLowerCase() === "true";
+
     if (product.wholesaleEnabled === true) {
-      // Wholesale-enabled product: MUST NOT be accessible in retail mode
-      if (!isWholesaleMode) {
+      // Wholesale-enabled product: MUST NOT be accessible in bare retail mode
+      if (!isWholesaleMode && !isAllMode) {
         return res.status(404).json({
           success: false,
           message: "Product not found or unavailable in retail mode",
         });
       }
 
-      // Wholesale mode: Re-validate ALL 4 gates
+      // Wholesale mode or arriving from All mode: Re-validate ALL 4 gates
       const appSettings = await AppSettings.findOne();
       const globalWholesaleEnabled = appSettings?.wholesaleSettings?.wholesaleEnabled ?? false;
       const seller = product.seller as any;
@@ -460,12 +559,14 @@ export const getProductById = async (req: Request, res: Response) => {
       if (!wholesaleEligibility.eligible) {
         return res.status(404).json({
           success: false,
-          message: "Product not found or unavailable in wholesale mode",
+          message: isAllMode
+            ? "Product not found or unavailable"
+            : "Product not found or unavailable in wholesale mode",
         });
       }
     } else {
       // Retail-only product: MUST NOT be accessible in wholesale mode
-      if (isWholesaleMode) {
+      if (isWholesaleMode && !isAllMode) {
         return res.status(404).json({
           success: false,
           message: "Product not found or unavailable in wholesale mode",
@@ -475,10 +576,10 @@ export const getProductById = async (req: Request, res: Response) => {
 
     // Server-side Channel & Category Compatibility Enforcement
     const requestedChannel = (((channel || queryProductType) as string) || "").toUpperCase();
-    if (requestedChannel === "QUICK_COMMERCE" || requestedChannel === "ECOMMERCE") {
-      const prodType = product.productType || "QUICK_COMMERCE";
-      const catChannels: string[] = (product.category as any)?.commerceChannels || [];
+    const prodType = product.productType || "QUICK_COMMERCE";
+    const catChannels: string[] = (product.category as any)?.commerceChannels || [];
 
+    if (requestedChannel === "QUICK_COMMERCE" || requestedChannel === "ECOMMERCE") {
       // 1. Product's productType must match requested channel
       if (prodType !== requestedChannel) {
         return res.status(404).json({
@@ -489,6 +590,14 @@ export const getProductById = async (req: Request, res: Response) => {
 
       // 2. Category's commerceChannels must permit requested channel
       if (catChannels.length > 0 && !catChannels.includes(requestedChannel)) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or unavailable in this channel",
+        });
+      }
+    } else {
+      // In ALL mode or unconstrained: verify category permits productType if category has channels configured
+      if (catChannels.length > 0 && !catChannels.includes(prodType)) {
         return res.status(404).json({
           success: false,
           message: "Product not found or unavailable in this channel",

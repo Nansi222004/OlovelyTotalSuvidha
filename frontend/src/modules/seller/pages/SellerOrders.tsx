@@ -35,13 +35,13 @@ export function getOrderFulfillment(order: Order): OrderFulfillmentInfo {
   const qcGroup = groups.find((g: any) => g.fulfillmentType === 'LOCAL_DELIVERY');
   const ecomGroup = groups.find((g: any) => g.fulfillmentType === 'COURIER_SHIPPING');
 
-  const hasQc = Boolean(qcGroup) || order.orderType === 'QUICK_COMMERCE';
-  const hasEcom = Boolean(ecomGroup) || order.orderType === 'ECOMMERCE';
+  const hasQc = Boolean(qcGroup) || (groups.length === 0 && order.orderType === 'QUICK_COMMERCE');
+  const hasEcom = Boolean(ecomGroup) || (groups.length === 0 && order.orderType === 'ECOMMERCE');
 
-  // Explicit group classification - never classify mixed as pure ecommerce
-  const isMixed = order.orderType === 'MIXED' || (hasQc && hasEcom);
-  const isPureQc = !isMixed && (hasQc || order.orderType === 'QUICK_COMMERCE');
-  const isPureEcommerce = !isMixed && (hasEcom || order.orderType === 'ECOMMERCE');
+  // Explicit group classification - never classify as mixed unless seller actually has both QC and Ecommerce items
+  const isMixed = hasQc && hasEcom;
+  const isPureQc = hasQc && !hasEcom;
+  const isPureEcommerce = hasEcom && !hasQc;
 
   const qcItemCount = qcGroup?.items?.length || (isPureQc ? 1 : 0);
   const ecomItemCount = ecomGroup?.items?.length || (isPureEcommerce ? 1 : 0);

@@ -142,8 +142,12 @@ export default function CheckoutAddress() {
     }
   }, [editAddress]);
 
-  const platformFee = appConfig.platformFee;
-  const deliveryFee = cart.total >= appConfig.freeDeliveryThreshold ? 0 : appConfig.deliveryFee;
+  const platformFee = cart.platformFee ?? appConfig.platformFee;
+  const freeThreshold = cart.freeDeliveryThreshold ?? appConfig.freeDeliveryThreshold;
+  const isFreeDelivery = freeThreshold > 0 && cart.total >= freeThreshold;
+  const deliveryFee = cart.estimatedDeliveryFee !== undefined
+    ? cart.estimatedDeliveryFee
+    : (isFreeDelivery ? 0 : appConfig.deliveryFee);
   const totalAmount = cart.total + platformFee + deliveryFee;
 
   const validateForm = (): boolean => {
@@ -498,7 +502,12 @@ export default function CheckoutAddress() {
           {/* Cart Items */}
           <div className="space-y-2 mb-3">
             {cart.items.map((item) => {
-              const { displayPrice } = calculateProductPrice(item.product);
+              const { displayPrice } = calculateProductPrice(
+                item.product,
+                item.variant,
+                item.isWholesale,
+                item.wholesalePrice,
+              );
               return (
                 <div key={item.product.id} className="flex items-center justify-between text-xs">
                   <div className="flex-1 min-w-0">

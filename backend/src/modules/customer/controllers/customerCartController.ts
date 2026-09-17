@@ -54,16 +54,10 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
         freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
         minimumOrderValue = settings?.minimumOrderValue ?? 0;
 
-        // Check free delivery threshold
+        // Global Free Delivery Threshold: waives ALL delivery charges (Standard and Instant distance-based)
         if (freeDeliveryThreshold > 0 && total >= freeDeliveryThreshold) {
             estimatedDeliveryFee = 0;
-        }
-        // Standard Delivery: Always Fixed Price
-        else if (deliveryOption === 'Standard') {
-            estimatedDeliveryFee = settings?.deliveryCharges ?? 0;
-        }
-        // Instant Delivery: Distance Based (if config exists)
-        else if (deliveryOption === 'Instant' && settings?.deliveryConfig) {
+        } else if (deliveryOption === 'Instant' && settings?.deliveryConfig) {
             const config = settings.deliveryConfig;
             estimatedDeliveryFee = config.baseCharge || 0;
 
@@ -111,7 +105,7 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
                 }
             }
         } else {
-            estimatedDeliveryFee = settings?.deliveryCharges ?? 40;
+            estimatedDeliveryFee = settings?.deliveryCharges ?? 25;
         }
     } catch (err) {
         console.error("Error calculating delivery stuff:", err);
@@ -219,29 +213,27 @@ const buildUnifiedCartResponse = async (
 
     // Quick Commerce fees: only calculate if qcItems exist
     const qcDeliveryOption = deliveryOption?.toLowerCase() === 'instant' ? 'Instant' : 'Standard';
+    const freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
+    const isEligibleForFreeDelivery = freeDeliveryThreshold > 0 && totalProductSubtotal >= freeDeliveryThreshold;
+
     let qcDeliveryFee = 0;
     let platformFee = settings?.platformFee ?? 2;
-    let freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
     let minimumOrderValue = settings?.minimumOrderValue ?? 0;
 
     if (qcItems.length > 0) {
-        const qcFees = await calculateDeliveryStuff(qcSubtotal, qcItems, userLat, userLng, qcDeliveryOption);
+        const qcFees = await calculateDeliveryStuff(totalProductSubtotal, qcItems, userLat, userLng, qcDeliveryOption);
         qcDeliveryFee = qcFees.estimatedDeliveryFee;
         platformFee = qcFees.platformFee;
-        freeDeliveryThreshold = qcFees.freeDeliveryThreshold;
         minimumOrderValue = qcFees.minimumOrderValue;
     }
 
-    // Ecommerce shipping fee (dynamically configured from AppSettings)
-    const ecomFreeThreshold = Number.isFinite(settings?.ecommerceFreeShippingThreshold)
-        ? Number(settings?.ecommerceFreeShippingThreshold)
-        : 499;
+    // Ecommerce shipping fee: governed by the single global freeDeliveryThreshold on combined subtotal!
     const ecomDefaultFee = Number.isFinite(settings?.ecommerceShippingFee)
         ? Number(settings?.ecommerceShippingFee)
         : 40;
     let ecomShippingFee = 0;
     if (ecomItems.length > 0) {
-        ecomShippingFee = ecomSubtotal >= ecomFreeThreshold ? 0 : ecomDefaultFee;
+        ecomShippingFee = isEligibleForFreeDelivery ? 0 : ecomDefaultFee;
     }
 
     const combinedDeliveryFee = qcDeliveryFee + ecomShippingFee;

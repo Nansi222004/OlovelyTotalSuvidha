@@ -37,6 +37,16 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin' | 'Auto'>('Admin');
 
+  const requiresLocalDelivery = Boolean(
+    notification?.requiresLocalDelivery !== undefined
+      ? notification.requiresLocalDelivery
+      : notification?.hasQcItems !== undefined
+        ? notification.hasQcItems
+        : (notification?.fulfillmentType === 'LOCAL_DELIVERY' ||
+           notification?.fulfillmentType === 'MIXED' ||
+           notification?.items?.some((it: any) => it.fulfillmentType === 'LOCAL_DELIVERY' || it.productType === 'FOOD' || it.productType === 'GROCERY'))
+  );
+
   const handleStatusUpdate = async (status: string, pref?: 'Self' | 'Admin' | 'Auto') => {
     if (!notification) return;
     setLoading(true);
@@ -168,12 +178,20 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
           <section className="mb-6">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">Delivery Details</h3>
-              {notification.deliveryOption && (
+              {(!requiresLocalDelivery || notification.fulfillmentType === 'COURIER_SHIPPING') ? (
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm bg-blue-100 text-blue-700 border border-blue-200">
+                  📦 Courier Shipping
+                </span>
+              ) : notification.deliveryOption ? (
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm ${notification.deliveryOption === 'Instant'
                   ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                  : 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-teal-100 text-teal-700 border border-teal-200'
                   }`}>
                   {notification.deliveryOption} Delivery
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm bg-teal-100 text-teal-700 border border-teal-200">
+                  ⚡ Local Delivery
                 </span>
               )}
             </div>
@@ -194,8 +212,24 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
               {notification.items.map((item, index) => (
                 <div key={index} className="flex justify-between items-start py-2 border-b border-neutral-100 last:border-0">
                   <div className="flex-1">
-                    <p className="font-medium text-neutral-800">{item.productName}</p>
-                    <p className="text-sm text-neutral-500">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium text-neutral-800">{item.productName}</p>
+                      {item.isWholesale && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">
+                          Wholesale{item.wholesaleMinimumQuantity ? ` (MOQ ${item.wholesaleMinimumQuantity})` : ''}
+                        </span>
+                      )}
+                      {item.fulfillmentType === 'COURIER_SHIPPING' || item.productType === 'ECOMMERCE' ? (
+                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-semibold border border-blue-200">
+                          📦 Courier
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[10px] font-semibold border border-emerald-200">
+                          ⚡ QC
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-neutral-500 mt-0.5">
                       Qty: {item.quantity} × ₹{item.price.toFixed(2)}
                       {item.variation && <span className="ml-2 px-1.5 py-0.5 bg-neutral-100 rounded text-[10px]">{item.variation}</span>}
                     </p>
@@ -218,7 +252,13 @@ const SellerNotificationAlert: React.FC<SellerNotificationAlertProps> = ({ notif
           {notification.type === 'NEW_ORDER' ? (
             <div className="flex gap-4">
               <button
-                onClick={() => setShowAssignPopup(true)}
+                onClick={async () => {
+                  if (!requiresLocalDelivery) {
+                    await handleStatusUpdate('Accepted');
+                  } else {
+                    setShowAssignPopup(true);
+                  }
+                }}
                 disabled={loading}
                 className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg bg-teal-600 hover:bg-teal-700 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
