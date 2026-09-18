@@ -24,6 +24,71 @@ export interface DeliveryDashboardStats {
   pendingOrdersList: any[]; // Define stricter type if needed
 }
 
+export interface DeliveryOrderItem {
+  _id?: string;
+  id?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  unitPrice?: number;
+  total?: number;
+  image?: string;
+  product?: any;
+  seller?: string;
+  productType?: string;
+  fulfillmentType?: string;
+  selectedColor?: string;
+  selectedSize?: string;
+}
+
+export interface DeliverySellerPickup {
+  seller: string;
+  storeName?: string;
+  pickedUpAt?: string | Date;
+  pickedUpBy?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface DeliveryOrderDetails {
+  _id: string;
+  orderNumber: string;
+  orderId?: string;
+  status: string;
+  deliveryBoyStatus?: string;
+  deliveryAssignmentStatus?: string;
+  assignedSubtotal?: number;
+  subtotal?: number;
+  totalAmount?: number;
+  total?: number;
+  deliveryFee?: number;
+  deliveryEarning?: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  customerName?: string;
+  customerPhone?: string;
+  address?: string;
+  deliveryAddress?: {
+    address?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    latitude?: number;
+    longitude?: number;
+    phone?: string;
+    contactName?: string;
+  };
+  items: DeliveryOrderItem[];
+  sellerPickups?: DeliverySellerPickup[];
+  sellerLocations?: any[];
+  displayStatus?: string;
+  fulfillmentGroups?: any[];
+  deliveryBoy?: any;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 // --- Dashboard ---
 export const getDashboardStats = async (): Promise<DeliveryDashboardStats> => {
   try {
@@ -138,7 +203,7 @@ export const getPendingOrderAlerts = async () => {
   return response.data.data;
 };
 
-export const getOrderDetails = async (id: string) => {
+export const getOrderDetails = async (id: string): Promise<DeliveryOrderDetails> => {
   try {
     const response = await api.get(`${BASE_URL}/orders/${id}`);
     return response.data.data;

@@ -10,6 +10,12 @@ import {
 } from "../../../services/api/admin/adminBannerService";
 import { uploadImage } from "../../../services/api/uploadService";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import {
+  getProducts,
+  getCategories,
+  type Product,
+  type Category,
+} from "../../../services/api/admin/adminProductService";
 
 const SECTION_OPTIONS = [
   { value: "ALL", label: "All Sections", icon: "🌐" },
@@ -88,6 +94,15 @@ export default function AdminBanners() {
   // Delete
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Product & Category selection states
+  const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [isChangingProduct, setIsChangingProduct] = useState(false);
+
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
   // Pagination
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -96,6 +111,39 @@ export default function AdminBanners() {
   useEffect(() => {
     fetchBanners();
   }, [page, filterSection, filterActive]);
+
+  useEffect(() => {
+    fetchProducts();
+    fetchCategories();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoadingProducts(true);
+      const res = await getProducts({ limit: 1000, status: "Active" });
+      if (res.success && Array.isArray(res.data)) {
+        setAvailableProducts(res.data);
+      }
+    } catch (err) {
+      console.error("Error loading products for banner target:", err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      setLoadingCategories(true);
+      const res = await getCategories({ status: "Active" });
+      if (res.success && Array.isArray(res.data)) {
+        setAvailableCategories(res.data);
+      }
+    } catch (err) {
+      console.error("Error loading categories for banner target:", err);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
 
   const fetchBanners = async () => {
     try {
@@ -199,6 +247,8 @@ export default function AdminBanners() {
       priority: banner.priority,
     });
     setEditingId(banner._id);
+    setIsChangingProduct(false);
+    setProductSearch("");
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -229,6 +279,8 @@ export default function AdminBanners() {
     setShowForm(false);
     setEditingId(null);
     setForm(defaultForm);
+    setIsChangingProduct(false);
+    setProductSearch("");
     setError("");
   };
 
@@ -535,12 +587,21 @@ export default function AdminBanners() {
                 </div>
 
                 {/* Target Type */}
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Link Target Type</label>
                   <select
                     value={form.targetType}
-                    onChange={(e) => setForm((f) => ({ ...f, targetType: e.target.value as any }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(e) => {
+                      const newType = e.target.value as any;
+                      setForm((f) => ({
+                        ...f,
+                        targetType: newType,
+                        targetId: newType === "NONE" ? "" : f.targetId,
+                      }));
+                      setIsChangingProduct(false);
+                      setProductSearch("");
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                   >
                     {TARGET_OPTIONS.map((t) => (
                       <option key={t.value} value={t.value}>
@@ -550,17 +611,244 @@ export default function AdminBanners() {
                   </select>
                 </div>
 
-                {/* Target ID */}
-                {form.targetType !== "NONE" && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {form.targetType === "URL" ? "Destination URL" : `${form.targetType} ID`}
+                {/* Target Selection: PRODUCT */}
+                {form.targetType === "PRODUCT" && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Target Product <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
+
+                    {form.targetId && !isChangingProduct ? (
+                      /* Selected Product Summary Card */
+                      (() => {
+                        const selectedProd = availableProducts.find((p) => p._id === form.targetId);
+                        return (
+                          <div className="flex items-center justify-between p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl shadow-2xs">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 rounded-lg bg-white border border-emerald-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                {selectedProd?.mainImage ? (
+                                  <img
+                                    src={selectedProd.mainImage}
+                                    alt={selectedProd.productName}
+                                    className="w-full h-full object-contain p-1"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="text-xl">📦</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-gray-900 truncate">
+                                  {selectedProd ? selectedProd.productName : `Product ID: ${form.targetId}`}
+                                </p>
+                                <div className="flex items-center gap-2.5 mt-0.5 text-xs text-gray-600">
+                                  {selectedProd?.price !== undefined && (
+                                    <span className="font-bold text-emerald-700">
+                                      ₹{selectedProd.price.toLocaleString("en-IN")}
+                                    </span>
+                                  )}
+                                  {selectedProd?.sku && (
+                                    <span className="text-gray-400">SKU: {selectedProd.sku}</span>
+                                  )}
+                                  {!selectedProd && (
+                                    <span className="text-amber-700 font-medium">
+                                      (Existing/Saved Product ID)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsChangingProduct(true);
+                                  setProductSearch("");
+                                }}
+                                className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors shadow-2xs"
+                              >
+                                Change
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setForm((f) => ({ ...f, targetId: "" }))}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      /* Searchable Product Dropdown */
+                      <div className="space-y-2 border border-gray-200 rounded-xl p-3 bg-gray-50/80">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Search active products by title or SKU..."
+                            className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            autoFocus={isChangingProduct}
+                          />
+                          <svg
+                            className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                          {productSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setProductSearch("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Search Results List */}
+                        <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 bg-white rounded-lg border border-gray-200 shadow-inner">
+                          {loadingProducts ? (
+                            <div className="py-6 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+                              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                              <span>Loading products...</span>
+                            </div>
+                          ) : (() => {
+                            const searchLower = productSearch.trim().toLowerCase();
+                            const filtered = availableProducts.filter((p) => {
+                              if (!searchLower) return true;
+                              return (
+                                p.productName.toLowerCase().includes(searchLower) ||
+                                (p.sku && p.sku.toLowerCase().includes(searchLower)) ||
+                                p._id.toLowerCase().includes(searchLower)
+                              );
+                            });
+
+                            if (filtered.length === 0) {
+                              return (
+                                <div className="py-6 text-center text-xs text-gray-400">
+                                  {productSearch
+                                    ? `No active products found matching "${productSearch}"`
+                                    : "No active products available"}
+                                </div>
+                              );
+                            }
+
+                            return filtered.slice(0, 30).map((prod) => (
+                              <button
+                                key={prod._id}
+                                type="button"
+                                onClick={() => {
+                                  setForm((f) => ({ ...f, targetId: prod._id }));
+                                  setIsChangingProduct(false);
+                                  setProductSearch("");
+                                }}
+                                className="w-full text-left p-2.5 hover:bg-indigo-50/70 transition-colors flex items-center justify-between gap-3 group"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-9 h-9 rounded bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                    {prod.mainImage ? (
+                                      <img
+                                        src={prod.mainImage}
+                                        alt={prod.productName}
+                                        className="w-full h-full object-contain p-0.5"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = "none";
+                                        }}
+                                      />
+                                    ) : (
+                                      <span className="text-sm">📦</span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-gray-900 truncate group-hover:text-indigo-600">
+                                      {prod.productName}
+                                    </p>
+                                    <p className="text-[11px] text-gray-500">
+                                      ₹{prod.price?.toLocaleString("en-IN")}
+                                      {prod.sku ? ` · SKU: ${prod.sku}` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  Select →
+                                </span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+
+                        {isChangingProduct && form.targetId && (
+                          <div className="pt-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setIsChangingProduct(false)}
+                              className="text-xs text-gray-500 hover:text-gray-700 underline"
+                            >
+                              Cancel & Keep Current Selection
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Target Selection: CATEGORY */}
+                {form.targetType === "CATEGORY" && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Target Category <span className="text-red-500">*</span>
+                    </label>
+                    <select
                       value={form.targetId}
                       onChange={(e) => setForm((f) => ({ ...f, targetId: e.target.value }))}
-                      placeholder={form.targetType === "URL" ? "https://..." : "MongoDB ID"}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    >
+                      <option value="">-- Select a Category --</option>
+                      {form.targetId &&
+                        !availableCategories.some(
+                          (c) => c._id === form.targetId || (c as any).slug === form.targetId
+                        ) && (
+                          <option value={form.targetId}>
+                            Current Target: {form.targetId}
+                          </option>
+                        )}
+                      {availableCategories.map((c) => (
+                        <option key={c._id} value={c._id}>
+                          {c.name} {c.isBestseller ? "★ (Bestseller)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Clicking the banner CTA will navigate customers directly to this category page.
+                    </p>
+                  </div>
+                )}
+
+                {/* Target Selection: URL */}
+                {form.targetType === "URL" && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Destination URL <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={form.targetId}
+                      onChange={(e) => setForm((f) => ({ ...f, targetId: e.target.value }))}
+                      placeholder="https://example.com/promotions"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
@@ -752,6 +1040,17 @@ export default function AdminBanners() {
                             {banner.ctaText && (
                               <span className="inline-block mt-1 text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                                 CTA: {banner.ctaText}
+                              </span>
+                            )}
+                            {banner.targetType !== "NONE" && (
+                              <span className="inline-block ml-1.5 mt-1 text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                                {banner.targetType === "PRODUCT"
+                                  ? `📦 ${availableProducts.find((p) => p._id === banner.targetId)?.productName || banner.targetId || "Product Link"}`
+                                  : banner.targetType === "CATEGORY"
+                                  ? `🏷️ ${availableCategories.find((c) => c._id === banner.targetId || (c as any).slug === banner.targetId)?.name || banner.targetId || "Category Link"}`
+                                  : banner.targetType === "URL"
+                                  ? `🔗 ${banner.targetId}`
+                                  : banner.targetType}
                               </span>
                             )}
                           </div>

@@ -194,6 +194,7 @@ export const deleteBanner = asyncHandler(async (req: Request, res: Response) => 
 // ---------------------------------------------------------------------------
 export const getActiveBanners = asyncHandler(async (req: Request, res: Response) => {
   const { section = 'ALL' } = req.query as Record<string, string>;
+  const normalizedSection = String(section || 'ALL').toUpperCase();
 
   const now = new Date();
   const scheduleFilter = [
@@ -201,29 +202,24 @@ export const getActiveBanners = asyncHandler(async (req: Request, res: Response)
     { $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gte: now } }] },
   ];
 
-  // 1. Query for section-specific active banners first
-  let activeBanners = await Banner.find({
-    commerceSection: section,
+  // For section === 'ALL', return all active banners across modes
+  // For a specific mode (QUICK_COMMERCE, ECOMMERCE, WHOLESALE), return banners assigned to that mode + ALL
+  const sectionFilter =
+    normalizedSection === 'ALL'
+      ? {}
+      : { commerceSection: { $in: [normalizedSection, 'ALL'] } };
+
+  const activeBanners = await Banner.find({
+    ...sectionFilter,
     isActive: true,
     $and: scheduleFilter,
   })
     .sort({ priority: -1, createdAt: -1 })
     .lean();
 
-  // 2. For non-WHOLESALE sections, if no section-specific banners found, check for 'ALL' banners
-  if (activeBanners.length === 0 && section !== 'ALL' && section !== 'WHOLESALE') {
-    activeBanners = await Banner.find({
-      commerceSection: 'ALL',
-      isActive: true,
-      $and: scheduleFilter,
-    })
-      .sort({ priority: -1, createdAt: -1 })
-      .lean();
-  }
-
-  // 3. If no active banners found, return the section-appropriate deterministic fallback
+  // If no active banners found, return the section-appropriate deterministic fallback
   if (activeBanners.length === 0) {
-    const fallback = SECTION_FALLBACKS[section] || SECTION_FALLBACKS['ALL'];
+    const fallback = SECTION_FALLBACKS[normalizedSection] || SECTION_FALLBACKS['ALL'];
     return res.json({ success: true, data: [fallback], isFallback: true });
   }
 

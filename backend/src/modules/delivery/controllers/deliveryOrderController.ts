@@ -11,6 +11,7 @@ import {
 import { processOrderStatusTransition } from "../../../services/orderService";
 import { getDeliveryPendingOrderAlerts } from "../../../services/orderAlertService";
 import { formatDeliveryAddress } from "../../../utils/addressUtils";
+import { getDeliveryPartnerQcContext } from "../utils/deliveryOrderScopingHelper";
 
 /**
  * Get pending delivery order alerts (survives page refresh).
@@ -39,12 +40,26 @@ export const getPendingOrderAlerts = asyncHandler(
  */
 const mapOrderItems = (items: any[]) => {
   if (!items || !Array.isArray(items)) return [];
-  return items.map((item: any) => ({
-    name: item.productName || "Unknown Item",
-    quantity: item.quantity || 0,
-    price: item.total || 0, // Using total price for the line item
-    image: item.productImage,
-  }));
+  return items.map((item: any) => {
+    const qty = item.quantity || 0;
+    const itemTotal = typeof item.total === "number" && !isNaN(item.total) ? item.total : 0;
+    const unitPrice = item.unitPrice != null
+      ? item.unitPrice
+      : (qty > 0 && itemTotal > 0 ? itemTotal / qty : itemTotal);
+
+    return {
+      id: item._id,
+      name: item.productName || "Unknown Item",
+      quantity: qty,
+      price: unitPrice,
+      unitPrice: unitPrice,
+      total: itemTotal,
+      image: item.productImage,
+      variation: item.variation,
+      variantTitle: item.variantTitle,
+      sku: item.sku,
+    };
+  });
 };
 
 /**
@@ -58,13 +73,19 @@ export const getAllOrdersHistory = asyncHandler(
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
 
-    const orders = await Order.find({ deliveryBoy: deliveryId })
+    const orders = await Order.find({
+      deliveryBoy: deliveryId,
+      orderType: { $ne: "ECOMMERCE" },
+    })
       .populate("items") // Populate OrderItems
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await Order.countDocuments({ deliveryBoy: deliveryId });
+    const total = await Order.countDocuments({
+      deliveryBoy: deliveryId,
+      orderType: { $ne: "ECOMMERCE" },
+    });
 
     // Batched Commission Fetch for Efficiency
     const { default: Commission } = await import("../../../models/Commission");
@@ -79,27 +100,37 @@ export const getAllOrdersHistory = asyncHandler(
       commissionMap.set(c.order.toString(), c.commissionAmount);
     });
 
-    // Format orders for frontend
-    const formattedOrders = orders.map((order) => ({
-      id: order._id,
-      orderId: order.orderNumber,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      status: order.status,
+    // Format orders for frontend - only showing assigned QC items and QC subtotal
+    const formattedOrders = orders.reduce((acc: any[], order) => {
+      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+      if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+        return acc;
+      }
 
-      address: formatDeliveryAddress(order.deliveryAddress).formatted,
-      deliveryAddress: order.deliveryAddress,
-      totalAmount: order.total,
-      deliveryEarning: commissionMap.get(order._id.toString()) || 0, // Add Earning
-      items: mapOrderItems(order.items),
-      createdAt: order.createdAt,
-      estimatedDeliveryTime: order.estimatedDeliveryDate
-        ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        : "N/A",
-    }));
+      acc.push({
+        id: order._id,
+        orderId: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: qcCtx.displayStatus,
+
+        address: formatDeliveryAddress(order.deliveryAddress).formatted,
+        deliveryAddress: order.deliveryAddress,
+        totalAmount: qcCtx.assignedQcSubtotal,
+        subtotal: qcCtx.assignedQcSubtotal,
+        assignedSubtotal: qcCtx.assignedQcSubtotal,
+        deliveryEarning: commissionMap.get(order._id.toString()) || 0, // Add Earning
+        items: mapOrderItems(qcCtx.assignedQcItems),
+        createdAt: order.createdAt,
+        estimatedDeliveryTime: order.estimatedDeliveryDate
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          : "N/A",
+      });
+      return acc;
+    }, []);
 
     res.status(200).json({
       success: true,
@@ -128,6 +159,7 @@ export const getTodayOrders = asyncHandler(
 
     const orders = await Order.find({
       deliveryBoy: deliveryId,
+      orderType: { $ne: "ECOMMERCE" },
       $or: [
         { createdAt: { $gte: todayStart, $lte: todayEnd } }, // Created today
         { updatedAt: { $gte: todayStart, $lte: todayEnd } }, // OR Updated today
@@ -136,27 +168,37 @@ export const getTodayOrders = asyncHandler(
       .populate("items")
       .sort({ updatedAt: -1 });
 
-    const formattedOrders = orders.map((order) => ({
-      id: order._id,
-      orderId: order.orderNumber,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      status: order.status,
+    const formattedOrders = orders.reduce((acc: any[], order) => {
+      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+      if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+        return acc;
+      }
 
-      address: formatDeliveryAddress(order.deliveryAddress).formatted,
-      deliveryAddress: order.deliveryAddress,
-      items: mapOrderItems(order.items), // Real items
-      totalAmount: order.total,
-      estimatedDeliveryTime: order.estimatedDeliveryDate
-        ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        : "N/A",
-      createdAt: order.createdAt,
-      // Distance calculation to be implemented. sending null/undefined for now to avoid fake data
-      distance: null,
-    }));
+      acc.push({
+        id: order._id,
+        orderId: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: qcCtx.displayStatus,
+
+        address: formatDeliveryAddress(order.deliveryAddress).formatted,
+        deliveryAddress: order.deliveryAddress,
+        items: mapOrderItems(qcCtx.assignedQcItems), // Real assigned QC items only
+        totalAmount: qcCtx.assignedQcSubtotal,
+        subtotal: qcCtx.assignedQcSubtotal,
+        assignedSubtotal: qcCtx.assignedQcSubtotal,
+        estimatedDeliveryTime: order.estimatedDeliveryDate
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          : "N/A",
+        createdAt: order.createdAt,
+        // Distance calculation to be implemented. sending null/undefined for now to avoid fake data
+        distance: null,
+      });
+      return acc;
+    }, []);
 
     return res.status(200).json({
       success: true,
@@ -175,6 +217,7 @@ export const getPendingOrders = asyncHandler(
     // Pending statuses: Ready for pickup, Out for delivery, Picked Up, Assigned, In Transit
     const orders = await Order.find({
       deliveryBoy: deliveryId,
+      orderType: { $ne: "ECOMMERCE" },
       status: {
         $in: [
           "Ready for pickup",
@@ -188,24 +231,34 @@ export const getPendingOrders = asyncHandler(
       .populate("items")
       .sort({ createdAt: -1 });
 
-    const formattedOrders = orders.map((order) => ({
-      id: order._id,
-      orderId: order.orderNumber,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      status: order.status,
-      address: formatDeliveryAddress(order.deliveryAddress).formatted,
-      items: mapOrderItems(order.items), // Real items
-      totalAmount: order.total,
-      estimatedDeliveryTime: order.estimatedDeliveryDate
-        ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        : "N/A",
-      createdAt: order.createdAt,
-      distance: null,
-    }));
+    const formattedOrders = orders.reduce((acc: any[], order) => {
+      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+      if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+        return acc;
+      }
+
+      acc.push({
+        id: order._id,
+        orderId: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: qcCtx.displayStatus,
+        address: formatDeliveryAddress(order.deliveryAddress).formatted,
+        items: mapOrderItems(qcCtx.assignedQcItems), // Real assigned QC items only
+        totalAmount: qcCtx.assignedQcSubtotal,
+        subtotal: qcCtx.assignedQcSubtotal,
+        assignedSubtotal: qcCtx.assignedQcSubtotal,
+        estimatedDeliveryTime: order.estimatedDeliveryDate
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          : "N/A",
+        createdAt: order.createdAt,
+        distance: null,
+      });
+      return acc;
+    }, []);
 
     return res.status(200).json({
       success: true,
@@ -220,6 +273,11 @@ export const getPendingOrders = asyncHandler(
 export const getOrderDetails = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
+    const deliveryId = req.user?.userId;
+
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
     const order = await Order.findById(id).populate("items");
 
@@ -227,6 +285,45 @@ export const getOrderDetails = asyncHandler(
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
+    }
+
+    // Check if delivery boy has an active pending offer if not directly assigned
+    let hasActiveOffer = false;
+    const isDirectlyAssigned =
+      order.deliveryBoy &&
+      order.deliveryBoy.toString() === deliveryId.toString();
+
+    if (!isDirectlyAssigned) {
+      const { default: DeliveryOrderOffer } = await import(
+        "../../../models/DeliveryOrderOffer"
+      );
+      const activeOffer = await DeliveryOrderOffer.findOne({
+        order: id,
+        deliveryBoy: deliveryId,
+        status: "pending",
+      });
+      if (activeOffer) {
+        hasActiveOffer = true;
+      }
+    }
+
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId, hasActiveOffer);
+
+    // If order is purely Ecommerce courier shipping, local delivery partner cannot access it
+    if (qcCtx.isEcommerceOnly) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "This order is fulfilled via courier shipping and has no local delivery items assigned to you.",
+      });
+    }
+
+    // If not authorized or has no assigned QC items, deny access under existing authorization conventions
+    if (!qcCtx.isAuthorized || !qcCtx.hasQcItems) {
+      return res.status(403).json({
+        success: false,
+        message: "This order is not assigned to you",
+      });
     }
 
     // Fetch Delivery Earning for this order
@@ -243,13 +340,15 @@ export const getOrderDetails = asyncHandler(
       customerPhone: order.customerPhone,
       address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
-      status: order.status,
+      status: qcCtx.displayStatus,
       deliveryBoy: order.deliveryBoy,
       deliveryBoyStatus: order.deliveryBoyStatus,
       deliveryAssignmentStatus: (order as any).deliveryAssignmentStatus,
-      sellerPickups: (order as any).sellerPickups || [],
-      items: mapOrderItems(order.items), // Real populated items
-      totalAmount: order.total,
+      sellerPickups: qcCtx.relevantSellerPickups,
+      items: mapOrderItems(qcCtx.assignedQcItems), // ONLY assigned QC items
+      totalAmount: qcCtx.assignedQcSubtotal, // QC-only subtotal!
+      subtotal: qcCtx.assignedQcSubtotal,
+      assignedSubtotal: qcCtx.assignedQcSubtotal,
       createdAt: order.createdAt,
       distance: null,
       deliveryEarning: commission ? commission.commissionAmount : 0,
@@ -271,14 +370,15 @@ export const updateOrderStatus = asyncHandler(
     const { status } = req.body;
     const deliveryId = req.user?.userId;
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() != deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+    if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
@@ -287,15 +387,40 @@ export const updateOrderStatus = asyncHandler(
     // Save previous status before updating
     const previousStatus = order.status;
 
-    // Status transition logic
-    if (status) order.status = status;
+    // Scope status transition to QC fulfillment group
+    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+      order.fulfillmentGroups.forEach((g: any) => {
+        if (g.fulfillmentType === "LOCAL_DELIVERY") {
+          if (status === "Picked up") g.status = "Shipped";
+          else if (status === "Out for Delivery") g.status = "OutForDelivery";
+          else if (status === "Delivered") g.status = "Delivered";
+          else if (status === "Cancelled") g.status = "Cancelled";
+        }
+      });
+    }
 
+    // Status transition logic
     if (status === "Picked up" || status === "Out for Delivery") {
       order.deliveryBoyStatus = "Picked Up";
+      order.status = status;
     } else if (status === "Delivered") {
       order.deliveryBoyStatus = "Delivered";
-      order.deliveredAt = new Date();
-      order.paymentStatus = "Paid"; // Assume paid on delivery (or already paid)
+
+      // In a mixed order, set order.status to Delivered only if all groups are delivered
+      if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+        const allGroupsDelivered = order.fulfillmentGroups.every(
+          (g: any) => g.status === "Delivered"
+        );
+        if (allGroupsDelivered || order.orderType !== "MIXED") {
+          order.status = "Delivered";
+          order.deliveredAt = new Date();
+          order.paymentStatus = "Paid"; // Assume paid on delivery (or already paid)
+        }
+      } else {
+        order.status = "Delivered";
+        order.deliveredAt = new Date();
+        order.paymentStatus = "Paid"; // Assume paid on delivery (or already paid)
+      }
 
       // CASH COLLECTION AND COMMISSION LOGIC
       if (order.paymentMethod === "COD") {
@@ -324,6 +449,8 @@ export const updateOrderStatus = asyncHandler(
           // Continue even if commission distribution fails
         }
       }
+    } else if (status) {
+      order.status = status;
     }
 
     await order.save();
@@ -393,23 +520,34 @@ export const getReturnOrders = asyncHandler(
 
     const orders = await Order.find({
       deliveryBoy: deliveryId,
+      orderType: { $ne: "ECOMMERCE" },
       status: { $in: ["Returned", "Cancelled", "Rejected"] },
     })
       .populate("items")
       .sort({ updatedAt: -1 });
 
-    const formattedOrders = orders.map((order) => ({
-      id: order._id,
-      orderId: order.orderNumber,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      status: order.status,
-      address: formatDeliveryAddress(order.deliveryAddress).formatted,
-      items: mapOrderItems(order.items),
-      totalAmount: order.total,
-      createdAt: order.createdAt,
-      distance: null,
-    }));
+    const formattedOrders = orders.reduce((acc: any[], order) => {
+      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+      if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+        return acc;
+      }
+
+      acc.push({
+        id: order._id,
+        orderId: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: qcCtx.displayStatus,
+        address: formatDeliveryAddress(order.deliveryAddress).formatted,
+        items: mapOrderItems(qcCtx.assignedQcItems),
+        totalAmount: qcCtx.assignedQcSubtotal,
+        subtotal: qcCtx.assignedQcSubtotal,
+        assignedSubtotal: qcCtx.assignedQcSubtotal,
+        createdAt: order.createdAt,
+        distance: null,
+      });
+      return acc;
+    }, []);
 
     return res.status(200).json({
       success: true,
@@ -427,25 +565,46 @@ export const getSellerLocationsForOrder = asyncHandler(
     const { id } = req.params;
     const deliveryId = req.user?.userId;
 
-    // Verify order exists and is assigned to this delivery boy
-    const order = await Order.findById(id);
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    // Check active offer if not directly assigned
+    let hasActiveOffer = false;
+    const isDirectlyAssigned =
+      order.deliveryBoy &&
+      order.deliveryBoy.toString() === deliveryId.toString();
+
+    if (!isDirectlyAssigned) {
+      const { default: DeliveryOrderOffer } = await import(
+        "../../../models/DeliveryOrderOffer"
+      );
+      const activeOffer = await DeliveryOrderOffer.findOne({
+        order: id,
+        deliveryBoy: deliveryId,
+        status: "pending",
+      });
+      if (activeOffer) {
+        hasActiveOffer = true;
+      }
+    }
+
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId, hasActiveOffer);
+    if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
     }
 
-    // Get all unique seller IDs from order items
-    const orderItems = await OrderItem.find({ order: id });
-    const sellerIds = [
-      ...new Set(orderItems.map((item) => item.seller.toString())),
-    ];
+    // Get unique seller IDs from assigned QC items only
+    const sellerIds = qcCtx.qcSellerIds;
 
     // Get seller details including locations
     const sellers = await Seller.find({ _id: { $in: sellerIds } }).select(
@@ -481,14 +640,15 @@ export const sendDeliveryOtp = asyncHandler(
     const { latitude, longitude } = req.body || {};
     const deliveryId = req.user?.userId;
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+    if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
@@ -582,14 +742,15 @@ export const verifyDeliveryOtpController = asyncHandler(
         .json({ success: false, message: "OTP is required" });
     }
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
+    if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
@@ -601,14 +762,37 @@ export const verifyDeliveryOtpController = asyncHandler(
       // Note: verifyDeliveryOtp is from service, not this controller
 
       // Reload order to get updated status
-      const updatedOrder = await Order.findById(id);
+      const updatedOrder = await Order.findById(id).populate("items");
 
-      // Process order status transition for financial transactions
-      if (
-        updatedOrder &&
-        updatedOrder.status === "Delivered" &&
-        previousStatus !== "Delivered"
-      ) {
+      if (updatedOrder) {
+        // Update QC fulfillment group status to Delivered
+        if (updatedOrder.fulfillmentGroups && updatedOrder.fulfillmentGroups.length > 0) {
+          updatedOrder.fulfillmentGroups.forEach((g: any) => {
+            if (g.fulfillmentType === "LOCAL_DELIVERY") {
+              g.status = "Delivered";
+            }
+          });
+
+          const allGroupsDelivered = updatedOrder.fulfillmentGroups.every(
+            (g: any) => g.status === "Delivered"
+          );
+
+          // In a MIXED order, if courier groups are NOT delivered yet, parent order is not fully Delivered
+          if (!allGroupsDelivered && updatedOrder.orderType === "MIXED") {
+            updatedOrder.status = previousStatus === "Delivered" ? "Processed" : previousStatus;
+          } else {
+            updatedOrder.status = "Delivered";
+            updatedOrder.deliveredAt = new Date();
+          }
+        } else {
+          updatedOrder.status = "Delivered";
+          updatedOrder.deliveredAt = new Date();
+        }
+
+        updatedOrder.deliveryBoyStatus = "Delivered";
+        await updatedOrder.save();
+
+        // Process order status transition for financial transactions
         try {
           await processOrderStatusTransition(id, "Delivered", previousStatus);
         } catch (transitionError: any) {
@@ -620,15 +804,8 @@ export const verifyDeliveryOtpController = asyncHandler(
         }
       }
 
-      // Update delivery boy balance and cash collected (if COD)
-      // NOTE: processOrderStatusTransition (called above at line 608) already invokes
-      // createCommissions → distributeCommissions / processCODOrderDelivery internally.
-      // The explicit calls below were removed to prevent the double-invocation.
-      // The idempotency checks inside commissionService prevent actual double-payment,
-      // but eliminating the redundant call removes unnecessary DB load and race risk.
-
       // Emit socket events for real-time status update
-      if (updatedOrder && updatedOrder.status === "Delivered") {
+      if (updatedOrder && (updatedOrder.status === "Delivered" || updatedOrder.deliveryBoyStatus === "Delivered")) {
         const io = (req.app as any).get("io");
         if (io && previousStatus !== "Delivered") {
           // Emit order-delivered event to customer
@@ -674,6 +851,10 @@ export const checkSellerProximity = asyncHandler(
     const { sellerId, latitude, longitude } = req.body;
     const deliveryId = req.user?.userId;
 
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     if (!sellerId || latitude === undefined || longitude === undefined) {
       return res
         .status(400)
@@ -683,17 +864,32 @@ export const checkSellerProximity = asyncHandler(
         });
     }
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId);
+    if (!qcCtx.isAuthorized) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
+    }
+
+    if (!qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+      return res.status(403).json({
+        success: false,
+        message: "This order has no Quick Commerce items assigned to you",
+      });
+    }
+
+    if (!qcCtx.qcSellerIds.includes(sellerId.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "Seller does not belong to your assigned Quick Commerce delivery",
+      });
     }
 
     // Get seller location
@@ -739,6 +935,10 @@ export const confirmSellerPickup = asyncHandler(
     const { sellerId, latitude, longitude } = req.body;
     const deliveryId = req.user?.userId;
 
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     if (!sellerId || latitude === undefined || longitude === undefined) {
       return res
         .status(400)
@@ -755,10 +955,26 @@ export const confirmSellerPickup = asyncHandler(
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId);
+    if (!qcCtx.isAuthorized) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
+    }
+
+    if (!qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+      return res.status(403).json({
+        success: false,
+        message: "This order has no Quick Commerce items assigned to you",
+      });
+    }
+
+    // Ensure the seller belongs to the assigned QC delivery
+    if (!qcCtx.qcSellerIds.includes(sellerId.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "Seller does not belong to your assigned Quick Commerce delivery",
+      });
     }
 
     // Verify proximity to seller
@@ -799,12 +1015,6 @@ export const confirmSellerPickup = asyncHandler(
       });
     }
 
-    // Get all unique seller IDs from order items
-    const orderItems = await OrderItem.find({ order: id });
-    const allSellerIds = [
-      ...new Set(orderItems.map((item) => item.seller.toString())),
-    ];
-
     // Initialize sellerPickups array if it doesn't exist
     if (!order.sellerPickups) {
       order.sellerPickups = [];
@@ -829,16 +1039,30 @@ export const confirmSellerPickup = asyncHandler(
       order.sellerPickups.push(pickupData as any);
     }
 
-    // Check if all sellers have been picked up
-    const pickedUpSellerIds = order.sellerPickups
-      .filter((pickup: any) => pickup.pickedUpAt)
+    // Calculate pickup completion using ONLY the relevant assigned QC sellers!
+    const pickedUpQcSellerIds = order.sellerPickups
+      .filter(
+        (pickup: any) =>
+          pickup.pickedUpAt &&
+          qcCtx.qcSellerIds.includes(pickup.seller.toString()),
+      )
       .map((pickup: any) => pickup.seller.toString());
 
-    const allPickedUp = allSellerIds.every((sellerId) =>
-      pickedUpSellerIds.includes(sellerId),
+    const allPickedUp = qcCtx.qcSellerIds.every((sId) =>
+      pickedUpQcSellerIds.includes(sId),
     );
 
-    // If all sellers picked up, automatically change status to "Out for Delivery"
+    // Update assigned QC fulfillment group if present
+    if (qcCtx.assignedFulfillmentGroup) {
+      const fg = (order.fulfillmentGroups as any[])?.find(
+        (g) => g.groupId === qcCtx.assignedFulfillmentGroup?.groupId,
+      );
+      if (fg) {
+        fg.status = allPickedUp ? "OutForDelivery" : "ReadyForPickup";
+      }
+    }
+
+    // If all QC sellers picked up, automatically change status to "Out for Delivery"
     if (
       allPickedUp &&
       order.status !== "Out for Delivery" &&
@@ -871,16 +1095,29 @@ export const confirmSellerPickup = asyncHandler(
       }
     }
 
+    // Return sanitized order representation for response
+    const orderObj = order.toObject ? order.toObject() : { ...order };
+    const safeOrder = {
+      ...orderObj,
+      items: mapOrderItems(qcCtx.assignedQcItems),
+      assignedSubtotal: qcCtx.assignedQcSubtotal,
+      subtotal: qcCtx.assignedQcSubtotal,
+      fulfillmentGroups: qcCtx.assignedFulfillmentGroup
+        ? [qcCtx.assignedFulfillmentGroup]
+        : [],
+      shipmentDetails: undefined,
+    };
+
     return res.status(200).json({
       success: true,
       message: allPickedUp
         ? "All sellers picked up! Order status changed to Out for Delivery."
         : `Pickup confirmed from ${seller.storeName}`,
       data: {
-        order,
+        order: safeOrder,
         allPickedUp,
-        pickedUpSellers: pickedUpSellerIds.length,
-        totalSellers: allSellerIds.length,
+        pickedUpSellers: pickedUpQcSellerIds.length,
+        totalSellers: qcCtx.qcSellerIds.length,
       },
     });
   },
@@ -896,6 +1133,10 @@ export const checkCustomerProximity = asyncHandler(
     const { latitude, longitude } = req.body;
     const deliveryId = req.user?.userId;
 
+    if (!deliveryId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     const latNum = Number(latitude);
     const lngNum = Number(longitude);
 
@@ -908,17 +1149,25 @@ export const checkCustomerProximity = asyncHandler(
         });
     }
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("items");
     if (!order) {
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.deliveryBoy?.toString() !== deliveryId) {
+    const qcCtx = getDeliveryPartnerQcContext(order, deliveryId);
+    if (!qcCtx.isAuthorized) {
       return res
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
+    }
+
+    if (!qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+      return res.status(403).json({
+        success: false,
+        message: "This order has no Quick Commerce items assigned to you",
+      });
     }
 
     const testModeActive = process.env.NODE_ENV !== "production" && process.env.DELIVERY_TEST_MODE === "true";

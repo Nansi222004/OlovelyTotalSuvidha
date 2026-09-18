@@ -328,7 +328,7 @@ export default function Home() {
         )}
 
         {/* Dynamic Commerce Mode Swiper — Communicates Quick Commerce, Ecommerce & Wholesale */}
-        {activeTab === "all" && <CommerceModeSwiper />}
+        {activeTab === "all" && <CommerceModeSwiper channelFilter={channelFilter} />}
 
         {/* Dedicated Commerce Mode Product Rows */}
         {activeTab === "all" && (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { getOrderDetails, updateOrderStatus, getSellerLocationsForOrder, sendDeliveryOtp, verifyDeliveryOtp, updateDeliveryLocation, checkSellerProximity, confirmSellerPickup, checkCustomerProximity } from '../../../services/api/delivery/deliveryService';
+import { getOrderDetails, updateOrderStatus, getSellerLocationsForOrder, sendDeliveryOtp, verifyDeliveryOtp, updateDeliveryLocation, checkSellerProximity, confirmSellerPickup, checkCustomerProximity, DeliveryOrderDetails } from '../../../services/api/delivery/deliveryService';
 import deliveryIcon from '@assets/deliveryboy/deliveryIcon.png';
 import GoogleMapsTracking from '../../../components/GoogleMapsTracking';
 import { useToast } from '../../../context/ToastContext';
@@ -101,7 +101,7 @@ export default function DeliveryOrderDetail() {
     const { showToast } = useToast();
     const { t } = useLanguage();
     const { user } = useAuth();
-    const [order, setOrder] = useState<any | null>(null);
+    const [order, setOrder] = useState<DeliveryOrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [acceptingOrder, setAcceptingOrder] = useState(false);
@@ -202,6 +202,24 @@ export default function DeliveryOrderDetail() {
         };
     }, []);
 
+    // Filter to Quick Commerce items assigned to this delivery
+    const qcItems = Array.isArray(order?.items)
+        ? order.items.filter((item: any) => !item.fulfillmentType || item.fulfillmentType === 'LOCAL_DELIVERY')
+        : [];
+    const hasQcItems = qcItems.length > 0;
+
+    // Scoped QC subtotal: prefer backend-provided assignedSubtotal, then subtotal, then calculate from scoped QC items
+    const displayedSubtotal = typeof order?.assignedSubtotal === 'number'
+        ? order.assignedSubtotal
+        : typeof order?.subtotal === 'number'
+            ? order.subtotal
+            : qcItems.reduce((sum: number, item: any) => {
+                const lineTotal = typeof item.total === 'number'
+                    ? item.total
+                    : ((Number(item.unitPrice ?? item.price ?? 0)) * (Number(item.quantity ?? 1)));
+                return sum + lineTotal;
+            }, 0);
+
     const isAssignedToMe = Boolean(
         order &&
         order.deliveryBoy &&
@@ -212,6 +230,7 @@ export default function DeliveryOrderDetail() {
 
     const isOfferPending = Boolean(
         order &&
+        hasQcItems &&
         !isAssignedToMe &&
         order.status !== 'Delivered' &&
         order.status !== 'Cancelled' &&
@@ -649,13 +668,13 @@ export default function DeliveryOrderDetail() {
 
     const nextStatus = getNextStatus();
     const isCancelledOrReturned = order.status === 'Cancelled' || order.status === 'Returned';
-    const isMapVisible = !isCancelledOrReturned && (order.status === 'Out for Delivery' || order.status === 'Picked up' || (sellerLocations.length > 0 && order.status !== 'Delivered'));
-    const showSellerLocations = !isCancelledOrReturned && sellerLocations.length > 0 && order.status !== 'Picked up' && order.status !== 'Out for Delivery' && order.status !== 'Delivered';
-    const showCustomerLocation = order.status === 'Picked up' || order.status === 'Out for Delivery';
+    const isMapVisible = hasQcItems && !isCancelledOrReturned && (order.status === 'Out for Delivery' || order.status === 'Picked up' || (sellerLocations.length > 0 && order.status !== 'Delivered'));
+    const showSellerLocations = hasQcItems && !isCancelledOrReturned && sellerLocations.length > 0 && order.status !== 'Picked up' && order.status !== 'Out for Delivery' && order.status !== 'Delivered';
+    const showCustomerLocation = hasQcItems && (order.status === 'Picked up' || order.status === 'Out for Delivery');
 
     // Check if we have valid customer coordinates
-    const customerLat = order.deliveryAddress?.latitude || order.address?.latitude;
-    const customerLng = order.deliveryAddress?.longitude || order.address?.longitude;
+    const customerLat = order.deliveryAddress?.latitude || (order.address as any)?.latitude;
+    const customerLng = order.deliveryAddress?.longitude || (order.address as any)?.longitude;
     const hasValidCustomerLocation = !!(customerLat && customerLng && customerLat !== 0 && customerLng !== 0);
 
     return (
@@ -682,6 +701,27 @@ export default function DeliveryOrderDetail() {
                     </span>
                 </div>
             </div>
+
+            {/* Empty state: Order has no QC items assigned to this delivery partner */}
+            {order && !hasQcItems && (
+                <div className="mx-4 mt-6 p-6 bg-amber-50 border border-amber-200 rounded-2xl text-center shadow-xs">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3 text-amber-700">
+                        <Icons.AlertTriangle size={24} />
+                    </div>
+                    <h4 className="font-bold text-amber-900 text-base mb-1">
+                        No Quick Commerce items assigned to you for this delivery.
+                    </h4>
+                    <p className="text-xs text-amber-700 max-w-sm mx-auto">
+                        This order contains no local Quick Commerce items assigned to your account.
+                    </p>
+                    <button
+                        onClick={() => navigate('/delivery')}
+                        className="mt-4 px-4 py-2 bg-neutral-800 hover:bg-neutral-900 text-white text-xs font-semibold rounded-lg transition-colors"
+                    >
+                        Back to Orders
+                    </button>
+                </div>
+            )}
 
             {/* Unassigned / Pending Order Acceptance Prompt */}
             {isOfferPending && (
@@ -750,8 +790,8 @@ export default function DeliveryOrderDetail() {
                             }))
                     }
                     customerLocation={{
-                        lat: order.deliveryAddress?.latitude || order.address?.latitude || 0,
-                        lng: order.deliveryAddress?.longitude || order.address?.longitude || 0
+                        lat: order.deliveryAddress?.latitude || (order.address as any)?.latitude || 0,
+                        lng: order.deliveryAddress?.longitude || (order.address as any)?.longitude || 0
                     }}
                     deliveryLocation={deliveryBoyLocation || undefined}
                     isTracking={!!deliveryBoyLocation}
@@ -1010,24 +1050,41 @@ export default function DeliveryOrderDetail() {
                             {t("delivery.orderSummary", "Order Summary")}
                         </h3>
                         <span className="text-xs font-medium text-neutral-500 px-2 py-1 bg-neutral-100 rounded-md">
-                            {order.items?.length || 0} {order.items?.length === 1 ? t("delivery.item", "item") : t("delivery.items", "items")}
+                            {qcItems.length} {qcItems.length === 1 ? t("delivery.item", "item") : t("delivery.items", "items")}
                         </span>
                     </div>
 
-                    <div className="space-y-3">
-                        {order.items?.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center py-2 border-b border-neutral-50 last:border-0">
-                                <div className="flex items-center gap-3">
-                                    <span className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-xs font-bold text-neutral-600">{item.quantity}x</span>
-                                    <span className="text-sm text-neutral-700 font-medium">{item.name}</span>
-                                </div>
-                                <span className="text-sm font-semibold text-neutral-900">₹{item.price * item.quantity}</span>
-                            </div>
-                        ))}
-                    </div>
+                    {qcItems.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-neutral-500 bg-neutral-50 rounded-xl">
+                            No Quick Commerce items assigned to you for this delivery.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {qcItems.map((item: any, idx: number) => {
+                                const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
+                                const quantity = Number(item.quantity ?? 1);
+                                const lineTotal = typeof item.total === 'number' ? item.total : unitPrice * quantity;
+
+                                return (
+                                    <div key={idx} className="flex justify-between items-center py-2 border-b border-neutral-50 last:border-0">
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-xs font-bold text-neutral-600">{quantity}x</span>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm text-neutral-700 font-medium">{item.name}</span>
+                                                {item.unitPrice && (
+                                                    <span className="text-[11px] text-neutral-400">₹{unitPrice} each</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span className="text-sm font-semibold text-neutral-900">₹{lineTotal.toFixed(2)}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                     <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 flex justify-between items-center">
-                        <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Total Amount")}</span>
-                        <span className="text-xl font-bold text-neutral-900">₹{order.totalAmount}</span>
+                        <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Item Subtotal (QC)")}</span>
+                        <span className="text-xl font-bold text-neutral-900">₹{displayedSubtotal.toFixed(2)}</span>
                     </div>
                 </div>
 
@@ -1049,8 +1106,8 @@ export default function DeliveryOrderDetail() {
 
             </div>
 
-            {/* Customer Delivery OTP Section (only when order is Out for Delivery) */}
-            {order.status === 'Out for Delivery' && (
+            {/* Customer Delivery OTP Section (only when order is Out for Delivery and has QC items) */}
+            {order.status === 'Out for Delivery' && hasQcItems && (
                 <div className="fixed bottom-24 left-6 right-6 z-30">
                     <div className="bg-white rounded-2xl p-4 shadow-2xl border border-neutral-200">
                         {isTestMode && (
@@ -1123,7 +1180,7 @@ export default function DeliveryOrderDetail() {
 
             {/* Floating Glassmorphic Action Button Dock - Order Taken button or status update */}
             {/* Hide this button when order is "Out for Delivery" because OTP section is shown instead */}
-            {nextStatus && order.status !== 'Picked up' && order.status !== 'Out for Delivery' && !showOtpInput && (
+            {nextStatus && hasQcItems && order.status !== 'Picked up' && order.status !== 'Out for Delivery' && !showOtpInput && (
                 <div className="fixed bottom-24 left-6 right-6 z-30">
                     <button
                         onClick={() => handleStatusChange(nextStatus)}
