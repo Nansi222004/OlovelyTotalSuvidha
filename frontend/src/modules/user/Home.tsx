@@ -378,54 +378,6 @@ export default function Home() {
           </>
         )}
 
-        {/* Dedicated Commerce Mode Product Rows */}
-        {activeTab === "all" && (
-          <>
-            {/* Section A: Quick Commerce */}
-            {(channelFilter === 'ALL' || channelFilter === 'QUICK_COMMERCE') && (
-              <ChannelProductRow
-                id="section-quick-commerce"
-                title="Quick Commerce"
-                subtitle="Everyday essentials, delivered locally"
-                viewAllLink="/shop/quick-commerce"
-                products={qcProducts}
-                loading={channelProductsLoading}
-                icon="⚡"
-                themeColor="emerald"
-              />
-            )}
-
-            {/* Section B: Ecommerce */}
-            {(channelFilter === 'ALL' || channelFilter === 'ECOMMERCE') && (
-              <ChannelProductRow
-                id="section-ecommerce"
-                title="Ecommerce"
-                subtitle="Explore fashion, electronics, lifestyle and more"
-                viewAllLink="/shop/ecommerce"
-                products={ecomProducts}
-                loading={channelProductsLoading}
-                icon="📦"
-                themeColor="blue"
-              />
-            )}
-
-            {/* Section C: Wholesale Deals */}
-            {(channelFilter === 'ALL' || channelFilter === 'WHOLESALE') && (
-              <ChannelProductRow
-                id="section-wholesale"
-                title="Wholesale Deals"
-                subtitle="Bulk buying with special wholesale prices"
-                viewAllLink="/shop/wholesale"
-                products={wholesaleProducts}
-                loading={channelProductsLoading}
-                isWholesale={true}
-                icon="🏷️"
-                themeColor="purple"
-              />
-            )}
-          </>
-        )}
-
         {/* Dynamic Home Sections - Render sections created by admin */}
         {homeData.homeSections && homeData.homeSections.length > 0 && (
           <>
