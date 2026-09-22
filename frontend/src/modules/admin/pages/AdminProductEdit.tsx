@@ -12,8 +12,10 @@ import {
   createProduct,
   getCategories,
   getBrands,
+  getSellers,
   type Category,
   type Brand,
+  type Seller,
 } from "../../../services/api/admin/adminProductService";
 import { resolveImageUrl } from "../../../utils/imageUrl";
 import { getHeaderCategoriesAdmin, type HeaderCategory } from "../../../services/api/headerCategoryService";
@@ -46,9 +48,11 @@ export default function AdminProductEdit() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
-  const [sellerInfo, setSellerInfo] = useState<{ name: string; store: string } | null>(null);
+  const [sellerInfo, setSellerInfo] = useState<{ name: string; store: string; isPlatform?: boolean } | null>(null);
+  const [sellers, setSellers] = useState<Seller[]>([]);
 
   const [formData, setFormData] = useState({
+    sellerId: "admin",
     productName: "",
     headerCategory: "",
     category: "",
@@ -114,12 +118,14 @@ export default function AdminProductEdit() {
           taxesRes,
           brandsRes,
           shopsRes,
+          sellersRes,
         ] = await Promise.allSettled([
           getHeaderCategoriesAdmin(),
           getCategories(),
           getTaxes(),
           getBrands(),
           getShopByStores(),
+          getSellers(),
         ]);
 
         if (hcRes.status === "fulfilled" && Array.isArray(hcRes.value)) {
@@ -140,6 +146,10 @@ export default function AdminProductEdit() {
 
         if (shopsRes.status === "fulfilled" && shopsRes.value.success && Array.isArray(shopsRes.value.data)) {
           setShops(shopsRes.value.data);
+        }
+
+        if (sellersRes.status === "fulfilled" && sellersRes.value.success && Array.isArray(sellersRes.value.data)) {
+          setSellers(sellersRes.value.data);
         }
       } catch (err) {
         console.error("Error loading master dropdowns:", err);
@@ -165,12 +175,26 @@ export default function AdminProductEdit() {
         if (response.success && response.data) {
           const product: any = response.data;
 
+          let isPlatform = false;
           // Extract seller info
           if (product.seller && typeof product.seller === "object") {
+            isPlatform =
+              product.ownerType === "PLATFORM" ||
+              product.seller.isPlatform ||
+              product.seller.category === "Admin" ||
+              product.seller.email === "admin-store@olovely.com" ||
+              product.seller.sellerName === "Olovely Admin" ||
+              product.seller.storeName === "Olovely Admin Store";
+
             setSellerInfo({
-              name: product.seller.sellerName || "N/A",
-              store: product.seller.storeName || "N/A",
+              name: isPlatform ? "Admin / Platform Inventory" : (product.seller.sellerName || "N/A"),
+              store: isPlatform ? "Admin Store" : (product.seller.storeName || "N/A"),
+              isPlatform,
             });
+            setFormData((prev) => ({
+              ...prev,
+              sellerId: isPlatform ? "admin" : (product.seller._id || ""),
+            }));
           }
 
           const headerCatId =
@@ -215,6 +239,7 @@ export default function AdminProductEdit() {
             "";
 
           setFormData({
+            sellerId: isPlatform ? "admin" : (product.seller?._id || product.seller || ""),
             productName: product.productName || "",
             headerCategory: headerCatId,
             category: categoryId,
@@ -680,6 +705,7 @@ export default function AdminProductEdit() {
         variationType: formData.variationType || undefined,
         isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
         shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : null,
+        sellerId: formData.sellerId === "admin" || !formData.sellerId ? "admin" : formData.sellerId,
       };
 
       const res = isAddMode
@@ -754,10 +780,14 @@ export default function AdminProductEdit() {
 
         <div className="flex items-center gap-2">
           {sellerInfo && (
-            <div className="hidden sm:flex items-center gap-2 bg-teal-50 border border-teal-200 text-teal-800 px-3 py-1.5 rounded-lg text-xs font-medium">
+            <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+              sellerInfo.isPlatform
+                ? "bg-purple-50 border-purple-200 text-purple-800"
+                : "bg-teal-50 border-teal-200 text-teal-800"
+            }`}>
               <span>Store: <strong>{sellerInfo.store}</strong></span>
               <span>•</span>
-              <span>Seller: <strong>{sellerInfo.name}</strong></span>
+              <span>Owner: <strong>{sellerInfo.name}</strong></span>
             </div>
           )}
           <Link
@@ -801,6 +831,29 @@ export default function AdminProductEdit() {
                   required
                   className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Product Ownership / Seller <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="sellerId"
+                  value={formData.sellerId || "admin"}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
+                  <option value="admin">🏢 Admin / Platform Inventory (Canonical Platform Store)</option>
+                  {sellers
+                    .filter((s) => !s.isPlatform && s.sellerName !== "Olovely Admin")
+                    .map((s) => (
+                      <option key={s._id} value={s._id}>
+                        🏪 {s.storeName || s.sellerName} ({s.sellerName} - {s.email})
+                      </option>
+                    ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Select "Admin / Platform Inventory" for central inventory or assign to an authentic vendor.
+                </p>
               </div>
 
               <div>

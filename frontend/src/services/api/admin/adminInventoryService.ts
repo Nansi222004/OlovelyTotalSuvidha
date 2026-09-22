@@ -7,7 +7,9 @@ import api from "../config";
 export interface InventoryTransaction {
   _id: string;
   product: { _id: string; productName: string; mainImage?: string; sku?: string; barcode?: string };
-  seller?: { _id: string; storeName?: string; sellerName?: string };
+  seller?: { _id: string; storeName?: string; sellerName?: string; email?: string } | null;
+  ownerType?: "PLATFORM" | "VENDOR";
+  ownerLabel?: string;
   variationId?: string;
   variationName?: string;
   type: "SALE" | "RETURN" | "ADJUSTMENT" | "STOCK_IN" | "STOCK_OUT" | "DAMAGE" | "EXPIRED" | "TRANSFER_IN" | "TRANSFER_OUT" | "OPENING";
@@ -23,14 +25,23 @@ export interface InventoryTransaction {
 
 export interface LowStockProduct {
   _id: string;
+  productId: string;
+  variationId?: string;
   productName: string;
+  variationTitle?: string;
+  displayName: string;
   mainImage?: string;
   stock: number;
+  threshold?: number;
   sku?: string;
   barcode?: string;
   productType: string;
-  seller?: { storeName?: string };
-  category?: { name: string };
+  isOutOfStock?: boolean;
+  isLowStock?: boolean;
+  ownerType?: "PLATFORM" | "VENDOR";
+  ownerLabel?: string;
+  seller?: { _id?: string; storeName?: string; sellerName?: string; email?: string } | null;
+  category?: { _id: string; name: string };
 }
 
 export const getInventoryTransactions = async (params?: {
@@ -38,6 +49,9 @@ export const getInventoryTransactions = async (params?: {
   type?: string;
   page?: number;
   limit?: number;
+  sellerId?: string;
+  ownerType?: string;
+  search?: string;
 }) => {
   const response = await api.get(`/admin/inventory/transactions`, {
     params,
@@ -45,7 +59,14 @@ export const getInventoryTransactions = async (params?: {
   return response.data;
 };
 
-export const getLowStockProducts = async (params?: { page?: number; limit?: number }) => {
+export const getLowStockProducts = async (params?: {
+  page?: number;
+  limit?: number;
+  ownerType?: string;
+  sellerId?: string;
+  status?: string;
+  search?: string;
+}) => {
   const response = await api.get(`/admin/inventory/low-stock`, {
     params,
   });
@@ -88,3 +109,12 @@ export const addStock = async (data: {
   const response = await api.post(`/admin/inventory/stock-in`, data);
   return response.data.data;
 };
+
+export const sendLowStockAlertToVendor = async (data: {
+  productId: string;
+  variationId?: string;
+}) => {
+  const response = await api.post(`/admin/inventory/notify-vendor`, data);
+  return response.data;
+};
+

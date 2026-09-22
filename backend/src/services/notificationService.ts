@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Notification from "../models/Notification";
 import Admin from "../models/Admin";
 import Seller from "../models/Seller";
@@ -137,6 +138,7 @@ export const sendNotification = async (
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
     broadcastBatchId?: string;
+    createdBy?: string | mongoose.Types.ObjectId;
     data?: Record<string, string>;
   },
 ) => {
@@ -144,6 +146,7 @@ export const sendNotification = async (
     recipientType,
     recipientId,
     broadcastBatchId: options?.broadcastBatchId,
+    createdBy: options?.createdBy,
     title,
     message,
     type: options?.type || "Info",
@@ -162,7 +165,9 @@ export const sendNotification = async (
     options,
   );
 
-  return notification;
+  // Return refreshed doc to capture sentAt if push delivered
+  const refreshed = await Notification.findById(notification._id);
+  return refreshed || notification;
 };
 
 /**

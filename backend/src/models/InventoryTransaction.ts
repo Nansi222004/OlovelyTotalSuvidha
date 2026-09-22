@@ -15,6 +15,8 @@ export interface IInventoryTransaction extends Document {
   product: mongoose.Types.ObjectId;
   /** The seller who owns this product (for authorization checks). */
   seller: mongoose.Types.ObjectId;
+  /** Whether transaction belongs to platform inventory or a vendor */
+  ownerType?: 'PLATFORM' | 'VENDOR';
 
   /**
    * For variation products: the _id of the specific variation whose stock changed.
@@ -79,6 +81,12 @@ const InventoryTransactionSchema = new Schema<IInventoryTransaction>(
       type: Schema.Types.ObjectId,
       ref: 'Seller',
       required: [true, 'Seller is required'],
+      index: true,
+    },
+    ownerType: {
+      type: String,
+      enum: ['PLATFORM', 'VENDOR'],
+      default: 'VENDOR',
       index: true,
     },
     variationId: {

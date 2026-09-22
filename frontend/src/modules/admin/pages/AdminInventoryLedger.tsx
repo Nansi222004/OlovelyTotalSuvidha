@@ -6,9 +6,11 @@ import {
   adjustStock,
   recordDamage,
   addStock,
+  sendLowStockAlertToVendor,
   type InventoryTransaction,
   type LowStockProduct,
 } from "../../../services/api/admin/adminInventoryService";
+import { getAllSellers } from "../../../services/api/sellerService";
 import { resolveImageUrl } from "../../../utils/imageUrl";
 
 const TRANSACTION_TYPES = ["ALL", "SALE", "RETURN", "ADJUSTMENT", "STOCK_IN", "DAMAGE", "STOCK_OUT"];
@@ -40,10 +42,14 @@ export default function AdminInventoryLedger() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Sellers list for dropdown filters
+  const [sellersList, setSellersList] = useState<{ id: string; name: string }[]>([]);
+
   // Ledger tab
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const [ledgerOwnerFilter, setLedgerOwnerFilter] = useState("ALL");
   const [ledgerPage, setLedgerPage] = useState(1);
   const [ledgerTotalPages, setLedgerTotalPages] = useState(1);
 
@@ -51,6 +57,13 @@ export default function AdminInventoryLedger() {
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
   const [lowStockLoading, setLowStockLoading] = useState(false);
   const [lowStockThreshold, setLowStockThreshold] = useState<number | null>(null);
+  const [lowStockOwnerFilter, setLowStockOwnerFilter] = useState("ALL");
+  const [lowStockStatusFilter, setLowStockStatusFilter] = useState("ALL");
+  const [lowStockSearch, setLowStockSearch] = useState("");
+  const [lowStockPage, setLowStockPage] = useState(1);
+  const [lowStockTotalPages, setLowStockTotalPages] = useState(1);
+  const [sendingAlertIds, setSendingAlertIds] = useState<Set<string>>(new Set());
+  const [sentAlertIds, setSentAlertIds] = useState<Set<string>>(new Set());
 
   // Barcode lookup tab
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -68,15 +81,46 @@ export default function AdminInventoryLedger() {
   });
   const [adjustLoading, setAdjustLoading] = useState(false);
 
-  // Load data on tab change
+  // Load sellers list on mount
+  useEffect(() => {
+    const fetchSellers = async () => {
+      try {
+        const res = await getAllSellers();
+        if (res.success && Array.isArray(res.data)) {
+          const vendors = res.data
+            .filter((s) => s.sellerName !== "Olovely Admin" && s.category !== "Admin")
+            .map((s) => ({
+              id: s._id,
+              name: s.storeName ? `${s.storeName} (${s.sellerName})` : s.sellerName,
+            }));
+          setSellersList(vendors);
+        }
+      } catch (err) {
+        console.error("Failed to load sellers for inventory filter:", err);
+      }
+    };
+    fetchSellers();
+  }, []);
+
+  // Load data on tab change and filter change
   useEffect(() => {
     setError("");
-    if (activeTab === "ledger") fetchLedger();
-    else if (activeTab === "lowstock") fetchLowStock();
-    else if (activeTab === "barcode") {
+    if (activeTab === "ledger") {
+      fetchLedger();
+    } else if (activeTab === "lowstock") {
+      fetchLowStock();
+    } else if (activeTab === "barcode") {
       setTimeout(() => barcodeRef.current?.focus(), 50);
     }
-  }, [activeTab, ledgerPage, typeFilter]);
+  }, [
+    activeTab,
+    ledgerPage,
+    typeFilter,
+    ledgerOwnerFilter,
+    lowStockPage,
+    lowStockOwnerFilter,
+    lowStockStatusFilter,
+  ]);
 
   const fetchLedger = async () => {
     try {
@@ -84,6 +128,11 @@ export default function AdminInventoryLedger() {
       setError("");
       const params: Record<string, any> = { page: ledgerPage, limit: 50 };
       if (typeFilter !== "ALL") params.type = typeFilter;
+      if (ledgerOwnerFilter === "PLATFORM") {
+        params.ownerType = "PLATFORM";
+      } else if (ledgerOwnerFilter !== "ALL") {
+        params.sellerId = ledgerOwnerFilter;
+      }
       const data = await getInventoryTransactions(params);
       setTransactions(data.data || []);
       setLedgerTotalPages(data.pagination?.pages || 1);
@@ -98,14 +147,33 @@ export default function AdminInventoryLedger() {
     try {
       setLowStockLoading(true);
       setError("");
-      const data = await getLowStockProducts({ page: 1, limit: 100 });
+      const params: Record<string, any> = { page: lowStockPage, limit: 50 };
+      if (lowStockOwnerFilter === "PLATFORM") {
+        params.ownerType = "PLATFORM";
+      } else if (lowStockOwnerFilter !== "ALL") {
+        params.sellerId = lowStockOwnerFilter;
+      }
+      if (lowStockStatusFilter !== "ALL") {
+        params.status = lowStockStatusFilter;
+      }
+      if (lowStockSearch.trim()) {
+        params.search = lowStockSearch.trim();
+      }
+      const data = await getLowStockProducts(params);
       setLowStock(data.data || []);
       setLowStockThreshold(data.threshold ?? null);
+      setLowStockTotalPages(data.pagination?.pages || 1);
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to load low-stock products");
     } finally {
       setLowStockLoading(false);
     }
+  };
+
+  const handleLowStockSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLowStockPage(1);
+    fetchLowStock();
   };
 
   const handleBarcodeSearch = async (e: React.FormEvent) => {
@@ -166,6 +234,46 @@ export default function AdminInventoryLedger() {
     }
   };
 
+  const handleSendVendorAlert = async (product: LowStockProduct) => {
+    if (!product.seller?._id) {
+      setError(`Cannot send alert: No vendor assigned to product "${product.displayName}".`);
+      return;
+    }
+    if (product.ownerType === "PLATFORM") {
+      setError(`Cannot send alert: "${product.displayName}" is Platform inventory.`);
+      return;
+    }
+
+    const alertKey = product._id;
+    setSendingAlertIds(prev => new Set(prev).add(alertKey));
+    setError("");
+
+    try {
+      const res = await sendLowStockAlertToVendor({
+        productId: product.productId,
+        variationId: product.variationId,
+      });
+
+      if (res.success) {
+        setSentAlertIds(prev => new Set(prev).add(alertKey));
+        const deliveryNote = res.data?.pushDelivered
+          ? "In-app and push notification delivered."
+          : "In-app notification created.";
+        setSuccess(`Alert sent to ${res.data?.recipientName || product.ownerLabel || "vendor"} for "${product.displayName}". ${deliveryNote}`);
+      } else {
+        setError(res.message || "Failed to send alert to vendor.");
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to send alert to vendor.");
+    } finally {
+      setSendingAlertIds(prev => {
+        const next = new Set(prev);
+        next.delete(alertKey);
+        return next;
+      });
+    }
+  };
+
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: "ledger", label: "Transaction Ledger", icon: "📋" },
     { key: "lowstock", label: "Low Stock Alert", icon: "⚠️" },
@@ -180,7 +288,7 @@ export default function AdminInventoryLedger() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Track stock movements, view transaction ledger, and perform POS barcode lookups
+            Track stock movements, view platform & vendor ledger, monitor low-stock variations, and lookup POS barcodes.
           </p>
         </div>
 
@@ -188,13 +296,13 @@ export default function AdminInventoryLedger() {
         {success && (
           <div className="mb-4 flex items-center gap-2 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">
             ✅ {success}
-            <button onClick={() => setSuccess("")} className="ml-auto">✕</button>
+            <button onClick={() => setSuccess("")} className="ml-auto text-gray-400 hover:text-gray-600">✕</button>
           </div>
         )}
         {error && (
           <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
             ⚠️ {error}
-            <button onClick={() => setError("")} className="ml-auto">✕</button>
+            <button onClick={() => setError("")} className="ml-auto text-gray-400 hover:text-gray-600">✕</button>
           </div>
         )}
 
@@ -219,21 +327,47 @@ export default function AdminInventoryLedger() {
         {/* LEDGER TAB */}
         {activeTab === "ledger" && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap gap-3 items-center">
-              <select
-                value={typeFilter}
-                onChange={e => { setTypeFilter(e.target.value); setLedgerPage(1); }}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {TRANSACTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+            <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Transaction Type Filter */}
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Type</label>
+                  <select
+                    value={typeFilter}
+                    onChange={e => { setTypeFilter(e.target.value); setLedgerPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {TRANSACTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                {/* Owner Filter */}
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Inventory Owner</label>
+                  <select
+                    value={ledgerOwnerFilter}
+                    onChange={e => { setLedgerOwnerFilter(e.target.value); setLedgerPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Inventory (Platform & Vendors)</option>
+                    <option value="PLATFORM">Admin / Platform Inventory</option>
+                    {sellersList.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <button
                 onClick={fetchLedger}
-                className="ml-auto px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="px-3.5 py-1.5 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm self-end"
               >
                 Refresh
               </button>
             </div>
+
             {ledgerLoading ? (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
@@ -241,21 +375,22 @@ export default function AdminInventoryLedger() {
             ) : transactions.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-gray-400">
                 <span className="text-4xl mb-2">📋</span>
-                <p>No transactions found</p>
+                <p className="font-medium text-gray-500">No transactions found</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Product</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Type</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Qty</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Before</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">After</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Reference</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Note</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Date</th>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-600">
+                      <th className="text-left px-4 py-3">Product</th>
+                      <th className="text-left px-4 py-3">Owner / Seller</th>
+                      <th className="text-left px-4 py-3">Type</th>
+                      <th className="text-right px-4 py-3">Qty</th>
+                      <th className="text-right px-4 py-3">Before</th>
+                      <th className="text-right px-4 py-3">After</th>
+                      <th className="text-left px-4 py-3">Reference</th>
+                      <th className="text-left px-4 py-3">Note</th>
+                      <th className="text-left px-4 py-3">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -264,15 +399,39 @@ export default function AdminInventoryLedger() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {tx.product?.mainImage && (
-                              <img src={resolveImageUrl(tx.product.mainImage)} alt="" className="w-8 h-8 object-cover rounded border border-gray-100" />
+                              <img
+                                src={resolveImageUrl(tx.product.mainImage)}
+                                alt=""
+                                className="w-8 h-8 object-cover rounded border border-gray-100"
+                              />
                             )}
                             <div>
                               <p className="font-medium text-gray-900 text-xs leading-tight">
                                 {tx.product?.productName || "–"}
                               </p>
-                              {tx.variationName && <p className="text-xs text-gray-400">{tx.variationName}</p>}
+                              {tx.variationName && (
+                                <span className="inline-block mt-0.5 px-1.5 py-0.2 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[10px] font-medium">
+                                  {tx.variationName}
+                                </span>
+                              )}
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {tx.ownerType === "PLATFORM" ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Admin / Platform Inventory
+                            </span>
+                          ) : (
+                            <div>
+                              <p className="font-medium text-gray-900 text-xs leading-tight">
+                                {tx.ownerLabel || tx.seller?.storeName || tx.seller?.sellerName || "Vendor"}
+                              </p>
+                              {tx.seller?.sellerName && tx.seller?.storeName && tx.seller.sellerName !== tx.seller.storeName && (
+                                <p className="text-[11px] text-gray-500">{tx.seller.sellerName}</p>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[tx.type] || "bg-gray-100 text-gray-700"}`}>
@@ -314,16 +473,77 @@ export default function AdminInventoryLedger() {
         {/* LOW STOCK TAB */}
         {activeTab === "lowstock" && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-600">
+            {/* Filters Bar */}
+            <div className="p-4 border-b border-gray-100 flex flex-wrap gap-4 items-end justify-between">
+              <div className="flex flex-wrap gap-3 items-end">
+                {/* Search */}
+                <form onSubmit={handleLowStockSearchSubmit} className="flex gap-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Search Item / Seller</label>
+                    <input
+                      type="text"
+                      value={lowStockSearch}
+                      onChange={e => setLowStockSearch(e.target.value)}
+                      placeholder="Product, variant, or vendor..."
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-52"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg font-medium transition-colors self-end"
+                  >
+                    Search
+                  </button>
+                </form>
+
+                {/* Owner Filter */}
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Inventory Owner</label>
+                  <select
+                    value={lowStockOwnerFilter}
+                    onChange={e => { setLowStockOwnerFilter(e.target.value); setLowStockPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Inventory (Platform & Vendors)</option>
+                    <option value="PLATFORM">Admin / Platform Inventory</option>
+                    {sellersList.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status Filter */}
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Stock Status</label>
+                  <select
+                    value={lowStockStatusFilter}
+                    onChange={e => { setLowStockStatusFilter(e.target.value); setLowStockPage(1); }}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Low Stock & Out of Stock</option>
+                    <option value="LOW_STOCK">Low on Stock (1 to Threshold)</option>
+                    <option value="OUT_OF_STOCK">Out of Stock (0 units)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
                 {lowStockThreshold !== null && (
-                  <span>Threshold: <strong>≤ {lowStockThreshold} units</strong> (configurable in App Settings)</span>
+                  <span className="text-xs text-gray-500 bg-gray-50 border border-gray-200 px-2.5 py-1.5 rounded-lg">
+                    Current Threshold: <strong>≤ {lowStockThreshold} units</strong>
+                  </span>
                 )}
-              </span>
-              <button onClick={fetchLowStock} className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                Refresh
-              </button>
+                <button
+                  onClick={fetchLowStock}
+                  className="px-3.5 py-1.5 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
+
             {lowStockLoading ? (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
@@ -331,48 +551,144 @@ export default function AdminInventoryLedger() {
             ) : lowStock.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-gray-400">
                 <span className="text-4xl mb-2">✅</span>
-                <p>No low-stock products</p>
+                <p className="font-medium text-gray-600">No low-stock products found</p>
+                <p className="text-xs text-gray-400 mt-1">All eligible stock items are currently above threshold.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Product</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Category</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Seller</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Channel</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Stock</th>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-600">
+                      <th className="text-left px-4 py-3">Product / Variation</th>
+                      <th className="text-left px-4 py-3">Category</th>
+                      <th className="text-left px-4 py-3">Owner / Seller</th>
+                      <th className="text-left px-4 py-3">Channel</th>
+                      <th className="text-right px-4 py-3">Current Stock</th>
+                      <th className="text-center px-4 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {lowStock.map(p => (
                       <tr key={p._id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {p.mainImage && <img src={resolveImageUrl(p.mainImage)} alt="" className="w-9 h-9 object-cover rounded border border-gray-100" />}
+                          <div className="flex items-center gap-3">
+                            {p.mainImage && (
+                              <img
+                                src={resolveImageUrl(p.mainImage)}
+                                alt=""
+                                className="w-10 h-10 object-cover rounded-lg border border-gray-100"
+                              />
+                            )}
                             <div>
-                              <p className="font-medium text-gray-900">{p.productName}</p>
-                              {p.sku && <p className="text-xs text-gray-400">SKU: {p.sku}</p>}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-semibold text-gray-900 leading-tight">{p.productName}</p>
+                                {p.variationTitle && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                    {p.variationTitle}
+                                  </span>
+                                )}
+                              </div>
+                              {p.sku && <p className="text-xs text-gray-400 mt-0.5 font-mono">SKU: {p.sku}</p>}
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-600">{p.category?.name || "–"}</td>
-                        <td className="px-4 py-3 text-gray-600">{p.seller?.storeName || "–"}</td>
+                        <td className="px-4 py-3">
+                          {p.ownerType === "PLATFORM" ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Admin / Platform Inventory
+                            </span>
+                          ) : (
+                            <div>
+                              <p className="font-semibold text-gray-900 text-xs leading-tight">
+                                {p.ownerLabel || p.seller?.storeName || p.seller?.sellerName}
+                              </p>
+                              {p.seller?.sellerName && p.seller?.storeName && p.seller.sellerName !== p.seller.storeName && (
+                                <p className="text-[11px] text-gray-500">{p.seller.sellerName}</p>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.productType === "QUICK_COMMERCE" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
                             {p.productType === "QUICK_COMMERCE" ? "QC" : "EC"}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className={`font-bold font-mono ${p.stock === 0 ? "text-red-600" : "text-orange-600"}`}>
-                            {p.stock}
-                          </span>
+                          <div>
+                            <span className={`font-bold font-mono text-base ${p.stock === 0 ? "text-red-600" : "text-amber-600"}`}>
+                              {p.stock}
+                            </span>
+                            {p.stock === 0 && (
+                              <span className="block text-[10px] font-semibold text-red-500 uppercase tracking-wider">
+                                Sold out
+                              </span>
+                            )}
+                            <p className="text-[10px] text-gray-400 font-medium">Threshold: ≤ {p.threshold ?? lowStockThreshold ?? 10}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          {p.ownerType === "PLATFORM" ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                              Platform Inventory
+                            </span>
+                          ) : !p.seller?._id ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-400 border border-gray-200">
+                              No Vendor Info
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              {sentAlertIds.has(p._id) ? (
+                                <div className="inline-flex items-center gap-1">
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    ✓ Alert Sent
+                                  </span>
+                                  <button
+                                    onClick={() => handleSendVendorAlert(p)}
+                                    disabled={sendingAlertIds.has(p._id)}
+                                    title="Resend low stock alert"
+                                    className="p-1 text-gray-400 hover:text-amber-600 rounded transition-colors disabled:opacity-40"
+                                  >
+                                    🔄
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleSendVendorAlert(p)}
+                                  disabled={sendingAlertIds.has(p._id)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                  title="Send low-stock push notification to vendor"
+                                >
+                                  {sendingAlertIds.has(p._id) ? (
+                                    <>
+                                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                      <span>Sending...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>🔔</span>
+                                      <span>Send Alert</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {lowStockTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <span className="text-sm text-gray-500">Page {lowStockPage} of {lowStockTotalPages}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setLowStockPage(p => Math.max(1, p - 1))} disabled={lowStockPage === 1} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">Previous</button>
+                  <button onClick={() => setLowStockPage(p => Math.min(lowStockTotalPages, p + 1))} disabled={lowStockPage === lowStockTotalPages} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50">Next</button>
+                </div>
               </div>
             )}
           </div>
@@ -383,7 +699,7 @@ export default function AdminInventoryLedger() {
           <div className="max-w-xl mx-auto">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-1">POS Barcode Lookup</h2>
-              <p className="text-sm text-gray-500 mb-4">Scan or type a barcode to find the product and current stock</p>
+              <p className="text-sm text-gray-500 mb-4">Scan or type a barcode to find the product, variant, and authoritative stock</p>
               <form onSubmit={handleBarcodeSearch} className="flex gap-2">
                 <input
                   ref={barcodeRef}
@@ -419,7 +735,9 @@ export default function AdminInventoryLedger() {
                         )}
                         <div>
                           <p className="font-semibold text-gray-900">{barcodeResult.product?.productName}</p>
-                          <p className="text-sm text-gray-500">Seller: {barcodeResult.product?.seller || "–"}</p>
+                          <p className="text-sm text-gray-500 font-medium">
+                            Owner: <span className="text-gray-900">{barcodeResult.product?.ownerLabel || barcodeResult.product?.sellerName || barcodeResult.product?.seller || "–"}</span>
+                          </p>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${barcodeResult.product?.productType === "QUICK_COMMERCE" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
                             {barcodeResult.product?.productType}
                           </span>
@@ -556,7 +874,7 @@ export default function AdminInventoryLedger() {
                   />
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-                  ⚠️ Stock mutations are <strong>permanent and logged</strong>. Ensure the product ID and quantity are correct before submitting.
+                  ⚠️ Stock mutations are <strong>permanent and logged</strong> in the immutable ledger.
                 </div>
                 <button
                   type="submit"

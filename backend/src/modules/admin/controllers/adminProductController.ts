@@ -17,6 +17,7 @@ import {
   checkWholesaleEligibility,
   validateWholesalePrice,
 } from "../../../utils/categoryChannelHelper";
+import { getCanonicalAdminSeller, resolveInventoryOwner } from "../../../utils/inventoryHelper";
 
 // ==================== Category Controllers ====================
 
@@ -902,41 +903,33 @@ export const createProduct = asyncHandler(
     try {
       const productData = req.body;
 
-      // If seller is not provided, use/create default Admin Store
-      if (!productData.seller) {
+      // If seller is not provided, assign canonical Admin Seller and mark as PLATFORM
+      const rawSeller = productData.seller || productData.sellerId;
+      if (!rawSeller || rawSeller === "admin") {
         try {
-          // Check for existing admin seller by email OR mobile to avoid duplicate key errors
-          let adminSeller = await Seller.findOne({
-            $or: [
-              { email: "admin-store@olovely.com" },
-              { mobile: "9999999999" },
-            ],
-          });
-
-          if (!adminSeller) {
-            // Create default admin seller
-            adminSeller = await Seller.create({
-              sellerName: "Olovely Admin",
-              storeName: "Olovely Admin Store",
-              email: "admin-store@olovely.com",
-              mobile: "9999999999",
-              password: "AdminStore@123", // Should be hashed by pre-save hook
-              address: "",
-              city: "",
-              category: "Admin",
-              commission: 0,
-              status: "Approved",
-              requireProductApproval: false,
-            });
-          }
+          const adminSeller = await getCanonicalAdminSeller();
           productData.seller = adminSeller._id;
+          productData.ownerType = 'PLATFORM';
         } catch (sellerError: any) {
           console.error("Error handling default admin seller:", sellerError);
           throw new Error(
             "Failed to assign default seller: " + sellerError.message
           );
         }
+      } else {
+        // Seller was explicitly provided by Admin: inspect whether assigned to platform or vendor
+        const assignedSeller = await Seller.findById(rawSeller);
+        if (!assignedSeller) {
+          return res.status(404).json({
+            success: false,
+            message: "Assigned seller not found",
+          });
+        }
+        const resolved = resolveInventoryOwner(assignedSeller);
+        productData.seller = assignedSeller._id;
+        productData.ownerType = resolved.ownerType;
       }
+      delete productData.sellerId;
 
       if (
         !productData.productName ||
@@ -1497,6 +1490,30 @@ export const updateProduct = asyncHandler(
       }
     }
 
+    // Handle seller / ownership update or preservation
+    if (updateData.sellerId !== undefined || updateData.seller !== undefined) {
+      const rawSeller = updateData.sellerId || updateData.seller;
+      if (!rawSeller || rawSeller === "admin") {
+        const adminSeller = await getCanonicalAdminSeller();
+        product.seller = adminSeller._id as any;
+        product.ownerType = 'PLATFORM';
+      } else {
+        const assignedSeller = await Seller.findById(rawSeller);
+        if (!assignedSeller) {
+          return res.status(404).json({
+            success: false,
+            message: "Assigned seller not found",
+          });
+        }
+        const resolved = resolveInventoryOwner(assignedSeller);
+        product.seller = assignedSeller._id as any;
+        product.ownerType = resolved.ownerType;
+      }
+      delete updateData.sellerId;
+      delete updateData.seller;
+    }
+    delete updateData.ownerType;
+
     Object.assign(product, updateData);
 
     if (updateData.variations) {
@@ -1510,6 +1527,7 @@ export const updateProduct = asyncHandler(
       await Inventory.findOneAndUpdate(
         { product: id },
         {
+          seller: product.seller,
           currentStock: product.stock,
           availableStock: product.stock,
         },

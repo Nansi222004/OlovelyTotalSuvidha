@@ -91,6 +91,9 @@ export interface Seller {
   storeName: string;
   profile?: string;
   status: string;
+  email?: string;
+  isPlatform?: boolean;
+  category?: string;
 }
 
 // ==================== Brand Interfaces ====================
@@ -116,7 +119,8 @@ export interface Product {
   category: string | Category;
   subcategory?: string | SubCategory;
   brand?: string | Brand;
-  seller: string | { sellerName: string; storeName: string };
+  seller: string | { _id?: string; sellerName?: string; storeName?: string; email?: string; isPlatform?: boolean; category?: string };
+  ownerType?: 'PLATFORM' | 'VENDOR';
   mainImage?: string;
   galleryImages: string[];
   price: number;

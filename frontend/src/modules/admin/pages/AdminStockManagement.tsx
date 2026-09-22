@@ -189,11 +189,22 @@ export default function AdminStockManagement() {
         }
       }
 
-      const sellerName =
-        typeof product.seller === "object" && product.seller !== null
-          ? product.seller.storeName || product.seller.sellerName
-          : "Unknown Seller";
-      const sellerId = typeof product.seller === "object" ? "" : product.seller || "";
+      const isPlatform =
+        (product as any).ownerType === "PLATFORM" ||
+        !product.seller ||
+        (typeof product.seller === "object" &&
+          (product.seller.isPlatform ||
+            product.seller.category === "Admin" ||
+            product.seller.email === "admin-store@olovely.com" ||
+            product.seller.sellerName === "Olovely Admin" ||
+            product.seller.storeName === "Olovely Admin Store"));
+
+      const sellerName: string = isPlatform
+        ? "Admin / Platform Inventory"
+        : (typeof product.seller === "object" && product.seller !== null
+            ? product.seller.storeName || product.seller.sellerName || "Admin / Platform Inventory"
+            : "Admin / Platform Inventory");
+      const sellerId = typeof product.seller === "object" ? product.seller?._id || "" : product.seller || "";
       const productImage = getProductImage(product);
 
       // If product has variations, create a row for each variation
@@ -256,11 +267,14 @@ export default function AdminStockManagement() {
   const sellers = useMemo(() => {
     const sellerSet = new Set<string>();
     productVariations.forEach((p) => {
-      if (p.seller && p.seller !== "Unknown Seller") {
+      if (p.seller) {
         sellerSet.add(p.seller);
       }
     });
-    return ["All Sellers", ...Array.from(sellerSet).sort()];
+    const hasPlatform = sellerSet.has("Admin / Platform Inventory");
+    sellerSet.delete("Admin / Platform Inventory");
+    const sortedVendors = Array.from(sellerSet).sort();
+    return ["All Sellers", ...(hasPlatform ? ["Admin / Platform Inventory"] : []), ...sortedVendors];
   }, [productVariations]);
 
   // Filter products
@@ -678,11 +692,21 @@ export default function AdminStockManagement() {
                       <td className="p-4 align-middle">{product.variation}</td>
                       <td className="p-4 align-middle">
                         {product.stock === "Unlimited" ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             Unlimited
                           </span>
+                        ) : typeof product.stock === "number" && product.stock === 0 ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            0 (Out of stock)
+                          </span>
+                        ) : typeof product.stock === "number" && product.stock < 10 ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                            {product.stock} (Low)
+                          </span>
                         ) : (
-                          <span>{product.stock}</span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                            {product.stock}
+                          </span>
                         )}
                       </td>
                       <td className="p-4 align-middle">

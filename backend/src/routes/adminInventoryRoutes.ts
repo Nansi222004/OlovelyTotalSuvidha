@@ -7,6 +7,7 @@ import {
   addStock,
   lookupProductByBarcode,
   getLowStockProducts,
+  notifyVendorLowStock,
 } from '../modules/admin/controllers/adminInventoryController';
 
 const router = Router();
@@ -27,5 +28,8 @@ router.get('/barcode/:barcode', lookupProductByBarcode);
 router.post('/adjust', adjustStock);
 router.post('/damage', recordDamage);
 router.post('/stock-in', addStock);
+
+// Vendor low-stock notification
+router.post('/notify-vendor', notifyVendorLowStock);
 
 export default router;

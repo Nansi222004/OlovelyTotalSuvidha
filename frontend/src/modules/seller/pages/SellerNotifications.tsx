@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { getSellerNotifications, markSellerNotificationRead, SellerNotification } from "../../../services/api/sellerNotificationService";
 
 export default function SellerNotifications() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<SellerNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +35,15 @@ export default function SellerNotifications() {
     }
   };
 
+  const handleNotificationClick = async (notification: SellerNotification) => {
+    if (!notification.isRead) {
+      handleMarkAsRead(notification._id);
+    }
+    if (notification.link && typeof notification.link === "string" && notification.link.startsWith("/")) {
+      navigate(notification.link);
+    }
+  };
+
   const formatTime = (dateString?: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -57,8 +68,8 @@ export default function SellerNotifications() {
             {notifications.map((notification) => (
               <div
                 key={notification._id}
-                onClick={() => !notification.isRead && handleMarkAsRead(notification._id)}
-                className={`bg-white rounded-xl p-4 shadow-sm border cursor-pointer ${
+                onClick={() => handleNotificationClick(notification)}
+                className={`bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:shadow-md transition-all ${
                   notification.isRead ? "border-neutral-200" : "border-orange-200 bg-orange-50"
                 }`}
               >
@@ -69,7 +80,14 @@ export default function SellerNotifications() {
                   <div className="flex-1">
                     <div className="font-semibold text-neutral-900 text-sm">{notification.title}</div>
                     <div className="text-neutral-600 text-xs mt-1 line-clamp-3">{notification.message}</div>
-                    <div className="text-neutral-400 text-[10px] mt-2">{formatTime(notification.createdAt)}</div>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-neutral-400 text-[10px]">{formatTime(notification.createdAt)}</span>
+                      {notification.link && (
+                        <span className="text-xs text-orange-600 font-medium hover:underline inline-flex items-center gap-1">
+                          {notification.actionLabel || "View"} →
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -20,6 +20,7 @@ import InventoryTransaction, {
   TransactionType,
   ReferenceType,
 } from '../models/InventoryTransaction';
+import { getCanonicalAdminSeller, resolveInventoryOwner } from '../utils/inventoryHelper';
 
 export interface MutateStockOptions {
   productId: string;
@@ -118,6 +119,7 @@ export async function mutateStock(
     let newStock: number;
     let variationName: string | undefined;
     let sellerObjId: mongoose.Types.ObjectId;
+    let beforeDoc: any;
 
     if (variationId) {
       // --- Variation-level mutation ---
@@ -136,7 +138,7 @@ export async function mutateStock(
         updateQuery['variations._id'] = new mongoose.Types.ObjectId(variationId);
       }
 
-      const beforeDoc = await Product.findOneAndUpdate(
+      beforeDoc = await Product.findOneAndUpdate(
         updateQuery,
         { $inc: { 'variations.$.stock': quantity } },
         { new: false, session }
@@ -170,7 +172,7 @@ export async function mutateStock(
         updateQuery['stock'] = { $gte: Math.abs(quantity) };
       }
 
-      const beforeDoc = await Product.findOneAndUpdate(
+      beforeDoc = await Product.findOneAndUpdate(
         updateQuery,
         { $inc: { stock: quantity } },
         { new: false, session }
@@ -189,12 +191,20 @@ export async function mutateStock(
       sellerObjId = beforeDoc.seller as mongoose.Types.ObjectId;
     }
 
+    if (!sellerObjId) {
+      const adminSeller = await getCanonicalAdminSeller();
+      sellerObjId = adminSeller._id as mongoose.Types.ObjectId;
+    }
+    const resolvedOwner = resolveInventoryOwner(null, beforeDoc);
+    const txOwnerType = beforeDoc.ownerType || resolvedOwner.ownerType;
+
     // --- Create the immutable ledger entry ---
     const [tx] = await InventoryTransaction.create(
       [
         {
           product: new mongoose.Types.ObjectId(productId),
           seller: sellerObjId,
+          ownerType: txOwnerType,
           variationId: variationId ? new mongoose.Types.ObjectId(variationId) : undefined,
           variationName,
           type,

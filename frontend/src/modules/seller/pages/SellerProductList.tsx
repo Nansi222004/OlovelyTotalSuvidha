@@ -12,12 +12,14 @@ import {
 } from "../../../services/api/categoryService";
 import { useAuth } from "../../../context/AuthContext";
 import { useSellerChannel } from "../../../context/SellerChannelContext";
+import { useToast } from "../../../context/ToastContext";
 import StarRating from "../../../components/ui/StarRating";
 
 // ... (interfaces remain same)
 
 export default function SellerProductList() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -160,6 +162,11 @@ export default function SellerProductList() {
     navigate(`/seller/product/edit/${productId}`);
   };
 
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    showToast(`${label} copied to clipboard`, "success");
+  };
+
   // ... (rest of logic: flatten, filter, sort)
 
   // Flatten products with variations for display
@@ -181,6 +188,7 @@ export default function SellerProductList() {
         price: (product as any).price || 0,
         discPrice: (product as any).discPrice || 0,
         variation: "Default",
+        stock: (product as any).stock ?? 0,
         isPopular: product.popular,
         productId: product._id,
         rating: product.rating || 0,
@@ -203,6 +211,7 @@ export default function SellerProductList() {
       discPrice: variation.discPrice,
       variation:
         variation.title || variation.value || variation.name || "Default",
+      stock: variation.stock !== undefined ? variation.stock : ((product as any).stock ?? 0),
       isPopular: product.popular,
       productId: product._id,
       rating: product.rating || 0,
@@ -225,6 +234,10 @@ export default function SellerProductList() {
       if (typeof aVal === "string" || typeof bVal === "string") {
         aVal = String(aVal ?? "").toLowerCase();
         bVal = String(bVal ?? "").toLowerCase();
+      }
+      if (sortColumn === "stock") {
+        aVal = Number(a.stock ?? 0);
+        bVal = Number(b.stock ?? 0);
       }
       if (sortDirection === "asc") {
         return aVal > bVal ? 1 : -1;
@@ -394,6 +407,7 @@ export default function SellerProductList() {
                   "Price",
                   "Disc Price",
                   "Variation",
+                  "Stock",
                 ];
                 const csvContent = [
                   headers.join(","),
@@ -408,6 +422,7 @@ export default function SellerProductList() {
                       v.price,
                       v.discPrice,
                       `"${v.variation}"`,
+                      v.stock,
                     ].join(",")
                   ),
                 ].join("\n");
@@ -567,14 +582,21 @@ export default function SellerProductList() {
                     </div>
                   </th>
                   <th
-                    className="p-4 border border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
+                    className="p-3 border border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors whitespace-nowrap"
                     onClick={() => handleSort("variation")}>
                     <div className="flex items-center justify-between">
                       Variation <SortIcon column="variation" />
                     </div>
                   </th>
-                  <th className="p-4 border border-neutral-200">
-                    <div className="flex items-center justify-center">Action</div>
+                  <th
+                    className="p-3 border border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors whitespace-nowrap"
+                    onClick={() => handleSort("stock")}>
+                    <div className="flex items-center justify-between">
+                      Stock <SortIcon column="stock" />
+                    </div>
+                  </th>
+                  <th className="p-3 border border-neutral-200 whitespace-nowrap text-center">
+                    Action
                   </th>
                 </tr>
               </thead>
@@ -594,16 +616,16 @@ export default function SellerProductList() {
                   return (
                     <tr
                       key={`${variation.productId}-${variation.variationId}`}
-                      className="hover:bg-neutral-50 transition-colors text-sm text-neutral-700">
-                      <td className="p-4 align-middle border border-neutral-200">
-                        <div className="flex items-center gap-2">
+                      className="hover:bg-neutral-50 transition-colors text-xs text-neutral-700">
+                      <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           {isFirstVariation && hasMultipleVariations && (
                             <button
                               onClick={() => toggleProduct(variation.productId)}
                               className="text-blue-600 hover:text-blue-700">
                               <svg
-                                width="16"
-                                height="16"
+                                width="14"
+                                height="14"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -618,11 +640,23 @@ export default function SellerProductList() {
                               </svg>
                             </button>
                           )}
-                          <span>{variation.productId}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(variation.productId, "Product ID")}
+                            className="inline-flex items-center gap-1 font-mono text-[11px] text-neutral-600 bg-neutral-100 hover:bg-neutral-200 px-1.5 py-0.5 rounded border border-neutral-200 transition-colors"
+                            title={`Click to copy: ${variation.productId}`}>
+                            <span>...{variation.productId.slice(-6)}</span>
+                          </button>
                         </div>
                       </td>
-                      <td className="p-4 align-middle border border-neutral-200">
-                        {variation.variationId}
+                      <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(variation.variationId, "Variation ID")}
+                          className="inline-flex items-center gap-1 font-mono text-[11px] text-neutral-600 bg-neutral-100 hover:bg-neutral-200 px-1.5 py-0.5 rounded border border-neutral-200 transition-colors"
+                          title={`Click to copy: ${variation.variationId}`}>
+                          <span>...{variation.variationId.slice(-6)}</span>
+                        </button>
                       </td>
                       <td className="p-4 align-middle border border-neutral-200">
                         <div className="flex flex-col gap-1">
@@ -682,10 +716,21 @@ export default function SellerProductList() {
                           ? `₹${variation.discPrice.toFixed(2)}`
                           : "-"}
                       </td>
-                      <td className="p-4 align-middle border border-neutral-200">
+                      <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">
                         {variation.variation}
                       </td>
-                      <td className="p-4 align-middle border border-neutral-200">
+                      <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          variation.stock === 0
+                            ? "bg-red-50 text-red-700 border border-red-200"
+                            : variation.stock < 10
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        }`}>
+                          {variation.stock === 0 ? "0 (Out of stock)" : variation.stock < 10 ? `${variation.stock} (Low)` : variation.stock}
+                        </span>
+                      </td>
+                      <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleEdit(variation.productId)}

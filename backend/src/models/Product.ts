@@ -15,6 +15,7 @@ export interface IProduct extends Document {
 
   // Seller Info
   seller: mongoose.Types.ObjectId;
+  ownerType?: 'PLATFORM' | 'VENDOR';
 
   // Images
   mainImage?: string;
@@ -175,6 +176,12 @@ const ProductSchema = new Schema<IProduct>(
       type: Schema.Types.ObjectId,
       ref: "Seller",
       required: [true, "Seller is required"],
+    },
+    ownerType: {
+      type: String,
+      enum: ['PLATFORM', 'VENDOR'],
+      default: 'VENDOR',
+      index: true,
     },
 
     // Images

@@ -39,12 +39,7 @@ async function main() {
   console.log('Total low stock count:', lowStockRes.data?.data?.length);
 
   const chilli = lowStockRes.data?.data?.find((p: any) => /chilli/i.test(p.productName));
-  console.log('Chilli in low stock?', chilli ? {
-    id: chilli._id,
-    name: chilli.productName,
-    stock: chilli.stock,
-    seller: chilli.seller
-  } : 'NOT FOUND IN LOW STOCK');
+  console.log('Chilli in low stock?', JSON.stringify(chilli, null, 2));
 
   console.log('\n--- Calling GET /admin/inventory/transactions ---');
   const txRes = await get('/admin/inventory/transactions?limit=20');

@@ -91,6 +91,9 @@ export interface ISeller extends Document {
   // Wholesale Capability (set by Admin)
   wholesaleEnabled: boolean;
 
+  /** Identifies canonical platform/admin seller vs third-party vendor */
+  isPlatform?: boolean;
+
   createdAt: Date;
   updatedAt: Date;
   // FCM Push Notification Tokens
@@ -350,6 +353,12 @@ const SellerSchema = new Schema<ISeller>(
     },
     // Wholesale Capability (Admin-controlled per seller)
     wholesaleEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    // Platform / Admin Seller flag
+    isPlatform: {
       type: Boolean,
       default: false,
       index: true,
