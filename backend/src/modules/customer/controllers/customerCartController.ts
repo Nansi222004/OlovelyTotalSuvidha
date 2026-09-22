@@ -11,6 +11,7 @@ import AppSettings from '../../../models/AppSettings';
 import { getRoadDistances } from '../../../services/mapService';
 import Seller from '../../../models/Seller';
 import { checkWholesaleEligibility, validateWholesalePrice } from '../../../utils/categoryChannelHelper';
+import { resolveAvailableStock } from '../../../utils/stockHelper';
 
 // Helper to calculate item price matching frontend logic
 const calculateItemPrice = (product: any, variationSelector: any) => {
@@ -42,7 +43,7 @@ const calculateItemPrice = (product: any, variationSelector: any) => {
 };
 
 // Helper to calculate delivery fee for Quick Commerce
-const calculateDeliveryStuff = async (total: number, items: any[], userLat: number | null, userLng: number | null, deliveryOption: string = 'Standard') => {
+const calculateDeliveryStuff = async (total: number, items: any[], userLat: number | null, userLng: number | null, deliveryOption: string = 'Instant') => {
     let estimatedDeliveryFee = 0;
     let platformFee = 0;
     let freeDeliveryThreshold = 0;
@@ -127,7 +128,7 @@ const buildUnifiedCartResponse = async (
     hasValidLocation: boolean,
     userLat: number | null,
     userLng: number | null,
-    deliveryOption: string = 'Standard'
+    deliveryOption: string = 'Instant'
 ) => {
     const qcItems: any[] = [];
     const ecomItems: any[] = [];
@@ -178,24 +179,39 @@ const buildUnifiedCartResponse = async (
 
         const itemTotal = price * item.quantity;
 
+        const stockInfo = resolveAvailableStock(product, item.variationId || item.variation);
+        const authoritativeMoq = item.isWholesale ? Math.max(1, Number(product.wholesaleMinimumQuantity) || 1) : undefined;
+        const isStockBelowMoq = item.isWholesale ? stockInfo.availableStock < (authoritativeMoq || 1) : false;
+
+        const itemWithStock = {
+            ...(item.toObject ? item.toObject() : item),
+            availableStock: stockInfo.availableStock,
+            isOutOfStock: stockInfo.isSoldOut || stockInfo.availableStock <= 0,
+            isInsufficientStock: (!stockInfo.isSoldOut && stockInfo.availableStock > 0 && item.quantity > stockInfo.availableStock) || isStockBelowMoq,
+            isStockBelowMoq,
+            wholesaleMinimumQuantity: authoritativeMoq,
+            variantTitle: stockInfo.variantLabel,
+            variationId: stockInfo.resolvedVariationId || item.variationId,
+        };
+
         if (itemProductType === 'ECOMMERCE') {
             // Ecommerce items: NOT subject to local seller radius filtering!
-            ecomItems.push(item);
+            ecomItems.push(itemWithStock);
             ecomSubtotal += itemTotal;
         } else {
             // Quick Commerce items: requires seller range check if location is known
             if (!hasValidLocation) {
-                qcItems.push(item);
+                qcItems.push(itemWithStock);
                 qcSubtotal += itemTotal;
             } else {
                 const isAvailable = nearbySellerIds.some(
                     (id) => id.toString() === (product.seller?._id || product.seller)?.toString()
                 );
                 if (isAvailable) {
-                    qcItems.push(item);
+                    qcItems.push(itemWithStock);
                     qcSubtotal += itemTotal;
                 } else {
-                    unavailableItems.push(item);
+                    unavailableItems.push(itemWithStock);
                 }
             }
         }
@@ -211,8 +227,8 @@ const buildUnifiedCartResponse = async (
 
     const settings = await AppSettings.findOne();
 
-    // Quick Commerce fees: only calculate if qcItems exist
-    const qcDeliveryOption = deliveryOption?.toLowerCase() === 'instant' ? 'Instant' : 'Standard';
+    // Quick Commerce fees: only calculate if qcItems exist - authoritatively Instant Delivery
+    const qcDeliveryOption = 'Instant';
     const freeDeliveryThreshold = settings?.freeDeliveryThreshold ?? 199;
     const isEligibleForFreeDelivery = freeDeliveryThreshold > 0 && totalProductSubtotal >= freeDeliveryThreshold;
 
@@ -242,23 +258,18 @@ const buildUnifiedCartResponse = async (
         quickCommerce: {
             fulfillmentType: 'LOCAL_DELIVERY',
             title: '⚡ QUICK DELIVERY',
-            estimatedDeliveryTime: '10–30 min',
+            estimatedDeliveryTime: settings?.estimatedDeliveryTime || '10–15 mins',
             items: qcItems,
             subtotal: Number(qcSubtotal.toFixed(2)),
             deliveryFee: qcDeliveryFee,
             allowedDeliveryOptions: [
                 {
-                    id: 'Standard',
-                    label: 'Standard Delivery',
-                    estimatedTime: 'Expected in 1–2 days',
-                },
-                {
                     id: 'Instant',
                     label: 'Instant Delivery',
-                    estimatedTime: 'Expected in 10–15 mins',
+                    estimatedTime: settings?.estimatedDeliveryTime ? `Expected in ${settings.estimatedDeliveryTime}` : 'Expected in 10–15 mins',
                 },
             ],
-            selectedDeliveryOption: qcDeliveryOption,
+            selectedDeliveryOption: 'Instant',
         },
         ecommerce: {
             fulfillmentType: 'COURIER_SHIPPING',
@@ -329,15 +340,14 @@ export const getCart = async (req: Request, res: Response) => {
                         quickCommerce: {
                             fulfillmentType: 'LOCAL_DELIVERY',
                             title: '⚡ QUICK DELIVERY',
-                            estimatedDeliveryTime: '10–30 min',
+                            estimatedDeliveryTime: '10–15 mins',
                             items: [],
                             subtotal: 0,
                             deliveryFee: 0,
                             allowedDeliveryOptions: [
-                                { id: 'Standard', label: 'Standard Delivery', estimatedTime: 'Expected in 1–2 days' },
                                 { id: 'Instant', label: 'Instant Delivery', estimatedTime: 'Expected in 10–15 mins' },
                             ],
-                            selectedDeliveryOption: 'Standard',
+                            selectedDeliveryOption: 'Instant',
                         },
                         ecommerce: {
                             fulfillmentType: 'COURIER_SHIPPING',
@@ -356,7 +366,7 @@ export const getCart = async (req: Request, res: Response) => {
             });
         }
 
-        const deliveryOption = (req.query.deliveryOption as string) || 'Standard';
+        const deliveryOption = (req.query.deliveryOption as string) || 'Instant';
         const responseData = await buildUnifiedCartResponse(
             cart,
             nearbySellerIds,
@@ -383,7 +393,8 @@ export const getCart = async (req: Request, res: Response) => {
 export const addToCart = async (req: Request, res: Response) => {
     try {
         const userId = req.user?.userId;
-        const { productId, quantity = 1, variation, isWholesale: clientRequestsWholesale = false } = req.body;
+        const { productId, quantity = 1, variation, variationId, isWholesale: clientRequestsWholesale = false } = req.body;
+        const targetVariation = variation || variationId;
         const { latitude, longitude } = req.query;
 
         if (!productId) {
@@ -491,16 +502,68 @@ export const addToCart = async (req: Request, res: Response) => {
             cart = await Cart.create({ customer: userId, items: [], total: 0 });
         }
 
-        // Check if item already exists in cart
-        let cartItem = await CartItem.findOne({
-            cart: cart._id,
-            product: productId,
-            variation: variation || null
-        });
-
         let sanitizedQuantity = parseInt(quantity as any, 10);
         if (isNaN(sanitizedQuantity) || sanitizedQuantity < 1) {
             sanitizedQuantity = 1;
+        }
+
+        const stockInfo = resolveAvailableStock(product, targetVariation);
+        const resolvedVarLabel = stockInfo.variantLabel || 'selected variant';
+
+        if (stockInfo.variantNotFound) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'OUT_OF_STOCK',
+                message: `Sorry, the selected variation for ${product.productName} is unavailable.`,
+                stockConflict: {
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: sanitizedQuantity,
+                    availableStock: 0,
+                    isSoldOut: true,
+                    variantNotFound: true,
+                },
+            });
+        }
+
+        if (stockInfo.isSoldOut || stockInfo.availableStock <= 0) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'OUT_OF_STOCK',
+                message: `Sorry, ${product.productName} (${resolvedVarLabel}) is currently out of stock.`,
+                stockConflict: {
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: sanitizedQuantity,
+                    availableStock: 0,
+                    isSoldOut: true,
+                },
+            });
+        }
+
+        // Wholesale MOQ check vs available stock
+        if (serverIsWholesale && serverWholesaleMOQ && stockInfo.availableStock < serverWholesaleMOQ) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'INSUFFICIENT_STOCK',
+                message: `Wholesale minimum order quantity is ${serverWholesaleMOQ} units, but only ${stockInfo.availableStock} units are available in stock.`,
+                data: { minimumQuantity: serverWholesaleMOQ, requested: sanitizedQuantity, availableStock: stockInfo.availableStock },
+                stockConflict: {
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: sanitizedQuantity,
+                    availableStock: stockInfo.availableStock,
+                    isSoldOut: false,
+                    isBelowMoq: true,
+                    wholesaleMoq: serverWholesaleMOQ,
+                },
+            });
         }
 
         // ── MOQ ENFORCEMENT ───────────────────────────────────────────────────
@@ -508,19 +571,68 @@ export const addToCart = async (req: Request, res: Response) => {
         if (serverIsWholesale && serverWholesaleMOQ && sanitizedQuantity < serverWholesaleMOQ) {
             return res.status(400).json({
                 success: false,
+                errorCode: 'INSUFFICIENT_STOCK',
                 message: `Minimum order quantity for wholesale is ${serverWholesaleMOQ} units. You requested ${sanitizedQuantity}.`,
                 data: { minimumQuantity: serverWholesaleMOQ, requested: sanitizedQuantity },
+                stockConflict: {
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: sanitizedQuantity,
+                    availableStock: stockInfo.availableStock,
+                    isSoldOut: false,
+                    isBelowMoq: false,
+                    wholesaleMoq: serverWholesaleMOQ,
+                },
             });
         }
         // ──────────────────────────────────────────────────────────────────────
 
-        const maxStock = typeof (product as any).stock === 'number' && (product as any).stock > 0 ? (product as any).stock : 999;
+        // Check if item already exists in cart (matching exact variationId or variation string)
+        const variationMatchConditions: any[] = [
+            { variation: targetVariation || null }
+        ];
+        if (stockInfo.resolvedVariationId) {
+            variationMatchConditions.push(
+                { variation: stockInfo.resolvedVariationId },
+                { variationId: new mongoose.Types.ObjectId(stockInfo.resolvedVariationId) }
+            );
+        }
+        if (stockInfo.variantLabel) {
+            variationMatchConditions.push({ variation: stockInfo.variantLabel });
+        }
+
+        let cartItem = await CartItem.findOne({
+            cart: cart._id,
+            product: productId,
+            $or: variationMatchConditions,
+        });
+
+        const maxStock = stockInfo.availableStock;
         const maxAllowedQty = (!serverIsWholesale && (product as any).totalAllowedQuantity && (product as any).totalAllowedQuantity > 0)
             ? Math.min(maxStock, (product as any).totalAllowedQuantity)
             : maxStock;
 
         if (cartItem) {
             const newQty = cartItem.quantity + sanitizedQuantity;
+            if (newQty > maxStock) {
+                return res.status(400).json({
+                    success: false,
+                    errorCode: 'INSUFFICIENT_STOCK',
+                    message: `Sorry, ${product.productName} (${resolvedVarLabel}) has only ${maxStock} units available. You already have ${cartItem.quantity} in your cart.`,
+                    stockConflict: {
+                        cartItemId: cartItem._id.toString(),
+                        productId: product._id.toString(),
+                        productName: product.productName,
+                        variationId: stockInfo.resolvedVariationId,
+                        variantTitle: resolvedVarLabel,
+                        requestedQuantity: newQty,
+                        availableStock: maxStock,
+                        isSoldOut: false,
+                    },
+                });
+            }
             // Re-enforce MOQ on updates too
             if (serverIsWholesale && serverWholesaleMOQ && newQty < serverWholesaleMOQ) {
                 return res.status(400).json({
@@ -535,13 +647,33 @@ export const addToCart = async (req: Request, res: Response) => {
                 (cartItem as any).wholesalePrice = serverWholesalePrice;
                 (cartItem as any).wholesaleMinimumQuantity = serverWholesaleMOQ;
             }
+            if (stockInfo.resolvedVariationId && !cartItem.variationId) {
+                cartItem.variationId = new mongoose.Types.ObjectId(stockInfo.resolvedVariationId);
+            }
             await cartItem.save();
         } else {
+            if (sanitizedQuantity > maxStock) {
+                return res.status(400).json({
+                    success: false,
+                    errorCode: 'INSUFFICIENT_STOCK',
+                    message: `Sorry, only ${maxStock} units of ${product.productName} (${resolvedVarLabel}) are available.`,
+                    stockConflict: {
+                        productId: product._id.toString(),
+                        productName: product.productName,
+                        variationId: stockInfo.resolvedVariationId,
+                        variantTitle: resolvedVarLabel,
+                        requestedQuantity: sanitizedQuantity,
+                        availableStock: maxStock,
+                        isSoldOut: false,
+                    },
+                });
+            }
             cartItem = await CartItem.create({
                 cart: cart._id,
                 product: productId,
                 quantity: Math.min(maxAllowedQty, sanitizedQuantity),
-                variation: variation || null,
+                variation: stockInfo.resolvedVariationId || targetVariation || null,
+                variationId: stockInfo.resolvedVariationId ? new mongoose.Types.ObjectId(stockInfo.resolvedVariationId) : undefined,
                 productType: product.productType || 'QUICK_COMMERCE',
                 isWholesale: serverIsWholesale,
                 wholesalePrice: serverWholesalePrice,
@@ -560,7 +692,7 @@ export const addToCart = async (req: Request, res: Response) => {
             }
         });
 
-        const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Standard';
+        const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Instant';
         const responseData = await buildUnifiedCartResponse(
             updatedCart,
             nearbySellerIds,
@@ -635,24 +767,120 @@ export const updateCartItem = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
         }
 
+        const stockInfo = resolveAvailableStock(product, cartItem.variationId || cartItem.variation);
+        const resolvedVarLabel = stockInfo.variantLabel || 'selected variant';
+
+        if (stockInfo.variantNotFound) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'OUT_OF_STOCK',
+                message: `Sorry, the selected variation for ${product.productName} is unavailable.`,
+                stockConflict: {
+                    cartItemId: cartItem._id.toString(),
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: parsedQuantity,
+                    availableStock: 0,
+                    isSoldOut: true,
+                    variantNotFound: true,
+                },
+            });
+        }
+
         // Enforce Wholesale MOQ on update (No silent adjustments)
         if (cartItem.isWholesale) {
             const authoritativeMoq = Math.max(1, Number(product?.wholesaleMinimumQuantity) || Number((cartItem as any).wholesaleMinimumQuantity) || 1);
+            if (stockInfo.availableStock < authoritativeMoq) {
+                return res.status(400).json({
+                    success: false,
+                    errorCode: 'INSUFFICIENT_STOCK',
+                    message: `Wholesale minimum order quantity is ${authoritativeMoq} units, but only ${stockInfo.availableStock} units are available in stock.`,
+                    data: { minimumQuantity: authoritativeMoq, requested: parsedQuantity, availableStock: stockInfo.availableStock },
+                    stockConflict: {
+                        cartItemId: cartItem._id.toString(),
+                        productId: product._id.toString(),
+                        productName: product.productName,
+                        variationId: stockInfo.resolvedVariationId,
+                        variantTitle: resolvedVarLabel,
+                        requestedQuantity: parsedQuantity,
+                        availableStock: stockInfo.availableStock,
+                        isSoldOut: false,
+                        isBelowMoq: true,
+                        wholesaleMoq: authoritativeMoq,
+                    },
+                });
+            }
             if (parsedQuantity < authoritativeMoq) {
                 return res.status(400).json({
                     success: false,
+                    errorCode: 'INSUFFICIENT_STOCK',
                     message: `Minimum order quantity for wholesale is ${authoritativeMoq} units. You requested ${parsedQuantity}.`,
                     data: { minimumQuantity: authoritativeMoq, requested: parsedQuantity },
+                    stockConflict: {
+                        cartItemId: cartItem._id.toString(),
+                        productId: product._id.toString(),
+                        productName: product.productName,
+                        variationId: stockInfo.resolvedVariationId,
+                        variantTitle: resolvedVarLabel,
+                        requestedQuantity: parsedQuantity,
+                        availableStock: stockInfo.availableStock,
+                        isSoldOut: false,
+                        isBelowMoq: false,
+                        wholesaleMoq: authoritativeMoq,
+                    },
                 });
             }
         }
 
-        const maxStock = typeof product?.stock === 'number' && product.stock > 0 ? product.stock : 999;
+        if (stockInfo.isSoldOut || stockInfo.availableStock <= 0) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'OUT_OF_STOCK',
+                message: `Sorry, ${product.productName} (${resolvedVarLabel}) is currently out of stock.`,
+                stockConflict: {
+                    cartItemId: cartItem._id.toString(),
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: parsedQuantity,
+                    availableStock: 0,
+                    isSoldOut: true,
+                },
+            });
+        }
+
+        if (parsedQuantity > stockInfo.availableStock) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'INSUFFICIENT_STOCK',
+                message: `Sorry, only ${stockInfo.availableStock} units of ${product.productName} (${resolvedVarLabel}) are available.`,
+                stockConflict: {
+                    cartItemId: cartItem._id.toString(),
+                    productId: product._id.toString(),
+                    productName: product.productName,
+                    variationId: stockInfo.resolvedVariationId,
+                    variantTitle: resolvedVarLabel,
+                    requestedQuantity: parsedQuantity,
+                    availableStock: stockInfo.availableStock,
+                    isSoldOut: false,
+                    isBelowMoq: false,
+                    wholesaleMoq: cartItem.isWholesale ? Math.max(1, Number(product?.wholesaleMinimumQuantity) || 1) : undefined,
+                },
+            });
+        }
+
+        const maxStock = stockInfo.availableStock;
         const maxAllowedQty = (!cartItem.isWholesale && product?.totalAllowedQuantity && product.totalAllowedQuantity > 0)
             ? Math.min(maxStock, product.totalAllowedQuantity)
             : maxStock;
 
         cartItem.quantity = Math.min(maxAllowedQty, parsedQuantity);
+        if (stockInfo.resolvedVariationId && !cartItem.variationId) {
+            cartItem.variationId = new mongoose.Types.ObjectId(stockInfo.resolvedVariationId);
+        }
         await cartItem.save();
 
         const updatedCart = await Cart.findById(cart._id).populate({
@@ -663,7 +891,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
             }
         });
 
-        const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Standard';
+        const deliveryOption = (req.body.deliveryOption as string) || (req.query.deliveryOption as string) || 'Instant';
         const responseData = await buildUnifiedCartResponse(
             updatedCart,
             nearbySellerIds,
@@ -720,7 +948,7 @@ export const removeFromCart = async (req: Request, res: Response) => {
             }
         });
 
-        const deliveryOption = (req.query.deliveryOption as string) || 'Standard';
+        const deliveryOption = (req.query.deliveryOption as string) || 'Instant';
         const responseData = await buildUnifiedCartResponse(
             updatedCart,
             nearbySellerIds,

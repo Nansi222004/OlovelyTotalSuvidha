@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ICustomer extends Document {
   name: string;
-  email: string;
+  email?: string;
   phone: string;
   mobile?: string; // Virtual alias for phone
   dateOfBirth?: Date;

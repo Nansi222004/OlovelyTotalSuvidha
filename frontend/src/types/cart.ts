@@ -9,6 +9,11 @@ export interface CartItem {
   wholesalePrice?: number;
   wholesaleMinimumQuantity?: number;
   price?: number;
+  availableStock?: number;
+  isOutOfStock?: boolean;
+  isInsufficientStock?: boolean;
+  isStockBelowMoq?: boolean;
+  variantTitle?: string;
 }
 
 export interface Cart {

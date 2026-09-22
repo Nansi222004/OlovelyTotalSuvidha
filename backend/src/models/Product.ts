@@ -32,6 +32,7 @@ export interface IProduct extends Document {
   variationType?: string; // e.g., 'Size', 'Color', 'Weight'
   variations?: Array<{
     _id?: mongoose.Types.ObjectId;
+    title?: string;
     name: string;
     value: string;
     price?: number;
@@ -226,6 +227,7 @@ const ProductSchema = new Schema<IProduct>(
     variations: {
       type: [
         {
+          title: String,
           name: String,
           value: String,
           price: Number,

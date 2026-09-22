@@ -139,22 +139,44 @@ export const updateProfile = asyncHandler(
     }
 
     // Update fields if provided
-    if (name) customer.name = name;
-    if (email) {
-      // Check if email is already taken by another customer
-      const existingCustomer = await Customer.findOne({
-        email,
-        _id: { $ne: userId },
-      });
-
-      if (existingCustomer) {
-        return res.status(409).json({
+    if (name !== undefined) {
+      const trimmedName = typeof name === "string" ? name.trim() : "";
+      if (!trimmedName) {
+        return res.status(400).json({
           success: false,
-          message: "Email already in use by another customer",
+          message: "Name is required",
         });
       }
+      customer.name = trimmedName;
+    }
 
-      customer.email = email;
+    if (email !== undefined && email !== null) {
+      const trimmedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      if (trimmedEmail) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+          return res.status(400).json({
+            success: false,
+            message: "Please enter a valid email address",
+          });
+        }
+
+        // Check if email is already taken by another customer
+        const existingCustomer = await Customer.findOne({
+          email: trimmedEmail,
+          _id: { $ne: userId },
+        });
+
+        if (existingCustomer) {
+          return res.status(409).json({
+            success: false,
+            message: "Email already in use by another customer",
+          });
+        }
+
+        customer.email = trimmedEmail;
+      } else if (req.body.clearEmail === true) {
+        customer.email = undefined;
+      }
     }
     if (dateOfBirth) customer.dateOfBirth = new Date(dateOfBirth);
     if (notificationPreferences) customer.notificationPreferences = { ...customer.notificationPreferences, ...notificationPreferences };

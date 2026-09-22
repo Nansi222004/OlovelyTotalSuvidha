@@ -127,11 +127,25 @@ export default function ProductCard({
     }
   }, [navigate, productId, isWholesaleActive, product.wholesaleEnabled, isAll]);
 
+  const effectiveStock = useMemo(() => {
+    if (product.variations && product.variations.length > 0) {
+      return product.variations.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
+    }
+    return Number(product.stock) || 0;
+  }, [product.variations, product.stock]);
+
+  const isOutOfStock = product.status === "Sold out" || effectiveStock <= 0;
+  const isWholesaleMoqUnavailable = isWholesaleActive && effectiveStock < wholesaleMoq;
+
+  const lowStockThreshold = settings.inventorySettings?.lowStockThreshold ?? 10;
+  const lowStockDisplayQuantity = settings.inventorySettings?.lowStockDisplayQuantity ?? 2;
+  const isLowStock = !isOutOfStock && effectiveStock > 0 && effectiveStock <= lowStockThreshold;
+
   const handleAdd = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
-    if (isOperationPendingRef.current) {
+    if (isOperationPendingRef.current || isOutOfStock || isWholesaleMoqUnavailable) {
       return;
     }
 
@@ -170,7 +184,7 @@ export default function ProductCard({
     e.stopPropagation();
     e.preventDefault();
 
-    if (isOperationPendingRef.current) {
+    if (isOperationPendingRef.current || (effectiveStock > 0 && inCartQty >= effectiveStock) || isWholesaleMoqUnavailable) {
       return;
     }
 
@@ -186,7 +200,7 @@ export default function ProductCard({
     } finally {
       isOperationPendingRef.current = false;
     }
-  }, [product, productId, inCartQty, updateQuantity, addToCart, isWholesaleActive, wholesaleMoq]);
+  }, [product, productId, inCartQty, effectiveStock, updateQuantity, addToCart, isWholesaleActive, wholesaleMoq]);
 
   // Memoize class names
   const cardClassName = useMemo(() => 
@@ -196,19 +210,6 @@ export default function ProductCard({
   const imageContainerClassName = useMemo(() => 
     `w-full aspect-square bg-neutral-50/70 flex items-center justify-center p-0 relative overflow-hidden flex-shrink-0 cursor-pointer`
   , []);
-
-  const effectiveStock = useMemo(() => {
-    if (product.variations && product.variations.length > 0) {
-      return product.variations.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
-    }
-    return Number(product.stock) || 0;
-  }, [product.variations, product.stock]);
-
-  const isOutOfStock = product.status === "Sold out" || effectiveStock <= 0;
-
-  const lowStockThreshold = settings.inventorySettings?.lowStockThreshold ?? 10;
-  const lowStockDisplayQuantity = settings.inventorySettings?.lowStockDisplayQuantity ?? 2;
-  const isLowStock = !isOutOfStock && effectiveStock > 0 && effectiveStock <= lowStockThreshold;
 
   return (
     <motion.div
@@ -317,6 +318,15 @@ export default function ProductCard({
             </span>
           </div>
         )}
+
+        {/* Out of Stock Overlay */}
+        {isOutOfStock && (
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
+            <span className="bg-neutral-900/90 text-white text-[10px] sm:text-xs font-black uppercase px-2.5 py-1 rounded shadow-md tracking-wider">
+              Out of Stock
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 2. Product Info Section */}
@@ -414,20 +424,20 @@ export default function ProductCard({
             ref={addButtonRef}
             variant="outline"
             size="sm"
-            disabled={isOutOfStock}
+            disabled={isOutOfStock || isWholesaleMoqUnavailable}
             onClick={(e) => {
               e.stopPropagation();
               handleAdd(e);
             }}
-            className={`w-full border-2 rounded-lg font-bold text-xs sm:text-sm h-9 sm:h-10 uppercase tracking-wider transition-colors cursor-pointer ${
-              isOutOfStock
+            className={`w-full border-2 rounded-lg font-bold text-xs sm:text-sm h-9 sm:h-10 uppercase tracking-wider transition-colors ${
+              isOutOfStock || isWholesaleMoqUnavailable
                 ? 'border-neutral-200 text-neutral-400 bg-neutral-100 cursor-not-allowed'
                 : isWholesaleActive
-                ? 'border-purple-600 text-purple-700 bg-white hover:bg-purple-50 active:bg-purple-100 shadow-2xs'
-                : 'border-green-600 text-green-700 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs'
+                ? 'border-purple-600 text-purple-700 bg-white hover:bg-purple-50 active:bg-purple-100 shadow-2xs cursor-pointer'
+                : 'border-green-600 text-green-700 bg-white hover:bg-green-50 active:bg-green-100 shadow-2xs cursor-pointer'
             }`}
           >
-            {isOutOfStock ? 'Out of Stock' : isWholesaleActive ? `ADD (${wholesaleMoq})` : 'ADD'}
+            {isOutOfStock ? 'Out of Stock' : isWholesaleMoqUnavailable ? `Below MOQ (${wholesaleMoq})` : isWholesaleActive ? `ADD (${wholesaleMoq})` : 'ADD'}
           </Button>
         ) : (
           <div className="flex items-center justify-between bg-green-600 text-white rounded-lg px-2 h-9 sm:h-10 w-full shadow-2xs">
@@ -445,11 +455,17 @@ export default function ProductCard({
               {inCartQty}
             </span>
             <button
+              disabled={effectiveStock > 0 && inCartQty >= effectiveStock}
               onClick={(e) => {
                 e.stopPropagation();
                 handleIncrease(e);
               }}
-              className="w-8 h-8 flex items-center justify-center font-bold text-white hover:bg-green-700 rounded transition-colors text-lg cursor-pointer"
+              className={`w-8 h-8 flex items-center justify-center font-bold text-white rounded transition-colors text-lg ${
+                effectiveStock > 0 && inCartQty >= effectiveStock
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'hover:bg-green-700 cursor-pointer'
+              }`}
+              title={effectiveStock > 0 && inCartQty >= effectiveStock ? `Only ${effectiveStock} units available` : "Increase quantity"}
               aria-label="Increase quantity"
             >
               +

@@ -24,6 +24,7 @@ import { createEcommerceShipment, cancelEcommerceShipment, checkPincode } from "
 import { IFulfillmentGroup } from "../../../models/Order";
 import InventoryTransaction from "../../../models/InventoryTransaction";
 import { mutateStock } from "../../../services/inventoryService";
+import { resolveAvailableStock } from "../../../utils/stockHelper";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -177,7 +178,8 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     // Resolve authoritative delivery options per channel
-    const resolvedQcOption: 'Standard' | 'Instant' = requestedQcOption?.toUpperCase() === 'INSTANT' ? 'Instant' : 'Standard';
+    // Normalize legacy QC delivery selections to Instant; Quick Commerce items authoritatively use Instant Delivery
+    const resolvedQcOption: 'Instant' = 'Instant';
     const resolvedEcomOption: 'Courier' = 'Courier';
 
     // Validate delivery address location
@@ -296,122 +298,127 @@ export const createOrder = async (req: Request, res: Response) => {
       subtotal: number;
     }>();
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // PASS 1: PRE-VALIDATION OF ALL ORDER ITEMS
+    // Validate existence, exact variations, stock levels, and wholesale MOQ
+    // BEFORE making any mutations or creating OrderItem documents.
+    // ══════════════════════════════════════════════════════════════════════════
+    interface ValidatedOrderItem {
+      item: any;
+      product: any;
+      qty: number;
+      stockInfo: any;
+      selectedVariation: any;
+      resolvedVariationId: string | null;
+      resolvedVarLabel: string;
+      authoritativeIsWholesale: boolean;
+      authoritativeWholesalePrice?: number;
+      authoritativeMoq?: number;
+      itemPrice: number;
+      itemTotal: number;
+    }
+
+    const validatedItems: ValidatedOrderItem[] = [];
+
     for (const item of items) {
       if (!item.product || !item.product.id) {
-        throw new Error("Invalid item structure: product.id is missing");
+        const err: any = new Error("Invalid item structure: product.id is missing");
+        err.statusCode = 400;
+        throw err;
       }
 
       const qty = Number(item.quantity) || 0;
       if (qty <= 0) {
-        throw new Error("Invalid item quantity");
+        const err: any = new Error("Invalid item quantity");
+        err.statusCode = 400;
+        throw err;
       }
 
       // --- Load the product for validation ---
       const product = await Product.findById(item.product.id).populate("category subcategory subSubCategory");
       if (!product) {
-        throw new Error(`Product not found: ${item.product.name || item.product.id}`);
+        const err: any = new Error(`Product not found: ${item.product.name || item.product.id}`);
+        err.statusCode = 400;
+        throw err;
       }
       if ((product.status as string) === "Sold out" || product.status === "Inactive") {
-        throw new Error(`Product "${product.productName}" is unavailable`);
+        const err: any = new Error(`Product "${product.productName}" is unavailable`);
+        err.statusCode = 400;
+        throw err;
       }
 
       const variationValue = item.variant || item.variation;
 
-      // --- Resolve the specific variation (if applicable) ---
-      let selectedVariation: any = null;
-      let resolvedVariationId: string | null = null;
+      // --- Resolve the specific variation & authoritative stock availability ---
+      const stockInfo = resolveAvailableStock(product, variationValue);
+      const selectedVariation = stockInfo.selectedVariation;
+      const resolvedVariationId: string | null = stockInfo.resolvedVariationId || null;
+      const resolvedVarLabel = stockInfo.variantLabel || product.pack || "Standard";
 
-      if (product.variations && product.variations.length > 0) {
-        if (variationValue) {
-          selectedVariation = product.variations.find((v: any) =>
-            (v._id && v._id.toString() === variationValue.toString()) ||
-            v.value === variationValue ||
-            v.title === variationValue ||
-            v.pack === variationValue
-          );
-        }
-        if (!selectedVariation) {
-          // Fallback: use first variation
-          selectedVariation = product.variations[0];
-        }
-        if ((selectedVariation as any)._id) {
-          resolvedVariationId = (selectedVariation as any)._id.toString();
-        }
+      // 1. Strict variant resolution check
+      if (stockInfo.variantNotFound) {
+        const err: any = new Error(
+          `Selected variation for "${product.productName}" is no longer available.`
+        );
+        err.statusCode = 400;
+        err.errorCode = "OUT_OF_STOCK";
+        err.stockConflict = {
+          productId: product._id.toString(),
+          productName: product.productName,
+          variationId: resolvedVariationId,
+          variantId: resolvedVariationId,
+          variantTitle: resolvedVarLabel,
+          requestedQuantity: qty,
+          availableStock: 0,
+          isSoldOut: true,
+          variantNotFound: true,
+        };
+        throw err;
       }
 
-      // --- Validate stock availability (stock === 0 means unlimited) ---
-      if (selectedVariation) {
-        if (selectedVariation.status === "Sold out") {
-          throw new Error(`Variant "${selectedVariation.title || selectedVariation.value}" is sold out`);
-        }
-        if (selectedVariation.stock !== undefined && selectedVariation.stock !== null && selectedVariation.stock > 0) {
-          if (selectedVariation.stock < qty) {
-            throw new Error(`Insufficient stock for variant "${selectedVariation.title || selectedVariation.value}"`);
-          }
-        }
-        // stock === 0 → unlimited; skip deduction
-      } else {
-        // Simple product
-        if (product.stock !== undefined && product.stock !== null && product.stock > 0) {
-          if (product.stock < qty) {
-            throw new Error(`Insufficient stock for product "${product.productName}"`);
-          }
-        }
-        // stock === 0 → unlimited; skip deduction
+      // 2. Validate stock availability (Sold out or 0 stock)
+      if (stockInfo.isSoldOut || stockInfo.availableStock <= 0) {
+        const err: any = new Error(
+          `Sorry, "${product.productName} (${resolvedVarLabel})" is currently out of stock.`
+        );
+        err.statusCode = 400;
+        err.errorCode = "OUT_OF_STOCK";
+        err.stockConflict = {
+          productId: product._id.toString(),
+          productName: product.productName,
+          variationId: resolvedVariationId,
+          variantId: resolvedVariationId,
+          variantTitle: resolvedVarLabel,
+          requestedQuantity: qty,
+          availableStock: 0,
+          isSoldOut: true,
+        };
+        throw err;
       }
 
-      // Pre-allocate authoritative orderItemId so stock mutation and OrderItem document share exact identifier
-      const orderItemId = new mongoose.Types.ObjectId();
-
-      // --- Atomically decrement stock + create InventoryTransaction ledger ---
-      // Only decrement if stock is finite (> 0). stock === 0 means unlimited.
-      const hasFiniteStock = selectedVariation
-        ? (selectedVariation.stock !== undefined && selectedVariation.stock !== null && selectedVariation.stock > 0)
-        : (product.stock !== undefined && product.stock !== null && product.stock > 0);
-
-      if (hasFiniteStock) {
-        try {
-          await mutateStock({
-            productId: product._id.toString(),
-            variationId: resolvedVariationId,
-            quantity: -qty,           // negative = stock removal
-            type: 'SALE',
-            referenceType: 'ORDER',
-            referenceId: newOrder._id.toString(),  // idempotency order ref
-            orderItemId: orderItemId.toString(),   // item-scoped idempotency key
-            performedByRole: 'SYSTEM',
-            note: `Order ${newOrder._id}`,
-          });
-        } catch (stockErr: any) {
-          throw new Error(`Stock error for "${product.productName}": ${stockErr.message}`);
-        }
-      }
-
-      // ── WHOLESALE AUTHORITATIVE REVALIDATION (P1.3) ──────────────────────────
-      // At the final order creation boundary, NEVER trust CartItem wholesale fields.
-      // We re-read DB records and revalidate all 4 gates, price, and MOQ.
+      // 3. Wholesale Authoritative Revalidation & MOQ Enforcement
       const clientRequestedWholesale = item.isWholesale === true || item.isWholesale === "true";
       let authoritativeIsWholesale = false;
       let authoritativeWholesalePrice: number | undefined = undefined;
       let authoritativeMoq: number | undefined = undefined;
 
       if (clientRequestedWholesale) {
-        // 1. Re-read Seller from MongoDB
         const sellerDoc = await Seller.findById(product.seller).select("wholesaleEnabled vendorType");
         if (!sellerDoc) {
-          throw new Error(`Seller not found for product "${product.productName}"`);
+          const err: any = new Error(`Seller not found for product "${product.productName}"`);
+          err.statusCode = 400;
+          throw err;
         }
 
-        // 2. Re-read Category from MongoDB
         const categoryDoc = await Category.findById(product.category).select("wholesaleEnabled commerceChannels name");
         if (!categoryDoc) {
-          throw new Error(`Category not found for product "${product.productName}"`);
+          const err: any = new Error(`Category not found for product "${product.productName}"`);
+          err.statusCode = 400;
+          throw err;
         }
 
-        // 3. Global wholesale check from AppSettings
         const globalWholesaleEnabled = settings?.wholesaleSettings?.wholesaleEnabled ?? false;
 
-        // 4. Revalidate all 4 layers
         const wholesaleCheck = checkWholesaleEligibility({
           globalWholesaleEnabled,
           sellerWholesaleEnabled: !!sellerDoc.wholesaleEnabled,
@@ -427,7 +434,6 @@ export const createOrder = async (req: Request, res: Response) => {
           throw err;
         }
 
-        // 5. Revalidate commerce channel compatibility
         const channelCheck = isProductTypeAllowedForCategory(
           categoryDoc.commerceChannels,
           (product.productType || "QUICK_COMMERCE") as any
@@ -440,7 +446,6 @@ export const createOrder = async (req: Request, res: Response) => {
           throw err;
         }
 
-        // 6. Re-read authoritative wholesalePrice from DB
         const dbWholesalePrice = Number(product.wholesalePrice);
         if (!dbWholesalePrice || dbWholesalePrice <= 0) {
           const err: any = new Error(
@@ -451,15 +456,51 @@ export const createOrder = async (req: Request, res: Response) => {
         }
         authoritativeWholesalePrice = dbWholesalePrice;
 
-        // 7. Re-read authoritative wholesaleMinimumQuantity from DB
         authoritativeMoq = Math.max(1, Number(product.wholesaleMinimumQuantity) || 1);
 
-        // 8. Validate quantity >= current MOQ
+        // Check if available stock is below wholesale MOQ
+        if (stockInfo.availableStock < authoritativeMoq) {
+          const err: any = new Error(
+            `Wholesale minimum order quantity is ${authoritativeMoq} units, but only ${stockInfo.availableStock} units of "${product.productName} (${resolvedVarLabel})" are available in stock. Please remove this item from your cart.`
+          );
+          err.statusCode = 400;
+          err.errorCode = "INSUFFICIENT_STOCK";
+          err.stockConflict = {
+            productId: product._id.toString(),
+            productName: product.productName,
+            variationId: resolvedVariationId,
+            variantId: resolvedVariationId,
+            variantTitle: resolvedVarLabel,
+            requestedQuantity: qty,
+            availableStock: stockInfo.availableStock,
+            isSoldOut: false,
+            isBelowMoq: true,
+            wholesaleMoq: authoritativeMoq,
+            isWholesale: true,
+          };
+          throw err;
+        }
+
+        // Validate quantity >= current MOQ
         if (qty < authoritativeMoq) {
           const err: any = new Error(
             `Order rejected: Quantity ${qty} for "${product.productName}" is below authoritative wholesale minimum order quantity (${authoritativeMoq}).`
           );
           err.statusCode = 400;
+          err.errorCode = "INSUFFICIENT_STOCK";
+          err.stockConflict = {
+            productId: product._id.toString(),
+            productName: product.productName,
+            variationId: resolvedVariationId,
+            variantId: resolvedVariationId,
+            variantTitle: resolvedVarLabel,
+            requestedQuantity: qty,
+            availableStock: stockInfo.availableStock,
+            isSoldOut: false,
+            isBelowMoq: false,
+            wholesaleMoq: authoritativeMoq,
+            isWholesale: true,
+          };
           throw err;
         }
 
@@ -476,7 +517,30 @@ export const createOrder = async (req: Request, res: Response) => {
         }
       }
 
-      // --- Determine price using authoritative DB fields ---
+      // 4. Insufficient stock check (requested quantity > available stock)
+      if (stockInfo.availableStock < qty) {
+        const err: any = new Error(
+          `Sorry, ${product.productName} (${resolvedVarLabel}) is no longer available in your requested quantity. Only ${stockInfo.availableStock} units are available. Please update your cart.`
+        );
+        err.statusCode = 400;
+        err.errorCode = "INSUFFICIENT_STOCK";
+        err.stockConflict = {
+          productId: product._id.toString(),
+          productName: product.productName,
+          variationId: resolvedVariationId,
+          variantId: resolvedVariationId,
+          variantTitle: resolvedVarLabel,
+          requestedQuantity: qty,
+          availableStock: stockInfo.availableStock,
+          isSoldOut: false,
+          isBelowMoq: false,
+          wholesaleMoq: authoritativeMoq,
+          isWholesale: authoritativeIsWholesale,
+        };
+        throw err;
+      }
+
+      // Price calculation
       let itemPrice: number;
       if (authoritativeIsWholesale && authoritativeWholesalePrice !== undefined) {
         itemPrice = authoritativeWholesalePrice;
@@ -489,6 +553,82 @@ export const createOrder = async (req: Request, res: Response) => {
               : selectedVariation?.price || product.price || 0;
       }
       const itemTotal = itemPrice * qty;
+
+      validatedItems.push({
+        item,
+        product,
+        qty,
+        stockInfo,
+        selectedVariation,
+        resolvedVariationId,
+        resolvedVarLabel,
+        authoritativeIsWholesale,
+        authoritativeWholesalePrice,
+        authoritativeMoq,
+        itemPrice,
+        itemTotal,
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PASS 2: EXECUTION & INVENTORY MUTATION
+    // All items have been validated. Mutate stock and create OrderItems.
+    // ══════════════════════════════════════════════════════════════════════════
+    for (const vItem of validatedItems) {
+      const {
+        item,
+        product,
+        qty,
+        stockInfo,
+        selectedVariation,
+        resolvedVariationId,
+        resolvedVarLabel,
+        authoritativeIsWholesale,
+        authoritativeWholesalePrice,
+        authoritativeMoq,
+        itemPrice,
+        itemTotal,
+      } = vItem;
+
+      const orderItemId = new mongoose.Types.ObjectId();
+      const hasFiniteStock = stockInfo.availableStock > 0;
+
+      if (hasFiniteStock) {
+        try {
+          await mutateStock({
+            productId: product._id.toString(),
+            variationId: resolvedVariationId,
+            quantity: -qty,           // negative = stock removal
+            type: 'SALE',
+            referenceType: 'ORDER',
+            referenceId: newOrder._id.toString(),  // idempotency order ref
+            orderItemId: orderItemId.toString(),   // item-scoped idempotency key
+            performedByRole: 'SYSTEM',
+            note: `Order ${newOrder._id}`,
+          });
+        } catch (stockErr: any) {
+          const err: any = new Error(
+            `Sorry, ${product.productName} (${resolvedVarLabel}) could not be reserved: ${stockErr.message}`
+          );
+          err.statusCode = 400;
+          err.errorCode = "INSUFFICIENT_STOCK";
+          err.stockConflict = {
+            productId: product._id.toString(),
+            productName: product.productName,
+            variationId: resolvedVariationId,
+            variantId: resolvedVariationId,
+            variantTitle: resolvedVarLabel,
+            requestedQuantity: qty,
+            availableStock: stockInfo.availableStock,
+            isSoldOut: false,
+            isBelowMoq: authoritativeIsWholesale && stockInfo.availableStock < (authoritativeMoq || 1),
+            wholesaleMoq: authoritativeMoq,
+            isWholesale: authoritativeIsWholesale,
+          };
+          throw err;
+        }
+      }
+
       calculatedSubtotal += itemTotal;
 
       // Calculate commission rate snapshot
@@ -497,7 +637,6 @@ export const createOrder = async (req: Request, res: Response) => {
         product.seller.toString(),
         settings,
       );
-      const commAmount = (itemTotal * commRate) / 100;
 
       // Calculate return policy snapshot
       const returnsEnabled = settings?.returnConfig?.returnsEnabled !== false;
@@ -508,6 +647,7 @@ export const createOrder = async (req: Request, res: Response) => {
         : settings?.returnConfig?.defaultReturnWindowDays ?? 7;
 
       // Create OrderItem with immutable verified snapshots
+      const variationValue = item.variant || item.variation;
       const newOrderItemData = {
         _id: orderItemId,
         order: newOrder._id,
@@ -520,8 +660,8 @@ export const createOrder = async (req: Request, res: Response) => {
         quantity: qty,
         total: itemTotal,
         commissionRate: commRate,
-        commissionAmount: commAmount,
-        variation: variationValue,
+        variation: resolvedVarLabel || (typeof variationValue === 'string' ? variationValue : variationValue?.title || variationValue?.name || String(variationValue || 'Standard')),
+        variantTitle: resolvedVarLabel,
         variationId: resolvedVariationId ? new mongoose.Types.ObjectId(resolvedVariationId) : undefined,
         isWholesale: authoritativeIsWholesale,
         wholesalePrice: authoritativeWholesalePrice,
@@ -681,6 +821,7 @@ export const createOrder = async (req: Request, res: Response) => {
       } else if (resolvedQcOption === "Instant" && settings?.deliveryConfig) {
         // Instant Delivery flow: Distance Based calculation (below free-delivery threshold)
         const config = settings.deliveryConfig;
+        deliveryFee = config.baseCharge || 0;
 
         // Collect seller locations
         const sellerLocations: { lat: number; lng: number }[] = [];
@@ -730,13 +871,8 @@ export const createOrder = async (req: Request, res: Response) => {
             `DEBUG: Instant Delivery (Distance-based): MaxDistance=${deliveryDistanceKm}km, Fee=${deliveryFee} (Base: ${config.baseCharge}, Rate: ${config.kmRate}/km)`,
           );
         }
-      } else if (resolvedQcOption === "Standard") {
-        deliveryFee = settings?.deliveryCharges ?? 0;
       } else {
-        const providedDeliveryFee = Number(fees?.deliveryFee);
-        deliveryFee = Number.isFinite(providedDeliveryFee)
-          ? providedDeliveryFee
-          : settings?.deliveryCharges ?? 0;
+        deliveryFee = settings?.deliveryCharges ?? 0;
       }
     } catch (calcError) {
       console.error("Error calculating delivery fee:", calcError);
@@ -1087,8 +1223,31 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       });
     }
 
+    const isStockError =
+      Boolean(error.stockConflict) ||
+      error.errorCode === "INSUFFICIENT_STOCK" ||
+      error.errorCode === "OUT_OF_STOCK" ||
+      (typeof error.message === "string" && (
+        error.message.includes("Insufficient stock") ||
+        error.message.includes("out of stock") ||
+        error.message.includes("no longer available") ||
+        error.message.includes("minimum order quantity")
+      ));
+
+    if (isStockError) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        errorCode: error.errorCode || "INSUFFICIENT_STOCK",
+        message: error.message,
+        stockConflict: error.stockConflict || {
+          message: error.message,
+          isBelowMoq: error.message.includes("below") && error.message.includes("wholesale"),
+        },
+      });
+    }
+
     // Return a more informative error message if it's a validation error
-    let errorMessage = "Error creating order. " + error.message;
+    let errorMessage = error.statusCode ? error.message : ("Error creating order. " + error.message);
     if (error.name === "ValidationError") {
       const fields = Object.keys(error.errors).join(", ");
       errorMessage = `Validation failed for fields: ${fields}. ${error.message}`;

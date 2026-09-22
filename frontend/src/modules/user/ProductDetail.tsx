@@ -248,11 +248,15 @@ export default function ProductDetail() {
     : discount;
   const effectiveHasDiscount = isWholesaleActive ? effectiveMrp > effectiveDisplayPrice : hasDiscount;
 
-  const variantStock = selectedVariant?.stock !== undefined ? selectedVariant.stock : (product?.stock || 0);
+  const isSelectedVariantSoldOut = selectedVariant ? selectedVariant.status === "Sold out" : product?.status === "Sold out";
+  const variantStock = isSelectedVariantSoldOut
+    ? 0
+    : (selectedVariant?.stock !== undefined && selectedVariant?.stock !== null
+        ? Math.max(0, Number(selectedVariant.stock))
+        : (typeof product?.stock === 'number' ? Math.max(0, product.stock) : 0));
   const variantTitle = selectedVariant?.title || selectedVariant?.value || product?.pack || "Standard";
-  const isVariantAvailable = selectedVariant
-    ? selectedVariant.status !== "Sold out" && (selectedVariant.stock === 0 || selectedVariant.stock === undefined || selectedVariant.stock === null || selectedVariant.stock > 0)
-    : product?.status !== "Sold out" && (product?.stock === 0 || product?.stock === undefined || product?.stock === null || product?.stock > 0);
+  const isVariantAvailable = !isSelectedVariantSoldOut && variantStock > 0;
+  const isWholesaleMoqUnavailable = isWholesaleActive && variantStock < wholesaleMoq;
 
   // Get all images for gallery
   const allImages = product?.allImages || [product?.imageUrl || ""].filter(Boolean);
@@ -390,6 +394,10 @@ export default function ProductDetail() {
       showToast("This variant is currently out of stock.", "info");
       return;
     }
+    if (isWholesaleMoqUnavailable) {
+      showToast(`Wholesale minimum order quantity is ${wholesaleMoq} units, but only ${variantStock} units are in stock.`, "error");
+      return;
+    }
     const initialQty = isWholesaleActive ? wholesaleMoq : 1;
     // Create product with selected variant info
     const productWithVariant = {
@@ -414,6 +422,10 @@ export default function ProductDetail() {
     }
     if (!isVariantAvailable) {
       showToast("This variant is currently out of stock.", "info");
+      return;
+    }
+    if (isWholesaleMoqUnavailable) {
+      showToast(`Wholesale minimum order quantity is ${wholesaleMoq} units, but only ${variantStock} units are in stock.`, "error");
       return;
     }
     const initialQty = isWholesaleActive ? wholesaleMoq : 1;
@@ -737,7 +749,7 @@ export default function ProductDetail() {
               <div className="flex flex-wrap gap-2">
                 {product.variations.map((variant: any, index: number) => {
                   const variantTitle = variant.title || variant.value || `Variant ${index + 1}`;
-                  const isOutOfStock = variant.status === "Sold out" || (variant.stock !== undefined && variant.stock !== null && variant.stock < 0);
+                  const isOutOfStock = variant.status === "Sold out" || (variant.stock !== undefined && variant.stock !== null && Number(variant.stock) <= 0);
                   const isSelected = index === selectedVariantIndex;
 
                   return (
@@ -809,14 +821,21 @@ export default function ProductDetail() {
           )}
 
           {/* Stock Status */}
-          {variantStock !== 0 && variantStock !== undefined && variantStock !== null && (
-            <p className="text-sm text-neutral-600 mb-1">
-              {variantStock > 0 ? `${variantStock} in stock` : "Out of stock"}
-            </p>
-          )}
-          {variantStock === 0 && (
-            <p className="text-sm text-green-600 mb-1 font-medium">
-              In Stock
+          {isVariantAvailable ? (
+            <div>
+              <p className="text-sm text-neutral-600 mb-1">
+                {variantStock} in stock
+              </p>
+              {isWholesaleMoqUnavailable && (
+                <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">
+                  ⚠️ Available stock ({variantStock}) is below wholesale minimum order quantity ({wholesaleMoq}).
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-red-600 mb-1 font-semibold flex items-center gap-1">
+              <span>⚠️</span>
+              <span>Out of stock</span>
             </p>
           )}
 
@@ -1571,12 +1590,26 @@ export default function ProductDetail() {
 
           {/* Right side - Action Buttons (Add to Cart / Stepper AND Buy Now) */}
           <div className="ml-3 flex items-center gap-2">
-            {!isVariantAvailable ? (
-              <Button
-                disabled
-                className="px-5 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-400 border border-neutral-300 rounded-lg cursor-not-allowed">
-                {t("customer.outOfStock", "Out of Stock")}
-              </Button>
+            {!isVariantAvailable || isWholesaleMoqUnavailable ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  disabled
+                  className="px-4 py-2 text-sm font-semibold h-[38px] bg-neutral-100 text-neutral-500 border border-neutral-300 rounded-lg cursor-not-allowed">
+                  {isWholesaleMoqUnavailable ? `Below MOQ (${wholesaleMoq})` : t("customer.outOfStock", "Out of Stock")}
+                </Button>
+                {inCartQty > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const productId = product.id || product._id;
+                      const cartItemId = (cartItem as any)?.id;
+                      removeFromCart(productId, cartItemId);
+                    }}
+                    className="px-3 py-2 text-xs font-semibold h-[38px] border-rose-300 text-rose-600 hover:bg-rose-50 rounded-lg">
+                    Remove from Cart
+                  </Button>
+                )}
+              </div>
             ) : (
               <>
                 <AnimatePresence mode="wait">
@@ -1632,16 +1665,28 @@ export default function ProductDetail() {
                         {inCartQty}
                       </motion.span>
                       <motion.button
-                        whileTap={{ scale: 0.9 }}
+                        whileTap={inCartQty < variantStock ? { scale: 0.9 } : undefined}
+                        disabled={inCartQty >= variantStock}
                         onClick={() => {
+                          if (inCartQty >= variantStock) return;
                           const productId = product.id || product._id;
                           const variantId = selectedVariant?._id;
                           updateQuantity(productId, inCartQty + 1, variantId, variantTitle);
                         }}
-                        className="w-6 h-6 flex items-center justify-center text-green-600 font-bold hover:bg-green-50 rounded-full transition-colors border border-green-600 p-0 leading-none text-base"
+                        className={`w-6 h-6 flex items-center justify-center font-bold rounded-full transition-colors border p-0 leading-none text-base ${
+                          inCartQty >= variantStock
+                            ? "text-neutral-300 border-neutral-200 cursor-not-allowed bg-neutral-50"
+                            : "text-green-600 border-green-600 hover:bg-green-50"
+                        }`}
+                        title={inCartQty >= variantStock ? `Only ${variantStock} units available` : "Increase quantity"}
                         style={{ lineHeight: 1 }}>
                         <span className="relative top-[-1px]">+</span>
                       </motion.button>
+                      {inCartQty >= variantStock && (
+                        <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
+                          Max ({variantStock})
+                        </span>
+                      )}
                       {isWholesaleActive && (
                         <button
                           type="button"

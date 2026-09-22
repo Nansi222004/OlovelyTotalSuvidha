@@ -85,6 +85,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       .filter((item: any) => item.product) // Safety filter
       .map((item: any) => ({
         id: item._id, // Store CartItem ID
+        availableStock: typeof item.availableStock === 'number' ? item.availableStock : undefined,
+        isOutOfStock: Boolean(item.isOutOfStock),
+        isInsufficientStock: Boolean(item.isInsufficientStock),
+        variantTitle: item.variantTitle || (item.product.pack || undefined),
         product: {
           id: item.product._id, // Map _id to id
           name: item.product.productName || item.product.name,
@@ -103,6 +107,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           wholesaleEnabled: item.product.wholesaleEnabled,
           wholesalePrice: item.product.wholesalePrice,
           wholesaleMinimumQuantity: item.product.wholesaleMinimumQuantity,
+          availableStock: typeof item.availableStock === 'number' ? item.availableStock : undefined,
+          isOutOfStock: Boolean(item.isOutOfStock),
+          isInsufficientStock: Boolean(item.isInsufficientStock),
+          variantTitle: item.variantTitle || item.product.pack,
         },
         quantity: item.quantity,
         variant: item.variation, // Also preserve it here for order placement
@@ -163,6 +171,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         if (!options?.preserveItems) {
           setItems(newItems);
+        } else {
+          // Even if preserveItems is requested, keep stock availability flags refreshed
+          setItems((prevItems) =>
+            prevItems.map((prev) => {
+              const matched = newItems.find((n) => n.id && prev.id ? n.id === prev.id : (n.product.id === prev.product.id && n.variant === prev.variant));
+              if (matched) {
+                return {
+                  ...prev,
+                  availableStock: matched.availableStock,
+                  isOutOfStock: matched.isOutOfStock,
+                  isInsufficientStock: matched.isInsufficientStock,
+                  variantTitle: matched.variantTitle,
+                };
+              }
+              return prev;
+            })
+          );
         }
         setEstimatedFee(response.data.estimatedDeliveryFee);
         setQcDeliveryFee(response.data.qcDeliveryFee);
@@ -572,6 +597,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
 
     if (!itemToUpdate) {
+      pendingOperationsRef.current.delete(operationKey);
+      return;
+    }
+
+    if (itemToUpdate.isOutOfStock || (typeof itemToUpdate.availableStock === 'number' && itemToUpdate.availableStock <= 0)) {
+      showToast("This item is currently out of stock", "info");
+      pendingOperationsRef.current.delete(operationKey);
+      return;
+    }
+
+    if (typeof itemToUpdate.availableStock === 'number' && itemToUpdate.availableStock > 0 && intQty > itemToUpdate.availableStock) {
+      showToast(`Only ${itemToUpdate.availableStock} units available in stock`, "info");
       pendingOperationsRef.current.delete(operationKey);
       return;
     }

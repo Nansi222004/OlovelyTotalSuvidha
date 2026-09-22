@@ -34,8 +34,16 @@ export default function Cart() {
   );
   const isMixed = qcItems.length > 0 && ecomItems.length > 0;
 
+  const hasStockIssues = cart.items.some((item) => {
+    const isOos = Boolean(item.isOutOfStock) || (typeof item.availableStock === 'number' && item.availableStock <= 0);
+    const moq = item.wholesaleMinimumQuantity || (item.product as any)?.wholesaleMinimumQuantity || 1;
+    const isBelowMoq = Boolean(item.isWholesale) && typeof item.availableStock === 'number' && item.availableStock < moq;
+    const isInsuff = !isOos && typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity > item.availableStock;
+    return isOos || isInsuff || isBelowMoq || Boolean(item.isStockBelowMoq);
+  });
+
   const handleCheckout = () => {
-    if (!meetsMinimumOrder) return;
+    if (!meetsMinimumOrder || hasStockIssues) return;
     navigate('/checkout');
   };
 
@@ -110,10 +118,18 @@ export default function Cart() {
                   : displayPrice;
                 const moq = item.wholesaleMinimumQuantity || item.product.wholesaleMinimumQuantity || 1;
                 const isBelowMoq = isItemWholesale && item.quantity < moq;
+                const isItemStockBelowMoq = isItemWholesale && typeof item.availableStock === 'number' && item.availableStock < moq;
+
+                const isItemOutOfStock = Boolean(item.isOutOfStock) || (typeof item.availableStock === 'number' && item.availableStock <= 0);
+                const isItemInsufficient = !isItemOutOfStock && (
+                  (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity > item.availableStock) ||
+                  isItemStockBelowMoq ||
+                  Boolean(item.isStockBelowMoq)
+                );
 
                 return (
                   <div
-                    key={item.product.id || item.product._id}
+                    key={item.id || item.product.id || item.product._id}
                     className="pt-4 first:pt-0 flex gap-4 md:gap-6"
                   >
                     <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-100 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
@@ -140,6 +156,11 @@ export default function Cart() {
                         <h3 className="font-semibold text-neutral-900 text-sm md:text-base line-clamp-2">
                           {item.product.name}
                         </h3>
+                        {item.variantTitle && (
+                          <span className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded">
+                            {item.variantTitle}
+                          </span>
+                        )}
                         {isItemWholesale && (
                           <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
                             Wholesale (MOQ: {moq})
@@ -158,6 +179,51 @@ export default function Cart() {
                         )}
                       </div>
 
+                      {/* Out of stock alert */}
+                      {isItemOutOfStock && (
+                        <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Out of stock</span>
+                          </span>
+                          <button
+                            onClick={() => removeFromCart(item.product.id, item.id)}
+                            className="text-[11px] font-bold text-red-700 hover:text-red-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Insufficient stock alert */}
+                      {isItemInsufficient && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            {isItemStockBelowMoq || item.isStockBelowMoq ? (
+                              <span>Available stock ({item.availableStock}) is below wholesale MOQ ({moq})</span>
+                            ) : (
+                              <span>Only {item.availableStock} units available</span>
+                            )}
+                          </span>
+                          {isItemStockBelowMoq || item.isStockBelowMoq ? (
+                            <button
+                              onClick={() => removeFromCart(item.product.id, item.id)}
+                              className="text-[11px] font-bold text-red-700 hover:text-red-900 underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => updateQuantity(item.product.id, item.availableStock!, item.variant, undefined, item.id)}
+                              className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded border border-amber-300 cursor-pointer"
+                            >
+                              Adjust to {item.availableStock}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {isBelowMoq && (
                         <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded mb-2 flex items-center gap-1">
                           <span>⚠️</span>
@@ -169,7 +235,7 @@ export default function Cart() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant)}
+                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant, undefined, item.id)}
                           className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
                         >
                           −
@@ -180,8 +246,14 @@ export default function Cart() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant)}
-                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                          disabled={isItemOutOfStock || (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity >= item.availableStock)}
+                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant, undefined, item.id)}
+                          className={`w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 ${
+                            isItemOutOfStock || (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity >= item.availableStock)
+                              ? 'opacity-30 cursor-not-allowed'
+                              : 'hover:border-green-600 hover:text-green-600'
+                          }`}
+                          title={typeof item.availableStock === 'number' && item.quantity >= item.availableStock ? `Only ${item.availableStock} available` : 'Increase quantity'}
                         >
                           +
                         </Button>
@@ -192,7 +264,7 @@ export default function Cart() {
                     </div>
 
                     <button
-                      onClick={() => removeFromCart(item.product.id)}
+                      onClick={() => removeFromCart(item.product.id, item.id)}
                       className="text-neutral-400 hover:text-red-600 transition-colors self-start text-sm"
                       aria-label="Remove item"
                     >
@@ -231,10 +303,18 @@ export default function Cart() {
                   : displayPrice;
                 const moq = item.wholesaleMinimumQuantity || item.product.wholesaleMinimumQuantity || 1;
                 const isBelowMoq = isItemWholesale && item.quantity < moq;
+                const isItemStockBelowMoq = isItemWholesale && typeof item.availableStock === 'number' && item.availableStock < moq;
+
+                const isItemOutOfStock = Boolean(item.isOutOfStock) || (typeof item.availableStock === 'number' && item.availableStock <= 0);
+                const isItemInsufficient = !isItemOutOfStock && (
+                  (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity > item.availableStock) ||
+                  isItemStockBelowMoq ||
+                  Boolean(item.isStockBelowMoq)
+                );
 
                 return (
                   <div
-                    key={item.product.id || item.product._id}
+                    key={item.id || item.product.id || item.product._id}
                     className="pt-4 first:pt-0 flex gap-4 md:gap-6"
                   >
                     <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-100 rounded-lg flex items-center justify-center flex-shrink-0 relative overflow-hidden">
@@ -261,6 +341,11 @@ export default function Cart() {
                         <h3 className="font-semibold text-neutral-900 text-sm md:text-base line-clamp-2">
                           {item.product.name}
                         </h3>
+                        {item.variantTitle && (
+                          <span className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded">
+                            {item.variantTitle}
+                          </span>
+                        )}
                         {isItemWholesale && (
                           <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
                             Wholesale (MOQ: {moq})
@@ -279,6 +364,51 @@ export default function Cart() {
                         )}
                       </div>
 
+                      {/* Out of stock alert */}
+                      {isItemOutOfStock && (
+                        <div className="text-xs text-red-700 bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Out of stock</span>
+                          </span>
+                          <button
+                            onClick={() => removeFromCart(item.product.id, item.id)}
+                            className="text-[11px] font-bold text-red-700 hover:text-red-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Insufficient stock alert */}
+                      {isItemInsufficient && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg mb-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            {isItemStockBelowMoq || item.isStockBelowMoq ? (
+                              <span>Available stock ({item.availableStock}) is below wholesale MOQ ({moq})</span>
+                            ) : (
+                              <span>Only {item.availableStock} units available</span>
+                            )}
+                          </span>
+                          {isItemStockBelowMoq || item.isStockBelowMoq ? (
+                            <button
+                              onClick={() => removeFromCart(item.product.id, item.id)}
+                              className="text-[11px] font-bold text-red-700 hover:text-red-900 underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => updateQuantity(item.product.id, item.availableStock!, item.variant, undefined, item.id)}
+                              className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded border border-amber-300 cursor-pointer"
+                            >
+                              Adjust to {item.availableStock}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {isBelowMoq && (
                         <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded mb-2 flex items-center gap-1">
                           <span>⚠️</span>
@@ -290,7 +420,7 @@ export default function Cart() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant)}
+                          onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.variant, undefined, item.id)}
                           className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
                         >
                           −
@@ -301,8 +431,14 @@ export default function Cart() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant)}
-                          className="w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 hover:border-green-600 hover:text-green-600"
+                          disabled={isItemOutOfStock || (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity >= item.availableStock)}
+                          onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.variant, undefined, item.id)}
+                          className={`w-7 h-7 md:w-8 md:h-8 p-0 border-neutral-300 text-neutral-600 ${
+                            isItemOutOfStock || (typeof item.availableStock === 'number' && item.availableStock > 0 && item.quantity >= item.availableStock)
+                              ? 'opacity-30 cursor-not-allowed'
+                              : 'hover:border-green-600 hover:text-green-600'
+                          }`}
+                          title={typeof item.availableStock === 'number' && item.quantity >= item.availableStock ? `Only ${item.availableStock} available` : 'Increase quantity'}
                         >
                           +
                         </Button>
@@ -313,7 +449,7 @@ export default function Cart() {
                     </div>
 
                     <button
-                      onClick={() => removeFromCart(item.product.id)}
+                      onClick={() => removeFromCart(item.product.id, item.id)}
                       className="text-neutral-400 hover:text-red-600 transition-colors self-start text-sm"
                       aria-label="Remove item"
                     >

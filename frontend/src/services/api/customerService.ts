@@ -44,8 +44,10 @@ export interface UpdateLanguageResponse {
 /**
  * Get customer profile
  */
-export const getProfile = async (): Promise<GetProfileResponse> => {
-  const response = await api.get<GetProfileResponse>('/customer/profile');
+export const getProfile = async (options?: { signal?: AbortSignal }): Promise<GetProfileResponse> => {
+  const response = await api.get<GetProfileResponse>('/customer/profile', {
+    signal: options?.signal,
+  });
   return response.data;
 };
 

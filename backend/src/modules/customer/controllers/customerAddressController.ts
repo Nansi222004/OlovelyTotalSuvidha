@@ -7,20 +7,45 @@ export const addAddress = async (req: Request, res: Response) => {
         const { name, fullName, phone, flat, street, city, state, pincode, landmark, type, isDefault, latitude, longitude } = req.body;
         const userId = req.user!.userId;
 
-        const finalName = fullName || name;
+        const finalName = (fullName || name || "").trim();
+        const cleanPhone = (phone || "").toString().trim().replace(/\D/g, "");
+        const cleanFlat = (flat || "").trim();
+        const cleanStreet = (street || "").trim();
+        const cleanCity = (city || "").trim();
+        const cleanPincode = (pincode || "").toString().trim().replace(/\D/g, "");
 
-        if (!finalName || !phone || !flat || !street || !city || !pincode) {
+        const missingFields: string[] = [];
+        if (!finalName) missingFields.push("name");
+        if (!cleanPhone) missingFields.push("phone");
+        if (!cleanFlat) missingFields.push("flat/house no.");
+        if (!cleanStreet) missingFields.push("street/area");
+        if (!cleanCity) missingFields.push("city");
+        if (!cleanPincode) missingFields.push("pincode");
+
+        if (missingFields.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: "All fields are required (name, phone, flat, street, city, pincode)",
+                message: `Required address fields missing: ${missingFields.join(", ")}`,
+                missingFields,
             });
         }
 
-        // Combine flat and street for the single 'address' field in schema,
-        // or we could change schema. For now, we store them combined or rely on schema update.
-        // Looking at the schema, it has 'address', 'city', 'pincode'.
-        // We will store "Flat, Street" in 'address'.
-        const fullAddress = `${flat}, ${street}`;
+        if (cleanPhone.length !== 10) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid 10-digit mobile number",
+            });
+        }
+
+        if (cleanPincode.length !== 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid 6-digit pincode",
+            });
+        }
+
+        // Combine flat and street for the single 'address' field in schema
+        const fullAddress = `${cleanFlat}, ${cleanStreet}`;
 
         if (isDefault) {
             // If this is default, unsettle others
@@ -33,11 +58,14 @@ export const addAddress = async (req: Request, res: Response) => {
         if (existingAddress) {
             // Update existing address of this type
             existingAddress.fullName = finalName;
-            existingAddress.phone = phone;
+            existingAddress.phone = cleanPhone;
             existingAddress.address = fullAddress;
-            existingAddress.city = city;
+            existingAddress.city = cleanCity;
             existingAddress.state = state;
-            existingAddress.pincode = pincode;
+            existingAddress.pincode = cleanPincode;
+            existingAddress.landmark = landmark;
+            if (latitude !== undefined) existingAddress.latitude = latitude;
+            if (longitude !== undefined) existingAddress.longitude = longitude;
             existingAddress.isDefault = isDefault || false;
 
             await existingAddress.save();
@@ -52,11 +80,11 @@ export const addAddress = async (req: Request, res: Response) => {
         const newAddress = new Address({
             customer: userId,
             fullName: finalName,
-            phone,
+            phone: cleanPhone,
             address: fullAddress, // Mapped
-            city,
+            city: cleanCity,
             state,
-            pincode,
+            pincode: cleanPincode,
             landmark,
             latitude,
             longitude,
@@ -105,19 +133,36 @@ export const updateAddress = async (req: Request, res: Response) => {
         const { name, fullName, phone, flat, street, city, state, pincode, landmark, type, isDefault, latitude, longitude } = req.body;
         const userId = req.user!.userId;
 
-        const finalName = fullName || name;
-
-        let updateData: any = {
-            fullName: finalName,
-            phone,
-            city,
-            state,
-            pincode,
-            landmark,
-            latitude,
-            longitude,
-            type,
-        };
+        let updateData: any = {};
+        if (fullName !== undefined || name !== undefined) {
+            updateData.fullName = (fullName || name || "").trim();
+        }
+        if (phone !== undefined) {
+            const cleanPhone = phone.toString().trim().replace(/\D/g, "");
+            if (cleanPhone.length !== 10) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid 10-digit mobile number",
+                });
+            }
+            updateData.phone = cleanPhone;
+        }
+        if (city !== undefined) updateData.city = city.trim();
+        if (state !== undefined) updateData.state = state.trim();
+        if (pincode !== undefined) {
+            const cleanPincode = pincode.toString().trim().replace(/\D/g, "");
+            if (cleanPincode.length !== 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid 6-digit pincode",
+                });
+            }
+            updateData.pincode = cleanPincode;
+        }
+        if (landmark !== undefined) updateData.landmark = landmark;
+        if (latitude !== undefined) updateData.latitude = latitude;
+        if (longitude !== undefined) updateData.longitude = longitude;
+        if (type !== undefined) updateData.type = type;
 
         if (flat && street) {
             updateData.address = `${flat}, ${street}`;

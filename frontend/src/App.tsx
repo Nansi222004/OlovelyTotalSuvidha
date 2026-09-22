@@ -1039,6 +1039,14 @@ function App() {
                                       path="/checkout/address"
                                       element={<CheckoutAddress />}
                                     />
+                                     <Route
+                                       path="/address/new"
+                                       element={<CheckoutAddress />}
+                                     />
+                                     <Route
+                                       path="/add-address"
+                                       element={<CheckoutAddress />}
+                                     />
                                     <Route
                                       path="/product/:id"
                                       element={<ProductDetail />}

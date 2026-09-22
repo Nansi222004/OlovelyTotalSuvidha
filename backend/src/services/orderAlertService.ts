@@ -158,7 +158,7 @@ export async function getSellerPendingOrderAlerts(
       paymentStatus: order.paymentStatus,
       customer: {
         name: order.customerName,
-        email: order.customerEmail,
+        email: order.customerEmail || "",
         phone: order.customerPhone,
         address: order.deliveryAddress,
       },

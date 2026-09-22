@@ -3,6 +3,9 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -123,7 +126,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [currentPanel]);
 
-  const login = (newToken: string, userData: User) => {
+  const userRef = useRef<User | null>(user);
+  userRef.current = user;
+
+  const tokenRef = useRef<string | null>(token);
+  tokenRef.current = token;
+
+  const login = useCallback((newToken: string, userData: User) => {
     const inferredType = inferLegacyUserType(userData);
     const userType = userData.userType || inferredType;
     const fullUser = { ...userData, ...(userType && { userType }) };
@@ -139,11 +148,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Failed to register FCM token:", error);
       });
     });
-  };
+  }, []);
 
-  const logout = () => {
-    const userType = user?.userType || getPanelFromContext(undefined, window.location.pathname);
-    const currentAuthToken = token || getAuthToken(userType);
+  const logout = useCallback(() => {
+    const currentUser = userRef.current;
+    const currentToken = tokenRef.current;
+    const userType = currentUser?.userType || getPanelFromContext(undefined, window.location.pathname);
+    const currentAuthToken = currentToken || getAuthToken(userType);
 
     // Remove FCM token association from backend on logout before clearing auth
     if (currentAuthToken) {
@@ -158,25 +169,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setIsAuthenticated(false);
     removeAuthToken(userType);
-  };
+  }, []);
 
-  const updateUser = (userData: User) => {
-    const userType = userData.userType || user?.userType || inferLegacyUserType(userData);
+  const updateUser = useCallback((userData: User) => {
+    const currentUser = userRef.current;
+    const userType = userData.userType || currentUser?.userType || inferLegacyUserType(userData);
     const fullUser = { ...userData, ...(userType && { userType }) };
-    setUser(fullUser);
-    setAuthToken(token || getAuthToken(userType) || '', userType, fullUser);
-  };
+
+    // Prevent redundant state updates and re-renders if user object is unchanged
+    if (JSON.stringify(currentUser) !== JSON.stringify(fullUser)) {
+      setUser(fullUser);
+      setAuthToken(tokenRef.current || getAuthToken(userType) || '', userType, fullUser);
+    }
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      isAuthenticated,
+      user,
+      token,
+      login,
+      logout,
+      updateUser,
+    }),
+    [isAuthenticated, user, token, login, logout, updateUser]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        user,
-        token,
-        login,
-        logout,
-        updateUser,
-      }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

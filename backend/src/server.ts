@@ -170,7 +170,7 @@ async function startServer() {
     console.log(
       `   \x1b[36mEnvironment:\x1b[0m ${process.env.NODE_ENV || "development"}`
     );
-    console.log(`   [DEBUG] Server reloaded at: ${new Date().toISOString()} (Banners Update)`);
+    console.log(`   [DEBUG] Server reloaded at: ${new Date().toISOString()} (Checkout Delivery Update)`);
   });
 }
 

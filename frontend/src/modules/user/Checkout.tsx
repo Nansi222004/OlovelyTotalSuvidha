@@ -33,8 +33,7 @@ import {
 } from "../../services/api/customerAddressService";
 import GoogleMapsLocationPicker from "../../components/GoogleMapsLocationPicker";
 import { getProducts } from "../../services/api/customerProductService";
-import { addToWishlist } from "../../services/api/customerWishlistService";
-import { updateProfile } from "../../services/api/customerService";
+import { getProfile, updateProfile } from "../../services/api/customerService";
 import { calculateProductPrice } from "../../utils/priceUtils";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { getCustomerWalletBalance } from "../../services/api/customerWalletService";
@@ -67,6 +66,8 @@ export default function Checkout() {
   const [selectedAddress, setSelectedAddress] = useState<OrderAddress | null>(
     null,
   );
+  const [savedAddressesList, setSavedAddressesList] = useState<any[]>([]);
+  const [showAddressSheet, setShowAddressSheet] = useState(false);
   const [showCouponSheet, setShowCouponSheet] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState<ApiCoupon | null>(null);
   const [showPartyPopper, setShowPartyPopper] = useState(false);
@@ -77,17 +78,17 @@ export default function Checkout() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState<boolean>(false);
 
-  // Fulfillment-Aware Delivery Option State
+  // Fulfillment-Aware Delivery Option State (Authoritatively Instant for QC, Courier for Ecom)
   const [deliverySelections, setDeliverySelections] = useState<{
-    quickCommerce: "Standard" | "Instant";
+    quickCommerce: "Instant";
     ecommerce: "Courier";
   }>({
-    quickCommerce: "Standard",
+    quickCommerce: "Instant",
     ecommerce: "Courier",
   });
   const hasSkippedInitialCartRefreshRef = useRef(false);
 
-  // Refresh cart delivery fee when selected address or delivery option changes
+  // Refresh cart delivery fee when selected address changes
   useEffect(() => {
     if (selectedAddress?.latitude && selectedAddress?.longitude) {
       if (!hasSkippedInitialCartRefreshRef.current) {
@@ -98,11 +99,11 @@ export default function Checkout() {
       refreshCart(
         selectedAddress.latitude,
         selectedAddress.longitude,
-        deliverySelections.quickCommerce,
+        "Instant",
         { preserveItems: true },
       );
     }
-  }, [selectedAddress, deliverySelections.quickCommerce, refreshCart]);
+  }, [selectedAddress, refreshCart]);
 
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [availableCoupons, setAvailableCoupons] = useState<ApiCoupon[]>([]);
@@ -159,9 +160,117 @@ export default function Checkout() {
     }
   };
 
-  // Check if user has placeholder data (needs profile completion)
-  const isPlaceholderUser =
-    user?.name === "User" || user?.email?.endsWith("@olovely.temp");
+  // Stock Conflict Modal State
+  const [stockConflictModal, setStockConflictModal] = useState<{
+    productId: string;
+    cartItemId?: string;
+    productName: string;
+    variantId?: string;
+    variantTitle?: string;
+    requestedQuantity: number;
+    availableStock: number;
+    isSoldOut: boolean;
+    isBelowMoq?: boolean;
+    wholesaleMoq?: number;
+    isWholesale?: boolean;
+  } | null>(null);
+  const [isResolvingConflict, setIsResolvingConflict] = useState(false);
+
+  // Check if any cart item has stock issues
+  const hasStockIssues = useMemo(() => {
+    return (cart?.items || []).some((item) => {
+      const isOos =
+        Boolean(item.isOutOfStock) ||
+        (typeof item.availableStock === "number" && item.availableStock <= 0);
+      const moq = item.wholesaleMinimumQuantity || (item.product as any)?.wholesaleMinimumQuantity || 1;
+      const isBelowMoq = Boolean(item.isWholesale) && typeof item.availableStock === "number" && item.availableStock < moq;
+      const isInsuff =
+        !isOos &&
+        typeof item.availableStock === "number" &&
+        item.availableStock > 0 &&
+        item.quantity > item.availableStock;
+      return isOos || isInsuff || isBelowMoq || Boolean(item.isStockBelowMoq);
+    });
+  }, [cart?.items]);
+
+  const handleResolveStockConflictAdjust = async () => {
+    if (!stockConflictModal) return;
+    setIsResolvingConflict(true);
+    try {
+      let targetCartItemId = stockConflictModal.cartItemId;
+      if (!targetCartItemId) {
+        const item = cart.items.find(
+          (i) => (i.product?.id === stockConflictModal.productId || (i.product as any)?._id === stockConflictModal.productId)
+        );
+        targetCartItemId = item?.id;
+      }
+
+      if (stockConflictModal.availableStock > 0) {
+        await updateQuantity(
+          stockConflictModal.productId,
+          stockConflictModal.availableStock,
+          stockConflictModal.variantId,
+          stockConflictModal.variantTitle,
+          targetCartItemId,
+        );
+        showGlobalToast(`Quantity adjusted to ${stockConflictModal.availableStock}`, "success");
+      } else {
+        await removeFromCart(stockConflictModal.productId, targetCartItemId);
+        showGlobalToast("Item removed from cart", "info");
+      }
+      setStockConflictModal(null);
+
+      if (selectedAddress?.latitude && selectedAddress?.longitude) {
+        refreshCart(
+          selectedAddress.latitude,
+          selectedAddress.longitude,
+          "Instant",
+          { preserveItems: true },
+        );
+      }
+    } catch (err: any) {
+      showGlobalToast(err.message || "Failed to update quantity", "error");
+    } finally {
+      setIsResolvingConflict(false);
+    }
+  };
+
+  const handleResolveStockConflictRemove = async () => {
+    if (!stockConflictModal) return;
+    setIsResolvingConflict(true);
+    try {
+      let targetCartItemId = stockConflictModal.cartItemId;
+      if (!targetCartItemId) {
+        const item = cart.items.find(
+          (i) => (i.product?.id === stockConflictModal.productId || (i.product as any)?._id === stockConflictModal.productId)
+        );
+        targetCartItemId = item?.id;
+      }
+      await removeFromCart(stockConflictModal.productId, targetCartItemId);
+      showGlobalToast("Item removed from cart", "info");
+      setStockConflictModal(null);
+
+      if (selectedAddress?.latitude && selectedAddress?.longitude) {
+        refreshCart(
+          selectedAddress.latitude,
+          selectedAddress.longitude,
+          "Instant",
+          { preserveItems: true },
+        );
+      }
+    } catch (err: any) {
+      showGlobalToast(err.message || "Failed to remove item", "error");
+    } finally {
+      setIsResolvingConflict(false);
+    }
+  };
+
+  // Check if customer profile name is incomplete
+  // Email is optional for Phone+OTP customers; only a valid name is required.
+  const isProfileIncomplete =
+    !user?.name ||
+    user.name.trim() === "" ||
+    user.name.trim().toLowerCase() === "user";
 
   // Redirect logic removed to prevent auto-redirect on refresh issues
   // Instead we will show an Empty Cart UI
@@ -177,51 +286,60 @@ export default function Checkout() {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [addressResponse, couponResponse] = await Promise.all([
+        const [addressResponse, couponResponse, profileResponse] = await Promise.all([
           getAddresses(),
           getCoupons(),
+          getProfile().catch(() => null),
         ]);
+
+        if (profileResponse && profileResponse.success && profileResponse.data) {
+          const pData = profileResponse.data;
+          if (pData.name && pData.name.trim().toLowerCase() !== "user" && user?.name !== pData.name) {
+            const safeUser: any = {
+              ...user,
+              id: pData.id || (pData as any)._id || user?.id,
+              name: pData.name,
+              phone: pData.phone || user?.phone,
+              email: pData.email !== undefined ? pData.email : user?.email,
+              walletAmount: pData.walletAmount !== undefined ? pData.walletAmount : user?.walletAmount,
+              refCode: pData.refCode || user?.refCode,
+              status: pData.status || user?.status,
+              userType: user?.userType || "Customer",
+            };
+            updateUser(safeUser);
+          }
+        }
 
         if (
           addressResponse.success &&
           Array.isArray(addressResponse.data) &&
           addressResponse.data.length > 0
         ) {
+          setSavedAddressesList(addressResponse.data);
           const defaultAddr =
             addressResponse.data.find((a: any) => a.isDefault) ||
             addressResponse.data[0];
 
-          // Determine the best address text:
-          // Prefer the user's current NAMED location from the header (LocationContext)
-          // over the saved address street if it's a stale generic geocode string.
-          // The header location is set by the user manually via autocomplete/map and is the
-          // "true" delivery intent. The Address model may have an old Nominatim-reverse-geocoded string.
-          let bestAddressText = defaultAddr.address;
+          let bestAddressText = defaultAddr.address || "";
           
-          // If user has a header location with a named address and the saved address
-          // coordinates roughly match the user's current location, use the header address.
           if (userLocation?.address && userLocation.address.trim() && defaultAddr.latitude && defaultAddr.longitude) {
-            // Only override if the saved address looks like a generic geocoded string (contains "Tahsil" or
-            // is very long without a recognizable named place) AND the user has a named location.
-            // A simple heuristic: use the header location address as it's always the user's current intent.
             bestAddressText = userLocation.address;
-            
-            // Also update the backend address record so future loads show the correct address
-            try {
-              if (defaultAddr._id) {
-                await updateAddress(defaultAddr._id, { address: userLocation.address });
-              }
-            } catch (e) {
-              // Non-critical: don't block checkout if this fails
-              console.warn('[Checkout] Could not sync header location to saved address:', e);
-            }
+          }
+
+          let flatPart = "";
+          let streetPart = bestAddressText;
+          if (bestAddressText && bestAddressText.includes(",")) {
+            const parts = bestAddressText.split(",");
+            flatPart = parts[0]?.trim() || "";
+            streetPart = parts.slice(1).join(",").trim() || parts[0]?.trim();
           }
 
           const mappedAddress: OrderAddress = {
             name: defaultAddr.fullName,
             phone: defaultAddr.phone,
-            flat: "",
-            street: bestAddressText,
+            flat: flatPart,
+            street: streetPart,
+            address: bestAddressText,
             city: defaultAddr.city,
             state: defaultAddr.state,
             pincode: defaultAddr.pincode,
@@ -234,62 +352,14 @@ export default function Checkout() {
           setSavedAddress(mappedAddress);
           setSelectedAddress(mappedAddress);
 
-          // If address already has location, mark as precise location selected
           if (defaultAddr.latitude && defaultAddr.longitude) {
             setIsMapSelected(true);
           }
-        } else if (isPlaceholderUser && userLocation?.latitude && userLocation?.longitude) {
-          // NEW USER: Auto-create default address from app's initial location
-          console.log('[Checkout] New user detected, creating default address from initial location');
-          try {
-            const { addAddress } = await import('../../services/api/customerAddressService');
-            
-            // Use user's name and phone from auth context
-            const userName = user?.name || 'User';
-            const userPhone = user?.phone || '';
-            
-            const addressPayload = {
-              fullName: userName,
-              phone: userPhone,
-              flat: '',
-              street: userLocation.address || `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`,
-              city: userLocation.city || '',
-              state: userLocation.state || '',
-              pincode: userLocation.pincode || '',
-              landmark: '',
-              type: 'Home' as const,
-              isDefault: true,
-              address: userLocation.address || `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`,
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude,
-            };
-
-            const createResponse = await addAddress(addressPayload);
-            
-            if (createResponse.success && createResponse.data) {
-              const newAddr = createResponse.data as any;
-              const mappedAddress: OrderAddress = {
-                name: newAddr.fullName,
-                phone: newAddr.phone,
-                flat: '',
-                street: newAddr.address,
-                city: newAddr.city,
-                state: newAddr.state,
-                pincode: newAddr.pincode,
-                landmark: newAddr.landmark || '',
-                latitude: newAddr.latitude,
-                longitude: newAddr.longitude,
-                id: newAddr._id,
-                _id: newAddr._id,
-              };
-              setSavedAddress(mappedAddress);
-              setSelectedAddress(mappedAddress);
-              setIsMapSelected(true);
-              console.log('[Checkout] Default address created successfully:', newAddr._id);
-            }
-          } catch (err) {
-            console.error('[Checkout] Failed to create default address for new user:', err);
-          }
+        } else {
+          setSavedAddressesList([]);
+          setSelectedAddress(null);
+          setSavedAddress(null);
+          setIsMapSelected(false);
         }
 
         if (couponResponse.success) {
@@ -619,6 +689,45 @@ export default function Checkout() {
       return;
     }
 
+    // Stock availability pre-check
+    if (hasStockIssues) {
+      const conflictItem = cart.items.find((item) => {
+        const isOos =
+          Boolean(item.isOutOfStock) ||
+          (typeof item.availableStock === "number" && item.availableStock <= 0);
+        const moq = item.wholesaleMinimumQuantity || (item.product as any)?.wholesaleMinimumQuantity || 1;
+        const isBelowMoq = Boolean(item.isWholesale) && typeof item.availableStock === "number" && item.availableStock < moq;
+        const isInsuff =
+          !isOos &&
+          typeof item.availableStock === "number" &&
+          item.availableStock > 0 &&
+          item.quantity > item.availableStock;
+        return isOos || isInsuff || isBelowMoq || Boolean(item.isStockBelowMoq);
+      });
+
+      if (conflictItem) {
+        const moq = conflictItem.wholesaleMinimumQuantity || (conflictItem.product as any)?.wholesaleMinimumQuantity || 1;
+        const isItemWholesale = Boolean(conflictItem.isWholesale);
+        const isBelowMoq = isItemWholesale && typeof conflictItem.availableStock === "number" && conflictItem.availableStock < moq;
+        setStockConflictModal({
+          productId: conflictItem.product?.id || (conflictItem.product as any)?._id || "",
+          cartItemId: conflictItem.id,
+          productName: conflictItem.product?.name || "Product",
+          variantId: conflictItem.variant?.id || (conflictItem.product as any)?.variantId || (typeof conflictItem.variant === 'string' ? conflictItem.variant : undefined),
+          variantTitle: conflictItem.variant?.title || conflictItem.variantTitle || (conflictItem.product as any)?.variantTitle,
+          requestedQuantity: conflictItem.quantity,
+          availableStock: conflictItem.availableStock ?? 0,
+          isSoldOut: Boolean(conflictItem.isOutOfStock) || (conflictItem.availableStock ?? 0) <= 0,
+          isBelowMoq: Boolean(isBelowMoq || conflictItem.isStockBelowMoq),
+          wholesaleMoq: moq,
+          isWholesale: isItemWholesale,
+        });
+      } else {
+        showGlobalToast("Please resolve stock conflicts before placing your order.", "error");
+      }
+      return;
+    }
+
     if (!meetsMinimumOrder) {
       showGlobalToast(
         `Minimum order value is ₹${minimumOrderValue}. Please add ₹${amountNeededForMinimumOrder.toLocaleString("en-IN")} more.`,
@@ -627,22 +736,42 @@ export default function Checkout() {
       return;
     }
 
-    // Check if user needs to complete their profile first
-    if (!bypassProfileCheck && isPlaceholderUser) {
+    // Check if user needs to complete their profile name first
+    if (!bypassProfileCheck && isProfileIncomplete) {
+      const existingName =
+        user?.name && user.name.trim().toLowerCase() !== "user"
+          ? user.name
+          : selectedAddress?.name && selectedAddress.name.trim().toLowerCase() !== "user"
+            ? selectedAddress.name
+            : "";
+
+      const existingEmail =
+        user?.email && !user.email.endsWith("@olovely.temp")
+          ? user.email
+          : "";
+
       setProfileFormData({
-        name: user?.name === "User" ? "" : user?.name || "",
-        email: user?.email?.endsWith("@olovely.temp")
-          ? ""
-          : user?.email || "",
+        name: existingName,
+        email: existingEmail,
       });
+      setProfileError(null);
       setShowProfileModal(true);
       return;
     }
 
     // Validate required address fields
-    if (!selectedAddress.city || !selectedAddress.pincode) {
-      console.error("Address is missing required fields (city or pincode)");
-      showGlobalToast("Please ensure your address has city and pincode.", "error");
+    const hasValidAddress =
+      selectedAddress &&
+      selectedAddress.name?.trim() &&
+      selectedAddress.phone?.trim() &&
+      selectedAddress.city?.trim() &&
+      selectedAddress.pincode?.trim() &&
+      (selectedAddress.flat?.trim() || selectedAddress.address?.trim() || selectedAddress.street?.trim());
+
+    if (!hasValidAddress) {
+      console.error("Address is missing required fields");
+      showGlobalToast("Please complete your delivery address before placing order.", "error");
+      navigate("/checkout/address", { state: { editAddress: selectedAddress, returnTo: "/checkout" } });
       return;
     }
 
@@ -693,9 +822,9 @@ export default function Checkout() {
 
       couponCode: selectedCoupon?.code || undefined,
       giftPackaging: giftPackaging,
-      deliveryOption: qcItems.length > 0 ? deliverySelections.quickCommerce : "Courier",
+      deliveryOption: qcItems.length > 0 ? "Instant" : "Courier",
       deliverySelections: {
-        ...(qcItems.length > 0 ? { quickCommerce: deliverySelections.quickCommerce } : {}),
+        ...(qcItems.length > 0 ? { quickCommerce: "Instant" } : {}),
         ...(ecomItems.length > 0 ? { ecommerce: "Courier" } : {}),
       },
       useWallet: useWallet && walletDeduction > 0,
@@ -723,7 +852,119 @@ export default function Checkout() {
       }
     } catch (error: any) {
       console.error("Order placement failed", error);
-      // Show user-friendly error message
+      let stockConflict = error.stockConflict || error.response?.data?.stockConflict;
+
+      const isStockIssue =
+        Boolean(stockConflict) ||
+        error.errorCode === "INSUFFICIENT_STOCK" ||
+        error.errorCode === "OUT_OF_STOCK" ||
+        error.response?.data?.errorCode === "INSUFFICIENT_STOCK" ||
+        error.response?.data?.errorCode === "OUT_OF_STOCK" ||
+        (typeof error.message === "string" && (
+          error.message.toLowerCase().includes("insufficient stock") ||
+          error.message.toLowerCase().includes("out of stock") ||
+          error.message.toLowerCase().includes("sold out") ||
+          error.message.toLowerCase().includes("wholesale minimum order quantity") ||
+          error.message.toLowerCase().includes("below wholesale minimum")
+        ));
+
+      if (isStockIssue) {
+        const conflictProdId = (stockConflict?.productId || "").toString();
+        const conflictVarId = (stockConflict?.variantId || stockConflict?.variationId || "").toString();
+        const conflictVarTitle = (stockConflict?.variantTitle || "").toString().toLowerCase().trim();
+
+        // 1. Try to find matching item in cart
+        let matchingItem = cart.items.find((item) => {
+          const itemProdId = (item.product?.id || (item.product as any)?._id || "").toString();
+          if (conflictProdId && itemProdId !== conflictProdId) return false;
+
+          if (!conflictVarId && !conflictVarTitle) return true;
+
+          const itemVarId = (
+            (typeof item.variant === "string" ? item.variant : item.variant?.id || (item.variant as any)?._id) ||
+            (item as any).variationId ||
+            (item as any).variation ||
+            (item.product as any)?.variantId
+          )?.toString();
+
+          const itemVarTitle = (item.variantTitle || item.variant?.title || (item.product as any)?.variantTitle || "")
+            ?.toString()
+            .toLowerCase()
+            .trim();
+
+          if (conflictVarId && itemVarId && itemVarId === conflictVarId) return true;
+          if (conflictVarTitle && itemVarTitle && (itemVarTitle.includes(conflictVarTitle) || conflictVarTitle.includes(itemVarTitle))) return true;
+
+          return !conflictVarId && !conflictVarTitle;
+        });
+
+        // 2. Fallback: match by product ID alone
+        if (!matchingItem && conflictProdId) {
+          matchingItem = cart.items.find((item) => {
+            const itemProdId = (item.product?.id || (item.product as any)?._id || "").toString();
+            return itemProdId === conflictProdId;
+          });
+        }
+
+        // 3. Fallback: match first item in cart with a known stock issue
+        if (!matchingItem) {
+          matchingItem = cart.items.find((item) => {
+            const isOos = Boolean(item.isOutOfStock) || (typeof item.availableStock === "number" && item.availableStock <= 0);
+            const moq = item.wholesaleMinimumQuantity || (item.product as any)?.wholesaleMinimumQuantity || 1;
+            const isBelowMoq = Boolean(item.isWholesale) && typeof item.availableStock === "number" && item.availableStock < moq;
+            const isInsuff = !isOos && typeof item.availableStock === "number" && item.availableStock > 0 && item.quantity > item.availableStock;
+            return isOos || isInsuff || isBelowMoq || Boolean(item.isStockBelowMoq);
+          });
+        }
+
+        const isItemWholesale = Boolean(
+          matchingItem?.isWholesale ||
+          stockConflict?.isWholesale ||
+          stockConflict?.isBelowMoq ||
+          Boolean(stockConflict?.wholesaleMoq)
+        );
+
+        const moq =
+          stockConflict?.wholesaleMoq ||
+          matchingItem?.wholesaleMinimumQuantity ||
+          (matchingItem?.product as any)?.wholesaleMinimumQuantity ||
+          1;
+
+        const availableStock = typeof stockConflict?.availableStock === "number"
+          ? stockConflict.availableStock
+          : (typeof matchingItem?.availableStock === "number" ? matchingItem.availableStock : 0);
+
+        const isBelowMoq = Boolean(
+          stockConflict?.isBelowMoq ||
+          (isItemWholesale && availableStock < moq)
+        );
+
+        setStockConflictModal({
+          productId: stockConflict?.productId || matchingItem?.product?.id || (matchingItem?.product as any)?._id || "",
+          cartItemId: matchingItem?.id,
+          productName: stockConflict?.productName || matchingItem?.product?.name || "Product",
+          variantId: stockConflict?.variantId || stockConflict?.variationId || matchingItem?.variant?.id || (matchingItem?.product as any)?.variantId,
+          variantTitle: stockConflict?.variantTitle || matchingItem?.variantTitle || matchingItem?.variant?.title || (matchingItem?.product as any)?.variantTitle,
+          requestedQuantity: stockConflict?.requestedQuantity || matchingItem?.quantity || 1,
+          availableStock: availableStock,
+          isSoldOut: Boolean(stockConflict?.isSoldOut) || availableStock <= 0,
+          isBelowMoq: isBelowMoq,
+          wholesaleMoq: moq,
+          isWholesale: isItemWholesale,
+        });
+
+        if (selectedAddress?.latitude && selectedAddress?.longitude) {
+          refreshCart(
+            selectedAddress.latitude,
+            selectedAddress.longitude,
+            "Instant",
+            { preserveItems: true },
+          );
+        }
+        return;
+      }
+
+      // Show user-friendly error message for non-stock errors
       const errorMessage =
         error.message ||
         error.response?.data?.message ||
@@ -783,52 +1024,27 @@ export default function Checkout() {
         setSelectedAddress(updated);
         setSavedAddress(updated); // Sync
       } else {
-        // NEW USER: Create a new address with the selected location
-        console.log('[Checkout] No existing address, creating new one with selected location');
-        const { addAddress } = await import('../../services/api/customerAddressService');
-        
-        const userName = user?.name || 'User';
-        const userPhone = user?.phone || '';
-        
-        const bestAddress = (mapLocation.address as any)?.formattedAddress || mapLocation.address?.street || `${mapLocation.lat.toFixed(6)}, ${mapLocation.lng.toFixed(6)}`;
-        const newAddressPayload = {
-          fullName: userName,
-          phone: userPhone,
-          flat: '',
-          street: bestAddress,
-          city: mapLocation.address?.city || '',
-          state: mapLocation.address?.state || '',
-          pincode: mapLocation.address?.pincode || '',
-          landmark: mapLocation.address?.landmark || '',
-          type: 'Home' as const,
-          isDefault: true,
-          address: bestAddress,
-          latitude: mapLocation.lat,
-          longitude: mapLocation.lng,
-        };
-
-        const createResponse = await addAddress(newAddressPayload);
-        
-        if (createResponse.success && createResponse.data) {
-          const newAddr = createResponse.data as any;
-          const newAddress: OrderAddress = {
-            name: newAddr.fullName,
-            phone: newAddr.phone,
-            flat: '',
-            street: newAddr.address,
-            city: newAddr.city,
-            state: newAddr.state,
-            pincode: newAddr.pincode,
-            landmark: newAddr.landmark || '',
-            latitude: newAddr.latitude,
-            longitude: newAddr.longitude,
-            id: newAddr._id,
-            _id: newAddr._id,
-          };
-          setSelectedAddress(newAddress);
-          setSavedAddress(newAddress);
-          console.log('[Checkout] New address created with location:', newAddr._id);
-        }
+        // User does not have a saved address yet.
+        // Close map picker and navigate to dedicated Add Delivery Address page
+        // with the chosen location and geocoded address pre-filled!
+        setShowMapPicker(false);
+        setIsUpdatingLocation(false);
+        const bestAddress = (mapLocation.address as any)?.formattedAddress || mapLocation.address?.street || "";
+        navigate("/checkout/address", {
+          state: {
+            initialLocation: {
+              latitude: mapLocation.lat,
+              longitude: mapLocation.lng,
+              street: bestAddress,
+              city: mapLocation.address?.city || "",
+              state: mapLocation.address?.state || "",
+              pincode: mapLocation.address?.pincode || "",
+              landmark: mapLocation.address?.landmark || "",
+            },
+            returnTo: "/checkout",
+          },
+        });
+        return;
       }
       
       setShowMapPicker(false);
@@ -847,45 +1063,62 @@ export default function Checkout() {
 
   // Handle profile completion submission
   const handleProfileSubmit = async () => {
-    if (!profileFormData.name.trim() || !profileFormData.email.trim()) {
-      setProfileError("Please enter both name and email");
+    const trimmedName = profileFormData.name.trim();
+    const trimmedEmail = profileFormData.email.trim();
+
+    if (!trimmedName) {
+      setProfileError("Please enter your full name");
       return;
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(profileFormData.email)) {
-      setProfileError("Please enter a valid email address");
-      return;
+    // Validate email format ONLY if customer provided an email
+    if (trimmedEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        setProfileError("Please enter a valid email address");
+        return;
+      }
     }
 
     setIsUpdatingProfile(true);
     setProfileError(null);
 
     try {
-      const response = await updateProfile({
-        name: profileFormData.name.trim(),
-        email: profileFormData.email.trim(),
-      });
+      const payload: { name: string; email?: string } = { name: trimmedName };
+      if (trimmedEmail) {
+        payload.email = trimmedEmail;
+      }
 
-      if (response.success) {
-        // Update local user data
-        updateUser({
+      const response = await updateProfile(payload);
+
+      if (response && response.success && response.data) {
+        const pData = response.data;
+        // Update local user data in AuthContext
+        const safeUser: any = {
           ...user,
-          id: user?.id || "",
-          name: response.data.name,
-          email: response.data.email,
-        });
+          id: pData.id || (pData as any)._id || user?.id,
+          name: pData.name || trimmedName,
+          phone: pData.phone || user?.phone,
+          email: pData.email !== undefined ? pData.email : user?.email,
+          walletAmount: pData.walletAmount !== undefined ? pData.walletAmount : user?.walletAmount,
+          refCode: pData.refCode || user?.refCode,
+          status: pData.status || user?.status,
+          userType: user?.userType || "Customer",
+        };
+        updateUser(safeUser);
 
         setShowProfileModal(false);
         showGlobalToast("Profile updated successfully!");
 
         // Directly trigger order placement, bypassing the profile check
         handlePlaceOrder(true);
+      } else {
+        setProfileError(response?.message || "Failed to update profile");
       }
     } catch (error: any) {
       setProfileError(
         error.response?.data?.message ||
+          error.message ||
           "Failed to update profile. Please try again.",
       );
     } finally {
@@ -900,6 +1133,134 @@ export default function Checkout() {
         show={showPartyPopper}
         onComplete={() => setShowPartyPopper(false)}
       />
+
+      {/* Stock Conflict Modal */}
+      <AnimatePresence>
+        {stockConflictModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => !isResolvingConflict && setStockConflictModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-neutral-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    stockConflictModal.isBelowMoq || stockConflictModal.availableStock <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+                  }`}>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-neutral-900 leading-tight">
+                      {stockConflictModal.isBelowMoq
+                        ? "Wholesale Stock Unavailable"
+                        : stockConflictModal.availableStock <= 0
+                        ? "Item Out of Stock"
+                        : "Stock Quantity Limited"}
+                    </h3>
+                    <p className="text-xs text-neutral-500">
+                      {stockConflictModal.isBelowMoq ? "Wholesale minimum quantity cannot be met" : "Inventory update required to continue"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isResolvingConflict}
+                  onClick={() => setStockConflictModal(null)}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="bg-neutral-50 rounded-xl p-3.5 border border-neutral-200/80 mb-4 space-y-1.5">
+                <div className="font-semibold text-sm text-neutral-900 leading-snug">
+                  {stockConflictModal.productName}
+                </div>
+                {stockConflictModal.variantTitle && (
+                  <div className="inline-block text-[11px] font-semibold text-neutral-600 bg-white border border-neutral-200 px-2 py-0.5 rounded-md">
+                    Variant: {stockConflictModal.variantTitle}
+                  </div>
+                )}
+                <div className="text-xs text-neutral-600 flex items-center justify-between pt-1 border-t border-neutral-200/60 mt-1.5">
+                  <span>Requested in cart: <strong className="text-neutral-900">{stockConflictModal.requestedQuantity}</strong></span>
+                  <span>Available stock: <strong className={stockConflictModal.isBelowMoq || stockConflictModal.availableStock <= 0 ? "text-rose-600" : "text-amber-600"}>{stockConflictModal.availableStock}</strong></span>
+                </div>
+                {stockConflictModal.isBelowMoq && stockConflictModal.wholesaleMoq && (
+                  <div className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-2 py-1 rounded font-semibold flex items-center justify-between">
+                    <span>Wholesale MOQ:</span>
+                    <span>{stockConflictModal.wholesaleMoq} units</span>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+                {stockConflictModal.isBelowMoq
+                  ? `Only ${stockConflictModal.availableStock} units of ${stockConflictModal.productName}${stockConflictModal.variantTitle ? ` (${stockConflictModal.variantTitle})` : ''} are currently available, but the minimum wholesale order quantity is ${stockConflictModal.wholesaleMoq}. Please remove this item from your cart to continue.`
+                  : stockConflictModal.availableStock > 0
+                  ? `Only ${stockConflictModal.availableStock} unit(s) of ${stockConflictModal.productName}${stockConflictModal.variantTitle ? ` (${stockConflictModal.variantTitle})` : ''} are currently available. Would you like to adjust your cart quantity to ${stockConflictModal.availableStock}?`
+                  : `This item is currently sold out and cannot be fulfilled. Please remove it from your cart to proceed with your remaining items.`}
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                {stockConflictModal.availableStock > 0 && !stockConflictModal.isBelowMoq ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isResolvingConflict}
+                      onClick={handleResolveStockConflictAdjust}
+                      className="flex-1 py-2.5 px-4 text-xs sm:text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all shadow-sm active:scale-98 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {isResolvingConflict ? "Updating..." : `Adjust to ${stockConflictModal.availableStock} items`}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isResolvingConflict}
+                      onClick={handleResolveStockConflictRemove}
+                      className="py-2.5 px-3 text-xs sm:text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors active:scale-98 text-center cursor-pointer border border-rose-200"
+                    >
+                      Remove Item
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isResolvingConflict}
+                    onClick={handleResolveStockConflictRemove}
+                    className="flex-1 py-2.5 px-4 text-xs sm:text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all shadow-sm active:scale-98 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {isResolvingConflict ? "Removing..." : "Remove Item from Cart"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={isResolvingConflict}
+                  onClick={() => {
+                    setStockConflictModal(null);
+                    navigate("/cart");
+                  }}
+                  className="py-2.5 px-4 text-xs sm:text-sm font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors active:scale-98 text-center cursor-pointer"
+                >
+                  Review Cart
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Profile Completion Modal */}
       <AnimatePresence>
@@ -916,17 +1277,38 @@ export default function Checkout() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl"
               onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-lg font-bold text-neutral-900 mb-2">
+              <h2 className="text-lg font-bold text-neutral-900 mb-1">
                 Complete Your Profile
               </h2>
-              <p className="text-sm text-neutral-600 mb-4">
-                Please provide your name and email to continue with your order.
+              <p className="text-xs text-neutral-600 mb-4">
+                Please provide your name to continue with your order.
               </p>
 
               <div className="space-y-3">
+                {/* Registered Phone (Read-Only) */}
+                {(user?.phone || selectedAddress?.phone) && (
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      Phone Number
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={user?.phone || selectedAddress?.phone || ""}
+                        disabled
+                        readOnly
+                        className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-500 font-medium cursor-not-allowed select-none"
+                      />
+                      <span className="absolute right-3 top-2 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        Verified
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 mb-1">
-                    Full Name
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -944,8 +1326,8 @@ export default function Checkout() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 mb-1">
-                    Email Address
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                    Email Address <span className="text-neutral-400 font-normal">(Optional)</span>
                   </label>
                   <input
                     type="email"
@@ -956,7 +1338,7 @@ export default function Checkout() {
                         email: e.target.value,
                       }))
                     }
-                    placeholder="Enter your email"
+                    placeholder="Enter your email (optional)"
                     className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-green-500 transition-colors"
                     disabled={isUpdatingProfile}
                   />
@@ -971,7 +1353,7 @@ export default function Checkout() {
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => setShowProfileModal(false)}
-                    className="flex-1 py-2.5 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors"
+                    className="flex-1 py-2.5 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors cursor-pointer"
                     disabled={isUpdatingProfile}>
                     Cancel
                   </button>
@@ -979,13 +1361,11 @@ export default function Checkout() {
                     onClick={handleProfileSubmit}
                     disabled={
                       isUpdatingProfile ||
-                      !profileFormData.name.trim() ||
-                      !profileFormData.email.trim()
+                      !profileFormData.name.trim()
                     }
-                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
+                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors cursor-pointer ${
                       isUpdatingProfile ||
-                      !profileFormData.name.trim() ||
-                      !profileFormData.email.trim()
+                      !profileFormData.name.trim()
                         ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                         : "bg-green-600 text-white hover:bg-green-700"
                     }`}>
@@ -1065,6 +1445,119 @@ export default function Checkout() {
                   ) : (
                     "Confirm Location"
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Saved Addresses Selection Sheet */}
+      <AnimatePresence>
+        {showAddressSheet && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setShowAddressSheet(false)}>
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col shadow-2xl"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b flex items-center justify-between bg-white">
+                <div>
+                  <h3 className="font-bold text-sm text-neutral-900">Select Delivery Address</h3>
+                  <p className="text-[11px] text-neutral-500">Choose from your saved addresses</p>
+                </div>
+                <button
+                  onClick={() => setShowAddressSheet(false)}
+                  className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:bg-neutral-100 rounded-full font-bold">
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto space-y-3 flex-1">
+                {savedAddressesList.map((addr) => {
+                  const isSelected = (selectedAddress?.id || selectedAddress?._id) === (addr._id || addr.id);
+                  let flatPart = "";
+                  let streetPart = addr.address || "";
+                  if (addr.address && addr.address.includes(",")) {
+                    const parts = addr.address.split(",");
+                    flatPart = parts[0]?.trim() || "";
+                    streetPart = parts.slice(1).join(",").trim() || parts[0]?.trim();
+                  }
+
+                  return (
+                    <div
+                      key={addr._id || addr.id}
+                      onClick={() => {
+                        const mapped: OrderAddress = {
+                          name: addr.fullName,
+                          phone: addr.phone,
+                          flat: flatPart,
+                          street: streetPart,
+                          address: addr.address,
+                          city: addr.city,
+                          state: addr.state,
+                          pincode: addr.pincode,
+                          landmark: addr.landmark || "",
+                          latitude: addr.latitude,
+                          longitude: addr.longitude,
+                          id: addr._id,
+                          _id: addr._id,
+                        };
+                        setSelectedAddress(mapped);
+                        setSavedAddress(mapped);
+                        if (addr.latitude && addr.longitude) {
+                          setIsMapSelected(true);
+                        }
+                        setShowAddressSheet(false);
+                      }}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                        isSelected
+                          ? "border-emerald-600 bg-emerald-50/60 shadow-xs ring-1 ring-emerald-600"
+                          : "border-neutral-200 hover:border-neutral-300 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            checked={isSelected}
+                            readOnly
+                            className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-xs font-bold text-neutral-900">{addr.fullName}</span>
+                          <span className="text-[10px] font-bold bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded uppercase">
+                            {addr.type || "Home"}
+                          </span>
+                        </div>
+                        {addr.phone && (
+                          <span className="text-[11px] text-neutral-500 font-medium">📱 {addr.phone}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-600 mt-2 pl-6">
+                        {addr.address}, {addr.city} - {addr.pincode}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 border-t bg-neutral-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddressSheet(false);
+                    navigate("/checkout/address", { state: { returnTo: "/checkout" } });
+                  }}
+                  className="w-full py-3 bg-white border border-emerald-600 text-emerald-700 font-bold rounded-xl text-xs hover:bg-emerald-50 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-xs"
+                >
+                  <span>➕ Add New Delivery Address</span>
                 </button>
               </div>
             </motion.div>
@@ -1222,76 +1715,117 @@ export default function Checkout() {
       </div>
 
       {/* Saved Address Section */}
-      <div className="px-4 md:px-6 lg:px-8 py-2 md:py-3 border-b border-neutral-200">
-        <div className="mb-2">
-          <h3 className="text-xs font-semibold text-neutral-900 mb-0.5">
-            Delivery Address
-          </h3>
-          <p className="text-[10px] text-neutral-600">
-            Set precise location for faster delivery
-          </p>
+      <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 border-b border-neutral-200 bg-white">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📍</span>
+            <div>
+              <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wide">
+                Delivery Address
+              </h3>
+              <p className="text-[10px] text-neutral-500">
+                {selectedAddress ? "Delivering to your selected address" : "Add address with complete flat/house details"}
+              </p>
+            </div>
+          </div>
+          {savedAddressesList.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setShowAddressSheet(true)}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors"
+            >
+              Change Address
+            </button>
+          )}
         </div>
 
-        {/* Set Location on Map Button */}
-        <div className="mt-2.5">
-          <button
-            onClick={() => {
-              // Prioritize saved address if available, then current GPS location (matches homepage header)
-              setMapLocation({
-                lat: selectedAddress?.latitude || userLocation?.latitude || 0,
-                lng: selectedAddress?.longitude || userLocation?.longitude || 0,
-              });
-              setShowMapPicker(true);
-            }}
-            className={`flex items-center gap-3 text-base font-bold px-5 py-4 rounded-xl w-full justify-center transition-colors ${
-              isMapSelected
-                ? "text-green-700 bg-green-100 border-2 border-green-500 ring-2 ring-green-600"
-                : "text-green-600 hover:text-green-700 bg-green-50 border-2 border-green-300 hover:bg-green-100 hover:border-green-400"
-            }`}>
-            {isMapSelected ? (
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            ) : (
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle
-                  cx="12"
-                  cy="10"
-                  r="3"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-            {isMapSelected
-              ? "Precise Location Selected"
-              : selectedAddress?.latitude
-                ? "Update Precise Location on Map"
-                : "Set Exact Location on Map"}
-          </button>
-        </div>
+        {selectedAddress ? (
+          <div className="bg-neutral-50/80 rounded-2xl p-3.5 border border-neutral-200 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-neutral-900">
+                    {selectedAddress.name || "Recipient"}
+                  </span>
+                  {selectedAddress.phone && (
+                    <span className="text-[11px] font-medium text-neutral-600 bg-white px-2 py-0.5 rounded-md border border-neutral-200">
+                      📱 +91 {selectedAddress.phone}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-bold bg-neutral-200 text-neutral-800 px-2 py-0.5 rounded-md uppercase">
+                    {(selectedAddress as any).type || "Home"}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-700 leading-relaxed font-normal">
+                  {selectedAddress.flat ? `${selectedAddress.flat}, ` : ""}
+                  {selectedAddress.street}
+                  {selectedAddress.landmark ? `, Landmark: ${selectedAddress.landmark}` : ""}
+                  {selectedAddress.city ? `, ${selectedAddress.city}` : ""}
+                  {selectedAddress.state ? `, ${selectedAddress.state}` : ""}
+                  {selectedAddress.pincode ? ` - ${selectedAddress.pincode}` : ""}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate("/checkout/address", {
+                      state: { editAddress: selectedAddress, returnTo: "/checkout" },
+                    })
+                  }
+                  className="px-2.5 py-1 text-[11px] font-bold text-neutral-700 bg-white border border-neutral-300 rounded-lg hover:bg-neutral-100 transition-colors"
+                >
+                  Edit
+                </button>
+              </div>
+            </div>
+
+            {/* Location pin status / update button */}
+            <div className="pt-2 border-t border-neutral-200/80 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[11px] text-neutral-600 font-medium">
+                  {isMapSelected || (selectedAddress.latitude && selectedAddress.longitude)
+                    ? "Precise delivery coordinates active"
+                    : "Approximate location"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapLocation({
+                    lat: selectedAddress?.latitude || userLocation?.latitude || 0,
+                    lng: selectedAddress?.longitude || userLocation?.longitude || 0,
+                  });
+                  setShowMapPicker(true);
+                }}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1"
+              >
+                <span>🗺️ Adjust Pin on Map</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50/70 rounded-2xl p-4 border border-amber-200 text-center space-y-3">
+            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 mx-auto flex items-center justify-center text-lg">
+              📍
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-neutral-900">No Delivery Address Found</h4>
+              <p className="text-xs text-neutral-600 max-w-sm mx-auto mt-0.5">
+                Please add your complete delivery address with flat, building, and street details to proceed.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/checkout/address", { state: { returnTo: "/checkout" } })}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold rounded-xl transition-all shadow-xs inline-flex items-center gap-2"
+            >
+              <span>➕ Add Delivery Address</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Grouped Fulfillment Cards */}
@@ -1320,7 +1854,7 @@ export default function Checkout() {
                       ⚡ QUICK DELIVERY
                     </span>
                     <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
-                      {deliverySelections.quickCommerce === 'Instant' ? '10–15 mins' : (cart.groups?.quickCommerce?.estimatedDeliveryTime || '1–2 days')}
+                      {cart.groups?.quickCommerce?.estimatedDeliveryTime || '10–15 mins'}
                     </span>
                   </div>
                   <p className="text-[10px] text-neutral-500 mt-0.5">
@@ -1342,12 +1876,35 @@ export default function Checkout() {
                   : displayPrice;
                 const lineTotal = unitPrice * (item.quantity || 1);
                 const moq = item.wholesaleMinimumQuantity || item.product?.wholesaleMinimumQuantity || 1;
+                const isItemStockBelowMoq =
+                  Boolean(item.isStockBelowMoq) ||
+                  (isItemWholesale && typeof item.availableStock === "number" && item.availableStock < moq);
                 const isBelowMoq = isItemWholesale && item.quantity < moq;
                 const isItemRemoving = removingItemId === (item.id || item.product?.id);
+                const isItemOutOfStock =
+                  Boolean(item.isOutOfStock) ||
+                  (typeof item.availableStock === "number" && item.availableStock <= 0);
+                const isItemInsufficient =
+                  !isItemOutOfStock &&
+                  !isItemStockBelowMoq &&
+                  typeof item.availableStock === "number" &&
+                  item.availableStock > 0 &&
+                  item.quantity > item.availableStock;
+                const effectiveVariantTitle =
+                  item.variantTitle ||
+                  item.variant?.title ||
+                  (item.product as any)?.variantTitle;
+
                 return (
                   <div
                     key={item.id || item.product?.id || Math.random()}
-                    className={`p-3 rounded-xl border border-neutral-200/80 bg-white hover:border-neutral-300 transition-all flex gap-3 items-start ${
+                    className={`p-3 rounded-xl border ${
+                      isItemOutOfStock
+                        ? "border-rose-300 bg-rose-50/20"
+                        : isItemInsufficient
+                          ? "border-amber-300 bg-amber-50/20"
+                          : "border-neutral-200/80 bg-white"
+                    } hover:border-neutral-300 transition-all flex gap-3 items-start ${
                       isItemRemoving ? "opacity-40 pointer-events-none" : ""
                     }`}
                   >
@@ -1383,6 +1940,11 @@ export default function Checkout() {
                             {isItemWholesale && (
                               <span className="text-[9px] font-bold text-purple-800 bg-purple-50 border border-purple-200/70 px-1.5 py-0.2 rounded">
                                 🏷️ Wholesale
+                              </span>
+                            )}
+                            {effectiveVariantTitle && (
+                              <span className="text-[10px] font-semibold text-neutral-700 bg-neutral-100 px-1.5 py-0.2 rounded border border-neutral-200">
+                                {effectiveVariantTitle}
                               </span>
                             )}
                             {item.product?.pack && (
@@ -1435,6 +1997,72 @@ export default function Checkout() {
                         </div>
                       </div>
 
+                      {/* Out of stock warning banner */}
+                      {isItemOutOfStock && (
+                        <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Item is out of stock</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Wholesale stock below MOQ warning banner */}
+                      {isItemStockBelowMoq && (
+                        <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Available stock ({item.availableStock}) is below wholesale MOQ ({moq}). Please remove this item.</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Insufficient stock warning banner */}
+                      {isItemInsufficient && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Only {item.availableStock} available (in cart: {item.quantity})</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantity(
+                                item.product?.id,
+                                item.availableStock!,
+                                (item.product as any)?.variantId,
+                                (item.product as any)?.variantTitle,
+                                item.id,
+                              );
+                            }}
+                            className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded border border-amber-300 cursor-pointer"
+                          >
+                            Adjust to {item.availableStock}
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-neutral-100">
                         <div className="flex items-center gap-2.5">
                           <button
@@ -1444,7 +2072,7 @@ export default function Checkout() {
                               e.stopPropagation();
                               handleRemoveItem(item.product?.id, item.id);
                             }}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer"
                             title="Remove item from cart"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1459,7 +2087,7 @@ export default function Checkout() {
                               e.stopPropagation();
                               handleMoveToWishlist(item.product);
                             }}
-                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors"
+                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors cursor-pointer"
                           >
                             Wishlist
                           </button>
@@ -1474,7 +2102,7 @@ export default function Checkout() {
                             className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
                               item.quantity <= 1
                                 ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
-                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95 cursor-pointer"
                             }`}
                             aria-label="Decrease quantity"
                           >
@@ -1485,9 +2113,27 @@ export default function Checkout() {
                           </span>
                           <button
                             type="button"
+                            disabled={
+                              isItemOutOfStock ||
+                              (typeof item.availableStock === "number" &&
+                                item.availableStock > 0 &&
+                                item.quantity >= item.availableStock)
+                            }
                             onClick={() => updateQuantity(item.product?.id, item.quantity + 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
-                            className="w-7 h-7 flex items-center justify-center text-emerald-700 font-bold hover:bg-emerald-50 active:scale-95 text-sm transition-all"
+                            className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
+                              isItemOutOfStock ||
+                              (typeof item.availableStock === "number" &&
+                                item.availableStock > 0 &&
+                                item.quantity >= item.availableStock)
+                                ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95 cursor-pointer"
+                            }`}
                             aria-label="Increase quantity"
+                            title={
+                              typeof item.availableStock === "number" && item.quantity >= item.availableStock
+                                ? `Only ${item.availableStock} available`
+                                : "Increase quantity"
+                            }
                           >
                             +
                           </button>
@@ -1537,12 +2183,35 @@ export default function Checkout() {
                   : displayPrice;
                 const lineTotal = unitPrice * (item.quantity || 1);
                 const moq = item.wholesaleMinimumQuantity || item.product?.wholesaleMinimumQuantity || 1;
+                const isItemStockBelowMoq =
+                  Boolean(item.isStockBelowMoq) ||
+                  (isItemWholesale && typeof item.availableStock === "number" && item.availableStock < moq);
                 const isBelowMoq = isItemWholesale && item.quantity < moq;
                 const isItemRemoving = removingItemId === (item.id || item.product?.id);
+                const isItemOutOfStock =
+                  Boolean(item.isOutOfStock) ||
+                  (typeof item.availableStock === "number" && item.availableStock <= 0);
+                const isItemInsufficient =
+                  !isItemOutOfStock &&
+                  !isItemStockBelowMoq &&
+                  typeof item.availableStock === "number" &&
+                  item.availableStock > 0 &&
+                  item.quantity > item.availableStock;
+                const effectiveVariantTitle =
+                  item.variantTitle ||
+                  item.variant?.title ||
+                  (item.product as any)?.variantTitle;
+
                 return (
                   <div
                     key={item.id || item.product?.id || Math.random()}
-                    className={`p-3 rounded-xl border border-neutral-200/80 bg-white hover:border-neutral-300 transition-all flex gap-3 items-start ${
+                    className={`p-3 rounded-xl border ${
+                      isItemOutOfStock
+                        ? "border-rose-300 bg-rose-50/20"
+                        : isItemInsufficient
+                          ? "border-amber-300 bg-amber-50/20"
+                          : "border-neutral-200/80 bg-white"
+                    } hover:border-neutral-300 transition-all flex gap-3 items-start ${
                       isItemRemoving ? "opacity-40 pointer-events-none" : ""
                     }`}
                   >
@@ -1578,6 +2247,11 @@ export default function Checkout() {
                             {isItemWholesale && (
                               <span className="text-[9px] font-bold text-purple-800 bg-purple-50 border border-purple-200/70 px-1.5 py-0.2 rounded">
                                 🏷️ Wholesale
+                              </span>
+                            )}
+                            {effectiveVariantTitle && (
+                              <span className="text-[10px] font-semibold text-neutral-700 bg-neutral-100 px-1.5 py-0.2 rounded border border-neutral-200">
+                                {effectiveVariantTitle}
                               </span>
                             )}
                             {item.product?.pack && (
@@ -1630,6 +2304,72 @@ export default function Checkout() {
                         </div>
                       </div>
 
+                      {/* Out of stock warning banner */}
+                      {isItemOutOfStock && (
+                        <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Item is out of stock</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Wholesale stock below MOQ warning banner */}
+                      {isItemStockBelowMoq && (
+                        <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Available stock ({item.availableStock}) is below wholesale MOQ ({moq}). Please remove this item.</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveItem(item.product?.id, item.id);
+                            }}
+                            className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Insufficient stock warning banner */}
+                      {isItemInsufficient && (
+                        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg mt-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <span>⚠️</span>
+                            <span>Only {item.availableStock} available (in cart: {item.quantity})</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateQuantity(
+                                item.product?.id,
+                                item.availableStock!,
+                                (item.product as any)?.variantId,
+                                (item.product as any)?.variantTitle,
+                                item.id,
+                              );
+                            }}
+                            className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded border border-amber-300 cursor-pointer"
+                          >
+                            Adjust to {item.availableStock}
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-neutral-100">
                         <div className="flex items-center gap-2.5">
                           <button
@@ -1639,7 +2379,7 @@ export default function Checkout() {
                               e.stopPropagation();
                               handleRemoveItem(item.product?.id, item.id);
                             }}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer"
                             title="Remove item from cart"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1654,7 +2394,7 @@ export default function Checkout() {
                               e.stopPropagation();
                               handleMoveToWishlist(item.product);
                             }}
-                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors"
+                            className="text-[11px] font-medium text-neutral-400 hover:text-emerald-700 transition-colors cursor-pointer"
                           >
                             Wishlist
                           </button>
@@ -1669,7 +2409,7 @@ export default function Checkout() {
                             className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
                               item.quantity <= 1
                                 ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
-                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95 cursor-pointer"
                             }`}
                             aria-label="Decrease quantity"
                           >
@@ -1680,9 +2420,27 @@ export default function Checkout() {
                           </span>
                           <button
                             type="button"
+                            disabled={
+                              isItemOutOfStock ||
+                              (typeof item.availableStock === "number" &&
+                                item.availableStock > 0 &&
+                                item.quantity >= item.availableStock)
+                            }
                             onClick={() => updateQuantity(item.product?.id, item.quantity + 1, (item.product as any)?.variantId, (item.product as any)?.variantTitle, item.id)}
-                            className="w-7 h-7 flex items-center justify-center text-emerald-700 font-bold hover:bg-emerald-50 active:scale-95 text-sm transition-all"
+                            className={`w-7 h-7 flex items-center justify-center font-bold text-sm transition-all ${
+                              isItemOutOfStock ||
+                              (typeof item.availableStock === "number" &&
+                                item.availableStock > 0 &&
+                                item.quantity >= item.availableStock)
+                                ? "text-neutral-300 cursor-not-allowed bg-neutral-50"
+                                : "text-emerald-700 hover:bg-emerald-50 active:scale-95 cursor-pointer"
+                            }`}
                             aria-label="Increase quantity"
+                            title={
+                              typeof item.availableStock === "number" && item.quantity >= item.availableStock
+                                ? `Only ${item.availableStock} available`
+                                : "Increase quantity"
+                            }
                           >
                             +
                           </button>
@@ -2085,132 +2843,94 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* Fulfillment-Aware Delivery Option Selection */}
-      <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200">
-        <h2 className="text-sm font-bold text-neutral-900 mb-3">
-          Select Delivery Option
-        </h2>
+      {/* Delivery Summary — Automatically Determined by Commerce Type */}
+      <div className="px-4 md:px-6 lg:px-8 py-3.5 border-b border-neutral-200">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-neutral-900">
+            Delivery Summary
+          </h2>
+          <span className="text-[11px] font-medium text-neutral-500 bg-neutral-100 px-2.5 py-0.5 rounded-full">
+            Auto-assigned by item type
+          </span>
+        </div>
 
         {/* Case 1: Quick Commerce Only */}
         {qcItems.length > 0 && ecomItems.length === 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-emerald-800">
-              <span>⚡ Quick Commerce Local Delivery</span>
-              <span className="text-[10px] text-neutral-500 font-normal">({qcItems.length} {qcItems.length === 1 ? 'item' : 'items'})</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Standard" }))}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-                  deliverySelections.quickCommerce === "Standard"
-                    ? "border-green-600 bg-green-50 text-green-700"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                }`}>
-                <div
-                  className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliverySelections.quickCommerce === "Standard" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round">
-                    <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" />
-                    <circle cx="5.5" cy="18.5" r="1.5" />
-                    <circle cx="18.5" cy="18.5" r="1.5" />
-                  </svg>
+          <div className="p-3.5 rounded-xl border border-emerald-200/90 bg-emerald-50/40 text-emerald-950 transition-all">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm shadow-xs flex-shrink-0">
+                  ⚡
                 </div>
-                <span className="text-xs font-bold">Standard Delivery</span>
-                <p className="text-[9px] mt-0.5 opacity-70">
-                  (Expected in 1–2 days)
-                </p>
+                <div>
+                  <div className="text-xs font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
+                    <span>Instant Delivery</span>
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                      Quick Commerce
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-normal">
+                      ({qcItems.length} {qcItems.length === 1 ? 'item' : 'items'})
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>Expected in {cart.groups?.quickCommerce?.estimatedDeliveryTime || '10–15 mins'}</span>
+                    <span className="text-neutral-300">•</span>
+                    <span className="text-neutral-500 text-[10px]">Direct from local store via instant rider</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
                 {isEligibleForFreeDelivery ? (
-                  <span className="inline-block mt-1 text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                  <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
                     FREE
                   </span>
                 ) : (
-                  <span className="inline-block mt-1 text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                  <span className="text-xs font-bold text-neutral-800 bg-neutral-100 px-2.5 py-0.5 rounded-full">
                     ₹{cart.qcDeliveryFee ?? 25}
                   </span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Instant" }))}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-                  deliverySelections.quickCommerce === "Instant"
-                    ? "border-green-600 bg-green-50 text-green-700"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                }`}>
-                <div
-                  className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${deliverySelections.quickCommerce === "Instant" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-bold">Instant Delivery</span>
-                <p className="text-[9px] mt-0.5 opacity-70">
-                  (Expected in 10–15 mins)
-                </p>
-                {isEligibleForFreeDelivery ? (
-                  <span className="inline-block mt-1 text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
-                    FREE
-                  </span>
-                ) : (
-                  <span className="inline-block mt-1 text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
-                    Distance-based
-                  </span>
-                )}
-              </button>
+                <span className="text-[9px] text-emerald-700 font-medium">Instant Fulfillment</span>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Case 2: Ecommerce Only (Current Bug Scenario) */}
+        {/* Case 2: Ecommerce Only */}
         {ecomItems.length > 0 && qcItems.length === 0 && (
-          <div>
-            <div className="flex items-center justify-between p-3.5 rounded-xl border-2 border-blue-600 bg-blue-50/50 text-blue-900 transition-all">
+          <div className="p-3.5 rounded-xl border border-blue-200/90 bg-blue-50/40 text-blue-950 transition-all">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm shadow-xs flex-shrink-0">
                   📦
                 </div>
                 <div>
                   <div className="text-xs font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
-                    <span>Courier Delivery</span>
+                    <span>Standard Courier Delivery</span>
                     <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200/60">
                       Shiprocket
                     </span>
+                    <span className="text-[10px] text-neutral-500 font-normal">
+                      ({ecomItems.length} {ecomItems.length === 1 ? 'item' : 'items'})
+                    </span>
                   </div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Expected in 3–7 days
+                  <p className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>Expected in {cart.groups?.ecommerce?.estimatedDeliveryTime || '3–7 days'}</span>
+                    <span className="text-neutral-300">•</span>
+                    <span className="text-neutral-500 text-[10px]">Shipped via courier partner</span>
                   </p>
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-xs font-bold text-blue-700 bg-blue-100/60 px-2.5 py-1 rounded-lg">
-                  Selected
-                </span>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
                 {isEligibleForFreeDelivery ? (
-                  <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
                     FREE
                   </span>
                 ) : (
-                  <span className="text-[10px] font-medium text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-neutral-800 bg-neutral-100 px-2.5 py-0.5 rounded-full">
                     ₹{cart.ecomShippingFee ?? 40}
                   </span>
                 )}
+                <span className="text-[9px] text-blue-700 font-medium">Courier Shipment</span>
               </div>
             </div>
           </div>
@@ -2218,136 +2938,88 @@ export default function Checkout() {
 
         {/* Case 3: Mixed Cart (QC + Ecommerce) */}
         {qcItems.length > 0 && ecomItems.length > 0 && (
-          <div className="space-y-4">
-            {/* Quick Commerce Group */}
-            <div className="p-3 rounded-xl border border-emerald-200/90 bg-emerald-50/30">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 uppercase tracking-wide">
-                  <span>⚡ Quick Commerce</span>
-                </div>
-                <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                  {qcItems.length} {qcItems.length === 1 ? 'item' : 'items'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Standard" }))}
-                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all ${
-                    deliverySelections.quickCommerce === "Standard"
-                      ? "border-green-600 bg-white text-green-700 shadow-xs"
-                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                  }`}>
-                  <div
-                    className={`w-7 h-7 rounded-full mb-1.5 flex items-center justify-center ${deliverySelections.quickCommerce === "Standard" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round">
-                      <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" />
-                      <circle cx="5.5" cy="18.5" r="1.5" />
-                      <circle cx="18.5" cy="18.5" r="1.5" />
-                    </svg>
-                  </div>
-                  <span className="text-xs font-bold">Standard Delivery</span>
-                  <p className="text-[8px] mt-0.5 opacity-70">
-                    (Expected in 1–2 days)
-                  </p>
-                  {isEligibleForFreeDelivery ? (
-                    <span className="inline-block mt-1 text-[8px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
-                      FREE
-                    </span>
-                  ) : (
-                    <span className="inline-block mt-1 text-[8px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
-                      ₹{cart.qcDeliveryFee ?? 25}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDeliverySelections(prev => ({ ...prev, quickCommerce: "Instant" }))}
-                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all ${
-                    deliverySelections.quickCommerce === "Instant"
-                      ? "border-green-600 bg-white text-green-700 shadow-xs"
-                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                  }`}>
-                  <div
-                    className={`w-7 h-7 rounded-full mb-1.5 flex items-center justify-center ${deliverySelections.quickCommerce === "Instant" ? "bg-green-600 text-white" : "bg-neutral-100 text-neutral-600"}`}>
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                    </svg>
-                  </div>
-                  <span className="text-xs font-bold">Instant Delivery</span>
-                  <p className="text-[8px] mt-0.5 opacity-70">
-                    (Expected in 10–15 mins)
-                  </p>
-                  {isEligibleForFreeDelivery ? (
-                    <span className="inline-block mt-1 text-[8px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
-                      FREE
-                    </span>
-                  ) : (
-                    <span className="inline-block mt-1 text-[8px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
-                      Distance-based
-                    </span>
-                  )}
-                </button>
-              </div>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/70 text-amber-950 text-[11px] leading-relaxed">
+              <span className="text-amber-600 text-sm flex-shrink-0 mt-0.2">ℹ️</span>
+              <p>
+                <span className="font-semibold">Separate Deliveries:</span> Your basket contains both Quick Commerce and Courier items. They will be fulfilled independently and arrive in 2 separate shipments.
+              </p>
             </div>
 
-            {/* Ecommerce Group */}
-            <div className="p-3 rounded-xl border border-blue-200/90 bg-blue-50/30">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-950 uppercase tracking-wide">
-                  <span>📦 Ecommerce</span>
-                </div>
-                <span className="text-[10px] font-semibold text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded-full">
-                  {ecomItems.length} {ecomItems.length === 1 ? 'item' : 'items'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-xl border-2 border-blue-600 bg-white text-blue-900 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs flex-shrink-0">
-                    📦
+            {/* Quick Commerce Group Summary Card */}
+            <div className="p-3.5 rounded-xl border border-emerald-200/90 bg-emerald-50/40 text-emerald-950 transition-all">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shadow-xs flex-shrink-0">
+                    ⚡
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
-                      <span>Courier Delivery</span>
-                      <span className="text-[9px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200/60">
-                        Shiprocket
+                    <div className="text-xs font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
+                      <span>Instant Delivery</span>
+                      <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                        Quick Commerce
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-normal">
+                        ({qcItems.length} {qcItems.length === 1 ? 'item' : 'items'})
                       </span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-0.5">
-                      Expected in 3–7 days
+                    <p className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>Expected in {cart.groups?.quickCommerce?.estimatedDeliveryTime || '10–15 mins'}</span>
+                      <span className="text-neutral-300">•</span>
+                      <span className="text-neutral-500 text-[10px]">Local rider fulfillment</span>
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
-                    Selected
-                  </span>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   {isEligibleForFreeDelivery ? (
-                    <span className="text-[9px] font-bold text-green-700 bg-green-100 px-1.5 py-0.2 rounded-full">
+                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
                       FREE
                     </span>
                   ) : (
-                    <span className="text-[9px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.2 rounded-full">
+                    <span className="text-xs font-bold text-neutral-800 bg-neutral-100 px-2.5 py-0.5 rounded-full">
+                      ₹{cart.qcDeliveryFee ?? 25}
+                    </span>
+                  )}
+                  <span className="text-[9px] text-emerald-700 font-medium">Instant Delivery</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ecommerce Group Summary Card */}
+            <div className="p-3.5 rounded-xl border border-blue-200/90 bg-blue-50/40 text-blue-950 transition-all">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs shadow-xs flex-shrink-0">
+                    📦
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-neutral-900 flex items-center gap-2 flex-wrap">
+                      <span>Standard Courier Delivery</span>
+                      <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200/60">
+                        Shiprocket
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-normal">
+                        ({ecomItems.length} {ecomItems.length === 1 ? 'item' : 'items'})
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>Expected in {cart.groups?.ecommerce?.estimatedDeliveryTime || '3–7 days'}</span>
+                      <span className="text-neutral-300">•</span>
+                      <span className="text-neutral-500 text-[10px]">Courier shipment</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {isEligibleForFreeDelivery ? (
+                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
+                      FREE
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold text-neutral-800 bg-neutral-100 px-2.5 py-0.5 rounded-full">
                       ₹{cart.ecomShippingFee ?? 40}
                     </span>
                   )}
+                  <span className="text-[9px] text-blue-700 font-medium">Courier Shipment</span>
                 </div>
               </div>
             </div>
@@ -3046,7 +3718,15 @@ export default function Checkout() {
 
       {/* Bottom Sticky Button */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 z-[60] shadow-lg">
-        {!meetsMinimumOrder && (
+        {hasStockIssues && (
+          <div className="px-4 py-2 text-xs text-center font-semibold text-rose-800 bg-rose-50 border-b border-rose-200 flex items-center justify-center gap-1.5">
+            <svg className="w-4 h-4 text-rose-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Some items have limited stock. Please adjust quantities to proceed.</span>
+          </div>
+        )}
+        {!meetsMinimumOrder && !hasStockIssues && (
           <div className="px-4 py-2 text-xs text-center text-amber-800 bg-amber-50 border-b border-amber-100">
             Minimum order ₹{minimumOrderValue.toLocaleString("en-IN")}. Add ₹
             {amountNeededForMinimumOrder.toLocaleString("en-IN")} more to place
@@ -3057,31 +3737,28 @@ export default function Checkout() {
           <button
             onClick={handlePlaceOrder}
             disabled={
-              cart.items.length === 0 || isProcessingOrder || !meetsMinimumOrder
+              cart.items.length === 0 || isProcessingOrder || !meetsMinimumOrder || hasStockIssues
             }
             className={`w-full py-3 px-4 font-bold text-sm uppercase tracking-wide transition-colors ${
-              cart.items.length > 0 && !isProcessingOrder && meetsMinimumOrder
-                ? "bg-green-600 text-white hover:bg-green-700"
+              cart.items.length > 0 && !isProcessingOrder && meetsMinimumOrder && !hasStockIssues
+                ? "bg-green-600 text-white hover:bg-green-700 cursor-pointer"
                 : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
             }`}>
             {isProcessingOrder
               ? "Processing..."
-              : !meetsMinimumOrder
-                ? `Add ₹${amountNeededForMinimumOrder.toLocaleString("en-IN")} more`
-                : "Place Order"}
+              : hasStockIssues
+                ? "Adjust Stock to Place Order"
+                : !meetsMinimumOrder
+                  ? `Add ₹${amountNeededForMinimumOrder.toLocaleString("en-IN")} more`
+                  : "Place Order"}
           </button>
         ) : (
           <button
             onClick={() => {
-              // Prioritize current GPS location
-              setMapLocation({
-                lat: userLocation?.latitude || 0,
-                lng: userLocation?.longitude || 0,
-              });
-              setShowMapPicker(true);
+              navigate("/checkout/address", { state: { returnTo: "/checkout" } });
             }}
-            className="w-full bg-green-600 text-white py-3 px-4 font-bold text-sm uppercase tracking-wide hover:bg-green-700 transition-colors">
-            Set location on map to proceed
+            className="w-full bg-emerald-600 text-white py-3.5 px-4 font-bold text-sm uppercase tracking-wide hover:bg-emerald-700 active:scale-98 transition-all flex items-center justify-center gap-2">
+            <span>➕ Add Delivery Address to proceed</span>
           </button>
         )}
       </div>

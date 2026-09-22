@@ -20,8 +20,10 @@ export default function GoogleMapsLocationPicker({
     height = '200px'
 }: GoogleMapsLocationPickerProps) {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const defaultLat = initialLat && initialLat !== 0 ? initialLat : 28.6139;
+    const defaultLng = initialLng && initialLng !== 0 ? initialLng : 77.2090;
+    const [center, setCenter] = useState({ lat: defaultLat, lng: defaultLng });
     const mapRef = useRef<google.maps.Map | null>(null);
-    const [center, setCenter] = useState({ lat: initialLat, lng: initialLng });
     const isDragging = useRef(false);
 
     const { isLoaded, loadError } = useJsApiLoader({
@@ -31,7 +33,7 @@ export default function GoogleMapsLocationPicker({
 
     // Update center when initial props change significantly
     useEffect(() => {
-        if (initialLat && initialLng) {
+        if (initialLat && initialLng && (initialLat !== 0 || initialLng !== 0)) {
             const latDiff = Math.abs(center.lat - initialLat);
             const lngDiff = Math.abs(center.lng - initialLng);
             // Only update if change is significant (> 100m)

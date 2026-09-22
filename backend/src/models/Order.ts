@@ -10,7 +10,7 @@ export interface IOrder extends Document {
   // Customer Info
   customer: mongoose.Types.ObjectId;
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   customerPhone: string;
 
   // Delivery Info
@@ -218,7 +218,7 @@ const OrderSchema = new Schema<IOrder>(
     },
     customerEmail: {
       type: String,
-      required: [true, "Customer email is required"],
+      required: false,
       trim: true,
     },
     customerPhone: {

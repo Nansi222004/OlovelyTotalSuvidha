@@ -32,7 +32,7 @@ export const getAddresses = async (): Promise<AddressResponse> => {
 /**
  * Add new address
  */
-export const addAddress = async (data: Partial<Address> & { flat?: string, street?: string }): Promise<AddressResponse> => {
+export const addAddress = async (data: Partial<Address> & { flat?: string; street?: string; name?: string }): Promise<AddressResponse> => {
     const response = await api.post<AddressResponse>('/customer/addresses', data);
     return response.data;
 };
@@ -40,7 +40,7 @@ export const addAddress = async (data: Partial<Address> & { flat?: string, stree
 /**
  * Update address
  */
-export const updateAddress = async (id: string, data: Partial<Address> & { flat?: string, street?: string }): Promise<AddressResponse> => {
+export const updateAddress = async (id: string, data: Partial<Address> & { flat?: string; street?: string; name?: string }): Promise<AddressResponse> => {
     const response = await api.put<AddressResponse>(`/customer/addresses/${id}`, data);
     return response.data;
 };

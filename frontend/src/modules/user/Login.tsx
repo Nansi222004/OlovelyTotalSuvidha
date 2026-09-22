@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../services/api/auth/customerAuthService';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -7,6 +7,7 @@ import OTPInput from '../../components/OTPInput';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const { setLanguage } = useLanguage();
   const [mobileNumber, setMobileNumber] = useState('');
@@ -57,8 +58,12 @@ export default function Login() {
 
         const languageSelected = response.data.languageSelected;
         const userLang = response.data.user.preferredLanguage;
+        const from = (location.state as any)?.from;
 
-        if (languageSelected && userLang) {
+        if (from) {
+          if (userLang) setLanguage(userLang);
+          navigate(from, { replace: true });
+        } else if (languageSelected && userLang) {
           setLanguage(userLang);
           navigate('/', { replace: true });
         } else {

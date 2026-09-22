@@ -156,8 +156,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           console.error("Validation details:", errorDetails);
         }
         // Re-throw with more details
-        const enhancedError = new Error(errorMessage) as Error & { details?: unknown };
+        const enhancedError = new Error(errorMessage) as any;
         enhancedError.details = errorDetails;
+        enhancedError.errorCode = (apiError.response.data as any).errorCode;
+        enhancedError.stockConflict = (apiError.response.data as any).stockConflict;
+        enhancedError.response = apiError.response;
         throw enhancedError;
       }
       throw error;
