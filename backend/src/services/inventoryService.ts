@@ -123,7 +123,7 @@ export async function mutateStock(
 
     if (variationId) {
       // --- Variation-level mutation ---
-      // Atomic: only update the specific variation's stock, leave Product.stock untouched.
+      // Atomic: update the specific variation's stock AND keep root Product.stock synchronized in lockstep.
       const updateQuery: Record<string, any> = { _id: new mongoose.Types.ObjectId(productId) };
 
       if (quantity < 0) {
@@ -140,7 +140,7 @@ export async function mutateStock(
 
       beforeDoc = await Product.findOneAndUpdate(
         updateQuery,
-        { $inc: { 'variations.$.stock': quantity } },
+        { $inc: { 'variations.$.stock': quantity, stock: quantity } },
         { new: false, session }
       );
 
@@ -165,6 +165,14 @@ export async function mutateStock(
       sellerObjId = beforeDoc.seller as mongoose.Types.ObjectId;
     } else {
       // --- Simple product mutation ---
+      // Guard: Ensure product does not have variations. If variations exist, variationId must be specified.
+      const productCheck = await Product.findById(productId).select('variations').session(session);
+      if (productCheck?.variations && productCheck.variations.length > 0) {
+        throw new Error(
+          `Product contains variations. A specific variationId must be targeted for inventory mutation.`
+        );
+      }
+
       const updateQuery: Record<string, any> = { _id: new mongoose.Types.ObjectId(productId) };
 
       if (quantity < 0) {

@@ -356,7 +356,7 @@ async function runTests() {
   });
   assert(adjPlatform.status === 200, 'Admin adjusts platform product stock');
 
-  // Admin performs adjustment on vendor variation
+  // Admin performs adjustment on vendor variation - must be rejected with 400 under vendor safeguards
   const vendorVariationId = varProd.variations![0]._id!.toString();
   const adjVendor = await apiCall('POST', '/admin/inventory/adjust', adminToken, {
     productId: varProd._id.toString(),
@@ -364,7 +364,17 @@ async function runTests() {
     delta: 3,
     note: FIXTURE_PREFIX + ' Vendor variation adjustment',
   });
-  assert(adjVendor.status === 200, 'Admin adjusts vendor variation stock');
+  assert(adjVendor.status === 400, 'Admin generic adjustment on vendor variation is rejected with 400');
+  assert(adjVendor.data.message.includes('Cannot adjust stock for vendor-owned inventory'), 'Rejection message explains vendor ownership');
+
+  // Vendor updates own variation stock via existing Vendor Stock Management API
+  const vendorUpdate = await apiCall(
+    'PATCH',
+    `/products/${varProd._id}/variations/${vendorVariationId}/stock`,
+    vendorAToken,
+    { stock: 8 }
+  );
+  assert(vendorUpdate.status === 200, 'Vendor updates own variation stock via vendor stock management');
 
   // Query transactions
   const txRes = await apiCall('GET', '/admin/inventory/transactions?limit=10', adminToken);

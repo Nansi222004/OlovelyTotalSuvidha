@@ -10,6 +10,7 @@ import {
   type InventoryTransaction,
   type LowStockProduct,
 } from "../../../services/api/admin/adminInventoryService";
+import { getProductById } from "../../../services/api/admin/adminProductService";
 import { getAllSellers } from "../../../services/api/sellerService";
 import { resolveImageUrl } from "../../../utils/imageUrl";
 
@@ -35,6 +36,23 @@ interface AdjustForm {
   delta: number;
   note: string;
   mode: "adjust" | "damage" | "stock-in";
+}
+
+function isPlatformProduct(product: any): boolean {
+  if (!product) return false;
+  if (product.ownerType === "PLATFORM") return true;
+  if (!product.seller) return true;
+  const s = product.seller;
+  if (typeof s === "object" && s !== null) {
+    return !!(
+      s.isPlatform ||
+      s.category === "Admin" ||
+      s.email === "admin-store@olovely.com" ||
+      s.sellerName === "Olovely Admin" ||
+      s.storeName === "Olovely Admin Store"
+    );
+  }
+  return false;
 }
 
 export default function AdminInventoryLedger() {
@@ -80,6 +98,43 @@ export default function AdminInventoryLedger() {
     mode: "adjust",
   });
   const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustProduct, setAdjustProduct] = useState<any | null>(null);
+  const [adjustProductLoading, setAdjustProductLoading] = useState(false);
+
+  // Auto-lookup product details in Adjust tab
+  useEffect(() => {
+    const pid = adjustForm.productId.trim();
+    if (pid.length === 24) {
+      let cancelled = false;
+      setAdjustProductLoading(true);
+      getProductById(pid)
+        .then((res) => {
+          if (!cancelled && res.success && res.data) {
+            setAdjustProduct(res.data);
+            const variations = (res.data as any)?.variations;
+            if (Array.isArray(variations) && variations.length > 0) {
+              setAdjustForm((f) => ({
+                ...f,
+                variationId: f.variationId || (variations[0] as any)._id || (variations[0] as any).id || "",
+              }));
+            } else {
+              setAdjustForm((f) => ({ ...f, variationId: "" }));
+            }
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setAdjustProduct(null);
+        })
+        .finally(() => {
+          if (!cancelled) setAdjustProductLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    } else {
+      setAdjustProduct(null);
+    }
+  }, [adjustForm.productId]);
 
   // Load sellers list on mount
   useEffect(() => {
@@ -206,6 +261,15 @@ export default function AdminInventoryLedger() {
       setError("Product ID is required");
       return;
     }
+    if (adjustProduct && !isPlatformProduct(adjustProduct)) {
+      const vName = typeof adjustProduct.seller === "object"
+        ? adjustProduct.seller?.storeName || adjustProduct.seller?.sellerName || "the assigned vendor"
+        : "the assigned vendor";
+      setError(
+        `Cannot adjust stock for vendor-owned inventory. "${adjustProduct.productName}" is managed by vendor "${vName}" directly through the Vendor Panel (/seller/product/stock). To notify this vendor regarding inventory, use the Send Alert action in the Low Stock Alert tab.`
+      );
+      return;
+    }
     try {
       setAdjustLoading(true);
       setError("");
@@ -226,6 +290,7 @@ export default function AdminInventoryLedger() {
       }
       setSuccess(`Stock ${adjustForm.mode === "stock-in" ? "added" : adjustForm.mode === "damage" ? "damage recorded" : "adjusted"} successfully`);
       setAdjustForm(f => ({ ...f, productId: "", variationId: "", delta: 0, note: "" }));
+      setAdjustProduct(null);
       if (activeTab === "ledger") fetchLedger();
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to update stock");
@@ -830,7 +895,12 @@ export default function AdminInventoryLedger() {
 
               <form onSubmit={handleAdjustSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product ID <span className="text-red-500">*</span></label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Product ID <span className="text-red-500">*</span></label>
+                    {adjustProductLoading && (
+                      <span className="text-xs text-indigo-600 animate-pulse font-medium">Checking product...</span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={adjustForm.productId}
@@ -840,16 +910,78 @@ export default function AdminInventoryLedger() {
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Variation ID <span className="text-gray-400 text-xs">(optional — leave blank for simple product)</span></label>
-                  <input
-                    type="text"
-                    value={adjustForm.variationId}
-                    onChange={e => setAdjustForm(f => ({ ...f, variationId: e.target.value }))}
-                    placeholder="Variation ObjectId (if applicable)"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                  />
-                </div>
+
+                {/* Product lookup feedback card */}
+                {adjustProduct && (
+                  <div>
+                    {!isPlatformProduct(adjustProduct) ? (
+                      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-900 flex flex-col gap-1.5">
+                        <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                          <span>⚠️</span>
+                          <span>Vendor-Owned Item: {adjustProduct.productName}</span>
+                        </div>
+                        <p>
+                          This product belongs to vendor <strong>{typeof adjustProduct.seller === 'object' ? adjustProduct.seller?.storeName || adjustProduct.seller?.sellerName : 'Vendor'}</strong>.
+                          Vendors manage their incoming stock directly through the <strong>Vendor Panel</strong> (<code className="bg-amber-100 px-1 py-0.5 rounded font-mono">/seller/product/stock</code>).
+                        </p>
+                        <p className="text-amber-800 font-medium">
+                          Generic admin stock adjustments on vendor inventory are blocked to prevent stock discrepancies. If stock is low, please use the <strong>Low Stock Alert</strong> tab to notify the vendor.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-emerald-800 flex items-center gap-1">
+                            <span>✓</span> Platform Inventory
+                          </p>
+                          <p className="text-emerald-950 font-medium">{adjustProduct.productName}</p>
+                        </div>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium text-[11px]">
+                          Admin Controlled
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Variation selection */}
+                {adjustProduct && isPlatformProduct(adjustProduct) && Array.isArray((adjustProduct as any).variations) && (adjustProduct as any).variations.length > 0 ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Variation <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={adjustForm.variationId}
+                      onChange={e => setAdjustForm(f => ({ ...f, variationId: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                      required
+                    >
+                      <option value="" disabled>-- Select a variation --</option>
+                      {((adjustProduct as any).variations as any[]).map((v: any) => (
+                        <option key={v._id || v.id} value={v._id || v.id}>
+                          {v.name || "Variant"}: {v.value || v.title} — Current Stock: {v.stock ?? 0} {v.sku ? `(SKU: ${v.sku})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : adjustProduct && isPlatformProduct(adjustProduct) ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-600 flex items-center justify-between">
+                    <span>Simple Product (No Variations)</span>
+                    <span className="font-semibold text-gray-800">Current Stock: {adjustProduct.stock ?? 0}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Variation ID <span className="text-gray-400 text-xs">(optional — leave blank for simple product)</span></label>
+                    <input
+                      type="text"
+                      value={adjustForm.variationId}
+                      onChange={e => setAdjustForm(f => ({ ...f, variationId: e.target.value }))}
+                      placeholder="Variation ObjectId (if applicable)"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {adjustForm.mode === "adjust" ? "Delta (±)" : "Quantity"}
@@ -878,8 +1010,8 @@ export default function AdminInventoryLedger() {
                 </div>
                 <button
                   type="submit"
-                  disabled={adjustLoading}
-                  className={`w-full py-2.5 text-sm font-semibold rounded-lg text-white transition-colors disabled:opacity-50 ${
+                  disabled={adjustLoading || (!!adjustProduct && !isPlatformProduct(adjustProduct))}
+                  className={`w-full py-2.5 text-sm font-semibold rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     adjustForm.mode === "damage"
                       ? "bg-red-600 hover:bg-red-700"
                       : adjustForm.mode === "stock-in"
@@ -887,7 +1019,15 @@ export default function AdminInventoryLedger() {
                         : "bg-indigo-600 hover:bg-indigo-700"
                   }`}
                 >
-                  {adjustLoading ? "Processing..." : adjustForm.mode === "stock-in" ? "Add Stock" : adjustForm.mode === "damage" ? "Record Damage" : "Apply Adjustment"}
+                  {adjustLoading
+                    ? "Processing..."
+                    : adjustProduct && !isPlatformProduct(adjustProduct)
+                      ? "Vendor Item — Managed in Vendor Panel"
+                      : adjustForm.mode === "stock-in"
+                        ? "Add Stock"
+                        : adjustForm.mode === "damage"
+                          ? "Record Damage"
+                          : "Apply Adjustment"}
                 </button>
               </form>
             </div>

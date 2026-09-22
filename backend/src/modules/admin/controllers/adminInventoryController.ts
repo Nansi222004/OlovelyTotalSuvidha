@@ -98,22 +98,132 @@ export const getInventoryTransactions = asyncHandler(
 // POST /admin/inventory/adjust
 // Body: { productId, variationId?, delta, note }
 // ---------------------------------------------------------------------------
+// Helper: Validate Admin stock mutation target & ownership safeguards
+// ---------------------------------------------------------------------------
+async function validateAdminStockMutationTarget(
+  productId: string,
+  variationId?: string | null
+): Promise<{
+  product?: any;
+  resolvedVariationId: string | null;
+  error?: string;
+  statusCode?: number;
+}> {
+  if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+    return {
+      resolvedVariationId: null,
+      statusCode: 400,
+      error: 'A valid productId (24-character hexadecimal ObjectId) is required',
+    };
+  }
+
+  const product = await Product.findById(productId).populate('seller');
+  if (!product) {
+    return {
+      resolvedVariationId: null,
+      statusCode: 404,
+      error: 'Product not found',
+    };
+  }
+
+  // 1. Authoritative ownership resolution: reject if ownership cannot be determined safely
+  const owner = resolveInventoryOwner(product.seller, product);
+  if (!owner || !owner.ownerType) {
+    return {
+      product,
+      resolvedVariationId: null,
+      statusCode: 400,
+      error: `Cannot safely determine inventory ownership for "${product.productName}". Stock mutation rejected for inventory integrity.`,
+    };
+  }
+
+  // 2. Reject vendor-owned inventory: vendors manage their own stock in the Vendor Panel
+  if (owner.ownerType === 'VENDOR' || !owner.isPlatform) {
+    const vendorName = owner.sellerName || 'the assigned vendor';
+    return {
+      product,
+      resolvedVariationId: null,
+      statusCode: 400,
+      error: `Cannot adjust stock for vendor-owned inventory. "${product.productName}" is managed by vendor "${vendorName}" directly through the Vendor Panel (/seller/product/stock). To notify this vendor regarding inventory, use the Send Alert action in the Low Stock Alert tab.`,
+    };
+  }
+
+  // 3. Platform inventory: validate variation targeting
+  const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+
+  if (hasVariations) {
+    if (!variationId) {
+      return {
+        product,
+        resolvedVariationId: null,
+        statusCode: 400,
+        error: `Product "${product.productName}" contains variations. Please select a specific variation to adjust stock.`,
+      };
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(variationId)) {
+      return {
+        product,
+        resolvedVariationId: null,
+        statusCode: 400,
+        error: 'Invalid variationId format (must be 24-character hexadecimal ObjectId)',
+      };
+    }
+
+    const matchedVariation = product.variations?.find(
+      (v: any) => v._id?.toString() === variationId.toString()
+    );
+
+    if (!matchedVariation) {
+      return {
+        product,
+        resolvedVariationId: null,
+        statusCode: 404,
+        error: `Variation ${variationId} not found on product "${product.productName}".`,
+      };
+    }
+
+    return { product, resolvedVariationId: (matchedVariation._id || variationId).toString() };
+  } else {
+    // Simple product without variations
+    if (variationId) {
+      return {
+        product,
+        resolvedVariationId: null,
+        statusCode: 400,
+        error: `Product "${product.productName}" is a simple product with no variations. Do not supply variationId.`,
+      };
+    }
+
+    return { product, resolvedVariationId: null };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/inventory/adjust
+// Body: { productId, variationId?, delta, note }
+// ---------------------------------------------------------------------------
 export const adjustStock = asyncHandler(async (req: Request, res: Response) => {
   const { productId, variationId, delta, note } = req.body;
   const adminId = (req as any).user?.userId;
 
-  if (!productId) {
-    res.status(400).json({ success: false, message: 'productId is required' });
+  if (delta === undefined || delta === null || delta === 0 || isNaN(Number(delta))) {
+    res.status(400).json({ success: false, message: 'delta must be a non-zero number' });
     return;
   }
-  if (delta === undefined || delta === null || delta === 0) {
-    res.status(400).json({ success: false, message: 'delta must be a non-zero number' });
+
+  const target = await validateAdminStockMutationTarget(productId, variationId);
+  if (target.error) {
+    res.status(target.statusCode || 400).json({
+      success: false,
+      message: target.error,
+    });
     return;
   }
 
   const result = await mutateStock({
     productId,
-    variationId: variationId || null,
+    variationId: target.resolvedVariationId,
     quantity: Number(delta),
     type: 'ADJUSTMENT',
     referenceType: 'ADJUSTMENT',
@@ -133,18 +243,23 @@ export const recordDamage = asyncHandler(async (req: Request, res: Response) => 
   const { productId, variationId, quantity, note } = req.body;
   const adminId = (req as any).user?.userId;
 
-  if (!productId) {
-    res.status(400).json({ success: false, message: 'productId is required' });
+  if (!quantity || Number(quantity) <= 0 || isNaN(Number(quantity))) {
+    res.status(400).json({ success: false, message: 'quantity must be a positive number' });
     return;
   }
-  if (!quantity || Number(quantity) <= 0) {
-    res.status(400).json({ success: false, message: 'quantity must be a positive number' });
+
+  const target = await validateAdminStockMutationTarget(productId, variationId);
+  if (target.error) {
+    res.status(target.statusCode || 400).json({
+      success: false,
+      message: target.error,
+    });
     return;
   }
 
   const result = await mutateStock({
     productId,
-    variationId: variationId || null,
+    variationId: target.resolvedVariationId,
     quantity: -Math.abs(Number(quantity)),
     type: 'DAMAGE',
     referenceType: 'DAMAGE',
@@ -164,18 +279,23 @@ export const addStock = asyncHandler(async (req: Request, res: Response) => {
   const { productId, variationId, quantity, note } = req.body;
   const adminId = (req as any).user?.userId;
 
-  if (!productId) {
-    res.status(400).json({ success: false, message: 'productId is required' });
+  if (!quantity || Number(quantity) <= 0 || isNaN(Number(quantity))) {
+    res.status(400).json({ success: false, message: 'quantity must be a positive number' });
     return;
   }
-  if (!quantity || Number(quantity) <= 0) {
-    res.status(400).json({ success: false, message: 'quantity must be a positive number' });
+
+  const target = await validateAdminStockMutationTarget(productId, variationId);
+  if (target.error) {
+    res.status(target.statusCode || 400).json({
+      success: false,
+      message: target.error,
+    });
     return;
   }
 
   const result = await recordStockIn(
     productId,
-    variationId || null,
+    target.resolvedVariationId,
     Number(quantity),
     adminId,
     'ADMIN',
