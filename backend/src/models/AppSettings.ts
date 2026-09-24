@@ -62,6 +62,8 @@ export interface IAppSettings extends Document {
   giftPackagingFee?: number;
   ecommerceShippingFee?: number;
   ecommerceFreeShippingThreshold?: number;
+  /** Admin promotional setting: give new customers free shipping on their first eligible order */
+  firstOrderFreeShippingEnabled?: boolean;
   deliveryConfig?: {
     isDistanceBased: boolean;
     googleMapsKey?: string;
@@ -342,6 +344,10 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: Number,
       default: 499,
       min: [0, "Ecommerce free shipping threshold cannot be negative"],
+    },
+    firstOrderFreeShippingEnabled: {
+      type: Boolean,
+      default: false,
     },
     deliveryConfig: {
       isDistanceBased: { type: Boolean, default: false },

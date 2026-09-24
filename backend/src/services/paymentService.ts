@@ -698,6 +698,17 @@ const handlePaymentFailed = async (payload: any) => {
                 }
                 await order.save();
 
+                // Release first-order free shipping claim so customer retains future eligibility
+                if (order.firstOrderFreeShippingApplied) {
+                    try {
+                        const { releaseFirstOrderFreeShippingClaim } = await import('./shipping/shippingPromotionService');
+                        const custId = (order.customer as any)?._id || order.customer;
+                        await releaseFirstOrderFreeShippingClaim(custId);
+                    } catch (relErr) {
+                        console.error('Error releasing first order free shipping claim on payment failure:', relErr);
+                    }
+                }
+
                 // Restore stock for all items — use mutateStock for atomicity and variation isolation
                 const OrderItem = (await import('../models/OrderItem')).default;
                 const Product = (await import('../models/Product')).default;

@@ -19,6 +19,7 @@ export interface AppSettingsData {
   deliveryCharges?: number;
   freeDeliveryThreshold?: number;
   minimumOrderValue?: number;
+  firstOrderFreeShippingEnabled?: boolean;
   deliveryConfig?: {
     isDistanceBased?: boolean;
     baseCharge?: number;

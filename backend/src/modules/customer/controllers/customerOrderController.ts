@@ -25,10 +25,17 @@ import { IFulfillmentGroup } from "../../../models/Order";
 import InventoryTransaction from "../../../models/InventoryTransaction";
 import { mutateStock } from "../../../services/inventoryService";
 import { resolveAvailableStock } from "../../../utils/stockHelper";
+import {
+  evaluateFirstOrderFreeShipping,
+  atomicallyClaimFirstOrderFreeShipping,
+  releaseFirstOrderFreeShippingClaim,
+} from "../../../services/shipping/shippingPromotionService";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
   let session: mongoose.ClientSession | null = null;
+  let claimedFirstOrderPromo = false;
+  const userId = req.user!.userId;
   try {
     // Only start session if we are on a replica set (required for transactions)
     // For simplicity in local dev, we check and fallback if it fails
@@ -43,7 +50,7 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const { items, address, paymentMethod, fees, deliveryOption, deliveryOptions, deliverySelections, couponCode, tipAmount, giftPackaging, useWallet, fulfillmentType } = req.body;
-    const userId = req.user!.userId;
+
 
     // Log incoming request for debugging (development mode only)
     if (process.env.NODE_ENV !== "production") {
@@ -893,7 +900,41 @@ export const createOrder = async (req: Request, res: Response) => {
       ecomShippingFee = isEligibleForFreeDelivery ? 0 : defaultShippingFee;
     }
 
-    const combinedShippingFee = deliveryFee + ecomShippingFee;
+    // Capture calculated normal shipping fees prior to promotional evaluation
+    const normalDeliveryFee = deliveryFee;
+    const normalEcomShippingFee = ecomShippingFee;
+    const normalCombinedShippingFee = Number((deliveryFee + ecomShippingFee).toFixed(2));
+
+    // Authoritative Server-Side First Order Free Shipping Evaluation
+    const firstOrderPromo = await evaluateFirstOrderFreeShipping({
+      customerId: userId,
+      settings,
+      normalShippingFee: normalCombinedShippingFee,
+      session,
+    });
+
+    claimedFirstOrderPromo = false;
+    if (firstOrderPromo.applied) {
+      // Customer is eligible and promotion is active.
+      // Atomically claim the customer-level reservation so concurrent requests cannot both claim it.
+      const claimAcquired = await atomicallyClaimFirstOrderFreeShipping(userId, session);
+      if (claimAcquired) {
+        claimedFirstOrderPromo = true;
+        deliveryFee = 0;
+        ecomShippingFee = 0;
+      } else {
+        // Atomic claim failed because a concurrent request already consumed/claimed it!
+        // Fallback to normal shipping calculation for this request.
+        console.warn(
+          `[FIRST ORDER FREE SHIPPING] Concurrent checkout race detected for customer ${userId}. Atomic claim failed; charging normal shipping.`
+        );
+        firstOrderPromo.applied = false;
+        firstOrderPromo.shippingDiscount = 0;
+        firstOrderPromo.finalShippingAmount = normalCombinedShippingFee;
+      }
+    }
+
+    const combinedShippingFee = firstOrderPromo.finalShippingAmount;
     const finalTipAmount = Number(tipAmount) || 0;
     const giftPackagingPrice = Number.isFinite(settings?.giftPackagingFee)
       ? Number(settings.giftPackagingFee)
@@ -1025,6 +1066,9 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
 
         if (!debitRes.success) {
           if (session) await session.abortTransaction();
+          if (claimedFirstOrderPromo) {
+            await releaseFirstOrderFreeShippingClaim(userId);
+          }
           return res.status(400).json({
             success: false,
             message: debitRes.message || "Failed to debit customer wallet for order payment",
@@ -1125,7 +1169,10 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
     newOrder.total = Number(finalTotal.toFixed(2));
     newOrder.grandTotal = Number(finalTotal.toFixed(2)); // Sync grandTotal alias
     newOrder.items = orderItemIds;
-    newOrder.shipping = Number(combinedShippingFee.toFixed(2)); // Combined QC + Ecommerce shipping
+    newOrder.shipping = Number(combinedShippingFee.toFixed(2)); // Combined QC + Ecommerce shipping (₹0 if promo applied)
+    newOrder.firstOrderFreeShippingApplied = firstOrderPromo.applied;
+    newOrder.normalShippingAmount = Number(firstOrderPromo.normalShippingAmount.toFixed(2));
+    newOrder.shippingDiscount = Number(firstOrderPromo.shippingDiscount.toFixed(2));
     newOrder.platformFee = Number(platformFee.toFixed(2)); // Platform fee charged once
     newOrder.deliveryDistanceKm = deliveryDistanceKm;
 
@@ -1206,6 +1253,14 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
         await session.abortTransaction();
       } catch (abortError) {
         console.error("Error aborting transaction:", abortError);
+      }
+    }
+
+    if (claimedFirstOrderPromo && userId) {
+      try {
+        await releaseFirstOrderFreeShippingClaim(userId);
+      } catch (relErr) {
+        console.error("Error releasing first order free shipping claim on order creation failure:", relErr);
       }
     }
 
@@ -1460,6 +1515,9 @@ export const getOrderById = async (req: Request, res: Response) => {
         platformFee: orderObj.platformFee || 0,
         deliveryFee: orderObj.shipping || 0,
       },
+      firstOrderFreeShippingApplied: Boolean(orderObj.firstOrderFreeShippingApplied),
+      normalShippingAmount: orderObj.normalShippingAmount ?? (orderObj.shipping || 0),
+      shippingDiscount: orderObj.shippingDiscount ?? 0,
       // Keep original fields for backward compatibility
       subtotal: orderObj.subtotal,
       address: orderObj.deliveryAddress,
@@ -1693,6 +1751,16 @@ export const cancelOrder = async (req: Request, res: Response) => {
       await session.commitTransaction();
     } else {
       await order.save();
+    }
+
+    // Release first-order free shipping claim so customer retains future eligibility
+    if (order.firstOrderFreeShippingApplied) {
+      try {
+        const custId = (order.customer as any)?._id || order.customer;
+        await releaseFirstOrderFreeShippingClaim(custId);
+      } catch (relErr) {
+        console.error("Error releasing first order free shipping claim on customer cancellation:", relErr);
+      }
     }
 
     // ─── PRE-FULFILLMENT CANCELLATION REFUND ────────────────────────────

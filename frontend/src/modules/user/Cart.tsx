@@ -19,8 +19,9 @@ export default function Cart() {
 
   const freeDeliveryThreshold = cart.freeDeliveryThreshold ?? appConfig.freeDeliveryThreshold;
   const platformFee = cart.platformFee ?? appConfig.platformFee;
-  const deliveryFee = cart.estimatedDeliveryFee ??
-    (cart.total >= freeDeliveryThreshold ? 0 : appConfig.deliveryFee);
+  const deliveryFee = cart.firstOrderFreeShippingApplied
+    ? 0
+    : (cart.estimatedDeliveryFee ?? (cart.total >= freeDeliveryThreshold ? 0 : appConfig.deliveryFee));
   const totalAmount = cart.total + deliveryFee + platformFee;
   const minimumOrderValue = cart.minimumOrderValue ?? 0;
   const meetsMinimumOrder = minimumOrderValue <= 0 || cart.total >= minimumOrderValue;

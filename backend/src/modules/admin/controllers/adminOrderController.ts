@@ -398,6 +398,17 @@ export const updateOrderStatus = asyncHandler(
       });
     }
 
+    // Release first-order free shipping claim if order is Cancelled or Rejected
+    if ((matchedStatus === "Cancelled" || matchedStatus === "Rejected") && order.firstOrderFreeShippingApplied) {
+      try {
+        const { releaseFirstOrderFreeShippingClaim } = await import("../../../services/shipping/shippingPromotionService");
+        const custId = (order.customer as any)?._id || order.customer;
+        await releaseFirstOrderFreeShippingClaim(custId);
+      } catch (relErr) {
+        console.error("Error releasing first order free shipping claim on admin cancel/reject:", relErr);
+      }
+    }
+
     // Trigger notification if status is "Processed" (Confirmed) or if paymentStatus changed to "Paid"
     if (status === "Processed" || order.paymentStatus === "Paid") {
       const io: SocketIOServer = req.app.get("io");

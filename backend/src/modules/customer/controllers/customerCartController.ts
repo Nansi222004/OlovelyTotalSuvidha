@@ -12,6 +12,7 @@ import { getRoadDistances } from '../../../services/mapService';
 import Seller from '../../../models/Seller';
 import { checkWholesaleEligibility, validateWholesalePrice } from '../../../utils/categoryChannelHelper';
 import { resolveAvailableStock } from '../../../utils/stockHelper';
+import { evaluateFirstOrderFreeShipping } from '../../../services/shipping/shippingPromotionService';
 
 // Helper to calculate item price matching frontend logic
 const calculateItemPrice = (product: any, variationSelector: any) => {
@@ -128,7 +129,8 @@ const buildUnifiedCartResponse = async (
     hasValidLocation: boolean,
     userLat: number | null,
     userLng: number | null,
-    deliveryOption: string = 'Instant'
+    deliveryOption: string = 'Instant',
+    customerId?: string | mongoose.Types.ObjectId
 ) => {
     const qcItems: any[] = [];
     const ecomItems: any[] = [];
@@ -253,6 +255,23 @@ const buildUnifiedCartResponse = async (
     }
 
     const combinedDeliveryFee = qcDeliveryFee + ecomShippingFee;
+    const normalQcDeliveryFee = qcDeliveryFee;
+    const normalEcomShippingFee = ecomShippingFee;
+    const normalCombinedDeliveryFee = combinedDeliveryFee;
+
+    const resolvedCustomerId = customerId || cart.customer;
+    const promoResult = await evaluateFirstOrderFreeShipping({
+        customerId: resolvedCustomerId,
+        settings,
+        normalShippingFee: normalCombinedDeliveryFee,
+    });
+
+    if (promoResult.applied) {
+        qcDeliveryFee = 0;
+        ecomShippingFee = 0;
+    }
+
+    const finalCombinedDeliveryFee = promoResult.finalShippingAmount;
 
     const groups = {
         quickCommerce: {
@@ -295,7 +314,11 @@ const buildUnifiedCartResponse = async (
         unavailableItems,
         groups,
         total: totalProductSubtotal,
-        estimatedDeliveryFee: combinedDeliveryFee,
+        estimatedDeliveryFee: finalCombinedDeliveryFee,
+        normalEstimatedDeliveryFee: normalCombinedDeliveryFee,
+        firstOrderFreeShippingEligible: promoResult.isEligible,
+        firstOrderFreeShippingApplied: promoResult.applied,
+        shippingDiscount: promoResult.shippingDiscount,
         qcDeliveryFee,
         ecomShippingFee,
         platformFee,

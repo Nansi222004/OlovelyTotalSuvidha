@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Customer from "../../../models/Customer";
+import Address from "../../../models/Address";
 import SupportedLanguage from "../../../models/SupportedLanguage";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
@@ -23,6 +24,36 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
       success: false,
       message: "Customer not found",
     });
+  }
+
+  // Auto-heal placeholder name ("User" or empty) if a valid Address exists with a real recipient name
+  // Protection: If the customer already has a real name (e.g. "Nansi"), it is NEVER overwritten.
+  const currentName = (customer.name || "").trim();
+  if (!currentName || currentName.toLowerCase() === "user") {
+    try {
+      const defaultAddress = await Address.findOne({
+        customer: userId,
+        fullName: { $exists: true, $ne: "" },
+      }).sort({ isDefault: -1, updatedAt: -1 });
+
+      if (defaultAddress && defaultAddress.fullName && defaultAddress.fullName.trim().toLowerCase() !== "user") {
+        const formatted = defaultAddress.fullName
+          .trim()
+          .split(/\s+/)
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(" ");
+
+        if (formatted && formatted.toLowerCase() !== "user") {
+          customer.name = formatted;
+          await customer.save();
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[GET_PROFILE] Auto-healed placeholder customer name to:", formatted);
+          }
+        }
+      }
+    } catch (healErr) {
+      console.warn("[GET_PROFILE] Non-blocking auto-heal warning:", healErr);
+    }
   }
 
   return res.status(200).json({

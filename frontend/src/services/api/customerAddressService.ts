@@ -19,6 +19,7 @@ export interface AddressResponse {
     success: boolean;
     message?: string;
     data: Address | Address[];
+    customerProfileName?: string;
 }
 
 /**

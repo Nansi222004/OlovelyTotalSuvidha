@@ -1,10 +1,19 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
+import { parseGoogleGeocodeResult } from '../utils/addressUtils';
 
 interface GoogleMapsLocationPickerProps {
     initialLat: number;
     initialLng: number;
-    onLocationSelect: (lat: number, lng: number, address?: { street?: string, city?: string, state?: string, pincode?: string, landmark?: string, formattedAddress?: string }) => void;
+    onLocationSelect: (lat: number, lng: number, address?: {
+        street?: string;
+        city?: string;
+        state?: string;
+        pincode?: string;
+        landmark?: string;
+        formattedAddress?: string;
+        placeId?: string;
+    }) => void;
     height?: string;
 }
 
@@ -25,20 +34,25 @@ export default function GoogleMapsLocationPicker({
     const [center, setCenter] = useState({ lat: defaultLat, lng: defaultLng });
     const mapRef = useRef<google.maps.Map | null>(null);
     const isDragging = useRef(false);
+    const skipNextIdleGeocode = useRef(false);
+    const latestGeocodeRequestId = useRef(0);
 
     const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: apiKey || ''
     });
 
-    // Update center when initial props change significantly
+    // Update center when initial props change significantly (e.g. Current Location button clicked)
     useEffect(() => {
         if (initialLat && initialLng && (initialLat !== 0 || initialLng !== 0)) {
             const latDiff = Math.abs(center.lat - initialLat);
             const lngDiff = Math.abs(center.lng - initialLng);
-            // Only update if change is significant (> 100m)
-            if (latDiff > 0.001 || lngDiff > 0.001) {
+            // Only update if change is significant (> 10m)
+            if (latDiff > 0.0001 || lngDiff > 0.0001) {
                 setCenter({ lat: initialLat, lng: initialLng });
+                // Programmatic pan should NOT trigger a redundant handleIdle geocode call
+                // because the parent component (e.g. CheckoutAddress) already handles it
+                skipNextIdleGeocode.current = true;
                 if (mapRef.current) {
                     mapRef.current.panTo({ lat: initialLat, lng: initialLng });
                 }
@@ -56,6 +70,8 @@ export default function GoogleMapsLocationPicker({
 
     const handleDragStart = useCallback(() => {
         isDragging.current = true;
+        // User explicitly interacted, so next idle event MUST geocode the new pin location
+        skipNextIdleGeocode.current = false;
     }, []);
 
     const handleDragEnd = useCallback(() => {
@@ -64,62 +80,36 @@ export default function GoogleMapsLocationPicker({
     }, []);
 
     const handleIdle = useCallback(() => {
-        // Capture location when map becomes idle (after drag or animation)
+        // Skip geocode if movement was programmatic (from initialLat/Lng props)
+        if (skipNextIdleGeocode.current) {
+            skipNextIdleGeocode.current = false;
+            return;
+        }
+
+        // Capture location when map becomes idle (after user drag or interaction)
         if (!isDragging.current && mapRef.current) {
             const newCenter = mapRef.current.getCenter();
             if (newCenter) {
                 const lat = parseFloat(newCenter.lat().toFixed(6));
                 const lng = parseFloat(newCenter.lng().toFixed(6));
 
-                // Only update if there's a real change (or if we need to fetch address)
+                // Only update if there's a real change
                 if (Math.abs(lat - center.lat) > 0.00001 || Math.abs(lng - center.lng) > 0.00001) {
                     setCenter({ lat, lng });
 
-                    // Reverse Geocoding
+                    // Increment request counter to discard stale out-of-order geocoding responses
+                    const currentReqId = ++latestGeocodeRequestId.current;
+
                     const geocoder = new google.maps.Geocoder();
                     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                        // Drop response if a newer geocode request was already dispatched
+                        if (currentReqId !== latestGeocodeRequestId.current) {
+                            return;
+                        }
+
                         if (status === 'OK' && results && results[0]) {
-                            const addressComponents = results[0].address_components;
-                            let street = '';
-                            let city = '';
-                            let state = '';
-                            let pincode = '';
-                            let landmark = '';
-
-                            // Parse address components
-                            addressComponents.forEach(component => {
-                                const types = component.types;
-                                if (types.includes('street_number')) {
-                                    street = component.long_name + ' ' + street;
-                                }
-                                if (types.includes('route')) {
-                                    street += component.long_name;
-                                }
-                                if (types.includes('locality')) {
-                                    city = component.long_name;
-                                }
-                                if (types.includes('administrative_area_level_1')) {
-                                    state = component.long_name;
-                                }
-                                if (types.includes('postal_code')) {
-                                    pincode = component.long_name;
-                                }
-                                // Landmarks
-                                if (types.includes('point_of_interest') || types.includes('establishment') || types.includes('premise')) {
-                                    landmark = component.long_name;
-                                } else if (!landmark && (types.includes('sublocality') || types.includes('sublocality_level_1'))) {
-                                    landmark = component.long_name;
-                                }
-                            });
-
-                            onLocationSelect(lat, lng, {
-                                street: street.trim() || results[0].formatted_address || '',
-                                city,
-                                state,
-                                pincode,
-                                landmark,
-                                formattedAddress: results[0].formatted_address || '',
-                            });
+                            const parsed = parseGoogleGeocodeResult(results[0]);
+                            onLocationSelect(lat, lng, parsed);
                         } else {
                             onLocationSelect(lat, lng);
                         }

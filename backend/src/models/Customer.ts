@@ -40,6 +40,7 @@ export interface ICustomer extends Document {
   fcmTokens?: string[];        // Web push notification tokens
   fcmTokenMobile?: string[];   // Mobile push notification tokens
   preferredLanguage?: string;
+  firstOrderFreeShippingConsumed?: boolean;
 }
 
 
@@ -168,6 +169,10 @@ const CustomerSchema = new Schema<ICustomer>(
       lowercase: true,
       trim: true,
       default: null,
+    },
+    firstOrderFreeShippingConsumed: {
+      type: Boolean,
+      default: false,
     },
   },
 

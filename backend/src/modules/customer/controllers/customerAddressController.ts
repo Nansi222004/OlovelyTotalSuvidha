@@ -1,5 +1,42 @@
 import { Request, Response } from "express";
 import Address from "../../../models/Address";
+import Customer from "../../../models/Customer";
+
+// Safely synchronize customer profile name ONLY if the customer's profile is still
+// the uninitialized placeholder ("User" or empty) and a non-empty name was provided.
+// Protection: If the customer already has a real name (e.g. "Nansi"), it is NEVER overwritten
+// by a delivery address recipient name (e.g. "Ajay Tiwari").
+export const syncCustomerProfileName = async (userId: string, rawFullName?: string): Promise<string | undefined> => {
+    if (!userId) return undefined;
+    try {
+        const customerDoc = await Customer.findById(userId);
+        if (!customerDoc) return undefined;
+
+        const currentName = (customerDoc.name || "").trim();
+        const isPlaceholderName = !currentName || currentName.toLowerCase() === "user";
+
+        if (isPlaceholderName && rawFullName && rawFullName.trim()) {
+            const formattedName = rawFullName
+                .trim()
+                .split(/\s+/)
+                .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(" ");
+
+            if (formattedName && formattedName.toLowerCase() !== "user") {
+                customerDoc.name = formattedName;
+                await customerDoc.save();
+                if (process.env.NODE_ENV !== "production") {
+                    console.log("[CUSTOMER_PROFILE_SYNC] Customer profile name initialized to:", formattedName);
+                }
+                return formattedName;
+            }
+        }
+        return customerDoc.name;
+    } catch (profErr) {
+        console.warn("[CUSTOMER_PROFILE_SYNC] Non-blocking customer profile sync warning:", profErr);
+        return undefined;
+    }
+};
 
 // Add a new address
 export const addAddress = async (req: Request, res: Response) => {
@@ -52,6 +89,13 @@ export const addAddress = async (req: Request, res: Response) => {
             await Address.updateMany({ customer: userId }, { isDefault: false });
         }
 
+        const validLat = (latitude !== undefined && latitude !== null && latitude !== '' && !isNaN(Number(latitude)))
+            ? Number(latitude)
+            : (latitude === null ? null : undefined);
+        const validLng = (longitude !== undefined && longitude !== null && longitude !== '' && !isNaN(Number(longitude)))
+            ? Number(longitude)
+            : (longitude === null ? null : undefined);
+
         // Check if an address of this type already exists for this user
         const existingAddress = await Address.findOne({ customer: userId, type: type || 'Home' });
 
@@ -61,18 +105,33 @@ export const addAddress = async (req: Request, res: Response) => {
             existingAddress.phone = cleanPhone;
             existingAddress.address = fullAddress;
             existingAddress.city = cleanCity;
-            existingAddress.state = state;
+            if (state !== undefined) existingAddress.state = state ? state.trim() : "";
             existingAddress.pincode = cleanPincode;
-            existingAddress.landmark = landmark;
-            if (latitude !== undefined) existingAddress.latitude = latitude;
-            if (longitude !== undefined) existingAddress.longitude = longitude;
-            existingAddress.isDefault = isDefault || false;
+            if (landmark !== undefined) existingAddress.landmark = landmark ? landmark.trim() : "";
+            if (validLat !== undefined) existingAddress.latitude = validLat === null ? undefined : validLat;
+            if (validLng !== undefined) existingAddress.longitude = validLng === null ? undefined : validLng;
+            existingAddress.isDefault = isDefault !== undefined ? Boolean(isDefault) : existingAddress.isDefault;
 
             await existingAddress.save();
+
+            if (process.env.NODE_ENV !== "production") {
+                console.log("[ADDRESS_SYNC_DEBUG] 5. Backend addAddress updated existing record:", {
+                    id: existingAddress._id,
+                    userId,
+                    address: existingAddress.address,
+                    city: existingAddress.city,
+                    pincode: existingAddress.pincode,
+                    latitude: existingAddress.latitude,
+                    longitude: existingAddress.longitude
+                });
+            }
+
+            const resolvedProfileName = await syncCustomerProfileName(userId, finalName);
 
             return res.status(200).json({
                 success: true,
                 data: existingAddress,
+                customerProfileName: resolvedProfileName,
                 message: "Address updated successfully"
             });
         }
@@ -83,20 +142,35 @@ export const addAddress = async (req: Request, res: Response) => {
             phone: cleanPhone,
             address: fullAddress, // Mapped
             city: cleanCity,
-            state,
+            state: state ? state.trim() : undefined,
             pincode: cleanPincode,
-            landmark,
-            latitude,
-            longitude,
+            landmark: landmark ? landmark.trim() : undefined,
+            latitude: validLat !== null && validLat !== undefined ? validLat : undefined,
+            longitude: validLng !== null && validLng !== undefined ? validLng : undefined,
             type: type || 'Home',
             isDefault: isDefault || false,
         });
 
         await newAddress.save();
 
+        if (process.env.NODE_ENV !== "production") {
+            console.log("[ADDRESS_SYNC_DEBUG] 6. Database Record After Save (new):", {
+                id: newAddress._id,
+                userId,
+                address: newAddress.address,
+                city: newAddress.city,
+                pincode: newAddress.pincode,
+                latitude: newAddress.latitude,
+                longitude: newAddress.longitude
+            });
+        }
+
+        const resolvedProfileName = await syncCustomerProfileName(userId, finalName);
+
         return res.status(201).json({
             success: true,
             data: newAddress,
+            customerProfileName: resolvedProfileName,
         });
     } catch (error: any) {
         return res.status(500).json({
@@ -112,6 +186,19 @@ export const getMyAddresses = async (req: Request, res: Response) => {
     try {
         const userId = req.user!.userId;
         const addresses = await Address.find({ customer: userId }).sort({ isDefault: -1, createdAt: -1 });
+
+        if (process.env.NODE_ENV !== "production") {
+            console.log("[ADDRESS_SYNC_DEBUG] 7. Backend Returning Addresses:", addresses.map(a => ({
+                id: a._id,
+                fullName: a.fullName,
+                address: a.address,
+                city: a.city,
+                pincode: a.pincode,
+                latitude: a.latitude,
+                longitude: a.longitude,
+                isDefault: a.isDefault,
+            })));
+        }
 
         return res.status(200).json({
             success: true,
@@ -159,9 +246,17 @@ export const updateAddress = async (req: Request, res: Response) => {
             }
             updateData.pincode = cleanPincode;
         }
-        if (landmark !== undefined) updateData.landmark = landmark;
-        if (latitude !== undefined) updateData.latitude = latitude;
-        if (longitude !== undefined) updateData.longitude = longitude;
+        if (landmark !== undefined) updateData.landmark = landmark ? landmark.trim() : "";
+
+        const validLat = (latitude !== undefined && latitude !== null && latitude !== '' && !isNaN(Number(latitude)))
+            ? Number(latitude)
+            : (latitude === null ? null : undefined);
+        const validLng = (longitude !== undefined && longitude !== null && longitude !== '' && !isNaN(Number(longitude)))
+            ? Number(longitude)
+            : (longitude === null ? null : undefined);
+
+        if (validLat !== undefined) updateData.latitude = validLat === null ? undefined : validLat;
+        if (validLng !== undefined) updateData.longitude = validLng === null ? undefined : validLng;
         if (type !== undefined) updateData.type = type;
 
         if (flat && street) {
@@ -189,9 +284,25 @@ export const updateAddress = async (req: Request, res: Response) => {
             });
         }
 
+        if (process.env.NODE_ENV !== "production") {
+            console.log("[ADDRESS_SYNC_DEBUG] 5. Backend updateAddress processed:", {
+                id,
+                userId,
+                address: address.address,
+                city: address.city,
+                pincode: address.pincode,
+                latitude: address.latitude,
+                longitude: address.longitude,
+            });
+        }
+
+        const rawCandidateName = updateData.fullName || name || req.body?.fullName || req.body?.name;
+        const resolvedProfileName = await syncCustomerProfileName(userId, rawCandidateName);
+
         return res.status(200).json({
             success: true,
             data: address,
+            customerProfileName: resolvedProfileName,
         });
     } catch (error: any) {
         return res.status(500).json({

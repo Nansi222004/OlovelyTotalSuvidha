@@ -275,6 +275,17 @@ export const handleOnlineOrderCancellation = async (
         );
       }
 
+      // Release first-order free shipping claim so customer retains future eligibility
+      if (order.firstOrderFreeShippingApplied) {
+        try {
+          const { releaseFirstOrderFreeShippingClaim } = await import("./shipping/shippingPromotionService");
+          const custId = (order.customer as any)?._id || order.customer;
+          await releaseFirstOrderFreeShippingClaim(custId);
+        } catch (relErr) {
+          console.error("Error releasing first order free shipping claim in refundSettlementService:", relErr);
+        }
+      }
+
       // Immediately re-fetch from MongoDB to verify DB persistence
       const verifyOrder = await Order.findById(order._id).lean();
       console.log(`\n[REFUND ORDER DB VERIFY]\nOrder ID: ${verifyOrder?._id}\nstatus: ${verifyOrder?.status}\npaymentStatus: ${verifyOrder?.paymentStatus}\npaymentId: ${verifyOrder?.paymentId}`);

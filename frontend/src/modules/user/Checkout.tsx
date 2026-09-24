@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation as useRouterLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../../context/CartContext";
 import { useOrders } from "../../hooks/useOrders";
@@ -59,6 +59,7 @@ export default function Checkout() {
   const { user, updateUser } = useAuth();
   const { settings: appSettings } = useAppSettings();
   const navigate = useNavigate();
+  const routerLocation = useRouterLocation();
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [customTipAmount, setCustomTipAmount] = useState<number>(0);
   const [showCustomTipInput, setShowCustomTipInput] = useState(false);
@@ -316,15 +317,13 @@ export default function Checkout() {
           addressResponse.data.length > 0
         ) {
           setSavedAddressesList(addressResponse.data);
+          const targetId = (routerLocation.state as any)?.selectedAddressId;
           const defaultAddr =
+            (targetId ? addressResponse.data.find((a: any) => (a._id || a.id) === targetId) : null) ||
             addressResponse.data.find((a: any) => a.isDefault) ||
             addressResponse.data[0];
 
-          let bestAddressText = defaultAddr.address || "";
-          
-          if (userLocation?.address && userLocation.address.trim() && defaultAddr.latitude && defaultAddr.longitude) {
-            bestAddressText = userLocation.address;
-          }
+          const bestAddressText = defaultAddr.address || "";
 
           let flatPart = "";
           let streetPart = bestAddressText;
@@ -339,7 +338,7 @@ export default function Checkout() {
             phone: defaultAddr.phone,
             flat: flatPart,
             street: streetPart,
-            address: bestAddressText,
+            address: defaultAddr.address,
             city: defaultAddr.city,
             state: defaultAddr.state,
             pincode: defaultAddr.pincode,
@@ -349,6 +348,21 @@ export default function Checkout() {
             id: defaultAddr._id,
             _id: defaultAddr._id,
           };
+
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[ADDRESS_SYNC_DEBUG] 8. Checkout Consuming Saved Address:", {
+              id: defaultAddr._id,
+              fullName: defaultAddr.fullName,
+              address: defaultAddr.address,
+              city: defaultAddr.city,
+              state: defaultAddr.state,
+              pincode: defaultAddr.pincode,
+              latitude: defaultAddr.latitude,
+              longitude: defaultAddr.longitude,
+            });
+            console.log("[ADDRESS_SYNC_DEBUG] 9. Checkout Mapped OrderAddress:", mappedAddress);
+          }
+
           setSavedAddress(mappedAddress);
           setSelectedAddress(mappedAddress);
 
@@ -567,7 +581,7 @@ export default function Checkout() {
   const discountedTotal = displayCart.total;
   const savedAmount = itemsTotal - discountedTotal;
   const handlingCharge = cart.platformFee ?? appConfig.platformFee;
-  const deliveryCharge = isEligibleForFreeDelivery
+  const deliveryCharge = (isEligibleForFreeDelivery || cart.firstOrderFreeShippingApplied)
     ? 0
     : (cart.estimatedDeliveryFee !== undefined ? cart.estimatedDeliveryFee : appConfig.deliveryFee);
 
@@ -994,28 +1008,33 @@ export default function Checkout() {
         longitude: mapLocation.lng,
       };
 
-      // If address details are available from map, update them too
-      if (mapLocation.address) {
-        // Prefer full formattedAddress over just street component
-        const bestAddress = (mapLocation.address as any).formattedAddress || mapLocation.address.street;
-        if (bestAddress) updatePayload.address = bestAddress;
-        if (mapLocation.address.city) updatePayload.city = mapLocation.address.city;
-        if (mapLocation.address.state) updatePayload.state = mapLocation.address.state;
-        if (mapLocation.address.pincode) updatePayload.pincode = mapLocation.address.pincode;
-        if (mapLocation.address.landmark) updatePayload.landmark = mapLocation.address.landmark;
-      }
+      // If address details are available from map, update them while preserving the flat/house number
+      const updatedStreet = mapLocation.address?.street || (mapLocation.address as any)?.formattedAddress || selectedAddress?.street || "";
+      const updatedFullAddress = selectedAddress?.flat
+        ? `${selectedAddress.flat}, ${updatedStreet}`
+        : ((mapLocation.address as any)?.formattedAddress || updatedStreet || selectedAddress?.address || "");
+
+      if (updatedFullAddress) updatePayload.address = updatedFullAddress;
+      if (mapLocation.address?.city) updatePayload.city = mapLocation.address.city;
+      if (mapLocation.address?.state) updatePayload.state = mapLocation.address.state;
+      if (mapLocation.address?.pincode) updatePayload.pincode = mapLocation.address.pincode;
+      if (mapLocation.address?.landmark) updatePayload.landmark = mapLocation.address.landmark;
 
       // If user has an existing address, update it
-      if (selectedAddress?.id) {
-        await updateAddress(selectedAddress.id, updatePayload);
+      const addressId = selectedAddress?.id || (selectedAddress as any)?._id;
+      if (addressId && selectedAddress) {
+        await updateAddress(addressId, updatePayload);
 
-        // Update local state
-        const bestAddrText = (mapLocation.address as any)?.formattedAddress || mapLocation.address?.street || selectedAddress.street;
-        const updated = {
+        // Update local state atomically
+        const updated: OrderAddress = {
           ...selectedAddress,
+          name: selectedAddress.name || "",
+          phone: selectedAddress.phone || "",
+          flat: selectedAddress.flat || "",
           latitude: mapLocation.lat,
           longitude: mapLocation.lng,
-          street: bestAddrText,
+          street: updatedStreet,
+          address: updatedFullAddress,
           city: mapLocation.address?.city || selectedAddress.city,
           state: mapLocation.address?.state || selectedAddress.state,
           pincode: mapLocation.address?.pincode || selectedAddress.pincode,
@@ -2727,6 +2746,23 @@ export default function Checkout() {
             </span>
           </div>
         </div>
+      ) : cart.firstOrderFreeShippingApplied ? (
+        <div className="px-4 py-2 bg-green-50 border-b border-green-200">
+          <div className="flex items-center gap-2">
+            <span className="text-base flex-shrink-0">🎁</span>
+            <div className="flex-1">
+              <span className="text-xs font-bold text-green-800">
+                First Order Free Shipping Applied!
+              </span>
+              <p className="text-[10px] text-green-700 mt-0.5">
+                Welcome to Olovely! Your first order qualifies for ₹0 shipping.
+              </p>
+            </div>
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-green-600 text-white shadow-xs">
+              First Order Free
+            </span>
+          </div>
+        </div>
       ) : deliveryCharge > 0 && (
         <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
           <div className="flex items-center gap-2 mb-1.5">
@@ -3176,10 +3212,22 @@ export default function Checkout() {
               <span className="text-xs text-neutral-700">Delivery</span>
             </div>
             <div className="flex flex-col items-end">
-              <span
-                className={`text-xs font-semibold ${deliveryCharge === 0 ? "text-green-600" : "text-neutral-900"}`}>
-                {deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge.toLocaleString("en-IN")}`}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {cart.firstOrderFreeShippingApplied && cart.normalEstimatedDeliveryFee && cart.normalEstimatedDeliveryFee > 0 && (
+                  <span className="text-xs text-neutral-400 line-through">
+                    ₹{cart.normalEstimatedDeliveryFee.toLocaleString("en-IN")}
+                  </span>
+                )}
+                <span
+                  className={`text-xs font-semibold ${deliveryCharge === 0 ? "text-green-600" : "text-neutral-900"}`}>
+                  {deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge.toLocaleString("en-IN")}`}
+                </span>
+              </div>
+              {cart.firstOrderFreeShippingApplied && (
+                <span className="text-[10px] text-green-600 font-medium">
+                  First Order Benefit
+                </span>
+              )}
             </div>
           </div>
 

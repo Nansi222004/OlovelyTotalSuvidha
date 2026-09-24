@@ -6,9 +6,10 @@ import { OrderAddress } from '../../types/order';
 import { getAddresses, addAddress, updateAddress, Address } from '../../services/api/customerAddressService';
 import { getProfile } from '../../services/api/customerService';
 import GoogleMapsLocationPicker from '../../components/GoogleMapsLocationPicker';
+import { parseGoogleGeocodeResult } from '../../utils/addressUtils';
 
 export default function CheckoutAddress() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, updateUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,13 +43,18 @@ export default function CheckoutAddress() {
   const [addressType, setAddressType] = useState<'Home' | 'Work' | 'Hotel' | 'Other'>('Home');
   const [isDefault, setIsDefault] = useState<boolean>(true);
 
-  // Map and coordinates state
+  // Map and coordinates state (Single atomic location source)
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: editAddress?.latitude || initialLocation?.latitude || 0,
     lng: editAddress?.longitude || initialLocation?.longitude || 0,
   });
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [placeId, setPlaceId] = useState<string>('');
   const [showMap, setShowMap] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
+  const [locatingStatus, setLocatingStatus] = useState<'' | 'detecting' | 'geocoding'>('');
+  const [isAddressModifiedAfterPin, setIsAddressModifiedAfterPin] = useState(false);
+  const latestLocationRequestId = useRef(0);
   const [isSaving, setIsSaving] = useState(false);
 
   // Field validation errors
@@ -190,6 +196,10 @@ export default function CheckoutAddress() {
       const err = validateField(field, value);
       setErrors(prev => ({ ...prev, [field]: err }));
     }
+    // If user changes city, pincode, or street manually after GPS coordinates were set, mark modified
+    if (['city', 'pincode', 'street'].includes(field) && (coords.lat !== 0 || coords.lng !== 0)) {
+      setIsAddressModifiedAfterPin(true);
+    }
   };
 
   const handleBlur = (field: string) => {
@@ -198,69 +208,102 @@ export default function CheckoutAddress() {
     setErrors(prev => ({ ...prev, [field]: err }));
   };
 
-  // "Use Current Location" handler
+  // "Use Current Location" handler - Atomic location retrieval and reverse geocoding
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
       showToast('Geolocation is not supported by your browser', 'error');
       return;
     }
 
+    const currentReqId = ++latestLocationRequestId.current;
     setIsLocating(true);
+    setLocatingStatus('detecting');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
+        // Discard stale out-of-order geolocation responses
+        if (currentReqId !== latestLocationRequestId.current) return;
+
+        const lat = parseFloat(position.coords.latitude.toFixed(6));
+        const lng = parseFloat(position.coords.longitude.toFixed(6));
+        const acc = position.coords.accuracy;
+        const timestamp = position.timestamp || Date.now();
+
+        // Safe dev logging (Section 2)
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ADDRESS_SYNC_DEBUG] 1. GPS Position:', {
+            latitude: lat,
+            longitude: lng,
+            accuracy: acc,
+            timestamp,
+          });
+        }
+
+        // Store exact coordinates atomically
         setCoords({ lat, lng });
+        setAccuracy(acc);
+        setLocatingStatus('geocoding');
 
         // Reverse geocode via Google Geocoder if available
         if (window.google && window.google.maps) {
           const geocoder = new window.google.maps.Geocoder();
           geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            // Drop response if a newer location request was dispatched
+            if (currentReqId !== latestLocationRequestId.current) return;
+
             setIsLocating(false);
+            setLocatingStatus('');
+
             if (status === 'OK' && results && results[0]) {
-              const res = results[0];
-              let street = '';
-              let city = '';
-              let state = '';
-              let pincode = '';
-              let landmark = '';
+              const parsed = parseGoogleGeocodeResult(results[0]);
 
-              res.address_components.forEach((comp) => {
-                const types = comp.types;
-                if (types.includes('street_number')) street = comp.long_name + ' ' + street;
-                if (types.includes('route')) street += comp.long_name;
-                if (types.includes('sublocality') || types.includes('sublocality_level_1')) {
-                  landmark = comp.long_name;
-                }
-                if (types.includes('locality')) city = comp.long_name;
-                if (types.includes('administrative_area_level_1')) state = comp.long_name;
-                if (types.includes('postal_code')) pincode = comp.long_name;
-              });
+              if (process.env.NODE_ENV !== 'production') {
+                console.log('[ADDRESS_SYNC_DEBUG] 2. Reverse Geocode:', {
+                  latitude: lat,
+                  longitude: lng,
+                  formattedAddress: parsed.formattedAddress,
+                  placeId: parsed.placeId,
+                  addressComponents: parsed,
+                });
+              }
 
-              const resolvedStreet = street.trim() || res.formatted_address || '';
+              setPlaceId(parsed.placeId || '');
+              setIsAddressModifiedAfterPin(false);
 
+              // Atomically update address form fields strictly from the reverse geocoding result
+              // Do NOT retain stale city, state, or pincode from a previous address
               setFormData(prev => ({
                 ...prev,
-                street: resolvedStreet || prev.street,
-                city: city || prev.city,
-                state: state || prev.state,
-                pincode: pincode || prev.pincode,
-                landmark: landmark || prev.landmark,
+                // Keep previously typed house/flat number if present, otherwise prompt user to enter it
+                flat: prev.flat || '',
+                street: parsed.street,
+                city: parsed.city,
+                state: parsed.state,
+                pincode: parsed.pincode,
+                landmark: parsed.landmark || '',
               }));
 
-              showToast('Location detected! Please enter your flat/house number.', 'success');
+              const accMsg = acc <= 100
+                ? 'Location detected! Please enter your flat/house number.'
+                : `Location detected (±${Math.round(acc)}m). Please adjust pin or verify details.`;
+              showToast(accMsg, 'success');
             } else {
-              showToast('Coordinates retrieved. Please verify your address fields.', 'info');
+              setIsAddressModifiedAfterPin(false);
+              showToast('GPS coordinates set! Please enter your street and house details.', 'info');
             }
           });
         } else {
           setIsLocating(false);
+          setLocatingStatus('');
+          setIsAddressModifiedAfterPin(false);
           showToast('GPS coordinates set. Please complete your address details.', 'info');
         }
       },
       (error) => {
+        if (currentReqId !== latestLocationRequestId.current) return;
+
         setIsLocating(false);
+        setLocatingStatus('');
         let errorMsg = 'Could not retrieve your location. You can enter your address manually.';
         if (error.code === error.PERMISSION_DENIED) {
           errorMsg = 'Location permission denied. Please enter your address manually below.';
@@ -271,12 +314,16 @@ export default function CheckoutAddress() {
     );
   };
 
-  // Map pin drag handler
+  // Map pin drag handler - Synchronizes marker coords, address fields, and database state
   const handleMapLocationSelect = useCallback(
     (lat: number, lng: number, addrData?: any) => {
       setCoords({ lat, lng });
+      setIsAddressModifiedAfterPin(false);
 
       if (addrData) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ADDRESS_SYNC_DEBUG] Map Pin Selected:', { lat, lng, addrData });
+        }
         setFormData(prev => ({
           ...prev,
           street: addrData.street || addrData.formattedAddress || prev.street,
@@ -285,6 +332,9 @@ export default function CheckoutAddress() {
           pincode: addrData.pincode || prev.pincode,
           landmark: addrData.landmark || prev.landmark,
         }));
+        if (addrData.placeId) {
+          setPlaceId(addrData.placeId);
+        }
       }
     },
     []
@@ -308,6 +358,49 @@ export default function CheckoutAddress() {
     try {
       const cleanPhone = formData.phone.replace(/\D/g, '');
       const cleanPincode = formData.pincode.replace(/\D/g, '');
+      const fullAddress = `${formData.flat.trim()}, ${formData.street.trim()}`;
+
+      let finalLat: number | null = (coords.lat && coords.lat !== 0) ? coords.lat : null;
+      let finalLng: number | null = (coords.lng && coords.lng !== 0) ? coords.lng : null;
+
+      // Flow B / Manual address adjustment: If user modified address text significantly after GPS fix,
+      // re-geocode the entered address to align coordinates with the delivery text
+      if (isAddressModifiedAfterPin && window.google?.maps?.Geocoder) {
+        try {
+          const geocoder = new window.google.maps.Geocoder();
+          const query = `${formData.street}, ${formData.city}, ${formData.state} ${cleanPincode}`.trim();
+          const geoRes = await new Promise<google.maps.GeocoderResult[] | null>((resolve) => {
+            geocoder.geocode({ address: query }, (results, status) => {
+              if (status === 'OK' && results && results[0]) resolve(results);
+              else resolve(null);
+            });
+          });
+          if (geoRes && geoRes[0]?.geometry?.location) {
+            finalLat = parseFloat(geoRes[0].geometry.location.lat().toFixed(6));
+            finalLng = parseFloat(geoRes[0].geometry.location.lng().toFixed(6));
+          }
+        } catch (e) {
+          console.warn('Geocoding updated address failed, keeping existing coordinates', e);
+        }
+      }
+
+      // Safe dev logging (Section 2)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ADDRESS_SYNC_DEBUG] 3. Form State Before Save:', {
+          fullName: formData.name.trim(),
+          address: fullAddress,
+          flatHouseNo: formData.flat.trim(),
+          streetArea: formData.street.trim(),
+          landmark: formData.landmark.trim(),
+          city: formData.city.trim(),
+          state: formData.state.trim(),
+          pincode: cleanPincode,
+          latitude: finalLat,
+          longitude: finalLng,
+          accuracy,
+          placeId,
+        });
+      }
 
       const payload: any = {
         fullName: formData.name.trim(),
@@ -315,28 +408,48 @@ export default function CheckoutAddress() {
         phone: cleanPhone,
         flat: formData.flat.trim(),
         street: formData.street.trim(),
-        address: `${formData.flat.trim()}, ${formData.street.trim()}`,
+        address: fullAddress,
         city: formData.city.trim(),
         state: formData.state.trim(),
         pincode: cleanPincode,
         landmark: formData.landmark.trim(),
         type: addressType,
         isDefault,
-        latitude: coords.lat || undefined,
-        longitude: coords.lng || undefined,
+        latitude: finalLat !== null ? finalLat : undefined,
+        longitude: finalLng !== null ? finalLng : undefined,
       };
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ADDRESS_SYNC_DEBUG] 4. API Payload Sent:', payload);
+      }
+
+      let savedId: string | undefined;
+      let customerProfileName: string | undefined;
 
       if (editAddress && (editAddress.id || editAddress._id)) {
         const addressId = editAddress.id || editAddress._id!;
-        await updateAddress(addressId, payload);
+        const res = await updateAddress(addressId, payload);
+        savedId = (res.data as any)?._id || (res.data as any)?.id || addressId;
+        customerProfileName = res.customerProfileName || (res.data as any)?.customerProfileName;
         showToast('Delivery address updated successfully!', 'success');
       } else {
-        await addAddress(payload);
+        const res = await addAddress(payload);
+        savedId = (res.data as any)?._id || (res.data as any)?.id;
+        customerProfileName = res.customerProfileName || (res.data as any)?.customerProfileName;
         showToast('Delivery address saved successfully!', 'success');
       }
 
-      // Return to calling page (defaults to /checkout)
-      navigate(returnTo, { replace: true });
+      // If customer profile was still the placeholder "User", sync AuthContext so account/navbar reflects name immediately
+      const newName = customerProfileName || formData.name.trim();
+      if (user && (!user.name || user.name.trim().toLowerCase() === 'user') && newName) {
+        updateUser({
+          ...user,
+          name: newName,
+        });
+      }
+
+      // Return to calling page (defaults to /checkout) with the savedAddressId so Checkout immediately selects it
+      navigate(returnTo, { replace: true, state: { selectedAddressId: savedId } });
     } catch (err: any) {
       console.error('Failed to save address:', err);
       const errMsg = err.response?.data?.message || err.message || 'Failed to save delivery address. Please try again.';
@@ -399,14 +512,16 @@ export default function CheckoutAddress() {
               {isLocating ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Locating...</span>
+                  <span>
+                    {locatingStatus === 'geocoding' ? 'Getting address...' : 'Detecting your current location...'}
+                  </span>
                 </>
               ) : (
                 <>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <circle cx="12" cy="12" r="10" />
                     <circle cx="12" cy="12" r="3" />
-                    <line x1="12" y1="1" x2="12" y2="4" />
+                    <line x1="12" y1="2" x2="12" y2="4" />
                     <line x1="12" y1="20" x2="12" y2="23" />
                     <line x1="1" y1="12" x2="4" y2="12" />
                     <line x1="20" y1="12" x2="23" y2="12" />
@@ -421,12 +536,17 @@ export default function CheckoutAddress() {
         {/* Map Preview & Pinning Card */}
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
           <div className="p-3 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm">🗺️</span>
               <span className="text-xs font-bold text-neutral-800">Map Location Pin</span>
               {coords.lat !== 0 && (
                 <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                  GPS Active
+                  GPS Active {accuracy ? `(±${Math.round(accuracy)}m)` : ''}
+                </span>
+              )}
+              {isAddressModifiedAfterPin && (
+                <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                  Pin syncs on save
                 </span>
               )}
             </div>

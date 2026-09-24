@@ -14,6 +14,7 @@ export default function AdminBillingSettings() {
     const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number>(0);
     const [minimumOrderValue, setMinimumOrderValue] = useState<number>(0);
     const [deliveryCharges, setDeliveryCharges] = useState<number>(0);
+    const [firstOrderFreeShippingEnabled, setFirstOrderFreeShippingEnabled] = useState<boolean>(false);
 
     // Distance Based Config
     const [isDistanceBased, setIsDistanceBased] = useState(false);
@@ -43,6 +44,7 @@ export default function AdminBillingSettings() {
                 setFreeDeliveryThreshold(data.freeDeliveryThreshold || 0);
                 setMinimumOrderValue(data.minimumOrderValue || 0);
                 setDeliveryCharges(data.deliveryCharges || 0);
+                setFirstOrderFreeShippingEnabled(data.firstOrderFreeShippingEnabled ?? false);
 
                 if (data.deliveryConfig) {
                     setIsDistanceBased(data.deliveryConfig.isDistanceBased || false);
@@ -77,6 +79,7 @@ export default function AdminBillingSettings() {
                 freeDeliveryThreshold,
                 minimumOrderValue,
                 deliveryCharges,
+                firstOrderFreeShippingEnabled,
                 deliveryConfig: {
                     isDistanceBased,
                     baseCharge,
@@ -101,6 +104,7 @@ export default function AdminBillingSettings() {
             if (response.success) {
                 showToast('Billing settings updated successfully');
                 setSettings(response.data);
+                window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
             } else {
                 showToast('Failed to update settings', 'error');
             }
@@ -109,6 +113,23 @@ export default function AdminBillingSettings() {
             showToast(error.response?.data?.message || 'Error updating settings', 'error');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleToggleFirstOrderFreeShipping = async (enabled: boolean) => {
+        setFirstOrderFreeShippingEnabled(enabled);
+        try {
+            const response = await updateAppSettings({ firstOrderFreeShippingEnabled: enabled });
+            if (response && response.success) {
+                showToast(`First Order Free Shipping ${enabled ? 'enabled' : 'disabled'} successfully`, 'success');
+                window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+            } else {
+                setFirstOrderFreeShippingEnabled(!enabled);
+                showToast(response?.message || 'Failed to update free shipping setting', 'error');
+            }
+        } catch (error: any) {
+            setFirstOrderFreeShippingEnabled(!enabled);
+            showToast(error.response?.data?.message || 'Failed to update free shipping setting', 'error');
         }
     };
 
@@ -207,6 +228,34 @@ export default function AdminBillingSettings() {
                                 Cart subtotal must reach this amount before an order can be placed. Set 0 to disable.
                             </p>
                         </div>
+                    </div>
+                </div>
+
+                {/* First Order Free Shipping Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-lg font-semibold text-gray-900">FREE SHIPPING FOR FIRST ORDER</h2>
+                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                    firstOrderFreeShippingEnabled ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'
+                                }`}>
+                                    {firstOrderFreeShippingEnabled ? 'ON' : 'OFF'}
+                                </span>
+                            </div>
+                            <p className="mt-1 text-sm text-gray-500">
+                                Give new customers free shipping on their first eligible order.
+                            </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={firstOrderFreeShippingEnabled}
+                                onChange={(e) => handleToggleFirstOrderFreeShipping(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
                     </div>
                 </div>
 

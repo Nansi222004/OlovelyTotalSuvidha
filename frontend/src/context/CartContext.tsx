@@ -195,6 +195,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setPlatformFee(response.data.platformFee);
         setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
         setMinimumOrderValue(response.data.minimumOrderValue);
+        setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
+        setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
+        setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
+        setShippingDiscount(response.data.shippingDiscount);
         if (response.data.groups) {
           setCartGroups(response.data.groups);
         }
@@ -287,6 +291,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [platformFee, setPlatformFee] = useState<number | undefined>(undefined);
   const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number | undefined>(undefined);
   const [minimumOrderValue, setMinimumOrderValue] = useState<number | undefined>(undefined);
+  const [firstOrderFreeShippingEligible, setFirstOrderFreeShippingEligible] = useState<boolean | undefined>(undefined);
+  const [firstOrderFreeShippingApplied, setFirstOrderFreeShippingApplied] = useState<boolean | undefined>(undefined);
+  const [normalEstimatedDeliveryFee, setNormalEstimatedDeliveryFee] = useState<number | undefined>(undefined);
+  const [shippingDiscount, setShippingDiscount] = useState<number | undefined>(undefined);
   const [cartGroups, setCartGroups] = useState<any>(undefined);
 
   const cart: Cart = useMemo(() => {
@@ -317,11 +325,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       platformFee,
       freeDeliveryThreshold,
       minimumOrderValue,
+      firstOrderFreeShippingEligible,
+      firstOrderFreeShippingApplied,
+      normalEstimatedDeliveryFee,
+      shippingDiscount,
       debug_config: (items as any).debug_config,
       backendTotal: (items as any).backendTotal,
       groups: cartGroups,
     };
-  }, [items, estimatedFee, qcDeliveryFee, ecomShippingFee, platformFee, freeDeliveryThreshold, minimumOrderValue, cartGroups]);
+  }, [items, estimatedFee, qcDeliveryFee, ecomShippingFee, platformFee, freeDeliveryThreshold, minimumOrderValue, firstOrderFreeShippingEligible, firstOrderFreeShippingApplied, normalEstimatedDeliveryFee, shippingDiscount, cartGroups]);
 
   const addToCart = async (
     product: Product,
@@ -467,6 +479,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
+          setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
+          setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
+          setShippingDiscount(response.data.shippingDiscount);
           if (response.data.groups) {
             setCartGroups(response.data.groups);
           }
@@ -644,6 +660,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
+          setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
+          setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
+          setShippingDiscount(response.data.shippingDiscount);
           if (response.data.groups) {
             setCartGroups(response.data.groups);
           }

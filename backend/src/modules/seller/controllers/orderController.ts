@@ -779,6 +779,15 @@ export const updateOrderStatus = asyncHandler(
 
       if (fulfillment.outcome === "all_rejected") {
         console.log(`❌ [MULTI-SELLER] All sellers rejected order ${order.orderNumber}. Fully cancelled.`);
+        if (order.firstOrderFreeShippingApplied) {
+          try {
+            const { releaseFirstOrderFreeShippingClaim } = await import("../../../services/shipping/shippingPromotionService");
+            const custId = (order.customer as any)?._id || order.customer;
+            await releaseFirstOrderFreeShippingClaim(custId);
+          } catch (relErr) {
+            console.error("Error releasing first order free shipping claim on seller all_rejected:", relErr);
+          }
+        }
       } else if (fulfillment.outcome === "ready_for_delivery") {
         console.log(`✅ [MULTI-SELLER] Seller resolution complete for ${order.orderNumber}. Delivery assignment flow started.`);
       } else if (fulfillment.outcome === "self_delivery") {
@@ -814,6 +823,18 @@ export const updateOrderStatus = asyncHandler(
       // BUG FIX: Old code only triggered for paymentMethod === "Online",
       // causing wallet-only orders to lose money on seller cancellation.
       if (status === "Cancelled") {
+        if (order.firstOrderFreeShippingApplied) {
+          try {
+            const { releaseFirstOrderFreeShippingClaim } = await import(
+              "../../../services/shipping/shippingPromotionService"
+            );
+            const custId = (order.customer as any)?._id || order.customer;
+            await releaseFirstOrderFreeShippingClaim(custId);
+          } catch (relErr) {
+            console.error("Error releasing first order free shipping claim on seller cancellation:", relErr);
+          }
+        }
+
         const customerActuallyPaid =
           (order.walletAmountUsed && order.walletAmountUsed > 0) ||
           (order.onlineAmountPaid && order.onlineAmountPaid > 0);

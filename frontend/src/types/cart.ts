@@ -27,6 +27,10 @@ export interface Cart {
   platformFee?: number;
   freeDeliveryThreshold?: number;
   minimumOrderValue?: number;
+  firstOrderFreeShippingEligible?: boolean;
+  firstOrderFreeShippingApplied?: boolean;
+  normalEstimatedDeliveryFee?: number;
+  shippingDiscount?: number;
   debug_config?: any;
   backendTotal?: number;
   groups?: {

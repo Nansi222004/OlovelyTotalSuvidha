@@ -6,6 +6,13 @@ import { getProfile, updateProfile, CustomerProfile } from '../../services/api/c
 import LanguageSelector from '../../components/LanguageSelector';
 import { useTranslation } from '../../hooks/useTranslation';
 
+const isPlaceholderName = (val?: string): boolean => !val || val.trim().toLowerCase() === 'user';
+const resolveEffectiveName = (profileName?: string, authName?: string): string => {
+  if (!isPlaceholderName(profileName)) return profileName!.trim();
+  if (!isPlaceholderName(authName)) return authName!.trim();
+  return 'User';
+};
+
 export default function Account() {
   const navigate = useNavigate();
   const { user, updateUser, logout: authLogout } = useAuth();
@@ -64,11 +71,12 @@ export default function Account() {
           // Safely synchronize AuthContext with latest profile from backend if changed
           if (updateUser) {
             const currentUser = userRef.current;
+            const safeName = resolveEffectiveName(response.data.name, currentUser?.name);
             const safeUser: any = {
               ...currentUser,
               id: response.data.id || (response.data as any)._id || customerId,
               _id: response.data.id || (response.data as any)._id || customerId,
-              name: response.data.name || currentUser?.name,
+              name: safeName,
               phone: response.data.phone || currentUser?.phone,
               email: response.data.email !== undefined ? response.data.email : currentUser?.email,
               walletAmount:
@@ -310,7 +318,7 @@ export default function Account() {
     );
   }
 
-  const displayName = profile?.name || user?.name || 'User';
+  const displayName = resolveEffectiveName(profile?.name, user?.name);
   const displayPhone = profile?.phone || user?.phone || '';
   const rawEmail = profile?.email || user?.email || '';
   const displayEmail = rawEmail.endsWith('@olovely.temp') ? '' : rawEmail;

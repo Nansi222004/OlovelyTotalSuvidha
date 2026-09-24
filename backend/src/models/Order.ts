@@ -31,6 +31,10 @@ export interface IOrder extends Document {
   subtotal: number;
   tax: number;
   shipping: number;
+  // First Order Free Shipping snapshot fields
+  firstOrderFreeShippingApplied?: boolean;
+  normalShippingAmount?: number;
+  shippingDiscount?: number;
   platformFee: number;
   discount: number;
   couponCode?: string;
@@ -283,6 +287,21 @@ const OrderSchema = new Schema<IOrder>(
       type: Number,
       default: 0,
       min: [0, "Shipping cannot be negative"],
+    },
+    // First Order Free Shipping snapshot fields
+    firstOrderFreeShippingApplied: {
+      type: Boolean,
+      default: false,
+    },
+    normalShippingAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Normal shipping amount cannot be negative"],
+    },
+    shippingDiscount: {
+      type: Number,
+      default: 0,
+      min: [0, "Shipping discount cannot be negative"],
     },
     platformFee: {
       type: Number,
