@@ -1,11 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, type OrderDetail, type SellerEarningBreakdown } from '../../../services/api/orderService';
-import jsPDF from 'jspdf';
 import { useToast } from '../../../context/ToastContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
 import SellerAssignDeliveryBoyModal from '../components/SellerAssignDeliveryBoyModal';
+import { SellerInvoice } from '../components/SellerInvoice';
+import { exportElementToPdf } from '../../../utils/invoicePdfExport';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,8 @@ export default function SellerOrderDetail() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin'>('Self');
   const [earningBreakdown, setEarningBreakdown] = useState<SellerEarningBreakdown | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   // Fetch order detail from API
   useEffect(() => {
@@ -158,220 +161,19 @@ export default function SellerOrderDetail() {
     });
   };
 
-  const handleExportPDF = () => {
-    if (!orderDetail) return;
-
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20;
-    const contentWidth = pageWidth - 2 * margin;
-    let yPos = margin;
-
-    // Helper function to add a new page if needed
-    const checkPageBreak = (requiredHeight: number) => {
-      if (yPos + requiredHeight > pageHeight - margin) {
-        doc.addPage();
-        yPos = margin;
-        return true;
-      }
-      return false;
-    };
-
-    // Header - Company Info
-    doc.setFillColor(22, 163, 74); // Green color
-    doc.rect(margin, yPos, contentWidth, 15, 'F');
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Olovely Total Suvidha', margin + 5, yPos + 10);
-
-    yPos += 20;
-
-    // Company Details
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Olovely Total Suvidha', margin, yPos);
-    yPos += 7;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('From: Olovely Total Suvidha', margin, yPos);
-    yPos += 6;
-    doc.text('Email: info@olovely.com', margin, yPos);
-    yPos += 6;
-    doc.text('Website: https://olovely.com', margin, yPos);
-    yPos += 12;
-
-    // Invoice Details (Right aligned)
-    const rightX = pageWidth - margin;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Date: ${formatDate(orderDetail.orderDate)}`, rightX, yPos - 30, { align: 'right' });
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Invoice #${orderDetail.invoiceNumber}`, rightX, yPos - 20, { align: 'right' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Order ID: ${orderDetail.id}`, rightX, yPos - 14, { align: 'right' });
-    doc.text(`Delivery Date: ${formatDate(orderDetail.deliveryDate)}`, rightX, yPos - 8, { align: 'right' });
-    doc.text(`Order Time: ${formatTime(orderDetail.orderDate)}`, rightX, yPos - 2, { align: 'right' });
-
-    // Status badge
-    const statusWidth = doc.getTextWidth(orderStatus) + 8;
-    doc.setFillColor(59, 130, 246); // Blue for status
-    doc.roundedRect(rightX - statusWidth, yPos + 2, statusWidth, 6, 1, 1, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.text(orderStatus, rightX - statusWidth / 2, yPos + 5.5, { align: 'center' });
-
-    yPos += 15;
-    doc.setTextColor(0, 0, 0);
-
-    // Draw a line
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 10;
-
-    // Table Header
-    checkPageBreak(20);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(margin, yPos, contentWidth, 10, 'F');
-
-    const colWidths = [
-      contentWidth * 0.08,  // Sr. No.
-      contentWidth * 0.40,  // Product
-      contentWidth * 0.15,  // Price
-      contentWidth * 0.15,  // Tax
-      contentWidth * 0.10,  // Qty
-      contentWidth * 0.12,  // Subtotal
-    ];
-
-    let xPos = margin;
-    const headers = ['Sr. No.', 'Product', 'Price', 'Tax ₹ (%)', 'Qty', 'Subtotal'];
-
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-
-    headers.forEach((header, index) => {
-      doc.text(header, xPos + 2, yPos + 7);
-      xPos += colWidths[index];
-    });
-
-    yPos += 12;
-
-    // Table Rows
-    orderDetail.items.forEach((item) => {
-      checkPageBreak(15);
-
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-
-      xPos = margin;
-      const rowData = [
-        item.srNo.toString(),
-        item.product + (item.isWholesale ? ` [Wholesale${item.wholesaleMinimumQuantity ? ` MOQ ${item.wholesaleMinimumQuantity}` : ''}]` : ''),
-        `₹${item.price.toFixed(2)}`,
-        `${item.tax.toFixed(2)} (${item.taxPercent.toFixed(2)}%)`,
-        item.qty.toString(),
-        `₹${item.subtotal.toFixed(2)}`,
-      ];
-
-      rowData.forEach((data, index) => {
-        // Truncate long text
-        const maxWidth = colWidths[index] - 4;
-        let text = data;
-        if (doc.getTextWidth(text) > maxWidth && index === 1) {
-          // Truncate product name if too long
-          while (doc.getTextWidth(text + '...') > maxWidth && text.length > 0) {
-            text = text.slice(0, -1);
-          }
-          text += '...';
-        }
-        doc.text(text, xPos + 2, yPos + 5);
-        xPos += colWidths[index];
-      });
-
-      // Draw row separator
-      doc.setDrawColor(220, 220, 220);
-      doc.line(margin, yPos + 8, pageWidth - margin, yPos + 8);
-
-      yPos += 10;
-    });
-
-    // Calculate totals
-    const totalSubtotal = orderDetail.items.reduce((sum, item) => sum + item.subtotal, 0);
-    const totalTax = orderDetail.items.reduce((sum, item) => sum + item.tax, 0);
-    const grandTotal = totalSubtotal + totalTax;
-
-    yPos += 5;
-    checkPageBreak(30);
-
-    // Totals Section
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 8;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Subtotal:', pageWidth - margin - 60, yPos, { align: 'right' });
-    doc.text(`₹${totalSubtotal.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
-    yPos += 7;
-
-    doc.text('Tax:', pageWidth - margin - 60, yPos, { align: 'right' });
-    doc.text(`₹${totalTax.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
-    yPos += 7;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Grand Total:', pageWidth - margin - 60, yPos, { align: 'right' });
-    doc.text(`₹${grandTotal.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
-
-    // Customer Details in PDF
-    yPos += 15;
-    checkPageBreak(30);
-    doc.setDrawColor(220, 220, 220);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(margin, yPos, contentWidth, 8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('CUSTOMER DETAILS', margin + 2, yPos + 6);
-    yPos += 12;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(`Name: ${orderDetail.customerName}`, margin, yPos);
-    yPos += 5;
-    doc.text(`Phone: ${orderDetail.customerPhone}`, margin, yPos);
-    yPos += 5;
-    const addressInfo = formatDeliveryAddress(orderDetail.deliveryAddress);
-    const splitAddress = doc.splitTextToSize(`Address: ${addressInfo.formatted}`, contentWidth);
-    doc.text(splitAddress, margin, yPos);
-    yPos += (splitAddress.length * 5) + 5;
-
-    // Footer
-    checkPageBreak(20);
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 8;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Bill Generated by Olovely Total Suvidha', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
-
-    doc.setFontSize(8);
-    doc.text('Copyright © 2025. Developed By Olovely Total Suvidha', pageWidth / 2, yPos, { align: 'center' });
-
-    // Save the PDF
-    const fileName = `Invoice_${orderDetail.invoiceNumber}_${orderDetail.id}.pdf`;
-    doc.save(fileName);
+  const handleExportPDF = async () => {
+    if (!invoicePrintRef.current || !orderDetail) return;
+    setIsExporting(true);
+    try {
+      const fileName = `Invoice_${orderDetail.invoiceNumber || orderDetail.id}.pdf`;
+      await exportElementToPdf(invoicePrintRef.current, { fileName });
+      showToast('Invoice PDF exported successfully!', 'success');
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      showToast('Failed to export invoice PDF. Please try Print instead.', 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handlePrint = () => {
@@ -440,8 +242,10 @@ export default function SellerOrderDetail() {
   const isPureQc = hasQcGroup && !hasEcomGroup;
 
   return (
-    <div className="min-h-screen bg-neutral-50 pb-8">
-      {/* Order Action Section */}
+    <div className="min-h-screen bg-neutral-50 pb-8 print:bg-white print:p-0 print:m-0 print:min-h-0 print:h-auto">
+      {/* Dashboard Screen View - Hidden during print */}
+      <div className="space-y-6 print:hidden">
+        {/* Order Action Section */}
       <div className="bg-white mb-6 rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
         <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
           <h2 className="text-base sm:text-lg font-semibold">Order Action Section</h2>
@@ -518,8 +322,22 @@ export default function SellerOrderDetail() {
               )}
             </div>
             <button
+              type="button"
+              onClick={() => navigate(`/seller/orders/${orderDetail.id}/invoice`)}
+              className="flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300 px-3 py-2 rounded-lg transition-colors text-sm font-semibold cursor-pointer shadow-xs"
+              title="Open full page invoice"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              View Invoice
+            </button>
+            <button
+              type="button"
               onClick={handleExportPDF}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              disabled={isExporting}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-xs cursor-pointer disabled:opacity-50"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -528,11 +346,12 @@ export default function SellerOrderDetail() {
                 <line x1="16" y1="17" x2="8" y2="17" />
                 <polyline points="10 9 9 9 8 9" />
               </svg>
-              Export Invoice PDF
+              {isExporting ? 'Exporting PDF...' : 'Export Invoice PDF'}
             </button>
             <button
+              type="button"
               onClick={handlePrint}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              className="flex items-center gap-2 bg-neutral-900 hover:bg-black text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-xs cursor-pointer"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="6 9 6 2 18 2 18 9" />
@@ -1077,18 +896,74 @@ export default function SellerOrderDetail() {
         />
       )}
 
-      <ConfirmationModal
-        isOpen={showRejectModal}
-        title="Reject Order"
-        message="Are you sure you want to reject this order? This cannot be undone."
-        confirmText="Reject Order"
-        variant="danger"
-        onConfirm={async () => {
-          setShowRejectModal(false);
-          await handleStatusUpdate('Rejected');
+        <ConfirmationModal
+          isOpen={showRejectModal}
+          title="Reject Order"
+          message="Are you sure you want to reject this order? This cannot be undone."
+          confirmText="Reject Order"
+          variant="danger"
+          onConfirm={async () => {
+            setShowRejectModal(false);
+            await handleStatusUpdate('Rejected');
+          }}
+          onCancel={() => setShowRejectModal(false)}
+        />
+      </div>
+
+      {/* Dedicated Invoice Print Root - Positioned off-screen for crisp html2canvas rendering, visible during print */}
+      <div
+        id="seller-invoice-print-root"
+        className="print:block"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          top: 0,
+          width: '850px',
         }}
-        onCancel={() => setShowRejectModal(false)}
-      />
+      >
+        {orderDetail && (
+          <SellerInvoice ref={invoicePrintRef} orderDetail={orderDetail} />
+        )}
+      </div>
+
+      {/* Print-specific style rules ensuring clean A4 document print */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm;
+          }
+          html, body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          /* Hide all application and dashboard elements */
+          body * {
+            visibility: hidden !important;
+          }
+          /* Show ONLY the dedicated invoice container */
+          #seller-invoice-print-root,
+          #seller-invoice-print-root * {
+            visibility: visible !important;
+          }
+          #seller-invoice-print-root {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            display: block !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

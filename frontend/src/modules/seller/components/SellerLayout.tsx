@@ -173,17 +173,19 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
           </div>
         )}
 
-        <div className="flex flex-1 min-h-screen bg-neutral-50 relative overflow-x-hidden">
+        <div className="flex flex-1 min-h-screen bg-neutral-50 relative overflow-x-hidden print:bg-white print:overflow-visible print:min-h-0 print:h-auto">
           {/* Real-time Notification Alert */}
-          <SellerNotificationAlert
-            notification={activeNotification}
-            onClose={closeNotification}
-            onResolved={handleNotificationResolved}
-          />
+          <div className="print:hidden">
+            <SellerNotificationAlert
+              notification={activeNotification}
+              onClose={closeNotification}
+              onResolved={handleNotificationResolved}
+            />
+          </div>
 
           {/* Sidebar - Desktop Only */}
           <div
-            className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out hidden lg:block ${
+            className={`fixed left-0 top-0 h-screen z-50 transition-transform duration-300 ease-in-out hidden lg:block print:hidden ${
               isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
           >
@@ -192,20 +194,24 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
 
           {/* Main Content */}
           <div
-            className={`flex-1 flex flex-col transition-all duration-300 min-w-0 ${
+            className={`flex-1 flex flex-col transition-all duration-300 min-w-0 print:m-0 print:p-0 print:block ${
               isSidebarOpen ? 'lg:ml-64' : 'ml-0'
             }`}
           >
             {/* Header */}
-            <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
+            <div className="print:hidden">
+              <SellerHeader onMenuClick={toggleSidebar} isSidebarOpen={isSidebarOpen} />
+            </div>
 
             {/* Page Content */}
-            <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-neutral-50 min-w-0">
+            <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-neutral-50 min-w-0 print:bg-white print:p-0 print:m-0 print:overflow-visible print:block">
               {children}
             </main>
 
             {/* Mobile Bottom Navigation */}
-            <SellerBottomNav />
+            <div className="print:hidden">
+              <SellerBottomNav />
+            </div>
           </div>
         </div>
       </div>

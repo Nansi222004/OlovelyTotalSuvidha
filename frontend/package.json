@@ -19,6 +19,7 @@
     "firebase": "^12.8.0",
     "framer-motion": "^10.16.16",
     "gsap": "^3.12.5",
+    "html2canvas": "^1.4.1",
     "jspdf": "^3.0.4",
     "leaflet": "^1.9.4",
     "lottie-react": "^2.4.1",

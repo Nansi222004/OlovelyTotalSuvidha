@@ -78,6 +78,16 @@ export interface OrderDetail {
   subtotal: number;
   tax: number;
   grandTotal: number;
+  shipping?: number;
+  firstOrderFreeShippingApplied?: boolean;
+  normalShippingAmount?: number;
+  shippingDiscount?: number;
+  platformFee?: number;
+  discount?: number;
+  couponCode?: string;
+  orderTotal?: number;
+  orderGrandTotal?: number;
+  orderSubtotal?: number;
   paymentMethod: string;
   paymentStatus: string;
   deliveryAddress: DeliveryAddress;

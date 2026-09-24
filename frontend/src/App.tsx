@@ -140,6 +140,9 @@ const SellerNotifications = lazyWithRetry(() => import("./modules/seller/pages/S
 const SellerOrderDetail = lazyWithRetry(
   () => import("./modules/seller/pages/SellerOrderDetail"), "SellerOrderDetail"
 );
+const SellerInvoicePage = lazyWithRetry(
+  () => import("./modules/seller/pages/SellerInvoicePage"), "SellerInvoicePage"
+);
 const SellerSettlement = lazyWithRetry(
   () => import("./modules/seller/pages/SellerSettlement"), "SellerSettlement"
 );
@@ -640,6 +643,10 @@ function App() {
                                       <Route
                                         path="orders/:id"
                                         element={<SellerOrderDetail />}
+                                       />
+                                       <Route
+                                         path="orders/:id/invoice"
+                                         element={<SellerInvoicePage />}
                                       />
                                       <Route
                                         path="reviews"
