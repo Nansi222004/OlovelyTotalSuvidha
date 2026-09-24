@@ -389,7 +389,8 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   } = req.query;
 
   // Validate channel against seller vendorType
-  const resolution = await resolveAuthorizedSellerChannel(sellerId, channel as string);
+  const requestedChannel = (channel as string) || (req.headers["x-channel"] as string) || (req.headers["x-seller-channel"] as string);
+  const resolution = await resolveAuthorizedSellerChannel(sellerId, requestedChannel);
   if (resolution.error) {
     return res.status(resolution.statusCode || 400).json({
       success: false,
@@ -403,7 +404,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   const query: any = { seller: sellerId };
 
   if (activeChannel) {
-    query.productType = activeChannel;
+    query.productType = { $in: [activeChannel, "BOTH"] };
   }
 
   // Search filter

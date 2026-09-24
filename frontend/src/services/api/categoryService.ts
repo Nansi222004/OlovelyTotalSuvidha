@@ -72,13 +72,22 @@ export interface PaginatedResponse<T> {
 }
 
 /**
+ * Invalidate in-memory category cache
+ */
+export const invalidateCategoryCache = (): void => {
+  apiCache.invalidatePattern(/^categories-/);
+};
+
+/**
  * Get all categories (parent categories only by default)
  * Cached for 10 minutes as categories don't change frequently
  */
 export const getCategories = async (
   params?: GetCategoriesParams
 ): Promise<ApiResponse<Category[]>> => {
-  const cacheKey = `categories-${JSON.stringify(params || {})}`;
+  const sellerToken = typeof window !== 'undefined' ? localStorage.getItem('seller_authToken') : '';
+  const tokenPart = sellerToken ? `-${sellerToken.slice(-8)}` : '';
+  const cacheKey = `categories-${JSON.stringify(params || {})}${tokenPart}`;
   return apiCache.getOrFetch(
     cacheKey,
     async () => {

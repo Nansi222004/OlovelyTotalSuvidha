@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardCard from '../components/DashboardCard';
 import OrderChart from '../components/OrderChart';
@@ -29,35 +29,36 @@ export default function SellerDashboard() {
   const [isShopOpen, setIsShopOpen] = useState(true);
   const [statusLoading, setStatusLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        const [statsResponse, profileResponse] = await Promise.all([
-          getSellerDashboardStats(activeChannel),
-          getSellerProfile()
-        ]);
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [statsResponse, profileResponse] = await Promise.all([
+        getSellerDashboardStats(activeChannel),
+        getSellerProfile()
+      ]);
 
-        if (statsResponse.success) {
-          setStats(statsResponse.data.stats);
-          setNewOrders(statsResponse.data.newOrders);
-        } else {
-          setError(statsResponse.message || 'Failed to fetch dashboard data');
-        }
-
-        if (profileResponse.success) {
-          const shopStatus = profileResponse.data.isShopOpen ?? true;
-          setIsShopOpen(shopStatus);
-        }
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Error loading dashboard data');
-      } finally {
-        setLoading(false);
+      if (statsResponse.success) {
+        setStats(statsResponse.data.stats);
+        setNewOrders(statsResponse.data.newOrders);
+      } else {
+        setError(statsResponse.message || 'Failed to fetch dashboard data');
       }
-    };
 
-    fetchDashboardData();
+      if (profileResponse.success) {
+        const shopStatus = profileResponse.data.isShopOpen ?? true;
+        setIsShopOpen(shopStatus);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Error loading dashboard data');
+    } finally {
+      setLoading(false);
+    }
   }, [activeChannel]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const handleToggleShop = async () => {
     try {
@@ -244,8 +245,14 @@ export default function SellerDashboard() {
 
   if (error || !stats) {
     return (
-      <div className="p-8 text-center text-red-500 bg-white rounded-lg shadow-sm border border-neutral-200">
-        {error || 'Stats not available'}
+      <div className="p-8 text-center bg-white rounded-lg shadow-sm border border-neutral-200">
+        <p className="text-red-500 font-medium mb-3">{error || 'Stats not available'}</p>
+        <button
+          onClick={() => fetchDashboardData()}
+          className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-md transition-colors shadow-sm"
+        >
+          Retry
+        </button>
       </div>
     );
   }

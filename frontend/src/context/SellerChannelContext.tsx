@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useAuth } from "./AuthContext";
 import { getSellerProfile } from "../services/api/auth/sellerAuthService";
+import { invalidateCategoryCache } from "../services/api/categoryService";
 
 export type SellerChannel = "QUICK_COMMERCE" | "ECOMMERCE";
 
@@ -120,6 +121,7 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
       if (key && typeof window !== "undefined") {
         localStorage.setItem(key, channel);
       }
+      invalidateCategoryCache();
     },
     [isHybrid, sellerId]
   );

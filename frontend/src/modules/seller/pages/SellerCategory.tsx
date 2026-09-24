@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getCategories, Category } from '../../../services/api/categoryService';
+import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 export default function SellerCategory() {
     const [categories, setCategories] = useState<Category[]>([]);
@@ -7,6 +8,7 @@ export default function SellerCategory() {
     const [error, setError] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState('');
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const { activeChannel } = useSellerChannel();
 
     // Fetch categories from API
     useEffect(() => {
@@ -17,6 +19,9 @@ export default function SellerCategory() {
                 const params: any = {};
                 if (searchTerm) {
                     params.search = searchTerm;
+                }
+                if (activeChannel) {
+                    params.channel = activeChannel;
                 }
 
                 const response = await getCategories(params);
@@ -33,12 +38,17 @@ export default function SellerCategory() {
         };
 
         fetchCategories();
-    }, [searchTerm]);
+    }, [searchTerm, activeChannel]);
 
-    // Client-side filtering for display (API handles search, but we can filter further if needed)
-    const filteredCategories = categories.filter(cat =>
-        String(cat?.name || "").toLowerCase().includes(String(searchTerm || "").toLowerCase())
-    );
+    // Client-side filtering for display (API handles search and channel, with defense-in-depth channel check)
+    const filteredCategories = categories.filter(cat => {
+        const matchesSearch = String(cat?.name || "").toLowerCase().includes(String(searchTerm || "").toLowerCase());
+        if (!matchesSearch) return false;
+        if (activeChannel && cat.commerceChannels && cat.commerceChannels.length > 0) {
+            return cat.commerceChannels.includes(activeChannel);
+        }
+        return true;
+    });
 
     return (
         <div className="flex flex-col h-full">
@@ -52,8 +62,20 @@ export default function SellerCategory() {
 
             {/* Content Card */}
             <div className="bg-white rounded-lg shadow-sm border border-neutral-200 flex-1 flex flex-col">
-                <div className="p-4 border-b border-neutral-100 font-medium text-neutral-700">
-                    View Category
+                <div className="p-4 border-b border-neutral-100 font-medium text-neutral-700 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                        <span>View Category</span>
+                        {activeChannel === "QUICK_COMMERCE" && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                ⚡ Quick Commerce
+                            </span>
+                        )}
+                        {activeChannel === "ECOMMERCE" && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                                📦 Ecommerce
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 {/* Controls */}

@@ -83,6 +83,26 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // 3. Attach seller active channel header if in seller panel
+    if (panel === 'seller' && typeof window !== 'undefined' && config.headers && !config.headers['x-channel']) {
+      try {
+        const rawUserData = localStorage.getItem('seller_userData');
+        if (rawUserData) {
+          const sellerUser = JSON.parse(rawUserData);
+          const sellerId = sellerUser?.id || sellerUser?._id;
+          const vendorType = sellerUser?.vendorType;
+          const channel = vendorType === 'HYBRID'
+            ? (sellerId ? localStorage.getItem(`olovely_seller_active_channel_${sellerId}`) : null) || 'QUICK_COMMERCE'
+            : vendorType;
+          if (channel) {
+            config.headers['x-channel'] = channel;
+          }
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+
     if (import.meta.env.DEV) {
       console.log(`[AUTH DEBUG] Panel: ${panel} | Request: ${config.method?.toUpperCase()} ${config.url} | Token Present: ${!!token}`);
     }

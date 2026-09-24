@@ -45,11 +45,21 @@ export default function SellerProductList() {
   const { user } = useAuth();
   const { activeChannel } = useSellerChannel();
 
-  // Fetch categories
+  // Reset pagination and category filter when active channel switches
+  useEffect(() => {
+    setCurrentPage(1);
+    setCategoryFilter("");
+  }, [activeChannel]);
+
+  // Fetch categories filtered by active channel
   useEffect(() => {
     const fetchCats = async () => {
       try {
-        const response = await getCategories();
+        const params: any = {};
+        if (activeChannel) {
+          params.channel = activeChannel;
+        }
+        const response = await getCategories(params);
         if (response.success && response.data) {
           setAllCategories(response.data);
         }
@@ -58,7 +68,7 @@ export default function SellerProductList() {
       }
     };
     fetchCats();
-  }, []);
+  }, [activeChannel]);
 
   // Fetch products
   const fetchProducts = async () => {
@@ -222,9 +232,17 @@ export default function SellerProductList() {
   // Filter variations
   // Since we are using server-side filtering (triggered by useEffect dependencies), 
   // the 'products' array is already filtered by the backend.
-  // We should not filter again on the client side as it may hide valid results 
-  // (e.g., if backend search matches fields not available in the frontend model).
+  // Defense-in-depth: ensure variations strictly match activeChannel if defined on product
   let filteredVariations = allVariations;
+  if (activeChannel) {
+    filteredVariations = filteredVariations.filter((v: any) => {
+      const parentProd = products.find((p) => p._id === v.productId);
+      if (parentProd && parentProd.productType) {
+        return parentProd.productType === activeChannel || (parentProd.productType as any) === "BOTH";
+      }
+      return true;
+    });
+  }
 
   // Sort variations
   if (sortColumn) {

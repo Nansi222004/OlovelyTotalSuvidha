@@ -73,6 +73,7 @@ export const setCorsHeaders = (res: any, origin: string | undefined): void => {
   if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, x-channel, x-seller-channel, X-Channel, X-Seller-Channel');
   }
 };
 
