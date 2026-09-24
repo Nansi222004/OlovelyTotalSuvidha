@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import Order from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
@@ -244,7 +245,10 @@ export const getOrderById = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
 
-    const order = await Order.findById(id)
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const orderQuery = isObjectId ? { $or: [{ _id: id }, { orderNumber: id }] } : { orderNumber: id };
+
+    const order = await Order.findOne(orderQuery)
       .populate("customer", "name email phone")
       .populate("deliveryBoy", "name mobile email")
       .populate({

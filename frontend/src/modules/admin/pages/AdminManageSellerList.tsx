@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getAllSellers, updateSellerStatus, deleteSeller, Seller as SellerType, updateSeller, updateSellerCategoryCommissions } from '../../../services/api/sellerService';
 import { getHeaderCategoriesAdmin, HeaderCategory } from '../../../services/api/headerCategoryService';
 import SellerServiceMap from '../components/SellerServiceMap';
@@ -97,8 +98,26 @@ export const getSellerTypeBadge = (vendorType?: string) => {
     }
 };
 
+// Helper function to safely resolve seller coordinates from latitude/longitude or GeoJSON location
+const resolveSellerCoords = (seller: any) => {
+    let lat = seller?.latitude;
+    let lng = seller?.longitude;
+    if ((lat === undefined || lat === null || lat === '' || isNaN(parseFloat(String(lat)))) && 
+        seller?.location?.coordinates && 
+        Array.isArray(seller.location.coordinates) && 
+        seller.location.coordinates.length === 2) {
+        lng = String(seller.location.coordinates[0]);
+        lat = String(seller.location.coordinates[1]);
+    }
+    return {
+        lat: lat !== undefined && lat !== null && !isNaN(parseFloat(String(lat))) ? String(lat).trim() : '',
+        lng: lng !== undefined && lng !== null && !isNaN(parseFloat(String(lng))) ? String(lng).trim() : ''
+    };
+};
+
 // Helper function to convert backend seller to frontend format
 const mapSellerToFrontend = (seller: SellerType): Seller => {
+    const coords = resolveSellerCoords(seller);
     return {
         _id: seller._id,
         id: parseInt(seller._id.slice(-6), 16) || 0, // Generate a numeric ID from MongoDB _id
@@ -123,9 +142,9 @@ const mapSellerToFrontend = (seller: SellerType): Seller => {
         taxName: seller.taxName,
         taxNumber: seller.taxNumber,
         searchLocation: seller.searchLocation,
-        latitude: seller.latitude,
-        longitude: seller.longitude,
-        serviceRadiusKm: seller.serviceRadiusKm,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        serviceRadiusKm: typeof seller.serviceRadiusKm === 'number' && !isNaN(seller.serviceRadiusKm) ? seller.serviceRadiusKm : 10,
         accountName: seller.accountName,
         bankName: seller.bankName,
         branch: seller.branch,
@@ -160,7 +179,16 @@ export default function AdminManageSellerList() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
     const [successMessage, setSuccessMessage] = useState<string>('');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchParams] = useSearchParams();
+    const initialSearch = searchParams.get('search') || '';
+    const [searchTerm, setSearchTerm] = useState(initialSearch);
+
+    useEffect(() => {
+        const queryParam = searchParams.get('search');
+        if (queryParam !== null) {
+            setSearchTerm(queryParam);
+        }
+    }, [searchParams]);
     const [vendorTypeFilter, setVendorTypeFilter] = useState<'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'HYBRID'>('ALL');
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
@@ -332,6 +360,10 @@ export default function AdminManageSellerList() {
         const seller = sellers.find(s => s._id === sellerId);
         if (seller) {
             setEditingSeller(seller);
+            const coords = resolveSellerCoords(seller);
+            const radius = typeof seller.serviceRadiusKm === 'number' && !isNaN(seller.serviceRadiusKm) && seller.serviceRadiusKm > 0
+                ? seller.serviceRadiusKm
+                : 10;
             setEditForm({
                 name: seller.name || seller.sellerName || '',
                 sellerName: seller.sellerName || seller.name || '',
@@ -346,9 +378,9 @@ export default function AdminManageSellerList() {
                 city: seller.city || '',
                 serviceableArea: seller.serviceableArea || '',
                 searchLocation: seller.searchLocation || '',
-                latitude: seller.latitude || '',
-                longitude: seller.longitude || '',
-                serviceRadiusKm: seller.serviceRadiusKm || 10,
+                latitude: coords.lat,
+                longitude: coords.lng,
+                serviceRadiusKm: radius,
                 panCard: seller.panCard || '',
                 taxName: seller.taxName || '',
                 taxNumber: seller.taxNumber || '',
@@ -365,7 +397,7 @@ export default function AdminManageSellerList() {
                 pickupAddress: seller.pickupAddress || seller.shippingConfig?.pickupAddress || seller.address || '',
                 pickupPincode: seller.pickupPincode || seller.shippingConfig?.pickupPincode || '',
             });
-            setNewRadius(seller.serviceRadiusKm || 10);
+            setNewRadius(radius);
             setEditError('');
             setIsEditModalOpen(true);
         }
@@ -439,20 +471,34 @@ export default function AdminManageSellerList() {
     const handleUpdateRadius = async () => {
         if (!editingSeller) return;
 
+        const radiusValue = Number(newRadius);
+        if (isNaN(radiusValue) || radiusValue < 0.1 || radiusValue > 300) {
+            setEditError('Service radius must be between 0.1 and 300 kilometers.');
+            return;
+        }
+
         try {
             setIsUpdatingRadius(true);
-            const response = await updateSeller(editingSeller._id, { serviceRadiusKm: newRadius });
-            if (response.success) {
-                setEditingSeller({ ...editingSeller, serviceRadiusKm: newRadius });
-                // Also update the seller in the main list
-                setSellers(sellers.map(s => s._id === editingSeller._id ? { ...s, serviceRadiusKm: newRadius } : s));
+            setEditError('');
+            const response = await updateSeller(editingSeller._id, { serviceRadiusKm: radiusValue });
+            if (response.success && response.data) {
+                const updatedSeller = mapSellerToFrontend(response.data);
+                setEditingSeller(updatedSeller);
+                setEditForm(prev => ({
+                    ...prev,
+                    serviceRadiusKm: radiusValue,
+                    latitude: updatedSeller.latitude || prev.latitude,
+                    longitude: updatedSeller.longitude || prev.longitude,
+                }));
+                setSellers(prev => prev.map(s => s._id === editingSeller._id ? updatedSeller : s));
                 setSuccessMessage('Service radius updated successfully');
                 setTimeout(() => setSuccessMessage(''), 3000);
+            } else {
+                setEditError(response.message || 'Failed to update service radius');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating radius:', error);
-            setError('Failed to update service radius');
-            setTimeout(() => setError(''), 3000);
+            setEditError(error.response?.data?.message || 'Failed to update service radius. Please try again.');
         } finally {
             setIsUpdatingRadius(false);
         }
@@ -1520,58 +1566,67 @@ export default function AdminManageSellerList() {
                             )}
 
                             {/* Service Area Map - Only for QC, HYBRID, or Legacy (not pure Ecommerce) */}
-                            {editingSeller.vendorType !== 'ECOMMERCE' && (
-                                <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
-                                    <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                                        Service Area Visualization
-                                    </h4>
-                                    {editForm.latitude && editForm.longitude ? (
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                                                <div>
-                                                    <label className="text-xs font-medium text-neutral-600 mb-1 block">Service Radius (km)</label>
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="number"
-                                                            min="0.1"
-                                                            max="300"
-                                                            step="0.1"
-                                                            value={newRadius}
-                                                            onChange={(e) => setNewRadius(parseFloat(e.target.value))}
-                                                            className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleUpdateRadius}
-                                                            disabled={isUpdatingRadius || newRadius === editingSeller.serviceRadiusKm}
-                                                            className="px-4 py-2 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                                                        >
-                                                            {isUpdatingRadius ? 'Updating...' : 'Update Radius'}
-                                                        </button>
+                            {editingSeller.vendorType !== 'ECOMMERCE' && (() => {
+                                const latNum = parseFloat(String(editForm.latitude ?? ''));
+                                const lngNum = parseFloat(String(editForm.longitude ?? ''));
+                                const hasValidCoords = !isNaN(latNum) && !isNaN(lngNum) && latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180;
+
+                                return (
+                                    <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
+                                        <h4 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+                                            <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+                                            Service Area Visualization
+                                        </h4>
+                                        {hasValidCoords ? (
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                                    <div>
+                                                        <label className="text-xs font-medium text-neutral-600 mb-1 block">Service Radius (km)</label>
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="number"
+                                                                min="0.1"
+                                                                max="300"
+                                                                step="0.1"
+                                                                value={isNaN(newRadius) ? '' : newRadius}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    setNewRadius(isNaN(val) ? 0 : val);
+                                                                }}
+                                                                className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleUpdateRadius}
+                                                                disabled={isUpdatingRadius || newRadius === editingSeller.serviceRadiusKm || isNaN(newRadius) || newRadius <= 0}
+                                                                className="px-4 py-2 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                                                            >
+                                                                {isUpdatingRadius ? 'Updating...' : 'Update Radius'}
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div className="h-[300px] w-full">
+                                                    <SellerServiceMap
+                                                        latitude={latNum}
+                                                        longitude={lngNum}
+                                                        radiusKm={newRadius || 10}
+                                                        storeName={editForm.storeName || editingSeller.storeName}
+                                                    />
+                                                </div>
+                                                <p className="text-xs text-neutral-500 italic">
+                                                    * Adjust the radius above to see the service area change dynamically.
+                                                </p>
                                             </div>
-                                            <div className="h-[300px] w-full">
-                                                <SellerServiceMap
-                                                    latitude={parseFloat(editForm.latitude)}
-                                                    longitude={parseFloat(editForm.longitude)}
-                                                    radiusKm={newRadius}
-                                                    storeName={editForm.storeName || editingSeller.storeName}
-                                                />
+                                        ) : (
+                                            <div className="p-8 text-center border-2 border-dashed border-neutral-200 rounded-lg">
+                                                <p className="text-sm text-neutral-500 font-medium">No valid coordinates available for this seller.</p>
+                                                <p className="text-xs text-neutral-400 mt-1">Please enter valid latitude and longitude above to view the service area map.</p>
                                             </div>
-                                            <p className="text-xs text-neutral-500 italic">
-                                                * Adjust the radius above to see the service area change dynamically.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div className="p-8 text-center border-2 border-dashed border-neutral-200 rounded-lg">
-                                            <p className="text-sm text-neutral-500">No valid coordinates available for this seller.</p>
-                                            <p className="text-xs text-neutral-400 mt-1">Please enter latitude and longitude above to view the service map.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Tax Information */}
                             <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200">

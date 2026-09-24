@@ -531,7 +531,7 @@ export default function SellerDashboard() {
             <tbody className="bg-white divide-y divide-neutral-200">
               {displayedOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-neutral-50">
-                  <td className="px-4 sm:px-6 py-3 text-sm text-neutral-900">{order.id}</td>
+                  <td className="px-4 sm:px-6 py-3 text-sm text-neutral-900">{order.orderNumber || order.orderId || order.id}</td>
                   <td className="px-4 sm:px-6 py-3 text-sm text-neutral-600">{order.orderDate}</td>
                   <td className="px-4 sm:px-6 py-3">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(order.status)}`}>

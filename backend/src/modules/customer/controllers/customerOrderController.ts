@@ -1351,8 +1351,13 @@ export const getOrderById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.user!.userId;
 
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const orderQuery = isObjectId
+      ? { $or: [{ _id: id }, { orderNumber: id }], customer: userId }
+      : { orderNumber: id, customer: userId };
+
     // Find order and ensure it belongs to the user
-    const order = await Order.findOne({ _id: id, customer: userId })
+    const order = await Order.findOne(orderQuery)
       .populate({
         path: "items",
         populate: [

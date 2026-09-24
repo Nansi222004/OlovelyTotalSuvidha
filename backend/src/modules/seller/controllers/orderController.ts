@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Order from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
 import Product from "../../../models/Product";
@@ -330,18 +331,31 @@ export const getSettlementOrders = asyncHandler(
 );
 
 /**
+ * Helper to resolve Order by either MongoDB _id or orderNumber
+ */
+const findOrderByIdOrNumber = async (id: string, selectFields?: string) => {
+  const isObjectId = mongoose.Types.ObjectId.isValid(id);
+  const query = isObjectId ? { $or: [{ _id: id }, { orderNumber: id }] } : { orderNumber: id };
+  const q = Order.findOne(query);
+  if (selectFields) {
+    q.select(selectFields);
+  }
+  return q;
+};
+
+/**
  * Get COD order breakdown for seller (admin commission visible; Self Assign = delivery boy gets nothing)
  */
 export const getOrderCODBreakdown = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
-    const hasItems = await OrderItem.findOne({ order: id, seller: sellerId });
-    if (!hasItems) {
+    const order = await findOrderByIdOrNumber(id, "paymentMethod deliveryPreference");
+    if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const order = await Order.findById(id).select("paymentMethod deliveryPreference");
-    if (!order) {
+    const hasItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
+    if (!hasItems) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
     if (order.paymentMethod !== "COD") {
@@ -350,7 +364,7 @@ export const getOrderCODBreakdown = asyncHandler(
         message: "COD breakdown is only available for COD orders",
       });
     }
-    const breakdown = await calculateCODOrderBreakdown(id);
+    const breakdown = await calculateCODOrderBreakdown(order._id.toString());
     const myEarning = breakdown.sellerEarnings.get(sellerId) ?? 0;
     return res.status(200).json({
       success: true,
@@ -379,11 +393,15 @@ export const getOrderEarningBreakdownSeller = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
-    const hasItems = await OrderItem.findOne({ order: id, seller: sellerId });
+    const order = await findOrderByIdOrNumber(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+    const hasItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
     if (!hasItems) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const breakdown = await getOrderEarningBreakdown(id);
+    const breakdown = await getOrderEarningBreakdown(order._id.toString());
     const yourEarning = breakdown.sellerEarnings.get(sellerId) ?? 0;
     const payload = {
       orderId: breakdown.orderId,
@@ -410,12 +428,12 @@ export const markOrderCODPaidSeller = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
-    const hasItems = await OrderItem.findOne({ order: id, seller: sellerId });
-    if (!hasItems) {
+    const order = await findOrderByIdOrNumber(id, "paymentMethod status codPaidToAdminAt");
+    if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const order = await Order.findById(id).select("paymentMethod status codPaidToAdminAt");
-    if (!order) {
+    const hasItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
+    if (!hasItems) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
     if (order.paymentMethod !== "COD") {
@@ -448,25 +466,28 @@ export const getOrderById = asyncHandler(
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
 
-    // First check if this seller has items in this order
-    const sellerItems = await OrderItem.find({ order: id, seller: sellerId })
-      .populate("seller", "storeName")
-      .populate("product");
+    // Resolve order document whether id is MongoDB ObjectId or orderNumber (e.g. ORD1789980388371771)
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const order = await Order.findOne(
+      isObjectId ? { $or: [{ _id: id }, { orderNumber: id }] } : { orderNumber: id }
+    )
+      .populate("customer", "name email phone")
+      .populate("deliveryBoy", "name mobile email")
+      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType");
 
-    if (!sellerItems || sellerItems.length === 0) {
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    // Get order with populated data
-    const order = await Order.findById(id)
-      .populate("customer", "name email phone")
-      .populate("deliveryBoy", "name mobile email")
-      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType");
+    // Check if this seller has items in this order using resolved order._id
+    const sellerItems = await OrderItem.find({ order: order._id, seller: sellerId })
+      .populate("seller", "storeName")
+      .populate("product");
 
-    if (!order) {
+    if (!sellerItems || sellerItems.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
@@ -642,9 +663,17 @@ export const updateOrderStatus = asyncHandler(
       });
     }
 
+    const order = await findOrderByIdOrNumber(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
     // Check if this seller has items in this order
     const sellerItems = await OrderItem.findOne({
-      order: id,
+      order: order._id,
       seller: sellerId,
     });
 
@@ -652,14 +681,6 @@ export const updateOrderStatus = asyncHandler(
       return res.status(404).json({
         success: false,
         message: "Order not found or you are not authorized to manage this order",
-      });
-    }
-
-    const order = await Order.findById(id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
       });
     }
 
@@ -681,13 +702,13 @@ export const updateOrderStatus = asyncHandler(
 
       // Step 1: Mark all items of this seller with the new sellerStatus
       await OrderItem.updateMany(
-        { order: id, seller: sellerId },
+        { order: order._id, seller: sellerId },
         { $set: { sellerStatus: status } }
       );
       // If rejecting: also mark items as Cancelled
       if (status === "Rejected") {
         await OrderItem.updateMany(
-          { order: id, seller: sellerId },
+          { order: order._id, seller: sellerId },
           { $set: { status: "Cancelled" } }
         );
         console.log(`\n[SELLER REJECT]\nOrder ID: ${order._id}\nSeller ID: ${sellerIdStr}\nPayment Method: ${order.paymentMethod}\nPayment Status: ${order.paymentStatus}\nRazorpay Payment ID: ${order.paymentId || 'N/A'}`);
@@ -711,7 +732,7 @@ export const updateOrderStatus = asyncHandler(
       // Check if this seller has QC items requiring local delivery assignment
       const qcGroup = (order.fulfillmentGroups || []).find((g: any) => g.fulfillmentType === "LOCAL_DELIVERY");
       const sellerHasQcItem = qcGroup ? await OrderItem.exists({
-        order: id,
+        order: order._id,
         seller: sellerId,
         _id: { $in: qcGroup.items },
       }) : (order.orderType === "QUICK_COMMERCE");
@@ -730,7 +751,7 @@ export const updateOrderStatus = asyncHandler(
 
       // For Ecommerce fulfillment groups belonging to this seller: advance Pending to Processing on Accept
       if (status === "Accepted" && order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
-        const sellerItemsList = await OrderItem.find({ order: id, seller: sellerId }).select('_id');
+        const sellerItemsList = await OrderItem.find({ order: order._id, seller: sellerId }).select('_id');
         const sellerItemIds = new Set(sellerItemsList.map((i: any) => i._id.toString()));
 
         for (const fg of order.fulfillmentGroups) {
@@ -880,7 +901,7 @@ export const getAvailableDeliveryPartners = asyncHandler(
     const { id } = req.params;
 
     // Verify order exists and seller has items in it
-    const order = await Order.findById(id);
+    const order = await findOrderByIdOrNumber(id);
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -888,7 +909,7 @@ export const getAvailableDeliveryPartners = asyncHandler(
       });
     }
 
-    const sellerItems = await OrderItem.findOne({ order: id, seller: sellerId });
+    const sellerItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
     if (!sellerItems) {
       return res.status(403).json({
         success: false,
@@ -928,7 +949,7 @@ export const getAvailableDeliveryPartners = asyncHandler(
 
       // Verify seller owns items in the QC group
       const sellerHasQcItem = await OrderItem.exists({
-        order: id,
+        order: order._id,
         seller: sellerId,
         _id: { $in: qcGroup.items },
       });
@@ -1035,7 +1056,7 @@ export const assignDeliveryBoySeller = asyncHandler(
     }
 
     // Verify order exists and seller has items in it
-    const order = await Order.findById(id);
+    const order = await findOrderByIdOrNumber(id);
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -1043,7 +1064,7 @@ export const assignDeliveryBoySeller = asyncHandler(
       });
     }
 
-    const sellerItems = await OrderItem.findOne({ order: id, seller: sellerId });
+    const sellerItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
     if (!sellerItems) {
       return res.status(403).json({
         success: false,
@@ -1083,7 +1104,7 @@ export const assignDeliveryBoySeller = asyncHandler(
 
       // Verify seller owns items in the QC group
       const sellerHasQcItem = await OrderItem.exists({
-        order: id,
+        order: order._id,
         seller: sellerId,
         _id: { $in: qcGroup.items },
       });
@@ -1147,7 +1168,7 @@ export const assignDeliveryBoySeller = asyncHandler(
 
     const updatedOrder = await Order.findOneAndUpdate(
       {
-        _id: id,
+        _id: order._id,
         $or: [
           { deliveryBoy: null },
           { deliveryBoy: { $exists: false } },
@@ -1175,7 +1196,7 @@ export const assignDeliveryBoySeller = asyncHandler(
       .populate("items");
 
     if (!updatedOrder) {
-      const currentOrder = await Order.findById(id);
+      const currentOrder = await Order.findById(order._id);
       if (currentOrder?.deliveryBoy && currentOrder.deliveryBoy.toString() !== deliveryBoyId.toString()) {
         return res.status(409).json({
           success: false,
@@ -1191,9 +1212,9 @@ export const assignDeliveryBoySeller = asyncHandler(
     // Create or update delivery assignment record
     const DeliveryAssignment = (await import("../../../models/DeliveryAssignment")).default;
     await DeliveryAssignment.findOneAndUpdate(
-      { order: id },
+      { order: order._id },
       {
-        order: id,
+        order: order._id,
         deliveryBoy: deliveryBoyId,
         assignedAt: new Date(),
         assignedBy: sellerId,
@@ -1210,8 +1231,9 @@ export const assignDeliveryBoySeller = asyncHandler(
       );
       notifyDeliveryBoyOfAssignment(io, updatedOrder, deliveryBoyId);
 
-      io.to(`order-${id}`).emit("order-updated", {
-        orderId: id,
+      io.to(`order-${order._id}`).emit("order-updated", {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
         deliveryBoy: deliveryBoyId,
         deliveryBoyName: deliveryBoy.name,
         deliveryBoyPhone: deliveryBoy.mobile,

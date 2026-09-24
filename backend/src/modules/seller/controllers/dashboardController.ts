@@ -100,7 +100,9 @@ export const getDashboardStats = asyncHandler(
             .limit(10);
 
         const formattedNewOrders = newOrders.map(order => ({
-            id: order.orderNumber || order._id.toString(), // Use orderNumber if available
+            id: order._id.toString(),
+            orderId: order.orderNumber || order._id.toString(),
+            orderNumber: order.orderNumber || order._id.toString(),
             orderDate: new Date(order.orderDate).toLocaleDateString('en-GB'),
             status: order.status === 'Out for Delivery' ? 'Out For Delivery' : order.status,
             amount: order.total, // Use total instead of grandTotal (check Schema)

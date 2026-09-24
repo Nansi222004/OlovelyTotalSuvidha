@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardCard from "../components/DashboardCard";
 import OrderChart from "../components/OrderChart";
 import SalesLineChart from "../components/SalesLineChart";
@@ -24,6 +25,7 @@ import {
 import { getFinancialDashboard, WalletStats } from "../../../services/api/admin/adminWalletService";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const { isAuthenticated, token } = useAuth();
   const { t } = useLanguage();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -829,8 +831,10 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 sm:px-6 py-3">
                         <button
+                          onClick={() => navigate(`/admin/orders/${order.id || order.orderNumber}`)}
                           className="bg-teal-600 hover:bg-teal-700 text-white p-2 rounded transition-colors"
-                          aria-label="View order">
+                          aria-label="View order"
+                          title="View order details">
                           <svg
                             width="16"
                             height="16"
@@ -1030,8 +1034,10 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 sm:px-6 py-3">
                         <button
+                          onClick={() => navigate(`/admin/manage-seller/list?search=${encodeURIComponent(seller.storeName || seller.sellerName || seller.sellerId)}`)}
                           className="bg-teal-600 hover:bg-teal-700 text-white p-2 rounded transition-colors"
-                          aria-label="View seller">
+                          aria-label="View seller"
+                          title="View seller in Manage Sellers">
                           <svg
                             width="16"
                             height="16"
