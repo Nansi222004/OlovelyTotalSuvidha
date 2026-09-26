@@ -38,7 +38,7 @@ export default function SellerSignUp() {
 
   const { settings } = useAppSettings();
   const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
-  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled === true;
   const hybridEnabled = qcEnabled && ecomEnabled;
 
   useEffect(() => {
@@ -285,84 +285,72 @@ export default function SellerSignUp() {
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Vendor Business Type <span className="text-red-500">*</span>
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      disabled={!qcEnabled}
-                      onClick={() => qcEnabled && setFormData(prev => ({ ...prev, vendorType: 'QUICK_COMMERCE' }))}
-                      className={`p-3 rounded-lg border text-left transition-all ${
-                        !qcEnabled
-                          ? 'border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60 cursor-not-allowed'
-                          : formData.vendorType === 'QUICK_COMMERCE'
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
-                          : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-                      }`}
-                      title={!qcEnabled ? 'Quick Commerce registration is currently disabled' : ''}
-                    >
-                      <div className="font-semibold text-xs flex items-center justify-between gap-1">
-                        <span>⚡ Quick Commerce</span>
-                        {!qcEnabled ? (
-                          <span className="text-[10px] bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded font-normal">Disabled</span>
-                        ) : formData.vendorType === 'QUICK_COMMERCE' ? (
-                          <span className="text-teal-600 text-xs font-bold">✓</span>
-                        ) : null}
-                      </div>
-                      <div className="text-[11px] text-neutral-500 mt-0.5">
-                        {!qcEnabled ? 'Currently Unavailable' : 'Hyperlocal Delivery'}
-                      </div>
-                    </button>
+                  <div className={`grid gap-2 ${(qcEnabled && ecomEnabled) ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                    {qcEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, vendorType: 'QUICK_COMMERCE' }))}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          formData.vendorType === 'QUICK_COMMERCE'
+                            ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
+                            : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs flex items-center justify-between gap-1">
+                          <span>⚡ Quick Commerce</span>
+                          {formData.vendorType === 'QUICK_COMMERCE' && (
+                            <span className="text-teal-600 text-xs font-bold">✓</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">
+                          Hyperlocal Delivery
+                        </div>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      disabled={!ecomEnabled}
-                      onClick={() => ecomEnabled && setFormData(prev => ({ ...prev, vendorType: 'ECOMMERCE' }))}
-                      className={`p-3 rounded-lg border text-left transition-all ${
-                        !ecomEnabled
-                          ? 'border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60 cursor-not-allowed'
-                          : formData.vendorType === 'ECOMMERCE'
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
-                          : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-                      }`}
-                      title={!ecomEnabled ? 'E-Commerce registration is currently disabled' : ''}
-                    >
-                      <div className="font-semibold text-xs flex items-center justify-between gap-1">
-                        <span>📦 Ecommerce</span>
-                        {!ecomEnabled ? (
-                          <span className="text-[10px] bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded font-normal">Disabled</span>
-                        ) : formData.vendorType === 'ECOMMERCE' ? (
-                          <span className="text-teal-600 text-xs font-bold">✓</span>
-                        ) : null}
-                      </div>
-                      <div className="text-[11px] text-neutral-500 mt-0.5">
-                        {!ecomEnabled ? 'Currently Unavailable' : 'Courier Shipping'}
-                      </div>
-                    </button>
+                    {ecomEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, vendorType: 'ECOMMERCE' }))}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          formData.vendorType === 'ECOMMERCE'
+                            ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
+                            : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs flex items-center justify-between gap-1">
+                          <span>📦 Ecommerce</span>
+                          {formData.vendorType === 'ECOMMERCE' && (
+                            <span className="text-teal-600 text-xs font-bold">✓</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">
+                          Courier Shipping
+                        </div>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      disabled={!hybridEnabled}
-                      onClick={() => hybridEnabled && setFormData(prev => ({ ...prev, vendorType: 'HYBRID' }))}
-                      className={`p-3 rounded-lg border text-left transition-all ${
-                        !hybridEnabled
-                          ? 'border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60 cursor-not-allowed'
-                          : formData.vendorType === 'HYBRID'
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
-                          : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-                      }`}
-                      title={!hybridEnabled ? 'Hybrid requires both Quick Commerce and E-Commerce to be enabled' : ''}
-                    >
-                      <div className="font-semibold text-xs flex items-center justify-between gap-1">
-                        <span>🔄 Hybrid</span>
-                        {!hybridEnabled ? (
-                          <span className="text-[10px] bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded font-normal">Disabled</span>
-                        ) : formData.vendorType === 'HYBRID' ? (
-                          <span className="text-teal-600 text-xs font-bold">✓</span>
-                        ) : null}
-                      </div>
-                      <div className="text-[11px] text-neutral-500 mt-0.5">
-                        {!hybridEnabled ? 'Requires both channels' : 'Both Channels'}
-                      </div>
-                    </button>
+                    {hybridEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, vendorType: 'HYBRID' }))}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          formData.vendorType === 'HYBRID'
+                            ? 'border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200'
+                            : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs flex items-center justify-between gap-1">
+                          <span>🔄 Hybrid</span>
+                          {formData.vendorType === 'HYBRID' && (
+                            <span className="text-teal-600 text-xs font-bold">✓</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">
+                          Both Channels
+                        </div>
+                      </button>
+                    )}
                   </div>
                   {!hybridEnabled && (
                     <p className="text-[11px] text-amber-600 mt-1.5 flex items-center gap-1">

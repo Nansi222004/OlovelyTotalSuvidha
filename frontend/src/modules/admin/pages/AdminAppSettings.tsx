@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAppSettings, updateAppSettings, AppSettings } from '../../../services/api/admin/adminSettingsService';
 import api from '../../../services/api/config';
+import { notifyAppSettingsUpdated } from '../../../context/AppSettingsContext';
 
 export default function AdminAppSettings() {
   const [loading, setLoading] = useState(true);
@@ -131,7 +132,7 @@ export default function AdminAppSettings() {
           commerceChannels: channels,
         }));
         setSuccessMessage('Commerce channel availability updated successfully!');
-        window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+        notifyAppSettingsUpdated();
       } else {
         setErrorMessage(res?.message || 'Failed to update channel availability');
       }
@@ -151,7 +152,7 @@ export default function AdminAppSettings() {
       const res = await updateAppSettings({ firstOrderFreeShippingEnabled: newValue });
       if (res && res.success) {
         setSuccessMessage(`First Order Free Shipping ${newValue ? 'enabled' : 'disabled'} successfully!`);
-        window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+        notifyAppSettingsUpdated();
       }
     } catch (err: any) {
       console.error('Failed to toggle first order free shipping:', err);
@@ -209,8 +210,8 @@ export default function AdminAppSettings() {
       const res = await updateAppSettings(formData);
       if (res && res.success) {
         setSuccessMessage('App Settings and Branding updated successfully!');
-        // Refresh customer context if needed
-        window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+        // Refresh customer context across all tabs
+        notifyAppSettingsUpdated();
       } else {
         setErrorMessage(res?.message || 'Failed to update settings');
       }

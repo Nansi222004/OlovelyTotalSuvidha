@@ -39,7 +39,7 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
   const { settings } = useAppSettings();
 
   const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
-  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled === true;
 
   const [vendorType, setVendorType] = useState<
     "QUICK_COMMERCE" | "ECOMMERCE" | "HYBRID" | undefined

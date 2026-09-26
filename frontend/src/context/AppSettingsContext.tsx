@@ -94,10 +94,35 @@ const defaultSettings: AppSettingsData = {
     lowStockThreshold: 10,
     lowStockDisplayQuantity: 2,
   },
-  commerceChannels: {
-    quickCommerceEnabled: true,
-    ecommerceEnabled: true,
-  },
+  // Note: commerceChannels left undefined initially to avoid falsely enabling E-Commerce before authoritative settings load
+};
+
+/**
+ * Cross-tab synchronization helper for AppSettings updates.
+ * Dispatches local CustomEvent, broadcasts across tabs via BroadcastChannel, and falls back to localStorage storage event.
+ */
+export const notifyAppSettingsUpdated = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+  }
+
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('olovely-app-settings-sync');
+      channel.postMessage({ type: 'appSettingsUpdated', timestamp: Date.now() });
+      channel.close();
+    }
+  } catch (e) {
+    // Ignore in unsupported environments
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('olovely_app_settings_sync', String(Date.now()));
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
 };
 
 const AppSettingsContext = createContext<AppSettingsContextType>({
@@ -126,7 +151,7 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
         }));
       }
     } catch (error) {
-      console.warn('Failed to fetch public app settings, using defaults:', error);
+      console.warn('Failed to fetch public app settings, preserving safe defaults:', error);
     } finally {
       setIsLoading(false);
     }
@@ -137,8 +162,40 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
     const handleSettingsUpdate = () => {
       fetchSettings();
     };
+
+    // 1. Same-tab custom event
     window.addEventListener('appSettingsUpdated', handleSettingsUpdate);
-    return () => window.removeEventListener('appSettingsUpdated', handleSettingsUpdate);
+
+    // 2. BroadcastChannel cross-tab sync
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('olovely-app-settings-sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'appSettingsUpdated') {
+            fetchSettings();
+          }
+        };
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // 3. Storage event fallback for cross-tab sync
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'olovely_app_settings_sync') {
+        fetchSettings();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('appSettingsUpdated', handleSettingsUpdate);
+      window.removeEventListener('storage', handleStorage);
+      if (bc) {
+        bc.close();
+      }
+    };
   }, []);
 
   // Sync favicon with website logo / custom favicon

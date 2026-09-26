@@ -21,7 +21,7 @@ const CustomerChannelContext = createContext<CustomerChannelContextType | undefi
 export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useAppSettings();
   const quickCommerceEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
-  const ecommerceEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+  const ecommerceEnabled = settings.commerceChannels?.ecommerceEnabled === true;
 
   const [activeChannel, setActiveChannelState] = useState<CustomerChannel>(() => {
     try {

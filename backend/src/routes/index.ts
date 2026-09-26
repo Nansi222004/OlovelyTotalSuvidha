@@ -21,6 +21,7 @@ import walletRoutes from "./walletRoutes";
 import taxRoutes from "./taxRoutes";
 import customerProductRoutes from "./customerProductRoutes";
 import customerCategoryRoutes from "./customerCategoryRoutes";
+import customerSearchRoutes from "./customerSearchRoutes";
 import customerCouponRoutes from "./customerCouponRoutes";
 import customerAddressRoutes from "./customerAddressRoutes";
 import customerHomeRoutes from "./customerHomeRoutes";
@@ -122,6 +123,7 @@ router.use("/customer", customerNotificationRoutes);
 
 // Customer routes - Specific routes MUST be registered before general /customer route
 // to prevent Express from matching the broader route first
+router.use("/customer/search", customerSearchRoutes);
 router.use("/customer/products", customerProductRoutes);
 router.use("/customer/categories", customerCategoryRoutes);
 

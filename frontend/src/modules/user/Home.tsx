@@ -19,6 +19,7 @@ import { getProducts } from "../../services/api/customerProductService";
 
 import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
 import { useCustomerChannel } from "../../context/CustomerChannelContext";
+import { useAppSettings } from "../../context/AppSettingsContext";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -45,6 +46,9 @@ export default function Home() {
 
   const [products, setProducts] = useState<any[]>([]);
   const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
+  const { settings: appSettings } = useAppSettings();
+  const quickCommerceEnabled = appSettings.commerceChannels?.quickCommerceEnabled !== false;
+  const ecommerceEnabled = appSettings.commerceChannels?.ecommerceEnabled === true;
 
   // Channel products state for dedicated Quick Commerce, Ecommerce & Wholesale rows
   const [qcProducts, setQcProducts] = useState<any[]>([]);
@@ -105,22 +109,26 @@ export default function Home() {
       setChannelProductsLoading(true);
       try {
         const [qcRes, ecomRes, wsRes] = await Promise.all([
-          getProducts({
-            channel: 'QUICK_COMMERCE',
-            limit: 10,
-            latitude: location?.latitude,
-            longitude: location?.longitude,
-          }).catch((err) => {
-            console.error('Failed to fetch QC products for home row', err);
-            return { success: false, data: [] };
-          }),
-          getProducts({
-            channel: 'ECOMMERCE',
-            limit: 10,
-          }).catch((err) => {
-            console.error('Failed to fetch Ecommerce products for home row', err);
-            return { success: false, data: [] };
-          }),
+          quickCommerceEnabled
+            ? getProducts({
+                channel: 'QUICK_COMMERCE',
+                limit: 10,
+                latitude: location?.latitude,
+                longitude: location?.longitude,
+              }).catch((err) => {
+                console.error('Failed to fetch QC products for home row', err);
+                return { success: false, data: [] };
+              })
+            : Promise.resolve({ success: true, data: [] }),
+          ecommerceEnabled
+            ? getProducts({
+                channel: 'ECOMMERCE',
+                limit: 10,
+              }).catch((err) => {
+                console.error('Failed to fetch Ecommerce products for home row', err);
+                return { success: false, data: [] };
+              })
+            : Promise.resolve({ success: true, data: [] }),
           getProducts({
             channel: 'WHOLESALE',
             isWholesale: true,
@@ -336,7 +344,7 @@ export default function Home() {
         {activeTab === "all" && (
           <>
             {/* Section A: Quick Commerce */}
-            {(channelFilter === 'ALL' || channelFilter === 'QUICK_COMMERCE') && (
+            {quickCommerceEnabled && (channelFilter === 'ALL' || channelFilter === 'QUICK_COMMERCE') && (
               <ChannelProductRow
                 id="section-quick-commerce"
                 title="Quick Commerce"
@@ -350,7 +358,7 @@ export default function Home() {
             )}
 
             {/* Section B: Ecommerce */}
-            {(channelFilter === 'ALL' || channelFilter === 'ECOMMERCE') && (
+            {ecommerceEnabled && (channelFilter === 'ALL' || channelFilter === 'ECOMMERCE') && (
               <ChannelProductRow
                 id="section-ecommerce"
                 title="Ecommerce"

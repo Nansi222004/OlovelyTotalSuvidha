@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ProductCard from './components/ProductCard';
 import { getProducts } from '../../services/api/customerProductService';
@@ -6,6 +6,7 @@ import { Product } from '../../types/domain';
 import { useLocation } from '../../hooks/useLocation';
 import ChannelFilter, { ChannelFilterValue } from '../../components/ChannelFilter';
 import { useCustomerChannel } from '../../context/CustomerChannelContext';
+import SearchSuggestionsDropdown from '../../components/SearchSuggestionsDropdown';
 
 export default function Search() {
   const navigate = useNavigate();
@@ -16,6 +17,8 @@ export default function Search() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const { activeChannel: channelFilter, setActiveChannel: setChannelFilter } = useCustomerChannel();
   const [loading, setLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Update input when URL param changes (e.g. back button)
   useEffect(() => {
@@ -80,6 +83,7 @@ export default function Search() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setShowSuggestions(false);
     if (searchInput.trim()) {
       setSearchParams({ q: searchInput.trim() });
     }
@@ -87,12 +91,14 @@ export default function Search() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchInput(e.target.value);
+    setShowSuggestions(true);
   };
 
   const clearSearch = () => {
     setSearchInput('');
     setSearchParams({});
     setSearchResults([]);
+    setShowSuggestions(false);
   };
 
   const filteredResults = searchResults.filter((p: any) => {
@@ -124,9 +130,15 @@ export default function Search() {
               </svg>
             </span>
             <input
+              ref={inputRef}
               type="text"
               value={searchInput}
               onChange={handleInputChange}
+              onFocus={() => {
+                if (searchInput.trim().length >= 2) {
+                  setShowSuggestions(true);
+                }
+              }}
               placeholder="Search for groceries, snacks and more"
               className="w-full bg-neutral-100 border-none rounded-xl py-2.5 pl-10 pr-10 text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
               autoFocus
@@ -142,6 +154,21 @@ export default function Search() {
                 </svg>
               </button>
             )}
+
+            {/* Real-time Search Autocomplete Suggestions Popover */}
+            <SearchSuggestionsDropdown
+              query={searchInput}
+              isOpen={showSuggestions}
+              onClose={() => setShowSuggestions(false)}
+              channel={channelFilter}
+              isWholesale={channelFilter === 'WHOLESALE'}
+              onSelectQuery={(brandOrQuery) => {
+                setSearchInput(brandOrQuery);
+                setSearchParams({ q: brandOrQuery });
+                setShowSuggestions(false);
+              }}
+              inputRef={inputRef}
+            />
           </div>
 
           <button

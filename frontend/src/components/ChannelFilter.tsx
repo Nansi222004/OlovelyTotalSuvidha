@@ -30,7 +30,18 @@ export default function ChannelFilter({
   variant = 'header',
 }: ChannelFilterProps) {
   const { settings: appSettings } = useAppSettings();
+  const quickCommerceEnabled = appSettings.commerceChannels?.quickCommerceEnabled !== false;
+  const ecommerceEnabled = appSettings.commerceChannels?.ecommerceEnabled === true;
   const showWholesale = appSettings.wholesaleSettings?.wholesaleDisplayEnabled !== false;
+
+  // Auto-switch customer away from a globally disabled channel
+  React.useEffect(() => {
+    if (value === 'ECOMMERCE' && !ecommerceEnabled) {
+      onChange(quickCommerceEnabled ? 'QUICK_COMMERCE' : 'ALL');
+    } else if (value === 'QUICK_COMMERCE' && !quickCommerceEnabled) {
+      onChange(ecommerceEnabled ? 'ECOMMERCE' : 'ALL');
+    }
+  }, [value, quickCommerceEnabled, ecommerceEnabled, onChange]);
 
   // If light variant requested (e.g. for Category page with white cards/background)
   if (variant === 'light') {
@@ -68,57 +79,61 @@ export default function ChannelFilter({
             )}
           </button>
 
-          <button
-            type="button"
-            role="tab"
-            aria-selected={value === 'QUICK_COMMERCE'}
-            onClick={() => onChange('QUICK_COMMERCE')}
-            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
-              value === 'QUICK_COMMERCE'
-                ? 'bg-white text-green-800 shadow-xs ring-1 ring-black/5 font-extrabold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <span className="text-xs">⚡</span>
-            <span>Quick Commerce</span>
-            {counts?.quickCommerce !== undefined && (
-              <span
-                className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
-                  value === 'QUICK_COMMERCE'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-slate-200/70 text-slate-600'
-                }`}
-              >
-                {counts.quickCommerce}
-              </span>
-            )}
-          </button>
+          {quickCommerceEnabled && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={value === 'QUICK_COMMERCE'}
+              onClick={() => onChange('QUICK_COMMERCE')}
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+                value === 'QUICK_COMMERCE'
+                  ? 'bg-white text-green-800 shadow-xs ring-1 ring-black/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <span className="text-xs">⚡</span>
+              <span>Quick Commerce</span>
+              {counts?.quickCommerce !== undefined && (
+                <span
+                  className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
+                    value === 'QUICK_COMMERCE'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {counts.quickCommerce}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            type="button"
-            role="tab"
-            aria-selected={value === 'ECOMMERCE'}
-            onClick={() => onChange('ECOMMERCE')}
-            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
-              value === 'ECOMMERCE'
-                ? 'bg-white text-green-800 shadow-xs ring-1 ring-black/5 font-extrabold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <span className="text-xs">📦</span>
-            <span>Ecommerce</span>
-            {counts?.ecommerce !== undefined && (
-              <span
-                className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
-                  value === 'ECOMMERCE'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-slate-200/70 text-slate-600'
-                }`}
-              >
-                {counts.ecommerce}
-              </span>
-            )}
-          </button>
+          {ecommerceEnabled && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={value === 'ECOMMERCE'}
+              onClick={() => onChange('ECOMMERCE')}
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+                value === 'ECOMMERCE'
+                  ? 'bg-white text-green-800 shadow-xs ring-1 ring-black/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <span className="text-xs">📦</span>
+              <span>Ecommerce</span>
+              {counts?.ecommerce !== undefined && (
+                <span
+                  className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
+                    value === 'ECOMMERCE'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {counts.ecommerce}
+                </span>
+              )}
+            </button>
+          )}
 
           {showWholesale && (
             <button
@@ -224,63 +239,67 @@ export default function ChannelFilter({
           )}
         </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={value === 'QUICK_COMMERCE'}
-          onClick={() => onChange('QUICK_COMMERCE')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
-            value === 'QUICK_COMMERCE'
-              ? 'bg-white shadow-xs ring-1 ring-black/5 font-extrabold'
-              : 'hover:bg-white/15'
-          }`}
-          style={{
-            color: value === 'QUICK_COMMERCE' ? selectedTextColor : unselectedTextColor,
-          }}
-        >
-          <span className="text-xs">⚡</span>
-          <span>Quick Commerce</span>
-          {counts?.quickCommerce !== undefined && (
-            <span
-              className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors"
-              style={{
-                backgroundColor: value === 'QUICK_COMMERCE' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.12)',
-                color: value === 'QUICK_COMMERCE' ? selectedTextColor : unselectedTextColor,
-              }}
-            >
-              {counts.quickCommerce}
-            </span>
-          )}
-        </button>
+        {quickCommerceEnabled && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={value === 'QUICK_COMMERCE'}
+            onClick={() => onChange('QUICK_COMMERCE')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+              value === 'QUICK_COMMERCE'
+                ? 'bg-white shadow-xs ring-1 ring-black/5 font-extrabold'
+                : 'hover:bg-white/15'
+            }`}
+            style={{
+              color: value === 'QUICK_COMMERCE' ? selectedTextColor : unselectedTextColor,
+            }}
+          >
+            <span className="text-xs">⚡</span>
+            <span>Quick Commerce</span>
+            {counts?.quickCommerce !== undefined && (
+              <span
+                className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors"
+                style={{
+                  backgroundColor: value === 'QUICK_COMMERCE' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.12)',
+                  color: value === 'QUICK_COMMERCE' ? selectedTextColor : unselectedTextColor,
+                }}
+              >
+                {counts.quickCommerce}
+              </span>
+            )}
+          </button>
+        )}
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={value === 'ECOMMERCE'}
-          onClick={() => onChange('ECOMMERCE')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
-            value === 'ECOMMERCE'
-              ? 'bg-white shadow-xs ring-1 ring-black/5 font-extrabold'
-              : 'hover:bg-white/15'
-          }`}
-          style={{
-            color: value === 'ECOMMERCE' ? selectedTextColor : unselectedTextColor,
-          }}
-        >
-          <span className="text-xs">📦</span>
-          <span>Ecommerce</span>
-          {counts?.ecommerce !== undefined && (
-            <span
-              className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors"
-              style={{
-                backgroundColor: value === 'ECOMMERCE' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.12)',
-                color: value === 'ECOMMERCE' ? selectedTextColor : unselectedTextColor,
-              }}
-            >
-              {counts.ecommerce}
-            </span>
-          )}
-        </button>
+        {ecommerceEnabled && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={value === 'ECOMMERCE'}
+            onClick={() => onChange('ECOMMERCE')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-200 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+              value === 'ECOMMERCE'
+                ? 'bg-white shadow-xs ring-1 ring-black/5 font-extrabold'
+                : 'hover:bg-white/15'
+            }`}
+            style={{
+              color: value === 'ECOMMERCE' ? selectedTextColor : unselectedTextColor,
+            }}
+          >
+            <span className="text-xs">📦</span>
+            <span>Ecommerce</span>
+            {counts?.ecommerce !== undefined && (
+              <span
+                className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors"
+                style={{
+                  backgroundColor: value === 'ECOMMERCE' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.12)',
+                  color: value === 'ECOMMERCE' ? selectedTextColor : unselectedTextColor,
+                }}
+              >
+                {counts.ecommerce}
+              </span>
+            )}
+          </button>
+        )}
 
         {showWholesale && (
           <button

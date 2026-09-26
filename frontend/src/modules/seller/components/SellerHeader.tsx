@@ -31,7 +31,7 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
 
   const { settings } = useAppSettings();
   const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
-  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled === true;
   const canSwitchChannels = isHybrid && qcEnabled && ecomEnabled;
 
   const settingsRef = useRef<HTMLDivElement>(null);

@@ -125,3 +125,94 @@ export const getCategories = async (
         5 * 60 * 1000 // 5 minutes cache
     );
 };
+
+export interface SuggestionCategory {
+    _id: string;
+    name: string;
+    slug?: string;
+    image?: string | null;
+    icon?: string | null;
+}
+
+export interface SuggestionSubcategory {
+    _id: string;
+    name: string;
+    category: string;
+    categorySlug?: string | null;
+    categoryName?: string | null;
+    image?: string | null;
+}
+
+export interface SuggestionProduct {
+    _id: string;
+    productName: string;
+    mainImage?: string | null;
+    price: number;
+    discPrice: number;
+    productType: string;
+    categoryName?: string | null;
+    categorySlug?: string | null;
+    wholesaleEnabled?: boolean;
+    wholesalePrice?: number | null;
+    wholesaleMinQty?: number | null;
+}
+
+export interface SuggestionBrand {
+    _id: string;
+    name: string;
+    image?: string | null;
+}
+
+export interface SearchSuggestionsData {
+    categories: SuggestionCategory[];
+    subcategories: SuggestionSubcategory[];
+    products: SuggestionProduct[];
+    brands: SuggestionBrand[];
+}
+
+export interface SearchSuggestionsResponse {
+    success: boolean;
+    data: SearchSuggestionsData;
+    message?: string;
+}
+
+/**
+ * Get search autocomplete suggestions from real database records (Public)
+ * Lightweight query with client-side 30s cache and in-flight deduplication
+ */
+export const getSearchSuggestions = async (
+    query: string,
+    channel?: string,
+    isWholesale?: boolean
+): Promise<SearchSuggestionsResponse> => {
+    const cleanQ = query.trim().toLowerCase();
+    if (!cleanQ || cleanQ.length < 2) {
+        return {
+            success: true,
+            data: { categories: [], subcategories: [], products: [], brands: [] },
+        };
+    }
+
+    const channelKey = (channel || 'ALL').toUpperCase();
+    const modeKey = isWholesale ? 'ws' : 'rt';
+    const cacheKey = `search-sugg-v1-${cleanQ}-${channelKey}-${modeKey}`;
+
+    return apiCache.getOrFetch(
+        cacheKey,
+        async () => {
+            const params: any = { q: query.trim() };
+            if (channel && channel !== 'ALL') {
+                params.channel = channel;
+            }
+            if (isWholesale) {
+                params.isWholesale = 'true';
+            }
+            const response = await api.get<SearchSuggestionsResponse>('/customer/search/suggestions', {
+                params,
+            });
+            return response.data;
+        },
+        30 * 1000 // 30 seconds cache
+    );
+};
+
