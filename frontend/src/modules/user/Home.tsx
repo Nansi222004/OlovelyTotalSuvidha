@@ -131,16 +131,18 @@ export default function Home() {
           }),
         ]);
 
+        const extractProducts = (res: any): any[] => {
+          if (!res) return [];
+          if (Array.isArray(res.data)) return res.data;
+          if (res.data && Array.isArray(res.data.products)) return res.data.products;
+          if (Array.isArray(res.products)) return res.products;
+          return [];
+        };
+
         if (isMounted) {
-          if (qcRes.success && qcRes.data) {
-            setQcProducts(qcRes.data as any[]);
-          }
-          if (ecomRes.success && ecomRes.data) {
-            setEcomProducts(ecomRes.data as any[]);
-          }
-          if (wsRes.success && wsRes.data) {
-            setWholesaleProducts(wsRes.data as any[]);
-          }
+          setQcProducts(extractProducts(qcRes));
+          setEcomProducts(extractProducts(ecomRes));
+          setWholesaleProducts(extractProducts(wsRes));
         }
       } catch (e) {
         console.error('Error fetching channel products for home', e);

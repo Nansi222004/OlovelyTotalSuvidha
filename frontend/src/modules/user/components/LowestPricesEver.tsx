@@ -382,8 +382,13 @@ export default function LowestPricesEver({ activeTab = 'all', products: adminPro
       const fetchDiscountedProducts = async () => {
         try {
           const response = await getProducts({ limit: 50 });
-          if (response.success && response.data) {
-            const mappedProducts = (response.data as any[]).map(p => {
+          const rawList = Array.isArray(response?.data)
+            ? response.data
+            : (response?.data && Array.isArray((response.data as any).products))
+              ? (response.data as any).products
+              : [];
+          if (rawList.length > 0) {
+            const mappedProducts = rawList.map((p: any) => {
               let productName = p.productName || p.name || '';
               productName = productName.replace(/\s*-\s*(Fresh|Quality|Assured|Premium|Best|Top|Hygienic|Carefully|Selected).*$/i, '').trim();
 

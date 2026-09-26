@@ -33,6 +33,16 @@ export default function ChannelProductRow({
   const [startX, setStartX] = useState(0);
   const [scrollLeftState, setScrollLeftState] = useState(0);
 
+  // Safely extract product array regardless of what caller passes
+  const productList: any[] = React.useMemo(() => {
+    if (Array.isArray(products)) return products;
+    if (products && typeof products === 'object') {
+      if (Array.isArray((products as any).products)) return (products as any).products;
+      if (Array.isArray((products as any).data)) return (products as any).data;
+    }
+    return [];
+  }, [products]);
+
   // Check scroll boundary to show/hide arrows
   const checkScroll = () => {
     const el = scrollContainerRef.current;
@@ -51,7 +61,7 @@ export default function ChannelProductRow({
       el.removeEventListener('scroll', checkScroll);
       window.removeEventListener('resize', checkScroll);
     };
-  }, [products]);
+  }, [productList]);
 
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollContainerRef.current;
@@ -120,7 +130,7 @@ export default function ChannelProductRow({
   }
 
   // 2. Strict Empty State: Cleanly hide section if no products exist (Never show orphaned heading)
-  if (!products || products.length === 0) {
+  if (!productList || productList.length === 0) {
     return null;
   }
 
@@ -151,7 +161,7 @@ export default function ChannelProductRow({
             <span
               className={`hidden xs:inline-flex items-center text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-full border ${badgeColorClass}`}
             >
-              {products.length} {products.length === 1 ? 'item' : 'items'}
+              {productList.length} {productList.length === 1 ? 'item' : 'items'}
             </span>
           </div>
           {subtitle && (
@@ -218,7 +228,7 @@ export default function ChannelProductRow({
           }`}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          {products.map((product) => (
+          {productList.map((product) => (
             <div
               key={product.id || (product as any)._id}
               className="flex-shrink-0 w-[150px] xs:w-[165px] sm:w-[180px] md:w-[195px] lg:w-[210px] snap-start"

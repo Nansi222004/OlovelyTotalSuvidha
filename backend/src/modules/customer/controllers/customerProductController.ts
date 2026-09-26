@@ -204,19 +204,15 @@ export const getProducts = async (req: Request, res: Response) => {
     if (targetChannel === 'QUICK_COMMERCE' && !channelAvailability.quickCommerceEnabled) {
       return res.status(200).json({
         success: true,
-        data: {
-          products: [],
-          pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
-        },
+        data: [],
+        pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
       });
     }
     if (targetChannel === 'ECOMMERCE' && !channelAvailability.ecommerceEnabled) {
       return res.status(200).json({
         success: true,
-        data: {
-          products: [],
-          pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
-        },
+        data: [],
+        pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
       });
     }
 
