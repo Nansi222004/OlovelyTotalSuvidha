@@ -20,9 +20,10 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
   const customer = await Customer.findById(userId);
 
   if (!customer) {
-    return res.status(404).json({
+    return res.status(401).json({
       success: false,
-      message: "Customer not found",
+      code: "CUSTOMER_DELETED",
+      message: "Customer account is no longer available. Please log in again.",
     });
   }
 
@@ -125,9 +126,10 @@ export const updateLanguagePreference = asyncHandler(
     const customer = await Customer.findById(userId);
 
     if (!customer) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Customer not found",
+        code: "CUSTOMER_DELETED",
+        message: "Customer account is no longer available. Please log in again.",
       });
     }
 
@@ -163,9 +165,10 @@ export const updateProfile = asyncHandler(
     const customer = await Customer.findById(userId);
 
     if (!customer) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Customer not found",
+        code: "CUSTOMER_DELETED",
+        message: "Customer account is no longer available. Please log in again.",
       });
     }
 
@@ -271,9 +274,10 @@ export const updateLocation = asyncHandler(
     const customer = await Customer.findById(userId);
 
     if (!customer) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Customer not found",
+        code: "CUSTOMER_DELETED",
+        message: "Customer account is no longer available. Please log in again.",
       });
     }
 
@@ -322,9 +326,10 @@ export const getLocation = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (!customer) {
-    return res.status(404).json({
+    return res.status(401).json({
       success: false,
-      message: "Customer not found",
+      code: "CUSTOMER_DELETED",
+      message: "Customer account is no longer available. Please log in again.",
     });
   }
 

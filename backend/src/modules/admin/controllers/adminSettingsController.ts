@@ -1,6 +1,12 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import AppSettings from "../../../models/AppSettings";
+import {
+  getCommerceChannels,
+  validateChannelsState,
+  invalidateCommerceChannelCache,
+} from "../../../services/commerceChannelService";
+import { cache } from "../../../utils/cache";
 
 /**
  * Get app settings
@@ -17,6 +23,10 @@ export const getAppSettings = asyncHandler(
         estimatedDeliveryTime: "12-15 mins",
         contactEmail: "contact@olovely.com",
         contactPhone: "9876543210",
+        commerceChannels: {
+          quickCommerceEnabled: true,
+          ecommerceEnabled: true,
+        },
       });
     }
 
@@ -36,11 +46,36 @@ export const updateAppSettings = asyncHandler(
     const updateData = req.body;
     updateData.updatedBy = (req as any).user?.userId;
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[DEBUG Settings] Incoming update payload:`, JSON.stringify(updateData.deliveryConfig, null, 2));
-    }
-
     let settings = await AppSettings.findOne();
+
+    // ── COMMERCE CHANNELS INVARIANT VALIDATION ──────────────────────────────
+    // Check if commerceChannels update is present in payload (nested or flat)
+    const incomingChannels = updateData.commerceChannels || {
+      quickCommerceEnabled: updateData.quickCommerceEnabled,
+      ecommerceEnabled: updateData.ecommerceEnabled,
+    };
+
+    if (
+      incomingChannels.quickCommerceEnabled !== undefined ||
+      incomingChannels.ecommerceEnabled !== undefined
+    ) {
+      const currentChannels = {
+        quickCommerceEnabled: settings?.commerceChannels?.quickCommerceEnabled !== false,
+        ecommerceEnabled: settings?.commerceChannels?.ecommerceEnabled !== false,
+      };
+
+      const channelValidation = validateChannelsState(incomingChannels, currentChannels);
+      if (!channelValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: channelValidation.error || "At least one commerce channel must remain enabled.",
+        });
+      }
+
+      updateData.commerceChannels = channelValidation.finalState;
+      delete updateData.quickCommerceEnabled;
+      delete updateData.ecommerceEnabled;
+    }
 
     if (!settings) {
       settings = await AppSettings.create(updateData);
@@ -51,9 +86,9 @@ export const updateAppSettings = asyncHandler(
       });
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[DEBUG Settings] Updated settings:`, JSON.stringify(settings?.deliveryConfig, null, 2));
-    }
+    // Invalidate centralized channel cache and category cache immediately
+    invalidateCommerceChannelCache();
+    cache.clear();
 
     return res.status(200).json({
       success: true,
@@ -62,3 +97,4 @@ export const updateAppSettings = asyncHandler(
     });
   }
 );
+

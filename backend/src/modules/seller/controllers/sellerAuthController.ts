@@ -6,6 +6,7 @@ import {
 } from "../../../services/otpService";
 import { generateToken } from "../../../services/jwtService";
 import { asyncHandler } from "../../../utils/asyncHandler";
+import { isVendorTypeAllowed } from "../../../services/commerceChannelService";
 
 /**
  * Safe boolean parser to avoid JavaScript `Boolean("false") === true` trap.
@@ -156,6 +157,15 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     return res.status(400).json({
       success: false,
       message: "vendorType must be one of 'QUICK_COMMERCE', 'ECOMMERCE', 'HYBRID'",
+    });
+  }
+
+  // Authoritative global commerce channel validation
+  const vendorTypeCheck = await isVendorTypeAllowed(vendorType);
+  if (!vendorTypeCheck.allowed) {
+    return res.status(400).json({
+      success: false,
+      message: vendorTypeCheck.reason || `Vendor type ${vendorType} is currently unavailable.`,
     });
   }
 

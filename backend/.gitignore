@@ -70,4 +70,9 @@ cloudinary/
 # Test scripts and temporary audit files
 test/
 tests/
+*test*.md
+*audit*.md
+*report*.md
+!README.md
+
 

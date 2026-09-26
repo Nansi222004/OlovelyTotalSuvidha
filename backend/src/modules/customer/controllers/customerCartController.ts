@@ -13,6 +13,7 @@ import Seller from '../../../models/Seller';
 import { checkWholesaleEligibility, validateWholesalePrice } from '../../../utils/categoryChannelHelper';
 import { resolveAvailableStock } from '../../../utils/stockHelper';
 import { evaluateFirstOrderFreeShipping } from '../../../services/shipping/shippingPromotionService';
+import { getCommerceChannels } from '../../../services/commerceChannelService';
 
 // Helper to calculate item price matching frontend logic
 const calculateItemPrice = (product: any, variationSelector: any) => {
@@ -136,6 +137,8 @@ const buildUnifiedCartResponse = async (
     const ecomItems: any[] = [];
     const unavailableItems: any[] = [];
 
+    const channelAvailability = await getCommerceChannels();
+
     let qcSubtotal = 0;
     let ecomSubtotal = 0;
 
@@ -197,10 +200,24 @@ const buildUnifiedCartResponse = async (
         };
 
         if (itemProductType === 'ECOMMERCE') {
+            if (!channelAvailability.ecommerceEnabled) {
+                unavailableItems.push({
+                    ...itemWithStock,
+                    unavailableReason: 'E-Commerce is currently unavailable. Please remove this item or try again later.',
+                });
+                continue;
+            }
             // Ecommerce items: NOT subject to local seller radius filtering!
             ecomItems.push(itemWithStock);
             ecomSubtotal += itemTotal;
         } else {
+            if (!channelAvailability.quickCommerceEnabled) {
+                unavailableItems.push({
+                    ...itemWithStock,
+                    unavailableReason: 'Quick Commerce is currently unavailable. Please remove this item or try again later.',
+                });
+                continue;
+            }
             // Quick Commerce items: requires seller range check if location is known
             if (!hasValidLocation) {
                 qcItems.push(itemWithStock);
@@ -430,6 +447,21 @@ export const addToCart = async (req: Request, res: Response) => {
             .populate('category');
         if (!product) {
             return res.status(404).json({ success: false, message: 'Product not found or unavailable' });
+        }
+
+        const channelAvailability = await getCommerceChannels();
+        const prodType = product.productType || 'QUICK_COMMERCE';
+        if (prodType === 'QUICK_COMMERCE' && !channelAvailability.quickCommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'Quick Commerce is currently unavailable.',
+            });
+        }
+        if (prodType === 'ECOMMERCE' && !channelAvailability.ecommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'E-Commerce is currently unavailable.',
+            });
         }
 
         // ── WHOLESALE ELIGIBILITY GATE ─────────────────────────────────────────
@@ -763,6 +795,20 @@ export const updateCartItem = async (req: Request, res: Response) => {
 
         const product = cartItem.product as any;
         const isEcommerceProduct = cartItem.productType === 'ECOMMERCE' || product?.productType === 'ECOMMERCE';
+
+        const channelAvailability = await getCommerceChannels();
+        if (isEcommerceProduct && !channelAvailability.ecommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'E-Commerce is currently unavailable. Please remove this item or try again later.',
+            });
+        }
+        if (!isEcommerceProduct && !channelAvailability.quickCommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'Quick Commerce is currently unavailable. Please remove this item or try again later.',
+            });
+        }
 
         // Parse location
         const userLat = latitude ? parseFloat(latitude as string) : null;

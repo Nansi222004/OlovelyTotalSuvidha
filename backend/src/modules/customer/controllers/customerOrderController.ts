@@ -30,6 +30,7 @@ import {
   atomicallyClaimFirstOrderFreeShipping,
   releaseFirstOrderFreeShippingClaim,
 } from "../../../services/shipping/shippingPromotionService";
+import { getCommerceChannels } from "../../../services/commerceChannelService";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -114,9 +115,10 @@ export const createOrder = async (req: Request, res: Response) => {
     const customer = await Customer.findById(userId);
     if (!customer) {
       if (session) await session.abortTransaction();
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Customer not found",
+        code: "CUSTOMER_DELETED",
+        message: "Customer account is no longer available. Please log in again.",
       });
     }
 
@@ -145,6 +147,23 @@ export const createOrder = async (req: Request, res: Response) => {
       determinedOrderType = 'ECOMMERCE';
     } else {
       determinedOrderType = 'QUICK_COMMERCE';
+    }
+
+    // ── GLOBAL COMMERCE CHANNEL AVAILABILITY ENFORCEMENT ───────────────────────
+    const channelSettings = await getCommerceChannels({ bypassCache: true });
+    if (hasQC && !channelSettings.quickCommerceEnabled) {
+      if (session) await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Quick Commerce is currently unavailable. Please try again later.",
+      });
+    }
+    if (hasEcom && !channelSettings.ecommerceEnabled) {
+      if (session) await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "E-Commerce is currently unavailable. Please try again later.",
+      });
     }
 
     // ── AUTHORITATIVE DELIVERY OPTION VALIDATION (Section 6) ───────────────────
@@ -1364,6 +1383,11 @@ export const getMyOrders = async (req: Request, res: Response) => {
           : 'QUICK_COMMERCE'
       );
 
+      const isDeliveredOrCompleted = ["Delivered", "Completed"].includes(orderObj.status);
+      const isPaymentCompleted = orderObj.paymentStatus === "Paid" || (orderObj.paymentMethod === "COD" && isDeliveredOrCompleted);
+      const hasRequiredInvoiceData = Boolean(orderObj._id && orderObj.items && orderObj.items.length > 0 && orderObj.total != null);
+      const invoiceEnabled = orderObj.invoiceEnabled === true || (isDeliveredOrCompleted && isPaymentCompleted && hasRequiredInvoiceData);
+
       return {
         ...orderObj,
         orderType: inferredOrderType,
@@ -1375,6 +1399,12 @@ export const getMyOrders = async (req: Request, res: Response) => {
           platformFee: orderObj.platformFee || 0,
           deliveryFee: orderObj.shipping || 0,
         },
+        firstOrderFreeShippingApplied: Boolean(orderObj.firstOrderFreeShippingApplied),
+        normalShippingAmount: orderObj.normalShippingAmount ?? (orderObj.shipping || 0),
+        shippingDiscount: orderObj.shippingDiscount ?? 0,
+        // Invoice enablement and number
+        invoiceEnabled,
+        invoiceNumber: orderObj.invoiceNumber || (invoiceEnabled ? `INV-${orderObj.orderNumber || orderObj._id.toString().slice(-8).toUpperCase()}` : undefined),
         // Keep original fields for backward compatibility
         subtotal: orderObj.subtotal,
         address: orderObj.deliveryAddress,
@@ -1523,6 +1553,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       address: orderObj.deliveryAddress,
       // Strict business rule for invoice enablement
       invoiceEnabled,
+      invoiceNumber: orderObj.invoiceNumber || (invoiceEnabled ? `INV-${orderObj.orderNumber || orderObj._id.toString().slice(-8).toUpperCase()}` : undefined),
       // Include saved instructions / requests for read-only post-delivery display
       deliveryInstructions: orderObj.deliveryInstructions || (orderObj as any).instructions || "",
       specialRequests: orderObj.specialRequests || "",

@@ -1854,17 +1854,28 @@ export default function OrderDetail() {
           transition={{ delay: 0.85 }}>
           {order?.invoiceEnabled ? (
             <Link to={`/orders/${id}/invoice`} className="flex-1">
-              <Button className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white">
+              <Button className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white flex items-center justify-center gap-2">
+                <ReceiptIcon className="w-4 h-4" />
                 View Invoice
               </Button>
             </Link>
           ) : (
             <div className="flex-1">
               <Button
-                className="w-full bg-gray-400 cursor-not-allowed text-white"
+                className="w-full bg-gray-400 cursor-not-allowed text-white text-xs sm:text-sm font-medium"
                 disabled
-                title="Invoice will be available after delivery is completed">
-                Invoice Unavailable
+                title={
+                  order?.status === "Cancelled"
+                    ? "Invoice is unavailable for cancelled orders"
+                    : order?.status === "Delivered" || order?.status === "Completed"
+                    ? "Invoice will be available shortly"
+                    : "Invoice will be available after delivery is completed"
+                }>
+                {order?.status === "Cancelled"
+                  ? "Invoice Unavailable"
+                  : order?.status === "Delivered" || order?.status === "Completed"
+                  ? "Invoice Generating..."
+                  : "Invoice Available After Delivery"}
               </Button>
             </div>
           )}

@@ -79,6 +79,10 @@ export interface AppSettings {
   freeDeliveryThreshold?: number;
   minimumOrderValue?: number;
   firstOrderFreeShippingEnabled?: boolean;
+  commerceChannels?: {
+    quickCommerceEnabled?: boolean;
+    ecommerceEnabled?: boolean;
+  };
   deliveryConfig?: {
     isDistanceBased: boolean;
     googleMapsKey?: string;

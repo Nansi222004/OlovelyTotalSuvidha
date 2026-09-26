@@ -5,12 +5,23 @@ import Product from "../../../models/Product";
 import HeaderCategory from "../../../models/HeaderCategory";
 import mongoose from "mongoose";
 import { cache } from "../../../utils/cache";
+import { getCommerceChannels } from "../../../services/commerceChannelService";
 
 // Get all categories (public) - with caching
 export const getCategories = async (_req: Request, res: Response) => {
   try {
     const channel = _req.query.channel as string;
-    const cacheKey = channel ? `customer-categories-list-v2-${channel}` : "customer-categories-list-v2";
+    const channels = await getCommerceChannels();
+
+    if (channel === "QUICK_COMMERCE" && !channels.quickCommerceEnabled) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+    if (channel === "ECOMMERCE" && !channels.ecommerceEnabled) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const stateKey = `qc${channels.quickCommerceEnabled ? 1 : 0}-ec${channels.ecommerceEnabled ? 1 : 0}`;
+    const cacheKey = channel ? `customer-categories-list-v2-${channel}-${stateKey}` : `customer-categories-list-v2-${stateKey}`;
 
     // Try cache first
     let categories = cache.get(cacheKey);
@@ -21,6 +32,12 @@ export const getCategories = async (_req: Request, res: Response) => {
       };
       if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
         filter.commerceChannels = { $in: [channel] };
+      } else {
+        if (!channels.quickCommerceEnabled) {
+          filter.commerceChannels = { $in: ["ECOMMERCE"] };
+        } else if (!channels.ecommerceEnabled) {
+          filter.commerceChannels = { $in: ["QUICK_COMMERCE"] };
+        }
       }
 
       categories = await Category.find(filter)
@@ -49,7 +66,23 @@ export const getCategories = async (_req: Request, res: Response) => {
 export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
   try {
     const channel = _req.query.channel as string;
-    const cacheKey = channel ? `customer-categories-tree-${channel}` : "customer-categories-tree";
+    const channels = await getCommerceChannels();
+
+    if (channel === "QUICK_COMMERCE" && !channels.quickCommerceEnabled) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+    if (channel === "ECOMMERCE" && !channels.ecommerceEnabled) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const isWholesaleMode =
+      (_req.query.isWholesale as string)?.toLowerCase() === "true" ||
+      (_req.query.wholesale as string)?.toLowerCase() === "true";
+
+    const stateKey = `qc${channels.quickCommerceEnabled ? 1 : 0}-ec${channels.ecommerceEnabled ? 1 : 0}`;
+    const cacheKey = channel
+      ? `customer-categories-tree-${channel}-${stateKey}${isWholesaleMode ? "-ws" : ""}`
+      : `customer-categories-tree-${stateKey}${isWholesaleMode ? "-ws" : ""}`;
 
     // Try cache first
     let categoriesWithSubs = cache.get(cacheKey);
@@ -64,6 +97,12 @@ export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
     const filter: any = { status: "Active" };
     if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
       filter.commerceChannels = { $in: [channel] };
+    } else {
+      if (!channels.quickCommerceEnabled) {
+        filter.commerceChannels = { $in: ["ECOMMERCE"] };
+      } else if (!channels.ecommerceEnabled) {
+        filter.commerceChannels = { $in: ["QUICK_COMMERCE"] };
+      }
     }
 
     const categories = await Category.find(filter)
@@ -71,10 +110,6 @@ export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
       .lean();
 
     // Build product count maps to filter categories/subcategories that actually have products
-    const isWholesaleMode =
-      (_req.query.isWholesale as string)?.toLowerCase() === "true" ||
-      (_req.query.wholesale as string)?.toLowerCase() === "true";
-
     const activeProductMatch: any = {
       status: "Active",
       publish: true,
@@ -82,6 +117,12 @@ export const getCategoriesWithSubs = async (_req: Request, res: Response) => {
     };
     if (channel && (channel === "QUICK_COMMERCE" || channel === "ECOMMERCE")) {
       activeProductMatch.productType = channel;
+    } else {
+      if (!channels.quickCommerceEnabled) {
+        activeProductMatch.productType = "ECOMMERCE";
+      } else if (!channels.ecommerceEnabled) {
+        activeProductMatch.productType = "QUICK_COMMERCE";
+      }
     }
 
     const [categoryCounts, subcategoryCounts] = await Promise.all([
@@ -378,11 +419,18 @@ export const getCategoryById = async (req: Request, res: Response) => {
       }
 
       if (headerCat) {
-        // Find child categories for this header category
-        const childCategories = await Category.find({
+        const childCatFilter: any = {
           headerCategoryId: headerCat._id,
           status: "Active",
-        })
+        };
+        const channels = await getCommerceChannels();
+        if (!channels.quickCommerceEnabled) {
+          childCatFilter.commerceChannels = { $in: ["ECOMMERCE"] };
+        } else if (!channels.ecommerceEnabled) {
+          childCatFilter.commerceChannels = { $in: ["QUICK_COMMERCE"] };
+        }
+
+        const childCategories = await Category.find(childCatFilter)
           .select("name image order slug icon translations commerceChannels")
           .sort({ order: 1 })
           .lean();
@@ -431,6 +479,23 @@ export const getCategoryById = async (req: Request, res: Response) => {
         return res.status(404).json({
           success: false,
           message: `Category not found: ${id}`,
+        });
+      }
+    }
+
+    const channels = await getCommerceChannels();
+    const catChannels: string[] = category.commerceChannels || [];
+    if (catChannels.length > 0) {
+      if (!channels.quickCommerceEnabled && catChannels.length === 1 && catChannels[0] === "QUICK_COMMERCE") {
+        return res.status(404).json({
+          success: false,
+          message: "This category is currently unavailable as Quick Commerce is disabled",
+        });
+      }
+      if (!channels.ecommerceEnabled && catChannels.length === 1 && catChannels[0] === "ECOMMERCE") {
+        return res.status(404).json({
+          success: false,
+          message: "This category is currently unavailable as E-Commerce is disabled",
         });
       }
     }

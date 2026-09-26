@@ -16,7 +16,7 @@ declare global {
 /**
  * Authenticate user by verifying JWT token
  */
-export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -33,6 +33,33 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     try {
       const decoded = verifyToken(token);
       req.user = decoded;
+
+      // Customer session validation:
+      // If an authenticated customer token is presented, verify the customer record still exists in DB.
+      // If deleted by Admin from the database, reject immediately with CUSTOMER_DELETED so the client
+      // can gracefully clear session and redirect to Login instead of leaving a phantom session active.
+      if (decoded.userType === 'Customer' && decoded.userId) {
+        if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
+          res.status(401).json({
+            success: false,
+            code: 'CUSTOMER_DELETED',
+            message: 'Customer account is no longer available. Please log in again.',
+          });
+          return;
+        }
+
+        const Customer = (await import('../models/Customer')).default;
+        const customerExists = await Customer.exists({ _id: decoded.userId });
+        if (!customerExists) {
+          res.status(401).json({
+            success: false,
+            code: 'CUSTOMER_DELETED',
+            message: 'Customer account is no longer available. Please log in again.',
+          });
+          return;
+        }
+      }
+
       next();
     } catch (error: any) {
       res.status(401).json({

@@ -227,6 +227,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, user?.userType]);
 
+  // Clean up cart state on customer logout
+  useEffect(() => {
+    const handleCustomerLoggedOut = () => {
+      setItems([]);
+      setCartGroups(undefined);
+      setEstimatedFee(undefined);
+      setQcDeliveryFee(undefined);
+      setEcomShippingFee(undefined);
+      localStorage.removeItem(CART_STORAGE_KEY);
+    };
+
+    window.addEventListener('olovely:customer-logged-out', handleCustomerLoggedOut);
+    return () => {
+      window.removeEventListener('olovely:customer-logged-out', handleCustomerLoggedOut);
+    };
+  }, []);
+
   // Load cart on auth change
   useEffect(() => {
     if (isAuthenticated && user?.userType === 'Customer') {

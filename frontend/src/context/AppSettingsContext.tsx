@@ -57,6 +57,10 @@ export interface AppSettingsData {
     lowStockThreshold?: number;
     lowStockDisplayQuantity?: number;
   };
+  commerceChannels?: {
+    quickCommerceEnabled?: boolean;
+    ecommerceEnabled?: boolean;
+  };
 }
 
 interface AppSettingsContextType {
@@ -90,6 +94,10 @@ const defaultSettings: AppSettingsData = {
     lowStockThreshold: 10,
     lowStockDisplayQuantity: 2,
   },
+  commerceChannels: {
+    quickCommerceEnabled: true,
+    ecommerceEnabled: true,
+  },
 };
 
 const AppSettingsContext = createContext<AppSettingsContextType>({
@@ -114,6 +122,7 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
           estimatedDeliveryTime: response.data.data.estimatedDeliveryTime || prev.estimatedDeliveryTime,
           wholesaleSettings: response.data.data.wholesaleSettings || prev.wholesaleSettings,
           inventorySettings: response.data.data.inventorySettings || prev.inventorySettings,
+          commerceChannels: response.data.data.commerceChannels || prev.commerceChannels,
         }));
       }
     } catch (error) {

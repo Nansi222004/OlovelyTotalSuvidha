@@ -61,6 +61,9 @@ export async function resolveAuthorizedSellerChannel(
     };
   }
 
+  const { getCommerceChannels } = await import("../services/commerceChannelService");
+  const globalChannels = await getCommerceChannels();
+
   if (requestedChannel && !["QUICK_COMMERCE", "ECOMMERCE"].includes(requestedChannel)) {
     return {
       error: "Channel must be either 'QUICK_COMMERCE' or 'ECOMMERCE'",
@@ -68,7 +71,27 @@ export async function resolveAuthorizedSellerChannel(
     };
   }
 
+  // Reject explicitly requested channels that are globally disabled
+  if (requestedChannel === "QUICK_COMMERCE" && !globalChannels.quickCommerceEnabled) {
+    return {
+      error: "Quick Commerce is currently disabled globally",
+      statusCode: 403,
+    };
+  }
+  if (requestedChannel === "ECOMMERCE" && !globalChannels.ecommerceEnabled) {
+    return {
+      error: "E-Commerce is currently disabled globally",
+      statusCode: 403,
+    };
+  }
+
   if (vendorType === "QUICK_COMMERCE") {
+    if (!globalChannels.quickCommerceEnabled) {
+      return {
+        error: "Quick Commerce is currently disabled globally",
+        statusCode: 403,
+      };
+    }
     if (requestedChannel && requestedChannel === "ECOMMERCE") {
       return {
         error: "QUICK_COMMERCE seller is not authorized to access ECOMMERCE channel",
@@ -89,6 +112,12 @@ export async function resolveAuthorizedSellerChannel(
   }
 
   if (vendorType === "ECOMMERCE") {
+    if (!globalChannels.ecommerceEnabled) {
+      return {
+        error: "E-Commerce is currently disabled globally",
+        statusCode: 403,
+      };
+    }
     if (requestedChannel && requestedChannel === "QUICK_COMMERCE") {
       return {
         error: "ECOMMERCE seller is not authorized to access QUICK_COMMERCE channel",
@@ -109,8 +138,16 @@ export async function resolveAuthorizedSellerChannel(
   }
 
   if (vendorType === "HYBRID") {
-    const active =
-      requestedChannel === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE";
+    let active: "QUICK_COMMERCE" | "ECOMMERCE";
+    if (requestedChannel === "ECOMMERCE") {
+      active = "ECOMMERCE";
+    } else if (requestedChannel === "QUICK_COMMERCE") {
+      active = "QUICK_COMMERCE";
+    } else {
+      // Default to the globally enabled channel
+      active = globalChannels.quickCommerceEnabled ? "QUICK_COMMERCE" : "ECOMMERCE";
+    }
+
     return {
       data: {
         seller,

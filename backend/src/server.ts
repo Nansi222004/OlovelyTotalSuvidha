@@ -13,7 +13,7 @@ import { initializeSocket } from "./socket/socketService";
 import { initializeFirebaseAdmin } from "./services/firebaseAdmin";
 
 // Load environment variables - reloaded for Phase 2
-// Reload timestamp: 2026-09-17T11:31:00
+// Reload timestamp: 2026-09-26T12:58:30
 dotenv.config();
 
 // Server Instance
@@ -189,5 +189,4 @@ startServer().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-// Reload trigger notify-vendor-ready 2026-09-22
-
+// Reload trigger hybrid-all-categories-reload 2026-09-26-11:49

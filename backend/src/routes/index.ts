@@ -68,6 +68,23 @@ router.get("/health", (_req, res) => {
   });
 });
 
+// Public global commerce channels availability endpoint
+router.get("/config/commerce-channels", async (_req, res) => {
+  try {
+    const { getCommerceChannels } = await import("../services/commerceChannelService");
+    const channels = await getCommerceChannels();
+    return res.status(200).json({
+      success: true,
+      data: channels,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch commerce channels",
+    });
+  }
+});
+
 // Public Language routes (languages list & UI translations)
 router.use("/languages", languageRoutes);
 

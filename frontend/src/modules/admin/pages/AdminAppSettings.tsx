@@ -27,7 +27,19 @@ export default function AdminAppSettings() {
     deliveryCharges: 0,
     platformFee: 2,
     freeDeliveryThreshold: 199,
+    commerceChannels: {
+      quickCommerceEnabled: true,
+      ecommerceEnabled: true,
+    },
   });
+
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    channel: 'QUICK_COMMERCE' | 'ECOMMERCE';
+    title: string;
+    message: string;
+  } | null>(null);
+  const [updatingChannel, setUpdatingChannel] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -60,6 +72,76 @@ export default function AdminAppSettings() {
     }));
     setSuccessMessage('');
     setErrorMessage('');
+  };
+
+  const handleToggleCommerceChannel = async (channelKey: 'quickCommerceEnabled' | 'ecommerceEnabled') => {
+    const currentQC = formData.commerceChannels?.quickCommerceEnabled !== false;
+    const currentEcom = formData.commerceChannels?.ecommerceEnabled !== false;
+
+    if (channelKey === 'quickCommerceEnabled') {
+      const willTurnOff = currentQC;
+      if (willTurnOff) {
+        if (!currentEcom) {
+          setErrorMessage('At least one commerce channel must remain enabled. You cannot disable Quick Commerce while E-Commerce is already disabled.');
+          return;
+        }
+        setConfirmModal({
+          isOpen: true,
+          channel: 'QUICK_COMMERCE',
+          title: 'Disable Quick Commerce?',
+          message: 'New Quick Commerce registrations, product listings, cart checkout, and new orders will be blocked. Existing orders will continue normally.',
+        });
+        return;
+      } else {
+        await applyChannelUpdate({ quickCommerceEnabled: true, ecommerceEnabled: currentEcom });
+      }
+    } else if (channelKey === 'ecommerceEnabled') {
+      const willTurnOff = currentEcom;
+      if (willTurnOff) {
+        if (!currentQC) {
+          setErrorMessage('At least one commerce channel must remain enabled. You cannot disable E-Commerce while Quick Commerce is already disabled.');
+          return;
+        }
+        setConfirmModal({
+          isOpen: true,
+          channel: 'ECOMMERCE',
+          title: 'Disable E-Commerce?',
+          message: 'New E-Commerce registrations, product listings, cart checkout, and new orders will be blocked. Existing orders will continue normally.',
+        });
+        return;
+      } else {
+        await applyChannelUpdate({ quickCommerceEnabled: currentQC, ecommerceEnabled: true });
+      }
+    }
+  };
+
+  const applyChannelUpdate = async (channels: { quickCommerceEnabled: boolean; ecommerceEnabled: boolean }) => {
+    try {
+      setUpdatingChannel(true);
+      setErrorMessage('');
+      setSuccessMessage('');
+
+      const res = await updateAppSettings({
+        commerceChannels: channels,
+      });
+
+      if (res && res.success) {
+        setFormData((prev) => ({
+          ...prev,
+          commerceChannels: channels,
+        }));
+        setSuccessMessage('Commerce channel availability updated successfully!');
+        window.dispatchEvent(new CustomEvent('appSettingsUpdated'));
+      } else {
+        setErrorMessage(res?.message || 'Failed to update channel availability');
+      }
+    } catch (err: any) {
+      console.error('Failed to update commerce channels:', err);
+      setErrorMessage(err.response?.data?.message || 'Failed to update commerce channel settings');
+    } finally {
+      setUpdatingChannel(false);
+      setConfirmModal(null);
+    }
   };
 
   const handleToggleFirstOrderFreeShipping = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +197,14 @@ export default function AdminAppSettings() {
       setSaving(true);
       setSuccessMessage('');
       setErrorMessage('');
+
+      const qc = formData.commerceChannels?.quickCommerceEnabled !== false;
+      const ecom = formData.commerceChannels?.ecommerceEnabled !== false;
+      if (!qc && !ecom) {
+        setErrorMessage('At least one commerce channel must remain enabled.');
+        setSaving(false);
+        return;
+      }
 
       const res = await updateAppSettings(formData);
       if (res && res.success) {
@@ -208,6 +298,91 @@ export default function AdminAppSettings() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* COMMERCE CHANNELS CARD */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6 space-y-4">
+          <div className="border-b border-neutral-100 pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-800 flex items-center gap-2">
+                <span>COMMERCE CHANNELS</span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                  Global Availability
+                </span>
+              </h2>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Control global availability of Quick Commerce and E-Commerce. At least one commerce channel must remain enabled.
+              </p>
+            </div>
+            <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 flex items-center gap-1.5 self-start sm:self-auto">
+              <span>⚠️</span>
+              <span>At least one channel must always remain enabled.</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            {/* Quick Commerce */}
+            <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-4 transition-all hover:bg-white hover:shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-neutral-800 flex items-center gap-1.5">
+                    <span>⚡</span> Quick Commerce
+                  </span>
+                  <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${
+                    (formData.commerceChannels?.quickCommerceEnabled !== false)
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {(formData.commerceChannels?.quickCommerceEnabled !== false) ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 font-medium">Local / Hyperlocal Delivery (10–30 min delivery radius)</p>
+                <p className="text-[11px] text-neutral-400">Controls instant local rider delivery fulfillment.</p>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={formData.commerceChannels?.quickCommerceEnabled !== false}
+                  onChange={() => handleToggleCommerceChannel('quickCommerceEnabled')}
+                  disabled={updatingChannel}
+                  className="sr-only peer"
+                />
+                <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+            </div>
+
+            {/* E-Commerce */}
+            <div className="p-4 rounded-xl border border-neutral-200 bg-neutral-50 flex items-center justify-between gap-4 transition-all hover:bg-white hover:shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-neutral-800 flex items-center gap-1.5">
+                    <span>📦</span> E-Commerce
+                  </span>
+                  <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${
+                    (formData.commerceChannels?.ecommerceEnabled !== false)
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {(formData.commerceChannels?.ecommerceEnabled !== false) ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 font-medium">Courier / Shipping Delivery across serviceable pincodes</p>
+                <p className="text-[11px] text-neutral-400">Controls standard courier shipping (Shiprocket).</p>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={formData.commerceChannels?.ecommerceEnabled !== false}
+                  onChange={() => handleToggleCommerceChannel('ecommerceEnabled')}
+                  disabled={updatingChannel}
+                  className="sr-only peer"
+                />
+                <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+            </div>
+          </div>
+        </div>
+
         {/* Card 1: Brand & Logo */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6 space-y-6">
           <div className="border-b border-neutral-100 pb-3">
@@ -673,6 +848,61 @@ export default function AdminAppSettings() {
           </button>
         </div>
       </form>
+
+      {/* Confirmation Modal for Disabling a Channel */}
+      {confirmModal?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900">{confirmModal.title}</h3>
+            </div>
+
+            <p className="text-sm text-neutral-600 leading-relaxed">
+              {confirmModal.message}
+            </p>
+
+            <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 text-xs text-neutral-500">
+              ℹ️ Existing customer orders already placed will continue fulfillment normally without interruption.
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                disabled={updatingChannel}
+                className="px-4 py-2 border border-neutral-300 rounded-lg text-sm font-semibold text-neutral-700 hover:bg-neutral-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmModal.channel === 'QUICK_COMMERCE') {
+                    applyChannelUpdate({
+                      quickCommerceEnabled: false,
+                      ecommerceEnabled: formData.commerceChannels?.ecommerceEnabled !== false,
+                    });
+                  } else {
+                    applyChannelUpdate({
+                      quickCommerceEnabled: formData.commerceChannels?.quickCommerceEnabled !== false,
+                      ecommerceEnabled: false,
+                    });
+                  }
+                }}
+                disabled={updatingChannel}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                {updatingChannel ? 'Updating...' : `Disable ${confirmModal.channel === 'QUICK_COMMERCE' ? 'Quick Commerce' : 'E-Commerce'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -73,20 +73,32 @@ export function isProductTypeAllowedForCategory(
   categoryChannels: CommerceChannel[] | undefined | null,
   productType: 'QUICK_COMMERCE' | 'ECOMMERCE'
 ): { allowed: boolean; error?: string } {
-  // Safe default: if category channels not yet defined, allow both for legacy safety
-  const channels = categoryChannels && categoryChannels.length > 0
-    ? categoryChannels
-    : (['QUICK_COMMERCE', 'ECOMMERCE'] as CommerceChannel[]);
+  // Category commerceChannels is authoritative: missing, empty, or invalid must be rejected
+  if (!categoryChannels || !Array.isArray(categoryChannels) || categoryChannels.length === 0) {
+    return {
+      allowed: false,
+      error: "Selected category has no commerce channels configured. Please contact administrator.",
+    };
+  }
 
-  const isAllowed = channels.includes(productType);
+  for (const ch of categoryChannels) {
+    if (ch !== 'QUICK_COMMERCE' && ch !== 'ECOMMERCE') {
+      return {
+        allowed: false,
+        error: `Selected category has invalid commerce channel configuration: "${ch}".`,
+      };
+    }
+  }
+
+  const isAllowed = categoryChannels.includes(productType);
   if (!isAllowed) {
-    if (channels.length === 1 && channels[0] === 'QUICK_COMMERCE') {
+    if (categoryChannels.length === 1 && categoryChannels[0] === 'QUICK_COMMERCE') {
       return {
         allowed: false,
         error: "This category is available only for Quick Commerce.",
       };
     }
-    if (channels.length === 1 && channels[0] === 'ECOMMERCE') {
+    if (categoryChannels.length === 1 && categoryChannels[0] === 'ECOMMERCE') {
       return {
         allowed: false,
         error: "This category is available only for Ecommerce.",
@@ -106,15 +118,24 @@ export interface ProductChannelCompatibilityParams {
   productType: 'QUICK_COMMERCE' | 'ECOMMERCE' | string;
   categoryChannels?: CommerceChannel[] | null;
   categoryName?: string;
+  channelAvailability?: { quickCommerceEnabled: boolean; ecommerceEnabled: boolean };
+  isExistingProductMaintenance?: boolean;
 }
 
 /**
- * Authoritative common validator for Seller vendorType + Product productType + Category commerceChannels.
+ * Authoritative common validator for Seller vendorType + Product productType + Category commerceChannels + Global Channel Availability.
  */
 export function validateProductChannelCompatibility(
   params: ProductChannelCompatibilityParams
 ): { valid: boolean; error?: string } {
-  const { sellerVendorType, productType, categoryChannels, categoryName } = params;
+  const {
+    sellerVendorType,
+    productType,
+    categoryChannels,
+    categoryName,
+    channelAvailability,
+    isExistingProductMaintenance,
+  } = params;
 
   // 1. Validate productType format
   if (productType !== 'QUICK_COMMERCE' && productType !== 'ECOMMERCE') {
@@ -124,7 +145,24 @@ export function validateProductChannelCompatibility(
     };
   }
 
-  // 2. Validate against seller vendorType
+  // 2. Validate against global commerce channel availability
+  // Normal maintenance of existing products does not re-validate global availability unless the product is being newly assigned to a channel
+  if (channelAvailability && !isExistingProductMaintenance) {
+    if (productType === 'QUICK_COMMERCE' && channelAvailability.quickCommerceEnabled === false) {
+      return {
+        valid: false,
+        error: "Quick Commerce is currently unavailable.",
+      };
+    }
+    if (productType === 'ECOMMERCE' && channelAvailability.ecommerceEnabled === false) {
+      return {
+        valid: false,
+        error: "E-Commerce is currently unavailable.",
+      };
+    }
+  }
+
+  // 3. Validate against seller vendorType
   if (sellerVendorType === 'ECOMMERCE' && productType === 'QUICK_COMMERCE') {
     return {
       valid: false,

@@ -9,6 +9,7 @@ import React, {
 import { useAuth } from "./AuthContext";
 import { getSellerProfile } from "../services/api/auth/sellerAuthService";
 import { invalidateCategoryCache } from "../services/api/categoryService";
+import { useAppSettings } from "./AppSettingsContext";
 
 export type SellerChannel = "QUICK_COMMERCE" | "ECOMMERCE";
 
@@ -35,6 +36,10 @@ function getSellerStorageKey(sellerId?: string): string | null {
 export function SellerChannelProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const sellerId = user?.id || (user as any)?._id;
+  const { settings } = useAppSettings();
+
+  const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
+  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
 
   const [vendorType, setVendorType] = useState<
     "QUICK_COMMERCE" | "ECOMMERCE" | "HYBRID" | undefined
@@ -68,13 +73,15 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
   const isEcommerceOnly = vendorType === "ECOMMERCE";
   const isLegacy = !vendorType;
 
-  // Compute active channel state strictly tied to current sellerId
+  // Compute active channel state strictly tied to current sellerId and global availability
   const [activeChannel, setActiveChannelState] = useState<
     SellerChannel | undefined
   >(() => {
     if (vendorType === "QUICK_COMMERCE") return "QUICK_COMMERCE";
     if (vendorType === "ECOMMERCE") return "ECOMMERCE";
     if (vendorType === "HYBRID") {
+      if (!qcEnabled && ecomEnabled) return "ECOMMERCE";
+      if (!ecomEnabled && qcEnabled) return "QUICK_COMMERCE";
       const key = getSellerStorageKey(sellerId);
       if (key && typeof window !== "undefined") {
         const stored = localStorage.getItem(key);
@@ -87,13 +94,22 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
     return undefined; // Legacy sellers have no active channel configured
   });
 
-  // Keep activeChannel synchronized when seller or vendorType transitions
+  // Keep activeChannel synchronized when seller, vendorType, or global channel availability transitions
   useEffect(() => {
     if (isQuickCommerceOnly) {
       setActiveChannelState("QUICK_COMMERCE");
     } else if (isEcommerceOnly) {
       setActiveChannelState("ECOMMERCE");
     } else if (isHybrid) {
+      // If only one channel is globally enabled, HYBRID must operate in the enabled channel
+      if (!qcEnabled && ecomEnabled) {
+        setActiveChannelState("ECOMMERCE");
+        return;
+      }
+      if (!ecomEnabled && qcEnabled) {
+        setActiveChannelState("QUICK_COMMERCE");
+        return;
+      }
       const key = getSellerStorageKey(sellerId);
       let nextChannel: SellerChannel = "QUICK_COMMERCE";
       if (key && typeof window !== "undefined") {
@@ -106,7 +122,7 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
     } else {
       setActiveChannelState(undefined); // Legacy
     }
-  }, [sellerId, vendorType, isHybrid, isQuickCommerceOnly, isEcommerceOnly]);
+  }, [sellerId, vendorType, isHybrid, isQuickCommerceOnly, isEcommerceOnly, qcEnabled, ecomEnabled]);
 
   const setActiveChannel = useCallback(
     (channel: SellerChannel) => {
@@ -116,6 +132,14 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
         );
         return;
       }
+      if (channel === "QUICK_COMMERCE" && !qcEnabled) {
+        console.warn("Quick Commerce is globally disabled");
+        return;
+      }
+      if (channel === "ECOMMERCE" && !ecomEnabled) {
+        console.warn("E-Commerce is globally disabled");
+        return;
+      }
       setActiveChannelState(channel);
       const key = getSellerStorageKey(sellerId);
       if (key && typeof window !== "undefined") {
@@ -123,7 +147,7 @@ export function SellerChannelProvider({ children }: { children: ReactNode }) {
       }
       invalidateCategoryCache();
     },
-    [isHybrid, sellerId]
+    [isHybrid, sellerId, qcEnabled, ecomEnabled]
   );
 
   return (

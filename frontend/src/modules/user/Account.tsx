@@ -116,10 +116,17 @@ export default function Account() {
         ) {
           return;
         }
-        setError(err.response?.data?.message || 'Failed to load profile');
-        if (err.response?.status === 401) {
+        const status = err.response?.status;
+        const code = err.response?.data?.code;
+
+        if (status === 401 || code === 'CUSTOMER_DELETED') {
+          // Customer account was deleted or invalidated - terminate session cleanly
           authLogout();
+          navigate('/login', { replace: true });
+          return;
         }
+
+        setError(err.response?.data?.message || 'Failed to load profile');
       } finally {
         if (inFlightAbortRef.current === abortController) {
           inFlightAbortRef.current = null;

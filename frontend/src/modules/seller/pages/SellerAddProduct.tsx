@@ -863,76 +863,79 @@ export default function SellerAddProduct() {
             </div>
             <div className="p-4 sm:p-6 space-y-4">
               {/* Commerce Channel / Product Type Selection */}
-              <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+              <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200" id="section-commerce-channel">
                 <label className="block text-xs font-semibold text-neutral-600 uppercase tracking-wider mb-2">
                   Commerce Channel / Fulfillment Mode
                 </label>
-                {sellerVendorType === "HYBRID" ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      disabled={isCategoryEcommerceOnly}
-                      onClick={() => setFormData(prev => ({ ...prev, productType: "QUICK_COMMERCE" }))}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        isCategoryEcommerceOnly
-                          ? "opacity-40 cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400"
-                          : formData.productType === "QUICK_COMMERCE"
-                          ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
-                          : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
-                      }`}
-                    >
-                      <div className="text-sm flex items-center gap-1.5">
-                        ⚡ Quick Commerce
-                        {isCategoryEcommerceOnly && (
-                          <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.5 rounded">Category is Ecom only</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-0.5">Hyperlocal local delivery (10–30 mins)</div>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isCategoryQuickCommerceOnly}
-                      onClick={() => setFormData(prev => ({ ...prev, productType: "ECOMMERCE" }))}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        isCategoryQuickCommerceOnly
-                          ? "opacity-40 cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400"
-                          : formData.productType === "ECOMMERCE"
-                          ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
-                          : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
-                      }`}
-                    >
-                      <div className="text-sm flex items-center gap-1.5">
-                        📦 Ecommerce
-                        {isCategoryQuickCommerceOnly && (
-                          <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">Category is QC only</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-0.5">Courier shipping nationwide (3–7 days)</div>
-                    </button>
+                {!formData.category || !selectedCategory ? (
+                  <div className="p-3 bg-white rounded-lg border border-dashed border-neutral-300 text-neutral-600 text-sm flex items-center gap-2">
+                    <span className="text-teal-600">ℹ️</span>
+                    <span>Select a category to see available commerce channels.</span>
                   </div>
-                ) : (
+                ) : isCategoryQuickCommerceOnly ? (
                   <div className="space-y-2">
-                    <div className="text-sm font-medium text-neutral-800 flex items-center gap-2">
-                      {formData.productType === "ECOMMERCE" ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg">
-                          📦 Ecommerce (Courier Shipping)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-900 border border-teal-200 rounded-lg">
-                          ⚡ Quick Commerce (Hyperlocal Delivery)
-                        </span>
-                      )}
+                    <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-teal-50 text-teal-900 border border-teal-300 rounded-lg font-semibold text-sm">
+                      <span>⚡</span>
+                      <span>Quick Commerce</span>
+                      <span className="text-[11px] font-normal text-teal-700 bg-teal-100 px-2 py-0.5 rounded">Hyperlocal delivery (10–30 mins)</span>
                     </div>
-                    {sellerVendorType === "QUICK_COMMERCE" && isCategoryEcommerceOnly && (
-                      <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                        ⚠️ This category is only available for Ecommerce, but your seller account is Quick Commerce only.
-                      </div>
-                    )}
-                    {sellerVendorType === "ECOMMERCE" && isCategoryQuickCommerceOnly && (
+                    {sellerVendorType === "ECOMMERCE" && (
                       <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
                         ⚠️ This category is only available for Quick Commerce, but your seller account is Ecommerce only.
                       </div>
                     )}
+                  </div>
+                ) : isCategoryEcommerceOnly ? (
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-300 rounded-lg font-semibold text-sm">
+                      <span>📦</span>
+                      <span>E-commerce</span>
+                      <span className="text-[11px] font-normal text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Courier shipping nationwide (3–7 days)</span>
+                    </div>
+                    {sellerVendorType === "QUICK_COMMERCE" && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        ⚠️ This category is only available for Ecommerce, but your seller account is Quick Commerce only.
+                      </div>
+                    )}
+                  </div>
+                ) : selectedCategory.commerceChannels?.length === 2 &&
+                  selectedCategory.commerceChannels.includes("QUICK_COMMERCE") &&
+                  selectedCategory.commerceChannels.includes("ECOMMERCE") ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        id="btn-channel-qc"
+                        disabled={sellerVendorType === "ECOMMERCE"}
+                        onClick={() => setFormData(prev => ({ ...prev, productType: "QUICK_COMMERCE" }))}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          formData.productType === "QUICK_COMMERCE"
+                            ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
+                            : "border-neutral-200 hover:border-neutral-300 text-neutral-600 bg-white"
+                        } ${sellerVendorType === "ECOMMERCE" ? "opacity-40 cursor-not-allowed" : ""}`}
+                      >
+                        <div className="text-sm flex items-center gap-1.5 font-medium">⚡ Quick Commerce</div>
+                        <div className="text-xs text-neutral-500 mt-0.5">Hyperlocal delivery (10–30 mins)</div>
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-channel-ecom"
+                        disabled={sellerVendorType === "QUICK_COMMERCE"}
+                        onClick={() => setFormData(prev => ({ ...prev, productType: "ECOMMERCE" }))}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          formData.productType === "ECOMMERCE"
+                            ? "border-teal-500 bg-teal-50 text-teal-900 ring-2 ring-teal-200 font-semibold"
+                            : "border-neutral-200 hover:border-neutral-300 text-neutral-600 bg-white"
+                        } ${sellerVendorType === "QUICK_COMMERCE" ? "opacity-40 cursor-not-allowed" : ""}`}
+                      >
+                        <div className="text-sm flex items-center gap-1.5 font-medium">📦 E-commerce</div>
+                        <div className="text-xs text-neutral-500 mt-0.5">Courier shipping nationwide (3–7 days)</div>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-red-700 text-xs">
+                    ⚠️ Selected category has no commerce channels configured. Please contact administrator.
                   </div>
                 )}
               </div>

@@ -9,6 +9,7 @@ import { findSellersWithinRange } from "../../../utils/locationHelper";
 import AppSettings from "../../../models/AppSettings";
 import { checkWholesaleEligibility } from "../../../utils/categoryChannelHelper";
 import { SLUG_ALIASES } from "./customerCategoryController";
+import { getCommerceChannels } from "../../../services/commerceChannelService";
 
 // Get products with filtering options (public)
 export const getProducts = async (req: Request, res: Response) => {
@@ -197,7 +198,28 @@ export const getProducts = async (req: Request, res: Response) => {
       }
     }
 
+    const channelAvailability = await getCommerceChannels();
+
     const targetChannel = ((channel || productType) as string || "").toUpperCase();
+    if (targetChannel === 'QUICK_COMMERCE' && !channelAvailability.quickCommerceEnabled) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          products: [],
+          pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
+        },
+      });
+    }
+    if (targetChannel === 'ECOMMERCE' && !channelAvailability.ecommerceEnabled) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          products: [],
+          pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
+        },
+      });
+    }
+
     if (targetChannel === 'QUICK_COMMERCE' || targetChannel === 'ECOMMERCE') {
       query.productType = targetChannel;
 
@@ -221,6 +243,13 @@ export const getProducts = async (req: Request, res: Response) => {
         }
       } else if (!category) {
         query.category = { $in: permittedCatIds };
+      }
+    } else {
+      // If no specific channel requested, but one channel is globally disabled, restrict query to the enabled channel
+      if (!channelAvailability.quickCommerceEnabled) {
+        query.productType = 'ECOMMERCE';
+      } else if (!channelAvailability.ecommerceEnabled) {
+        query.productType = 'QUICK_COMMERCE';
       }
     }
 
@@ -261,14 +290,19 @@ export const getProducts = async (req: Request, res: Response) => {
       const qcCatIds = qcCats.map((c) => c._id);
       const ecomCatIds = ecomCats.map((c) => c._id);
 
+      const allModeOrBranches: any[] = [];
+      if (channelAvailability.quickCommerceEnabled) {
+        allModeOrBranches.push({ productType: "QUICK_COMMERCE", category: { $in: qcCatIds } });
+        allModeOrBranches.push({ productType: { $exists: false } });
+        allModeOrBranches.push({ productType: null });
+      }
+      if (channelAvailability.ecommerceEnabled) {
+        allModeOrBranches.push({ productType: "ECOMMERCE", category: { $in: ecomCatIds } });
+      }
+
       query.$and = query.$and || [];
       query.$and.push({
-        $or: [
-          { productType: "QUICK_COMMERCE", category: { $in: qcCatIds } },
-          { productType: "ECOMMERCE", category: { $in: ecomCatIds } },
-          { productType: { $exists: false } },
-          { productType: null },
-        ],
+        $or: allModeOrBranches.length > 0 ? allModeOrBranches : [{ _id: new mongoose.Types.ObjectId() }],
       });
 
       if (globalWholesaleEnabled && eligibleWholesaleSellerIds.length > 0 && eligibleWholesaleCategoryIds.length > 0) {
@@ -575,11 +609,38 @@ export const getProductById = async (req: Request, res: Response) => {
     }
 
     // Server-side Channel & Category Compatibility Enforcement
+    const channelAvailability = await getCommerceChannels();
     const requestedChannel = (((channel || queryProductType) as string) || "").toUpperCase();
     const prodType = product.productType || "QUICK_COMMERCE";
     const catChannels: string[] = (product.category as any)?.commerceChannels || [];
 
+    if (prodType === "QUICK_COMMERCE" && !channelAvailability.quickCommerceEnabled) {
+      return res.status(404).json({
+        success: false,
+        message: "Quick Commerce is currently unavailable",
+      });
+    }
+    if (prodType === "ECOMMERCE" && !channelAvailability.ecommerceEnabled) {
+      return res.status(404).json({
+        success: false,
+        message: "E-Commerce is currently unavailable",
+      });
+    }
+
     if (requestedChannel === "QUICK_COMMERCE" || requestedChannel === "ECOMMERCE") {
+      if (requestedChannel === "QUICK_COMMERCE" && !channelAvailability.quickCommerceEnabled) {
+        return res.status(404).json({
+          success: false,
+          message: "Quick Commerce is currently unavailable",
+        });
+      }
+      if (requestedChannel === "ECOMMERCE" && !channelAvailability.ecommerceEnabled) {
+        return res.status(404).json({
+          success: false,
+          message: "E-Commerce is currently unavailable",
+        });
+      }
+
       // 1. Product's productType must match requested channel
       if (prodType !== requestedChannel) {
         return res.status(404).json({

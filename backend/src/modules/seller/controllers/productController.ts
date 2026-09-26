@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Product from "../../../models/Product";
 import Seller from "../../../models/Seller";
 import HeaderCategory from "../../../models/HeaderCategory";
@@ -17,6 +18,7 @@ import { validateBarcodeUniqueness } from "../../../utils/barcodeHelper";
 import AppSettings from "../../../models/AppSettings";
 import { mutateStock } from "../../../services/inventoryService";
 import { parseSafeBoolean } from "./sellerAuthController";
+import { getCommerceChannels } from "../../../services/commerceChannelService";
 
 /**
  * Validate that the seller is allowed to add products in the given header category.
@@ -28,17 +30,22 @@ async function validateSellerHeaderCategory(
 ): Promise<string | null> {
   if (!headerCategoryId) return null; // No header category provided, skip validation
 
-  const seller = await Seller.findById(sellerId).select("categories");
+  const seller = await Seller.findById(sellerId).select("categories vendorType");
   if (!seller) return "Seller not found";
 
-  // If seller has no categories set (empty array), allow all (backward compatibility)
-  if (!seller.categories || seller.categories.length === 0) return null;
+  // If seller is HYBRID or has no categories set (empty array), allow all published categories
+  if (seller.vendorType === "HYBRID" || !seller.categories || seller.categories.length === 0) return null;
 
   const headerCategory = await HeaderCategory.findById(headerCategoryId);
   if (!headerCategory) return "Header category not found";
 
   // Check if the header category name is in the seller's allowed categories list
-  if (!seller.categories.includes(headerCategory.name)) {
+  const allowed = [...seller.categories];
+  if (allowed.includes("Grocery")) {
+    allowed.push("Dairy & Milk", "Bakery & Biscuits", "Snacks & Drinks", "Fruits & Vegetables");
+  }
+
+  if (!allowed.includes(headerCategory.name)) {
     return `You are not authorized to add products in the "${headerCategory.name}" category. Your allowed categories are: ${seller.categories.join(", ")}`;
   }
 
@@ -86,39 +93,53 @@ export const createProduct = asyncHandler(
     const targetCategoryId = productData.categoryId || productData.category;
     const targetSubcategoryId = productData.subcategoryId || productData.subcategory;
 
-    if (targetCategoryId) {
-      const categoryObj = await Category.findById(targetCategoryId);
-      if (!categoryObj) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product category ID provided",
-        });
-      }
-
-      // Enforce Unified Channel Compatibility Check
-      const channelCheck = validateProductChannelCompatibility({
-        sellerVendorType,
-        productType: targetProductType,
-        categoryChannels: categoryObj.commerceChannels,
-        categoryName: categoryObj.name,
+    if (!targetCategoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Product category is required",
       });
-      if (!channelCheck.valid) {
+    }
+
+    const categoryObj = await Category.findById(targetCategoryId);
+    if (!categoryObj) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product category ID provided",
+      });
+    }
+
+    // Enforce Unified Channel Compatibility Check (including Global Channel Availability)
+    const channelCheck = validateProductChannelCompatibility({
+      sellerVendorType,
+      productType: targetProductType,
+      categoryChannels: categoryObj.commerceChannels,
+      categoryName: categoryObj.name,
+      channelAvailability: await getCommerceChannels(),
+    });
+    if (!channelCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: channelCheck.error,
+      });
+    }
+
+    if (targetSubcategoryId) {
+      const childInCat = await Category.findOne({ _id: targetSubcategoryId, parentId: targetCategoryId });
+      const childInSub = await SubCategory.findOne({ _id: targetSubcategoryId, category: targetCategoryId });
+      if (!childInCat && !childInSub) {
         return res.status(400).json({
           success: false,
-          message: channelCheck.error,
+          message: `Selected subcategory does not belong to category "${categoryObj.name}"`,
         });
       }
+    }
 
-      if (targetSubcategoryId) {
-        const childInCat = await Category.findOne({ _id: targetSubcategoryId, parentId: targetCategoryId });
-        const childInSub = await SubCategory.findOne({ _id: targetSubcategoryId, category: targetCategoryId });
-        if (!childInCat && !childInSub) {
-          return res.status(400).json({
-            success: false,
-            message: `Selected subcategory does not belong to category "${categoryObj.name}"`,
-          });
-        }
-      }
+    // Resolve brand safely (ObjectId or brand name)
+    let resolvedBrandId = productData.brandId || productData.brand;
+    if (resolvedBrandId && !mongoose.Types.ObjectId.isValid(resolvedBrandId)) {
+      const BrandModel = (await import("../../../models/Brand")).default;
+      const brandDoc = await BrandModel.findOne({ name: { $regex: new RegExp(`^${resolvedBrandId}$`, "i") } });
+      resolvedBrandId = brandDoc ? brandDoc._id : undefined;
     }
 
     // 2. Map fields to match Product model
@@ -126,14 +147,19 @@ export const createProduct = asyncHandler(
       ...productData,
       seller: sellerId, // Map sellerId to seller
       headerCategoryId: productData.headerCategoryId, // Map headerCategoryId
-      category: productData.categoryId, // Map categoryId to category
-      subcategory: productData.subcategoryId,
-      brand: productData.brandId,
-      mainImage: productData.mainImageUrl, // Map mainImageUrl to mainImage
-      galleryImages: productData.galleryImageUrls,
+      category: targetCategoryId, // Reliably maps targetCategoryId without duplicating
+      subcategory: targetSubcategoryId || undefined,
+      brand: resolvedBrandId || undefined,
+      mainImage: productData.mainImageUrl || productData.mainImage, // Map mainImageUrl to mainImage
+      galleryImages: productData.galleryImageUrls || productData.galleryImages,
       productType: targetProductType,
       productSource: productData.productSource || "LOCAL_VENDOR",
     };
+    delete newProductData.categoryId;
+    delete newProductData.subcategoryId;
+    delete newProductData.brandId;
+    delete newProductData.mainImageUrl;
+    delete newProductData.galleryImageUrls;
 
     // Package details mapping and validation for Ecommerce
     if (targetProductType === "ECOMMERCE") {
@@ -703,7 +729,11 @@ export const updateProduct = asyncHandler(
     }
 
     // Enforce Category Commerce Channel Check on update
-    const effectiveCategoryId = updateData.category || product.category;
+    const effectiveCategoryId = updateData.categoryId || updateData.category || product.category;
+    if (updateData.categoryId) {
+      updateData.category = updateData.categoryId;
+      delete updateData.categoryId;
+    }
     const effectiveProductType = updateData.productType || product.productType;
 
     if (effectiveCategoryId && effectiveProductType) {
@@ -718,11 +748,15 @@ export const updateProduct = asyncHandler(
       const seller = await Seller.findById(sellerId).select("vendorType");
       const sellerVendorType = seller?.vendorType || "QUICK_COMMERCE";
 
+      const isChannelChanging = updateData.productType !== undefined && updateData.productType !== product.productType;
+
       const channelCheck = validateProductChannelCompatibility({
         sellerVendorType,
         productType: effectiveProductType,
         categoryChannels: categoryObj.commerceChannels,
         categoryName: categoryObj.name,
+        channelAvailability: await getCommerceChannels(),
+        isExistingProductMaintenance: !isChannelChanging,
       });
       if (!channelCheck.valid) {
         return res.status(400).json({
@@ -1115,7 +1149,7 @@ export const getAllowedHeaderCategories = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user.userId;
 
-    const seller = await Seller.findById(sellerId).select("categories");
+    const seller = await Seller.findById(sellerId).select("categories vendorType");
     if (!seller) {
       return res.status(404).json({
         success: false,
@@ -1123,10 +1157,14 @@ export const getAllowedHeaderCategories = asyncHandler(
       });
     }
 
-    // If seller has no categories set, return all published header categories (backward compat)
+    // If seller is HYBRID or has no categories set, return all published header categories
     let query: any = { status: "Published" };
-    if (seller.categories && seller.categories.length > 0) {
-      query.name = { $in: seller.categories };
+    if (seller.vendorType !== "HYBRID" && seller.categories && seller.categories.length > 0) {
+      const allowedCategories = [...seller.categories];
+      if (allowedCategories.includes("Grocery")) {
+        allowedCategories.push("Dairy & Milk", "Bakery & Biscuits", "Snacks & Drinks", "Fruits & Vegetables");
+      }
+      query.name = { $in: allowedCategories };
     }
 
     const headerCategories = await HeaderCategory.find(query)

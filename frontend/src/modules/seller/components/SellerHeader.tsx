@@ -4,6 +4,7 @@ import olovelyLogo from '@assets/olovelylogo.jpeg';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useSellerChannel } from '../../../context/SellerChannelContext';
+import { useAppSettings } from '../../../context/AppSettingsContext';
 import LanguageSelector from '../../../components/LanguageSelector';
 
 interface SellerHeaderProps {
@@ -27,6 +28,12 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
     isEcommerceOnly,
     isLegacy,
   } = useSellerChannel();
+
+  const { settings } = useAppSettings();
+  const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
+  const ecomEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+  const canSwitchChannels = isHybrid && qcEnabled && ecomEnabled;
+
   const settingsRef = useRef<HTMLDivElement>(null);
   const locationRef = useRef<HTMLDivElement>(null);
   const channelDropdownRef = useRef<HTMLDivElement>(null);
@@ -120,7 +127,7 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
 
           {/* Channel Selector / Indicator Badge */}
           <div className="flex items-center ml-1 sm:ml-4">
-            {isHybrid ? (
+            {canSwitchChannels ? (
               <div className="relative" ref={channelDropdownRef}>
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-0.5">
@@ -212,24 +219,24 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
                 </span>
                 <div
                   className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 ${
-                    isQuickCommerceOnly
+                    activeChannel === "QUICK_COMMERCE" || isQuickCommerceOnly
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : isEcommerceOnly
+                      : activeChannel === "ECOMMERCE" || isEcommerceOnly
                       ? "bg-blue-50 text-blue-700 border-blue-200"
                       : "bg-neutral-100 text-neutral-600 border-neutral-200"
                   }`}
                 >
-                  {isQuickCommerceOnly && (
+                  {(activeChannel === "QUICK_COMMERCE" || isQuickCommerceOnly) && (
                     <>
                       <span>⚡</span> Quick Commerce
                     </>
                   )}
-                  {isEcommerceOnly && (
+                  {(activeChannel === "ECOMMERCE" || isEcommerceOnly) && (
                     <>
                       <span>📦</span> Ecommerce
                     </>
                   )}
-                  {isLegacy && <>Channel Not Configured</>}
+                  {isLegacy && !activeChannel && <>Channel Not Configured</>}
                 </div>
               </div>
             )}

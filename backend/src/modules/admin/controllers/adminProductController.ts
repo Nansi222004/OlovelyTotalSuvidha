@@ -18,6 +18,8 @@ import {
   validateWholesalePrice,
 } from "../../../utils/categoryChannelHelper";
 import { getCanonicalAdminSeller, resolveInventoryOwner } from "../../../utils/inventoryHelper";
+import { getCommerceChannels } from "../../../services/commerceChannelService";
+
 
 // ==================== Category Controllers ====================
 
@@ -966,6 +968,7 @@ export const createProduct = asyncHandler(
         productType: targetProductType,
         categoryChannels: category.commerceChannels,
         categoryName: category.name,
+        channelAvailability: await getCommerceChannels(),
       });
 
       if (!channelCompat.valid) {
@@ -1341,12 +1344,15 @@ export const updateProduct = asyncHandler(
         });
       }
 
+      const isChannelChanging = updateData.productType !== undefined && updateData.productType !== product.productType;
       const seller = await Seller.findById(product.seller).select("vendorType");
       const channelCompat = validateProductChannelCompatibility({
         sellerVendorType: seller?.vendorType,
         productType: effectiveProductType,
         categoryChannels: categoryObj.commerceChannels,
         categoryName: categoryObj.name,
+        channelAvailability: await getCommerceChannels(),
+        isExistingProductMaintenance: !isChannelChanging,
       });
 
       if (!channelCompat.valid) {
@@ -1687,6 +1693,7 @@ export const bulkImportProducts = asyncHandler(
         productType: targetProductType,
         categoryChannels: category.commerceChannels,
         categoryName: category.name,
+        channelAvailability: await getCommerceChannels(),
       });
 
       if (!channelCompat.valid) {
@@ -1775,12 +1782,15 @@ export const bulkUpdateProducts = asyncHandler(
               message: `Invalid category ID for product ${p._id}`,
             });
           }
+          const isChannelChanging = updateData.productType !== undefined && updateData.productType !== p.productType;
           const seller = await Seller.findById(p.seller).select("vendorType");
           const compat = validateProductChannelCompatibility({
             sellerVendorType: seller?.vendorType,
             productType: effectiveType,
             categoryChannels: categoryObj.commerceChannels,
             categoryName: categoryObj.name,
+            channelAvailability: await getCommerceChannels(),
+            isExistingProductMaintenance: !isChannelChanging,
           });
           if (!compat.valid) {
             return res.status(400).json({

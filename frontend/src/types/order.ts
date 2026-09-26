@@ -79,6 +79,22 @@ export interface Order {
   walletAmountUsed?: number;
   orderType?: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
   fulfillmentGroups?: IFulfillmentGroup[];
+  // Invoice & Historical Snapshot fields
+  invoiceEnabled?: boolean;
+  invoiceNumber?: string;
+  invoiceUrl?: string;
+  deliveredAt?: string;
+  firstOrderFreeShippingApplied?: boolean;
+  normalShippingAmount?: number;
+  shippingDiscount?: number;
+  shipping?: number;
+  platformFee?: number;
+  discount?: number;
+  tax?: number;
+  paymentStatus?: string;
+  customerName?: string;
+  customerPhone?: string;
+  orderNumber?: string;
 }
 
 

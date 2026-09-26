@@ -90,9 +90,18 @@ export const getCategories = asyncHandler(
         query.commerceChannels = { $in: [activeChannel] };
       }
 
-      if (seller?.categories && seller.categories.length > 0) {
+      if (seller?.vendorType !== "HYBRID" && seller?.categories && seller.categories.length > 0) {
+        const allowedCategories = [...seller.categories];
+        if (allowedCategories.includes("Grocery")) {
+          allowedCategories.push(
+            "Dairy & Milk",
+            "Bakery & Biscuits",
+            "Snacks & Drinks",
+            "Fruits & Vegetables"
+          );
+        }
         const allowedHeaderCats = await HeaderCategory.find({
-          name: { $in: seller.categories },
+          name: { $in: allowedCategories },
           status: "Published",
         }).select("_id");
         const allowedHeaderIds = allowedHeaderCats.map((h) => h._id);

@@ -162,6 +162,12 @@ export interface IAppSettings extends Document {
     lowStockDisplayQuantity: number;
   };
 
+  // Global Commerce Channels Availability
+  commerceChannels?: {
+    quickCommerceEnabled: boolean;
+    ecommerceEnabled: boolean;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -531,11 +537,33 @@ const AppSettingsSchema = new Schema<IAppSettings>(
         min: [1, 'Low stock display quantity must be at least 1'],
       },
     },
+
+    // Global Commerce Channels Availability
+    commerceChannels: {
+      quickCommerceEnabled: {
+        type: Boolean,
+        default: true,
+      },
+      ecommerceEnabled: {
+        type: Boolean,
+        default: true,
+      },
+    },
   },
   {
     timestamps: true,
   },
 );
+
+// Schema-level validation: At least one commerce channel must ALWAYS remain enabled
+AppSettingsSchema.pre("save", function (next) {
+  if (this.commerceChannels) {
+    if (this.commerceChannels.quickCommerceEnabled === false && this.commerceChannels.ecommerceEnabled === false) {
+      return next(new Error("At least one commerce channel must remain enabled."));
+    }
+  }
+  next();
+});
 
 // Ensure only one settings document exists
 AppSettingsSchema.statics.getSettings = async function () {

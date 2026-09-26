@@ -3,6 +3,7 @@ import { authenticate, requireUserType } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createRazorpayOrder, capturePayment, handleWebhook } from '../services/paymentService';
 import Order from '../models/Order';
+import { getCommerceChannels } from '../services/commerceChannelService';
 
 const router = Router();
 
@@ -33,6 +34,20 @@ router.post('/create-order', authenticate, requireUserType('Customer'), async (r
             return res.status(403).json({
                 success: false,
                 message: 'Unauthorized access to order',
+            });
+        }
+
+        const channelSettings = await getCommerceChannels({ bypassCache: true });
+        if ((order.orderType === 'QUICK_COMMERCE' || order.orderType === 'MIXED') && !channelSettings.quickCommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'Quick Commerce is currently unavailable. Please try again later.',
+            });
+        }
+        if ((order.orderType === 'ECOMMERCE' || order.orderType === 'MIXED') && !channelSettings.ecommerceEnabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'E-Commerce is currently unavailable. Please try again later.',
             });
         }
 

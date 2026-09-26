@@ -14,6 +14,7 @@ import {
   removeAuthToken,
   setAuthToken,
   getPanelFromContext,
+  clearCustomerSession,
 } from "../services/api/config";
 
 interface User {
@@ -126,6 +127,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [currentPanel]);
 
+  // Synchronize state when custom customer-logged-out event is dispatched (e.g. from Axios interceptor)
+  useEffect(() => {
+    const handleCustomerLoggedOut = () => {
+      const panel = getPanelFromContext(userRef.current?.userType, window.location.pathname);
+      if (panel === "customer" || userRef.current?.userType === "Customer") {
+        setToken(null);
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+    };
+
+    window.addEventListener("olovely:customer-logged-out", handleCustomerLoggedOut);
+    return () => {
+      window.removeEventListener("olovely:customer-logged-out", handleCustomerLoggedOut);
+    };
+  }, []);
+
+  // Startup validation: If an old customer session is present on app startup,
+  // validate against backend so deleted customers are immediately cleared and redirected to login.
+  useEffect(() => {
+    let isMounted = true;
+    const currentToken = getAuthToken("customer");
+    const currentUser = getStoredUserData("customer");
+    const isCustomer =
+      currentUser &&
+      (currentUser.userType === "Customer" ||
+        inferLegacyUserType(currentUser) === "Customer");
+
+    if (currentToken && isCustomer) {
+      import("../services/api/customerService").then(({ getProfile }) => {
+        if (!isMounted) return;
+        getProfile()
+          .then((res) => {
+            if (!isMounted) return;
+            if (res && res.success && res.data) {
+              const full = {
+                ...currentUser,
+                ...res.data,
+                userType: "Customer",
+              };
+              setUser(full);
+            }
+          })
+          .catch((err) => {
+            if (!isMounted) return;
+            const status = err.response?.status;
+            const code = err.response?.data?.code;
+            if (status === 401 || code === "CUSTOMER_DELETED") {
+              clearCustomerSession({
+                sessionExpiredMessage: "Your account is no longer available. Please log in again.",
+              });
+              setToken(null);
+              setUser(null);
+              setIsAuthenticated(false);
+              if (
+                typeof window !== "undefined" &&
+                !window.location.pathname.includes("/login") &&
+                !window.location.pathname.includes("/signup")
+              ) {
+                window.location.href = "/login";
+              }
+            }
+          });
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const userRef = useRef<User | null>(user);
   userRef.current = user;
 
@@ -168,7 +240,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
-    removeAuthToken(userType);
+
+    if (userType === "Customer" || (!currentUser?.userType && getPanelFromContext(undefined, window.location.pathname) === "customer")) {
+      clearCustomerSession();
+    } else {
+      removeAuthToken(userType);
+    }
   }, []);
 
   const updateUser = useCallback((userData: User) => {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useAppSettings } from './AppSettingsContext';
 
 export type CustomerChannel = 'ALL' | 'QUICK_COMMERCE' | 'ECOMMERCE' | 'WHOLESALE';
 
@@ -11,11 +12,17 @@ interface CustomerChannelContextType {
   isQuickCommerce: boolean;
   isEcommerce: boolean;
   isAll: boolean;
+  quickCommerceEnabled: boolean;
+  ecommerceEnabled: boolean;
 }
 
 const CustomerChannelContext = createContext<CustomerChannelContextType | undefined>(undefined);
 
 export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { settings } = useAppSettings();
+  const quickCommerceEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
+  const ecommerceEnabled = settings.commerceChannels?.ecommerceEnabled !== false;
+
   const [activeChannel, setActiveChannelState] = useState<CustomerChannel>(() => {
     try {
       const stored = localStorage.getItem(CUSTOMER_CHANNEL_STORAGE_KEY);
@@ -33,7 +40,34 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
     return 'ALL';
   });
 
+  // Auto-switch customer away from a globally disabled channel
+  useEffect(() => {
+    if (!quickCommerceEnabled && activeChannel === 'QUICK_COMMERCE') {
+      setActiveChannelState('ECOMMERCE');
+      try {
+        localStorage.setItem(CUSTOMER_CHANNEL_STORAGE_KEY, 'ECOMMERCE');
+      } catch (e) {
+        // ignore
+      }
+    } else if (!ecommerceEnabled && activeChannel === 'ECOMMERCE') {
+      setActiveChannelState('QUICK_COMMERCE');
+      try {
+        localStorage.setItem(CUSTOMER_CHANNEL_STORAGE_KEY, 'QUICK_COMMERCE');
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [quickCommerceEnabled, ecommerceEnabled, activeChannel]);
+
   const setActiveChannel = (channel: CustomerChannel) => {
+    if (channel === 'QUICK_COMMERCE' && !quickCommerceEnabled) {
+      console.warn('Quick Commerce is globally disabled');
+      return;
+    }
+    if (channel === 'ECOMMERCE' && !ecommerceEnabled) {
+      console.warn('E-Commerce is globally disabled');
+      return;
+    }
     setActiveChannelState(channel);
     try {
       localStorage.setItem(CUSTOMER_CHANNEL_STORAGE_KEY, channel);
@@ -46,19 +80,20 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key === CUSTOMER_CHANNEL_STORAGE_KEY && event.newValue) {
+        const val = event.newValue as CustomerChannel;
         if (
-          event.newValue === 'QUICK_COMMERCE' ||
-          event.newValue === 'ECOMMERCE' ||
-          event.newValue === 'WHOLESALE' ||
-          event.newValue === 'ALL'
+          val === 'WHOLESALE' ||
+          val === 'ALL' ||
+          (val === 'QUICK_COMMERCE' && quickCommerceEnabled) ||
+          (val === 'ECOMMERCE' && ecommerceEnabled)
         ) {
-          setActiveChannelState(event.newValue as CustomerChannel);
+          setActiveChannelState(val);
         }
       }
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, []);
+  }, [quickCommerceEnabled, ecommerceEnabled]);
 
   const isWholesale = activeChannel === 'WHOLESALE';
   const isQuickCommerce = activeChannel === 'QUICK_COMMERCE';
@@ -74,6 +109,8 @@ export const CustomerChannelProvider: React.FC<{ children: ReactNode }> = ({ chi
         isQuickCommerce,
         isEcommerce,
         isAll,
+        quickCommerceEnabled,
+        ecommerceEnabled,
       }}
     >
       {children}

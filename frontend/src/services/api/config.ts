@@ -120,9 +120,26 @@ api.interceptors.response.use(
     return response;
   },
   (error: any) => {
-    // Only handle 401 (Unauthorized) for auto-logout
+    const status = error.response?.status;
+    const errorCode = error.response?.data?.code;
+    const isCustomerDeleted = errorCode === 'CUSTOMER_DELETED';
+
+    // 1. Explicit Customer-deleted / invalid session detection
+    if (isCustomerDeleted) {
+      clearCustomerSession({
+        sessionExpiredMessage: 'Your account is no longer available. Please log in again.',
+      });
+
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!currentPath.includes('/login') && !currentPath.includes('/signup')) {
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
+
+    // 2. Handle 401 (Unauthorized) for auto-logout
     // 403 (Forbidden) means user is authenticated but doesn't have permission - DO NOT LOGOUT
-    if (error.response?.status === 401) {
+    if (status === 401) {
       const isAuthEndpoint = error.config?.url?.includes("/auth/");
       const hadToken = error.config?.headers?.Authorization;
 
@@ -142,8 +159,15 @@ api.interceptors.response.use(
         else if (panel === 'seller') redirectPath = "/seller/login";
         else if (panel === 'delivery') redirectPath = "/delivery/login";
 
-        // Remove ONLY the specific panel's token
-        removeAuthToken(panel);
+        // Clean up role-specific session
+        if (panel === 'customer') {
+          clearCustomerSession({
+            sessionExpiredMessage: 'Your session has expired. Please log in again.',
+          });
+        } else {
+          removeAuthToken(panel);
+        }
+
         window.location.href = redirectPath;
       }
     }
@@ -215,6 +239,32 @@ export const removeAuthToken = (panel?: UserPanel | string) => {
   // Purge obsolete shared legacy keys
   localStorage.removeItem("authToken");
   localStorage.removeItem("userData");
+};
+
+/**
+ * Safely clear all customer-specific authentication and cached session data
+ * without affecting Seller, Admin, or global app settings.
+ */
+export const clearCustomerSession = (options?: { sessionExpiredMessage?: string }) => {
+  removeAuthToken('customer');
+  localStorage.removeItem('customer_authToken');
+  localStorage.removeItem('customer_userData');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('userData');
+  localStorage.removeItem('saved_cart');
+  localStorage.removeItem('fcm_token_web');
+
+  if (options?.sessionExpiredMessage && typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('customer_session_notice', options.sessionExpiredMessage);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('olovely:customer-logged-out', {
+        detail: { reason: options?.sessionExpiredMessage || 'CUSTOMER_DELETED' },
+      })
+    );
+  }
 };
 
 export default api;

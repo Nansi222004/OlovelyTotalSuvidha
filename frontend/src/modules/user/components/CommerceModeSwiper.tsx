@@ -98,7 +98,13 @@ function FallbackShopYourWaySwiper({
   autoSlideInterval = 4000,
 }: FallbackSwiperProps) {
   const { currentTheme } = useThemeContext();
-  const { setActiveChannel } = useCustomerChannel();
+  const { setActiveChannel, quickCommerceEnabled, ecommerceEnabled } = useCustomerChannel();
+
+  const availableConfigs = FALLBACK_MODE_CONFIGS.filter((cfg) => {
+    if (cfg.mode === "QUICK_COMMERCE") return quickCommerceEnabled;
+    if (cfg.mode === "ECOMMERCE") return ecommerceEnabled;
+    return true;
+  });
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -121,12 +127,12 @@ function FallbackShopYourWaySwiper({
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!isPaused && !prefersReducedMotion) {
+    if (!isPaused && !prefersReducedMotion && availableConfigs.length > 1) {
       timerRef.current = setInterval(() => {
-        setCurrentIndex((prev) => (prev + 1) % FALLBACK_MODE_CONFIGS.length);
+        setCurrentIndex((prev) => (prev + 1) % availableConfigs.length);
       }, autoSlideInterval);
     }
-  }, [isPaused, prefersReducedMotion, autoSlideInterval]);
+  }, [isPaused, prefersReducedMotion, autoSlideInterval, availableConfigs.length]);
 
   useEffect(() => {
     startTimer();
@@ -159,7 +165,8 @@ function FallbackShopYourWaySwiper({
     }
   };
 
-  const activeConfig = FALLBACK_MODE_CONFIGS[currentIndex];
+  const safeIndex = currentIndex % (availableConfigs.length || 1);
+  const activeConfig = availableConfigs[safeIndex] || availableConfigs[0];
 
   const primaryColor = currentTheme.primary?.[0] || "rgb(34, 197, 94)";
   const secondaryColor = currentTheme.primary?.[1] || currentTheme.secondary?.[0] || "rgb(74, 222, 128)";
@@ -286,7 +293,7 @@ function FallbackShopYourWaySwiper({
 
       {/* Pagination Indicators */}
       <div className="flex items-center justify-center gap-1.5 sm:gap-2 mt-2.5 sm:mt-3" role="tablist" aria-label="Slide controls">
-        {FALLBACK_MODE_CONFIGS.map((config, i) => (
+        {availableConfigs.map((config, i) => (
           <button
             key={config.mode}
             type="button"

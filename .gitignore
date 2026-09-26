@@ -78,4 +78,13 @@ test/
 tests/
 backend/test/
 backend/tests/
+frontend/test/
+frontend/tests/
+
+# Test reports, audits, and test markdown files
+*test*.md
+*audit*.md
+*report*.md
+!README.md
+
 

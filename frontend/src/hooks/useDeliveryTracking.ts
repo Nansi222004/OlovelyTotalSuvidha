@@ -269,6 +269,16 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
         }
     }, [orderId, enabled, connectSocket, disconnectSocket])
 
+    // Disconnect and clean up if customer session ends
+    useEffect(() => {
+        const handleLogout = () => {
+            disconnectSocket();
+            setTrackingData(prev => ({ ...prev, isConnected: false, status: 'disconnected' }));
+        };
+        window.addEventListener('olovely:customer-logged-out', handleLogout);
+        return () => window.removeEventListener('olovely:customer-logged-out', handleLogout);
+    }, [disconnectSocket]);
+
     return {
         ...trackingData,
         reconnect: manualReconnect,
