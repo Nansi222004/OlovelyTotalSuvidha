@@ -123,6 +123,7 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const errorCode = error.response?.data?.code;
     const isCustomerDeleted = errorCode === 'CUSTOMER_DELETED';
+    const isDeliveryDeleted = errorCode === 'DELIVERY_PARTNER_DELETED';
 
     // 1. Explicit Customer-deleted / invalid session detection
     if (isCustomerDeleted) {
@@ -133,6 +134,19 @@ api.interceptors.response.use(
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
       if (!currentPath.includes('/login') && !currentPath.includes('/signup')) {
         window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
+
+    // 2. Explicit Delivery Partner-deleted / invalid session detection
+    if (isDeliveryDeleted) {
+      clearDeliverySession({
+        sessionExpiredMessage: 'Your delivery partner account is no longer available. Please log in again.',
+      });
+
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!currentPath.includes('/delivery/login') && !currentPath.includes('/delivery/signup')) {
+        window.location.href = '/delivery/login';
       }
       return Promise.reject(error);
     }
@@ -162,6 +176,10 @@ api.interceptors.response.use(
         // Clean up role-specific session
         if (panel === 'customer') {
           clearCustomerSession({
+            sessionExpiredMessage: 'Your session has expired. Please log in again.',
+          });
+        } else if (panel === 'delivery') {
+          clearDeliverySession({
             sessionExpiredMessage: 'Your session has expired. Please log in again.',
           });
         } else {
@@ -262,6 +280,44 @@ export const clearCustomerSession = (options?: { sessionExpiredMessage?: string 
     window.dispatchEvent(
       new CustomEvent('olovely:customer-logged-out', {
         detail: { reason: options?.sessionExpiredMessage || 'CUSTOMER_DELETED' },
+      })
+    );
+  }
+};
+
+/**
+ * Safely clear all delivery-partner-specific authentication and cached session data
+ * without affecting Customer, Seller, Admin, or global app settings.
+ */
+export const clearDeliverySession = (options?: { sessionExpiredMessage?: string }) => {
+  removeAuthToken('delivery');
+  localStorage.removeItem('delivery_authToken');
+  localStorage.removeItem('delivery_userData');
+  localStorage.removeItem('delivery_user_name');
+  localStorage.removeItem('delivery_push_prompt_dismissed');
+
+  // Clear any delivery order notification queues
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('delivery_order_notifications_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    // Ignore storage iteration errors
+  }
+
+  if (options?.sessionExpiredMessage && typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('delivery_session_notice', options.sessionExpiredMessage);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('olovely:delivery-logged-out', {
+        detail: { reason: options?.sessionExpiredMessage || 'DELIVERY_PARTNER_DELETED' },
       })
     );
   }

@@ -22,6 +22,11 @@ export default function DeliveryDashboard() {
         const data = await getDashboardStats();
         setStats(data);
       } catch (err: any) {
+        // If session was invalidated or deleted, interceptor will redirect to login.
+        // Don't show a permanent error screen if account is deleted or unauthorized.
+        if (err.code === 'DELIVERY_PARTNER_DELETED' || err.response?.status === 401) {
+          return;
+        }
         setError(err.message || "Failed to load dashboard data");
       } finally {
         setLoading(false);

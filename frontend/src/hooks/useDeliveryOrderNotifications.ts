@@ -399,6 +399,28 @@ export const useDeliveryOrderNotifications = () => {
         });
     }, []);
 
+    // Clean up socket connection and notifications state on delivery logout
+    useEffect(() => {
+        const handleDeliveryLoggedOut = () => {
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
+            }
+            disconnectSocket();
+            setState({
+                currentNotification: null,
+                notificationQueue: [],
+                isConnected: false,
+                error: null,
+            });
+        };
+
+        window.addEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+        return () => {
+            window.removeEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+        };
+    }, [disconnectSocket]);
+
     useEffect(() => {
         if (!isAuthenticated || user?.userType !== 'Delivery' || !user?.id) {
             disconnectSocket();

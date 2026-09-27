@@ -35,6 +35,7 @@
     "seed:45-categories": "tsx src/scripts/seed45Categories.ts",
     "verify:45-categories": "tsx src/scripts/verify45Categories.ts",
     "sync:header-categories": "tsx src/scripts/syncHeaderCategories.ts",
+    "migrate:category-images": "tsx src/scripts/migrateCategoryImagesToCloudinary.ts",
     "postinstall": "npm run build"
   },
   "keywords": [

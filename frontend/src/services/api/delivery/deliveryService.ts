@@ -1,10 +1,11 @@
 import api from "../config";
 
 const handleApiError = (error: any) => {
-  if (error.response && error.response.data && error.response.data.message) {
-    throw new Error(error.response.data.message);
-  }
-  throw new Error(error.message || "An unexpected error occurred");
+  const message = error.response?.data?.message || error.message || "An unexpected error occurred";
+  const customError: any = new Error(message);
+  customError.response = error.response;
+  customError.code = error.response?.data?.code;
+  throw customError;
 };
 
 const BASE_URL = "/delivery";

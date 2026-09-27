@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface DeliveryUserContextType {
   userName: string;
@@ -8,11 +8,22 @@ interface DeliveryUserContextType {
 const DeliveryUserContext = createContext<DeliveryUserContextType | undefined>(undefined);
 
 export function DeliveryUserProvider({ children }: { children: ReactNode }) {
-  // Initialize with 'Pratik' as default, or get from localStorage if available
+  // Initialize with saved name or empty string
   const [userName, setUserName] = useState(() => {
     const savedName = localStorage.getItem('delivery_user_name');
     return savedName || '';
   });
+
+  useEffect(() => {
+    const handleDeliveryLoggedOut = () => {
+      setUserName('');
+    };
+
+    window.addEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+    return () => {
+      window.removeEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+    };
+  }, []);
 
   const updateUserName = (name: string) => {
     setUserName(name);

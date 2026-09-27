@@ -10,6 +10,7 @@ import {
 import { useLocation as useLocationContext } from "../../hooks/useLocation";
 import { useTranslation } from "../../hooks/useTranslation";
 import { getIconByName } from "../../utils/iconLibrary";
+import { resolveImageUrl } from "../../utils/imageUrl";
 import ChannelFilter, { ChannelFilterValue } from "../../components/ChannelFilter";
 import { useCustomerChannel } from "../../context/CustomerChannelContext";
 
@@ -514,7 +515,7 @@ export default function CategoryPage() {
           <div className="w-14 h-14 rounded-2xl bg-[#ecf7f6] border border-emerald-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-2xs p-0">
             {category?.image ? (
               <img
-                src={category.image}
+                src={resolveImageUrl(category.image)}
                 alt={categoryName}
                 className="w-full h-full object-cover object-top"
                 onError={(e) => {

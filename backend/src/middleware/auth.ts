@@ -60,6 +60,32 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         }
       }
 
+      // Delivery partner session validation:
+      // If an authenticated delivery partner token is presented, verify the delivery partner record still exists in DB.
+      // If deleted by Admin from the database, reject immediately with DELIVERY_PARTNER_DELETED so the client
+      // can gracefully clear session and redirect to Login instead of leaving a phantom session active.
+      if (decoded.userType === 'Delivery' && decoded.userId) {
+        if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
+          res.status(401).json({
+            success: false,
+            code: 'DELIVERY_PARTNER_DELETED',
+            message: 'Delivery partner account is no longer available. Please log in again.',
+          });
+          return;
+        }
+
+        const Delivery = (await import('../models/Delivery')).default;
+        const deliveryExists = await Delivery.exists({ _id: decoded.userId });
+        if (!deliveryExists) {
+          res.status(401).json({
+            success: false,
+            code: 'DELIVERY_PARTNER_DELETED',
+            message: 'Delivery partner account is no longer available. Please log in again.',
+          });
+          return;
+        }
+      }
+
       next();
     } catch (error: any) {
       res.status(401).json({
@@ -191,9 +217,10 @@ export const requireApprovedUser = async (req: Request, res: Response, next: Nex
       const delivery = await Delivery.findById(userId).select('status');
 
       if (!delivery) {
-        res.status(404).json({
+        res.status(401).json({
           success: false,
-          message: 'Delivery partner account not found',
+          code: 'DELIVERY_PARTNER_DELETED',
+          message: 'Delivery partner account is no longer available. Please log in again.',
         });
         return;
       }

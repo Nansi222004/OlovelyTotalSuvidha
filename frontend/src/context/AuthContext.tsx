@@ -15,6 +15,7 @@ import {
   setAuthToken,
   getPanelFromContext,
   clearCustomerSession,
+  clearDeliverySession,
 } from "../services/api/config";
 
 interface User {
@@ -144,6 +145,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Synchronize state when custom delivery-logged-out event is dispatched (e.g. from Axios interceptor)
+  useEffect(() => {
+    const handleDeliveryLoggedOut = () => {
+      const panel = getPanelFromContext(userRef.current?.userType, window.location.pathname);
+      if (panel === "delivery" || userRef.current?.userType === "Delivery") {
+        setToken(null);
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+    };
+
+    window.addEventListener("olovely:delivery-logged-out", handleDeliveryLoggedOut);
+    return () => {
+      window.removeEventListener("olovely:delivery-logged-out", handleDeliveryLoggedOut);
+    };
+  }, []);
+
   // Startup validation: If an old customer session is present on app startup,
   // validate against backend so deleted customers are immediately cleared and redirected to login.
   useEffect(() => {
@@ -187,6 +205,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 !window.location.pathname.includes("/signup")
               ) {
                 window.location.href = "/login";
+              }
+            }
+          });
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Startup validation: If an old delivery partner session is present on app startup,
+  // validate against backend so deleted delivery partners are immediately cleared and redirected to login.
+  useEffect(() => {
+    let isMounted = true;
+    const currentToken = getAuthToken("delivery");
+    const currentUser = getStoredUserData("delivery");
+    const isDelivery =
+      currentUser &&
+      (currentUser.userType === "Delivery" ||
+        inferLegacyUserType(currentUser) === "Delivery");
+
+    if (currentToken && isDelivery) {
+      import("../services/api/delivery/deliveryService").then(({ getDeliveryProfile }) => {
+        if (!isMounted) return;
+        getDeliveryProfile()
+          .then((data) => {
+            if (!isMounted) return;
+            if (data) {
+              const full = {
+                ...currentUser,
+                ...data,
+                userType: "Delivery",
+              };
+              setUser(full);
+            }
+          })
+          .catch((err) => {
+            if (!isMounted) return;
+            const status = err.response?.status;
+            const code = err.response?.data?.code || err.code;
+            if (status === 401 || code === "DELIVERY_PARTNER_DELETED") {
+              clearDeliverySession({
+                sessionExpiredMessage: "Your delivery partner account is no longer available. Please log in again.",
+              });
+              setToken(null);
+              setUser(null);
+              setIsAuthenticated(false);
+              if (
+                typeof window !== "undefined" &&
+                !window.location.pathname.includes("/delivery/login") &&
+                !window.location.pathname.includes("/delivery/signup")
+              ) {
+                window.location.href = "/delivery/login";
               }
             }
           });
@@ -243,6 +315,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (userType === "Customer" || (!currentUser?.userType && getPanelFromContext(undefined, window.location.pathname) === "customer")) {
       clearCustomerSession();
+    } else if (userType === "Delivery" || (!currentUser?.userType && getPanelFromContext(undefined, window.location.pathname) === "delivery")) {
+      clearDeliverySession();
     } else {
       removeAuthToken(userType);
     }

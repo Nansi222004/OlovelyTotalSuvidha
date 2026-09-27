@@ -20,9 +20,11 @@ export const getDashboardStats = asyncHandler(
     // 1. Fetch Delivery Partner Details (for Cash Balance)
     const deliveryPartner = await Delivery.findById(deliveryId);
     if (!deliveryPartner) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Delivery partner not found" });
+      return res.status(401).json({
+        success: false,
+        code: "DELIVERY_PARTNER_DELETED",
+        message: "Delivery partner account is no longer available. Please log in again.",
+      });
     }
 
     const todayStart = new Date();

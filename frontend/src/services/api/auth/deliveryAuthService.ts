@@ -1,4 +1,4 @@
-import api, { setAuthToken, removeAuthToken } from '../config';
+import api, { setAuthToken, removeAuthToken, clearDeliverySession } from '../config';
 const handleApiError = (error: any) => {
   if (error.response && error.response.data && error.response.data.message) {
     throw new Error(error.response.data.message);
@@ -111,6 +111,6 @@ export const getDeliveryProfile = async (): Promise<any> => {
  * Logout delivery partner
  */
 export const logout = (): void => {
-  removeAuthToken('delivery');
+  clearDeliverySession();
 };
 

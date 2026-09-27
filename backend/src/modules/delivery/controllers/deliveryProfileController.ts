@@ -25,9 +25,10 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
     const delivery = await Delivery.findById(deliveryId);
 
     if (!delivery) {
-        return res.status(404).json({
+        return res.status(401).json({
             success: false,
-            message: "Delivery partner not found"
+            code: "DELIVERY_PARTNER_DELETED",
+            message: "Delivery partner account is no longer available. Please log in again."
         });
     }
 
@@ -80,9 +81,10 @@ export const updateStatus = asyncHandler(async (req: Request, res: Response) => 
     );
 
     if (!delivery) {
-        return res.status(404).json({
+        return res.status(401).json({
             success: false,
-            message: "Delivery partner not found"
+            code: "DELIVERY_PARTNER_DELETED",
+            message: "Delivery partner account is no longer available. Please log in again."
         });
     }
 
@@ -106,9 +108,10 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
     const delivery = await Delivery.findById(deliveryId);
 
     if (!delivery) {
-        return res.status(404).json({
+        return res.status(401).json({
             success: false,
-            message: "Delivery partner not found"
+            code: "DELIVERY_PARTNER_DELETED",
+            message: "Delivery partner account is no longer available. Please log in again."
         });
     }
 

@@ -11,7 +11,7 @@ import {
   uploadImageFromBuffer,
   uploadDocumentFromBuffer,
   deleteImage,
-} from "../services/localStorageService";
+} from "../services/cloudinaryService";
 import { CLOUDINARY_FOLDERS } from "../config/cloudinary";
 import { asyncHandler } from "../utils/asyncHandler";
 

@@ -219,9 +219,10 @@ export const updateGeneralLocation = asyncHandler(
     const deliveryBoy = await Delivery.findById(deliveryBoyId);
 
     if (!deliveryBoy) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Delivery partner not found",
+        code: "DELIVERY_PARTNER_DELETED",
+        message: "Delivery partner account is no longer available. Please log in again.",
       });
     }
 

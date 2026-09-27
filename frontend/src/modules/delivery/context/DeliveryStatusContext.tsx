@@ -37,12 +37,29 @@ export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
     const fetchStatus = async () => {
       try {
         const profile = await getDeliveryProfile();
-        setIsOnlineLocal(profile.isOnline || false);
+        setIsOnlineLocal(profile?.isOnline || false);
       } catch (error) {
         console.error("Failed to fetch initial status", error);
       }
     };
     fetchStatus();
+  }, []);
+
+  // Cleanup location tracking and state on delivery logout
+  useEffect(() => {
+    const handleDeliveryLoggedOut = () => {
+      setIsOnlineLocal(false);
+      stopTracking();
+      setCurrentLocation(null);
+      setSellersInRange([]);
+      setSellersInRangeCount(0);
+      setLocationError(null);
+    };
+
+    window.addEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+    return () => {
+      window.removeEventListener('olovely:delivery-logged-out', handleDeliveryLoggedOut);
+    };
   }, []);
 
   // Location Tracking Logic

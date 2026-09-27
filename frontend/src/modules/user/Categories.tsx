@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getHeaderCategoriesPublic, HeaderCategory } from "../../services/api/headerCategoryService";
 import { getCategories, Category as ApiCategory } from "../../services/api/customerProductService";
 import { getIconByName } from "../../utils/iconLibrary";
+import { resolveImageUrl } from "../../utils/imageUrl";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useCustomerChannel } from "../../context/CustomerChannelContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -433,7 +434,7 @@ export default function Categories() {
                       <div className="aspect-square w-full rounded-2xl bg-[#ecf7f6] border border-teal-100/40 flex items-center justify-center overflow-hidden p-0 shadow-2xs group-hover:shadow-sm transition-all duration-200 relative">
                         {category.image ? (
                           <img
-                            src={category.image}
+                            src={resolveImageUrl(category.image)}
                             alt={catName}
                             className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                             loading="lazy"
