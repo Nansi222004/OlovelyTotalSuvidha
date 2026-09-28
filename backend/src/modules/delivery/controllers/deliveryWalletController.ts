@@ -180,6 +180,7 @@ export const verifyAdminPayout = async (req: Request, res: Response) => {
 
     // Update delivery boy after distributing (to be safe with intermediate states)
     deliveryBoy.pendingAdminPayout = Math.max(0, currentPending - amount);
+    deliveryBoy.cashCollected = Math.max(0, (deliveryBoy.cashCollected || 0) - amount);
     await deliveryBoy.save({ session });
 
     // Sync CashCollection status to Received

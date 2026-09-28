@@ -1086,6 +1086,33 @@ export default function DeliveryOrderDetail() {
                         <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Item Subtotal (QC)")}</span>
                         <span className="text-xl font-bold text-neutral-900">₹{displayedSubtotal.toFixed(2)}</span>
                     </div>
+
+                    {/* Payment & Cash Collection Scoping */}
+                    <div className="mt-3 pt-3 border-t border-neutral-100 flex justify-between items-center text-sm">
+                        <span className="text-neutral-500 font-medium">Payment Mode</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            order.paymentMethod === 'COD'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-green-100 text-green-800'
+                        }`}>
+                            {order.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Prepaid / Online'}
+                        </span>
+                    </div>
+                    {order.paymentMethod === 'COD' ? (
+                        <div className="mt-2 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex justify-between items-center">
+                            <div>
+                                <p className="text-xs text-amber-800 font-bold uppercase tracking-wider">Collect Cash from Customer</p>
+                                <p className="text-[11px] text-amber-600">QC assigned delivery responsibility</p>
+                            </div>
+                            <span className="text-xl font-extrabold text-amber-900">
+                                ₹{(order.codAmountToCollect != null ? order.codAmountToCollect : displayedSubtotal).toFixed(2)}
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 font-medium text-center">
+                            ✅ Order is prepaid online. Do NOT collect any cash from the customer.
+                        </div>
+                    )}
                 </div>
 
                 {/* Order Info */}

@@ -198,6 +198,30 @@ export const getDashboardStats = asyncHandler(
     const todayEarning = earningStats[0]?.today[0]?.total || 0;
     const totalEarning = earningStats[0]?.total[0]?.total || 0;
 
+    // Daily Collection: Cash collected from COD orders delivered TODAY by this delivery partner
+    let dailyCollectionAmount = 0;
+    try {
+      const CashCollection = (await import("../../../models/CashCollection")).default;
+      const todayCollections = await CashCollection.aggregate([
+        {
+          $match: {
+            deliveryBoy: objectId,
+            createdAt: { $gte: todayStart, $lte: todayEnd },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalCollected: { $sum: "$amount" },
+          },
+        },
+      ]);
+      dailyCollectionAmount = todayCollections[0]?.totalCollected || 0;
+    } catch (ccErr) {
+      console.error("Error computing daily collection from CashCollection:", ccErr);
+      dailyCollectionAmount = 0;
+    }
+
     // Fetch list of Pending Orders for the "Today's Pending Order" section
     const pendingOrdersList = await Order.find({
       deliveryBoy: deliveryId,
@@ -211,27 +235,36 @@ export const getDashboardStats = asyncHandler(
         ],
       },
     })
+      .populate("items")
       .select(
-        "orderNumber customerName deliveryAddress status total estimatedDeliveryDate",
-      ) // Select necessary fields
+        "orderNumber customerName deliveryAddress status total grandTotal subtotal shipping items fulfillmentGroups orderType estimatedDeliveryDate",
+      )
       .sort({ createdAt: -1 })
       .limit(5);
 
-    // format pending list for Frontend
-    const formattedPendingList = pendingOrdersList.map((order) => ({
-      id: order._id,
-      orderId: order.orderNumber,
-      customerName: order.customerName,
-      status: order.status, // Map backend status to frontend status if needed
-      address: `${order.deliveryAddress.address}, ${order.deliveryAddress.city}`, // Simplify address
-      totalAmount: order.total,
-      estimatedDeliveryTime: order.estimatedDeliveryDate
-        ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        : "N/A",
-    }));
+    const { getDeliveryPartnerQcContext } = await import(
+      "../utils/deliveryOrderScopingHelper"
+    );
+
+    // format pending list for Frontend - scoped to QC items
+    const formattedPendingList = pendingOrdersList.map((order) => {
+      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId);
+      const displayTotal = qcCtx.hasQcItems ? qcCtx.assignedQcSubtotal : order.total;
+      return {
+        id: order._id,
+        orderId: order.orderNumber,
+        customerName: order.customerName,
+        status: qcCtx.displayStatus || order.status,
+        address: order.deliveryAddress ? `${order.deliveryAddress.address}, ${order.deliveryAddress.city}` : "N/A",
+        totalAmount: displayTotal,
+        estimatedDeliveryTime: order.estimatedDeliveryDate
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          : "N/A",
+      };
+    });
 
     // Fetch Wallet Balance
     let walletBalance = 0;
@@ -259,7 +292,7 @@ export const getDashboardStats = asyncHandler(
     return res.status(200).json({
       success: true,
       data: {
-        dailyCollection: result.dailyCollection,
+        dailyCollection: dailyCollectionAmount,
         cashBalance: deliveryPartner.cashCollected, // This field stores total cash holding
         pendingOrders: result.pendingOrders,
         allOrders: result.allOrdersToday,

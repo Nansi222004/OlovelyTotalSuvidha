@@ -247,17 +247,29 @@ export default function Invoice() {
     );
   }
 
-  // Invoice calculations and data mapping
-  const addr = order.deliveryAddress || order.address || {};
+  const addr = (order.deliveryAddress && typeof order.deliveryAddress === "object" ? order.deliveryAddress : null) ||
+    (order.address && typeof order.address === "object" ? order.address : {}) || {};
   const subtotal = order.subtotal || 0;
   const deliveryFee = order.shipping ?? order.fees?.deliveryFee ?? 0;
   const platformFee = order.platformFee ?? order.fees?.platformFee ?? 0;
   const discount = order.discount || 0;
   const tax = order.tax || 0;
   const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee + tax - discount);
-  const customerName = order.customerName || addr.name || "Valued Customer";
-  const customerPhone = order.customerPhone || addr.phone || "";
+  const customerName = typeof order.customerName === "string" && order.customerName.trim()
+    ? order.customerName.trim()
+    : (typeof addr.name === "string" && addr.name.trim() ? addr.name.trim() : "Valued Customer");
+  const customerPhone = typeof order.customerPhone === "string"
+    ? order.customerPhone
+    : (typeof addr.phone === "string" ? addr.phone : "");
   const invoiceNumber = order.invoiceNumber || (order.id ? `INV-${order.id.slice(-8).toUpperCase()}` : "N/A");
+
+  const addressLine = typeof addr.street === "string" && addr.street.trim()
+    ? addr.street.trim()
+    : (typeof addr.address === "string" && addr.address.trim() ? addr.address.trim() : "");
+  const landmarkLine = typeof addr.landmark === "string" && addr.landmark.trim() ? addr.landmark.trim() : "";
+  const cityLine = typeof addr.city === "string" && addr.city.trim() ? addr.city.trim() : "";
+  const stateLine = typeof addr.state === "string" && addr.state.trim() ? addr.state.trim() : "";
+  const pincodeLine = typeof addr.pincode === "string" || typeof addr.pincode === "number" ? String(addr.pincode).trim() : "";
 
   // Separate items for Hybrid order support (Quick Commerce vs E-Commerce)
   const qcItems: any[] = [];
@@ -275,6 +287,48 @@ export default function Invoice() {
 
   const isHybrid = qcItems.length > 0 && ecommerceItems.length > 0;
 
+  const formatPackOrVariant = (item: any): string | null => {
+    if (typeof item.variantTitle === "string" && item.variantTitle.trim()) {
+      return item.variantTitle.trim();
+    }
+    if (typeof item.variation === "string" && item.variation.trim()) {
+      return item.variation.trim();
+    }
+    if (typeof item.variant === "string" && item.variant.trim()) {
+      return item.variant.trim();
+    }
+    if (item.variant && typeof item.variant === "object") {
+      const v = item.variant.title || item.variant.name || item.variant.value;
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    if (typeof item.pack === "string" && item.pack.trim()) {
+      return item.pack.trim();
+    }
+    if (typeof item.product?.pack === "string" && item.product.pack.trim()) {
+      return item.product.pack.trim();
+    }
+    if (item.product?.packageDetails && typeof item.product.packageDetails === "object") {
+      const pd = item.product.packageDetails;
+      const parts: string[] = [];
+      if (typeof pd.weightKg === "number" && pd.weightKg > 0) {
+        parts.push(`${pd.weightKg} kg`);
+      }
+      if (
+        pd.dimensionsCm &&
+        typeof pd.dimensionsCm === "object" &&
+        pd.dimensionsCm.length &&
+        pd.dimensionsCm.width &&
+        pd.dimensionsCm.height
+      ) {
+        parts.push(`${pd.dimensionsCm.length}×${pd.dimensionsCm.width}×${pd.dimensionsCm.height} cm`);
+      }
+      if (parts.length > 0) {
+        return parts.join(" ");
+      }
+    }
+    return null;
+  };
+
   const renderItemRow = (item: any, index: number) => {
     const productName = item.product?.productName || item.productName || item.product?.name || "Product";
     const unitPrice = item.unitPrice ?? item.price ?? item.wholesalePrice ?? item.product?.price ?? 0;
@@ -282,7 +336,8 @@ export default function Invoice() {
     const itemTotal = item.total || unitPrice * quantity;
     const isWholesale = Boolean(item.isWholesale || item.wholesalePrice != null);
     const productImage = item.productImage || item.product?.mainImage || item.product?.image;
-    const packOrVariant = item.variant || item.pack || item.product?.pack || item.product?.packageDetails;
+    const packOrVariant = formatPackOrVariant(item);
+    const sellerStore = item.seller?.storeName || item.seller?.sellerName;
 
     return (
       <tr key={item._id || index} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
@@ -303,6 +358,11 @@ export default function Invoice() {
                 {packOrVariant && (
                   <span className="text-xs text-gray-500">
                     {packOrVariant}
+                  </span>
+                )}
+                {sellerStore && (
+                  <span className="text-[11px] text-gray-400">
+                    Sold by: {sellerStore}
                   </span>
                 )}
                 {isWholesale && (
@@ -420,14 +480,16 @@ export default function Invoice() {
                 <p className="text-sm text-gray-600 mt-0.5">{customerPhone}</p>
               )}
               <div className="text-sm text-gray-700 mt-2 leading-relaxed">
-                {addr.flat && <span>{addr.flat}, </span>}
-                {addr.street || addr.address || ""}
-                {addr.landmark && <p className="text-xs text-gray-500 mt-0.5">Landmark: {addr.landmark}</p>}
-                <p className="font-medium text-gray-800 mt-0.5">
-                  {addr.city || ""}
-                  {addr.state ? `, ${addr.state}` : ""}
-                  {addr.pincode ? ` - ${addr.pincode}` : ""}
-                </p>
+                {typeof addr.flat === "string" && addr.flat && <span>{addr.flat}, </span>}
+                {addressLine && <span>{addressLine}</span>}
+                {landmarkLine && <p className="text-xs text-gray-500 mt-0.5">Landmark: {landmarkLine}</p>}
+                {(cityLine || stateLine || pincodeLine) && (
+                  <p className="font-medium text-gray-800 mt-0.5">
+                    {cityLine}
+                    {stateLine ? `, ${stateLine}` : ""}
+                    {pincodeLine ? ` - ${pincodeLine}` : ""}
+                  </p>
+                )}
               </div>
             </div>
 

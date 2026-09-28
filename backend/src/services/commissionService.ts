@@ -687,8 +687,15 @@ export const processPendingCODPayouts = async (
 
       if (!deliveryComm) continue;
 
-      // Amount delivery boy owes for this order = Total Amount (since commission is credited to wallet)
-      const orderAdminPayoutPart = Math.round(order.total * 100) / 100;
+      // Calculate how much this delivery boy owes for this order based on scoped QC assignment
+      const { calculateCODOrderBreakdown } = await import("./commissionService");
+      const breakdown = await calculateCODOrderBreakdown(
+        order._id.toString(),
+        deliveryBoyId,
+      );
+      const orderAdminPayoutPart = Math.round(breakdown.amountDeliveryBoyOwesAdmin * 100) / 100;
+
+      if (orderAdminPayoutPart <= 0) continue;
 
       // We process the commission if the amount paid covers this order's part (with small epsilon)
       if (remainingAmount >= orderAdminPayoutPart - 0.01) {
@@ -915,6 +922,7 @@ export interface ICODOrderBreakdown {
  */
 export const calculateCODOrderBreakdown = async (
   orderId: string,
+  deliveryBoyId?: string,
 ): Promise<ICODOrderBreakdown> => {
   try {
     const order = await Order.findById(orderId).populate("items");
@@ -924,6 +932,46 @@ export const calculateCODOrderBreakdown = async (
 
     if (order.paymentMethod !== "COD") {
       throw new Error("This function is only for COD orders");
+    }
+
+    const resolvedDeliveryBoyId = deliveryBoyId || order.deliveryBoy?.toString();
+    let assignedCodAmount = (order.orderType === "ECOMMERCE") ? 0 : order.total;
+
+    if (resolvedDeliveryBoyId) {
+      const { getDeliveryPartnerQcContext } = await import(
+        "../modules/delivery/utils/deliveryOrderScopingHelper"
+      );
+      const qcCtx = getDeliveryPartnerQcContext(order, resolvedDeliveryBoyId);
+      if (qcCtx.isAuthorized && qcCtx.hasQcItems && !qcCtx.isEcommerceOnly) {
+        assignedCodAmount = qcCtx.assignedQcCodAmount;
+      } else if (qcCtx.isEcommerceOnly) {
+        assignedCodAmount = 0;
+      }
+    } else if (order.orderType === "MIXED") {
+      const qcGroup = order.fulfillmentGroups?.find(
+        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY"
+      );
+      if (qcGroup) {
+        const qcBoyId = qcGroup?.deliveryBoy?.toString() || order.deliveryBoy?.toString();
+        if (qcBoyId) {
+          const { getDeliveryPartnerQcContext } = await import(
+            "../modules/delivery/utils/deliveryOrderScopingHelper"
+          );
+          const qcCtx = getDeliveryPartnerQcContext(order, qcBoyId);
+          assignedCodAmount = qcCtx.assignedQcCodAmount;
+        } else {
+          // If no rider assigned yet, the QC portion is strictly the QC group total
+          const orderGross = Number(order.subtotal || 0) + Number(order.shipping || 0);
+          const qcGroupGross = Number(qcGroup.subtotal || 0) + Number(qcGroup.shippingFee || 0);
+          if (orderGross > 0) {
+            assignedCodAmount = Number((order.total * (qcGroupGross / orderGross)).toFixed(2));
+          } else {
+            assignedCodAmount = qcGroupGross;
+          }
+        }
+      } else {
+        assignedCodAmount = 0;
+      }
     }
 
     const isSelfAssign = order.deliveryPreference === "Self";
@@ -938,9 +986,9 @@ export const calculateCODOrderBreakdown = async (
       deliveryBoyCommission: 0,
       adminDeliveryCommission: 0,
       totalAdminEarning: 0,
-      totalOrderAmount: order.total,
+      totalOrderAmount: assignedCodAmount,
       amountDeliveryBoyOwesAdmin: 0,
-      deliveryBoyId: order.deliveryBoy?.toString(),
+      deliveryBoyId: resolvedDeliveryBoyId,
       deliveryDistanceKm: order.deliveryDistanceKm,
       isSelfAssign,
     };
@@ -1028,7 +1076,7 @@ export const calculateCODOrderBreakdown = async (
     ) / 100;
 
     // 4. Amount Delivery Boy Owes Admin (only when delivery boy assigned)
-    breakdown.amountDeliveryBoyOwesAdmin = order.deliveryBoy ? breakdown.totalOrderAmount : 0;
+    breakdown.amountDeliveryBoyOwesAdmin = (order.deliveryBoy || resolvedDeliveryBoyId) ? breakdown.totalOrderAmount : 0;
 
     console.log(`[COD Breakdown] Order ${order.orderNumber}:`, {
       productCost: breakdown.productCost,
@@ -1233,6 +1281,7 @@ export const processCODOrderDeliverySelf = async (
 export const processCODOrderDelivery = async (
   orderId: string,
   session?: mongoose.ClientSession,
+  deliveryBoyId?: string,
 ): Promise<void> => {
   const useExternalSession = !!session;
   if (!session) {
@@ -1250,19 +1299,20 @@ export const processCODOrderDelivery = async (
       throw new Error("This function is only for COD orders");
     }
 
-    if (!order.deliveryBoy) {
+    const resolvedDeliveryBoyId = deliveryBoyId || order.deliveryBoy?.toString();
+    if (!resolvedDeliveryBoyId) {
       throw new Error("Use processCODOrderDeliverySelf for Self Delivery COD orders without assigned delivery boy");
     }
 
-    // Calculate complete breakdown
-    const breakdown = await calculateCODOrderBreakdown(orderId);
+    // Calculate complete breakdown scoped to the assigned delivery partner
+    const breakdown = await calculateCODOrderBreakdown(orderId, resolvedDeliveryBoyId);
 
     // Import PlatformWallet
     const PlatformWallet = (await import("../models/PlatformWallet")).default;
 
     // Check if already processed to avoid double-counting
     const existingTx = await WalletTransaction.findOne({
-      userId: order.deliveryBoy.toString(),
+      userId: resolvedDeliveryBoyId,
       relatedOrder: orderId,
       description: { $regex: /Delivery earning for COD order/i },
     }).session(session);
@@ -1273,27 +1323,27 @@ export const processCODOrderDelivery = async (
       );
     } else {
       // 1. Update Delivery Boy Wallet
-      const deliveryBoy = await Delivery.findById(order.deliveryBoy).session(
+      const deliveryBoy = await Delivery.findById(resolvedDeliveryBoyId).session(
         session,
       );
       if (!deliveryBoy) {
         throw new Error("Delivery boy not found");
       }
 
-      // Delivery boy owes admin the rest. Use safety addition to prevent NaN
+      // Delivery boy owes admin the scoped COD amount. Use safety addition to prevent NaN
       const currentPayout = deliveryBoy.pendingAdminPayout || 0;
       deliveryBoy.pendingAdminPayout =
         currentPayout + breakdown.amountDeliveryBoyOwesAdmin;
 
       // Track cash collected
       const currentCash = deliveryBoy.cashCollected || 0;
-      deliveryBoy.cashCollected = currentCash + breakdown.totalOrderAmount;
+      deliveryBoy.cashCollected = currentCash + breakdown.amountDeliveryBoyOwesAdmin;
 
       await deliveryBoy.save({ session });
 
       // Create wallet transaction for delivery boy commission
       await creditWallet(
-        order.deliveryBoy.toString(),
+        resolvedDeliveryBoyId,
         "DELIVERY_BOY",
         breakdown.deliveryBoyCommission,
         `Delivery earning for COD order ${order.orderNumber}`,
@@ -1334,7 +1384,7 @@ export const processCODOrderDelivery = async (
       // Create delivery boy commission record
       const deliveryCommission = new Commission({
         order: orderId,
-        deliveryBoy: order.deliveryBoy,
+        deliveryBoy: deliveryBoy._id,
         type: "DELIVERY_BOY",
         orderAmount:
           breakdown.deliveryDistanceKm || breakdown.totalDeliveryCharge,
@@ -1390,10 +1440,10 @@ export const processCODOrderDelivery = async (
       const { default: CashCollection } = await import("../models/CashCollection");
       await CashCollection.create([
         {
-          deliveryBoy: order.deliveryBoy,
+          deliveryBoy: deliveryBoy._id,
           order: orderId,
-          amount: breakdown.totalOrderAmount,
-          remark: `Auto-generated from delivered COD order ${order.orderNumber}`,
+          amount: breakdown.amountDeliveryBoyOwesAdmin,
+          remark: `Auto-generated from delivered COD order ${order.orderNumber} (QC fulfillment assignment)`,
           status: "Pending"
         }
       ], { session });

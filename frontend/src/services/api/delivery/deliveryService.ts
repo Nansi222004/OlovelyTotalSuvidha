@@ -66,6 +66,8 @@ export interface DeliveryOrderDetails {
   deliveryEarning?: number;
   paymentMethod: string;
   paymentStatus: string;
+  codAmountToCollect?: number;
+  isCod?: boolean;
   customerName?: string;
   customerPhone?: string;
   address?: string;

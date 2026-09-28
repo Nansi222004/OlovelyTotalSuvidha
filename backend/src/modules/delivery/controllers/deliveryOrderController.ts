@@ -349,6 +349,10 @@ export const getOrderDetails = asyncHandler(
       totalAmount: qcCtx.assignedQcSubtotal, // QC-only subtotal!
       subtotal: qcCtx.assignedQcSubtotal,
       assignedSubtotal: qcCtx.assignedQcSubtotal,
+      codAmountToCollect: qcCtx.assignedQcCodAmount,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      isCod: String(order.paymentMethod || "").toUpperCase() === "COD",
       createdAt: order.createdAt,
       distance: null,
       deliveryEarning: commission ? commission.commissionAmount : 0,
@@ -428,7 +432,7 @@ export const updateOrderStatus = asyncHandler(
         const { processCODOrderDelivery } =
           await import("../../../services/commissionService");
         try {
-          await processCODOrderDelivery(id);
+          await processCODOrderDelivery(id, undefined, deliveryId);
           console.log(`[COD] Order ${order.orderNumber} delivery processed successfully`);
         } catch (codError: any) {
           console.error("Error processing COD order delivery:", codError);

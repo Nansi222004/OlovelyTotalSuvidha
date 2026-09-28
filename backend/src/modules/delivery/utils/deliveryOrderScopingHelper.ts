@@ -6,6 +6,9 @@ export interface DeliveryPartnerQcContext {
   isEcommerceOnly: boolean;
   assignedQcItems: any[];
   assignedQcSubtotal: number;
+  assignedQcShippingFee: number;
+  assignedQcTotal: number;
+  assignedQcCodAmount: number;
   qcSellerIds: string[];
   assignedQcGroups: any[];
   assignedFulfillmentGroup?: any;
@@ -35,6 +38,9 @@ export function getDeliveryPartnerQcContext(
       isEcommerceOnly: false,
       assignedQcItems: [],
       assignedQcSubtotal: 0,
+      assignedQcShippingFee: 0,
+      assignedQcTotal: 0,
+      assignedQcCodAmount: 0,
       qcSellerIds: [],
       assignedQcGroups: [],
       relevantSellerPickups: [],
@@ -73,6 +79,9 @@ export function getDeliveryPartnerQcContext(
       isEcommerceOnly: true,
       assignedQcItems: [],
       assignedQcSubtotal: 0,
+      assignedQcShippingFee: 0,
+      assignedQcTotal: 0,
+      assignedQcCodAmount: 0,
       qcSellerIds: [],
       assignedQcGroups: [],
       relevantSellerPickups: [],
@@ -121,6 +130,9 @@ export function getDeliveryPartnerQcContext(
       isEcommerceOnly: false,
       assignedQcItems: [],
       assignedQcSubtotal: 0,
+      assignedQcShippingFee: 0,
+      assignedQcTotal: 0,
+      assignedQcCodAmount: 0,
       qcSellerIds: [],
       assignedQcGroups: [],
       relevantSellerPickups: [],
@@ -173,6 +185,47 @@ export function getDeliveryPartnerQcContext(
     return acc + Number(itemTotal || 0);
   }, 0);
 
+  // Calculate assigned QC shipping fee
+  let assignedQcShippingFee = 0;
+  if (hasFulfillmentGroups) {
+    assignedQcShippingFee = assignedQcGroups.reduce((acc: number, g: any) => {
+      return acc + Number(g.shippingFee || 0);
+    }, 0);
+  } else if (orderObj.orderType !== "ECOMMERCE" && assignedQcItems.length > 0) {
+    assignedQcShippingFee = Number(orderObj.shipping || 0);
+  }
+
+  const assignedQcTotal = Number((assignedQcSubtotal + assignedQcShippingFee).toFixed(2));
+
+  // Calculate actual COD amount this delivery partner is responsible to collect
+  let assignedQcCodAmount = 0;
+  const isCod = String(orderObj.paymentMethod || "").toUpperCase() === "COD";
+
+  if (isCod && isAuthorized && hasQcItems && !isEcommerceOnly) {
+    const fullCodPending = Number(orderObj.codAmountPending ?? orderObj.total ?? 0);
+    if (fullCodPending > 0) {
+      if (orderObj.orderType === "QUICK_COMMERCE" && qcGroups.length <= 1) {
+        // Pure QC single-rider order: full COD pending belongs to this rider
+        assignedQcCodAmount = fullCodPending;
+      } else {
+        // Mixed order or multiple QC groups:
+        // Apportion COD responsibility proportionally based on assigned QC gross vs total order gross
+        const orderSubtotal = Number(orderObj.subtotal || 0);
+        const orderShipping = Number(orderObj.shipping || 0);
+        const totalGross = orderSubtotal + orderShipping;
+
+        if (totalGross > 0) {
+          const ratio = assignedQcTotal / totalGross;
+          assignedQcCodAmount = Number((fullCodPending * ratio).toFixed(2));
+        } else {
+          assignedQcCodAmount = assignedQcTotal;
+        }
+      }
+      // Safety cap: cannot exceed full COD pending or assigned gross
+      assignedQcCodAmount = Math.min(assignedQcCodAmount, fullCodPending);
+    }
+  }
+
   // 5. Determine unique QC seller IDs from assigned QC items
   const qcSellerIdSet = new Set<string>();
   assignedQcItems.forEach((item: any) => {
@@ -213,6 +266,9 @@ export function getDeliveryPartnerQcContext(
     isEcommerceOnly,
     assignedQcItems,
     assignedQcSubtotal: Number(assignedQcSubtotal.toFixed(2)),
+    assignedQcShippingFee: Number(assignedQcShippingFee.toFixed(2)),
+    assignedQcTotal,
+    assignedQcCodAmount: Number(assignedQcCodAmount.toFixed(2)),
     qcSellerIds,
     assignedQcGroups,
     assignedFulfillmentGroup: assignedQcGroups[0] || null,

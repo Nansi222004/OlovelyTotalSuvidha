@@ -100,7 +100,7 @@ const createCommissions = async (items: IOrderItem[]) => {
     if (order.paymentMethod && order.paymentMethod.toUpperCase() === "COD") {
       // For COD orders, use the comprehensive COD processing logic
       const { processCODOrderDelivery } = await import("./commissionService");
-      await processCODOrderDelivery(orderId);
+      await processCODOrderDelivery(orderId, undefined, order.deliveryBoy?.toString());
     } else {
       // For online/prepaid orders, distribute commissions immediately
       const { distributeCommissions } = await import("./commissionService");
