@@ -681,7 +681,75 @@ export default function SellerProfile() {
         </div>
       </div>
 
-      {/* 4. Logout Section */}
+      {/* 4. Support & Policies */}
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-neutral-200 space-y-4">
+        <div className="border-b border-neutral-100 pb-3">
+          <h2 className="text-base font-bold text-neutral-900">Support & Policies</h2>
+          <p className="text-xs text-neutral-500">Help center, vendor guidelines and legal terms</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Support */}
+          <Link
+            to="/seller/support"
+            className="flex items-center justify-between p-3.5 rounded-xl border border-neutral-200/70 hover:border-teal-500 hover:bg-teal-50/40 transition-all duration-150 group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 group-hover:bg-white flex items-center justify-center flex-shrink-0 border border-teal-100 transition-colors">
+                <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <span className="text-sm font-semibold text-neutral-800 group-hover:text-teal-900 truncate block">
+                  Support
+                </span>
+                <p className="text-xs text-neutral-400 truncate">Contact vendor helpdesk & support</p>
+              </div>
+            </div>
+
+            <svg
+              className="w-4 h-4 text-neutral-400 group-hover:text-teal-600 transform group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+
+          {/* Privacy Policy */}
+          <Link
+            to="/seller/privacy-policy"
+            className="flex items-center justify-between p-3.5 rounded-xl border border-neutral-200/70 hover:border-teal-500 hover:bg-teal-50/40 transition-all duration-150 group"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 group-hover:bg-white flex items-center justify-center flex-shrink-0 border border-indigo-100 transition-colors">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <span className="text-sm font-semibold text-neutral-800 group-hover:text-teal-900 truncate block">
+                  Privacy Policy
+                </span>
+                <p className="text-xs text-neutral-400 truncate">Vendor terms, privacy & conditions</p>
+              </div>
+            </div>
+
+            <svg
+              className="w-4 h-4 text-neutral-400 group-hover:text-teal-600 transform group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+
+      {/* 5. Logout Section */}
       <div className="pt-2">
         <button
           onClick={() => setIsLogoutModalOpen(true)}
