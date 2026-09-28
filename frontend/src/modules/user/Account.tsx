@@ -2,8 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { getProfile, updateProfile, CustomerProfile } from '../../services/api/customerService';
+import { useToast } from '../../context/ToastContext';
+import { getProfile, updateProfile, deleteCustomerAccount, CustomerProfile } from '../../services/api/customerService';
+import { clearCustomerSession } from '../../services/api/config';
 import LanguageSelector from '../../components/LanguageSelector';
+import ConfirmationModal from '../../components/ConfirmationModal';
 import { useTranslation } from '../../hooks/useTranslation';
 
 const isPlaceholderName = (val?: string): boolean => !val || val.trim().toLowerCase() === 'user';
@@ -16,10 +19,15 @@ const resolveEffectiveName = (profileName?: string, authName?: string): string =
 export default function Account() {
   const navigate = useNavigate();
   const { user, updateUser, logout: authLogout } = useAuth();
+  const { showToast } = useToast();
   const { t } = useTranslation();
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Delete Account Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Edit Profile Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -162,6 +170,28 @@ export default function Account() {
   const handleLogout = () => {
     authLogout();
     navigate('/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteCustomerAccount();
+      if (res && res.success) {
+        setIsDeleteModalOpen(false);
+        clearCustomerSession();
+        authLogout();
+        showToast(res.message || t("account.deleteSuccess", "Your account has been deleted. You have been logged out."), "success");
+        navigate('/login', { replace: true });
+      } else {
+        showToast(res?.message || t("account.deleteFailed", "Failed to delete account"), "error");
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || t("account.deleteFailed", "Failed to delete account");
+      showToast(msg, "error");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleOpenEditModal = () => {
@@ -438,6 +468,7 @@ export default function Account() {
             </div>
             <span className="text-neutral-400">›</span>
           </button>
+          {/* Customer Wallet - Temporarily Commented Out
           <button onClick={() => navigate('/account/wallet')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors cursor-pointer">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-emerald-600"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" /><line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="2" /></svg>
@@ -450,10 +481,18 @@ export default function Account() {
               <span className="text-neutral-400">›</span>
             </div>
           </button>
+          */}
           <button onClick={() => navigate('/privacy-policy')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors cursor-pointer">
             <div className="flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               <span className="text-[13px] font-medium text-neutral-900">{t("account.privacyPolicy", "Privacy & Terms Policy")}</span>
+            </div>
+            <span className="text-neutral-400">›</span>
+          </button>
+          <button onClick={() => navigate('/support')} className="w-full flex items-center justify-between px-3 py-3 hover:bg-neutral-50 transition-colors cursor-pointer">
+            <div className="flex items-center gap-3">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-neutral-500"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M13 8H7M17 12H7M17 16H7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <span className="text-[13px] font-medium text-neutral-900">{t("account.support", "Help & Support")}</span>
             </div>
             <span className="text-neutral-400">›</span>
           </button>
@@ -470,6 +509,20 @@ export default function Account() {
               <span className="text-[13px] font-medium text-red-500">{t("account.logOut", "Log Out")}</span>
             </div>
             <span className="text-neutral-400">›</span>
+          </button>
+          {/* Delete Account */}
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-3 hover:bg-red-50/60 transition-colors cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-red-600">
+                <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="text-[13px] font-medium text-red-600">{t("account.deleteAccount", "Delete Account")}</span>
+            </div>
+            <span className="text-red-400 group-hover:translate-x-0.5 transition-transform">›</span>
           </button>
         </div>
       </div>
@@ -614,6 +667,22 @@ export default function Account() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Delete Account Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title={t("account.deleteModalTitle", "Delete your account?")}
+        message={t(
+          "account.deleteModalMessage",
+          "This action will permanently delete your account and you will be logged out. All current active sessions will be terminated."
+        )}
+        confirmText={t("account.confirmDelete", "Delete Account")}
+        cancelText={t("common.cancel", "Cancel")}
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
+      />
     </div>
   );
 }

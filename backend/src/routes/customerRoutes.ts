@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as customerController from "../modules/customer/controllers/customerController";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireUserType } from "../middleware/auth";
 import AppSettings from "../models/AppSettings";
 
 const router = Router();
@@ -35,6 +35,9 @@ router.get("/profile", authenticate, customerController.getProfile);
 
 // Update customer profile (protected route)
 router.put("/profile", authenticate, customerController.updateProfile);
+
+// Self-service delete customer account (protected route, customer only)
+router.delete("/account", authenticate, requireUserType("Customer"), customerController.deleteAccount);
 
 // Update customer location (protected route)
 router.post("/location", authenticate, customerController.updateLocation);

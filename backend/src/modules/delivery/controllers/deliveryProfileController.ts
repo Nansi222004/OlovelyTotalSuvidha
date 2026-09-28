@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import Delivery from "../../../models/Delivery";
+import DeliveryAssignment from "../../../models/DeliveryAssignment";
+import Return from "../../../models/Return";
+import WithdrawRequest from "../../../models/WithdrawRequest";
 
 /**
  * Update Delivery Profile
@@ -134,5 +137,98 @@ export const updateSettings = asyncHandler(async (req: Request, res: Response) =
         success: true,
         message: "Settings updated successfully",
         data: delivery.settings
+    });
+});
+
+/**
+ * Self-service Account Deletion for Authenticated Delivery Partner
+ */
+export const deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+    const deliveryBoyId = req.user?.userId;
+
+    if (!deliveryBoyId || (req as any).user?.userType !== "Delivery") {
+        return res.status(403).json({
+            success: false,
+            message: "Access denied. Only delivery partners can delete their delivery account."
+        });
+    }
+
+    const delivery = await Delivery.findById(deliveryBoyId);
+    if (!delivery) {
+        return res.status(401).json({
+            success: false,
+            code: "DELIVERY_PARTNER_DELETED",
+            message: "Delivery partner account is no longer available. Please log in again."
+        });
+    }
+
+    // 1. Check for active delivery assignments
+    const activeAssignments = await DeliveryAssignment.countDocuments({
+        deliveryBoy: deliveryBoyId,
+        status: { $in: ["Assigned", "Picked Up", "In Transit"] }
+    });
+
+    if (activeAssignments > 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Your account cannot be deleted while you have active deliveries in progress."
+        });
+    }
+
+    // 2. Check for active return pickup assignments
+    const activeReturns = await Return.countDocuments({
+        deliveryBoy: deliveryBoyId,
+        status: { $in: ["Delivery Partner Assigned", "Picked Up", "In Transit"] }
+    });
+
+    if (activeReturns > 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Your account cannot be deleted while you have active return deliveries in progress."
+        });
+    }
+
+    // 3. Check for pending balance or cash collected (financial obligations)
+    if (delivery.balance > 0 || delivery.cashCollected > 0) {
+        return res.status(400).json({
+            success: false,
+            message: `Your account cannot be deleted while you have a pending wallet balance (₹${delivery.balance || 0}) or unremitted cash collected (₹${delivery.cashCollected || 0}). Please settle your accounts first.`
+        });
+    }
+
+    if (delivery.pendingAdminPayout > 0) {
+        return res.status(400).json({
+            success: false,
+            message: `Your account cannot be deleted while you have a pending admin payout (₹${delivery.pendingAdminPayout}).`
+        });
+    }
+
+    // 4. Check for pending withdrawal requests
+    const pendingWithdrawal = await WithdrawRequest.countDocuments({
+        userId: deliveryBoyId,
+        userType: "DELIVERY_BOY",
+        status: { $in: ["Pending", "Approved"] }
+    });
+
+    if (pendingWithdrawal > 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Your account cannot be deleted while you have a pending withdrawal request in progress."
+        });
+    }
+
+    // 5. Delete delivery partner document
+    const deleted = await Delivery.findByIdAndDelete(deliveryBoyId);
+    if (!deleted) {
+        return res.status(404).json({
+            success: false,
+            message: "Delivery partner account not found"
+        });
+    }
+
+    // Historical delivery assignments, earnings ledger, and completed orders are preserved.
+    return res.status(200).json({
+        success: true,
+        message: "Your account has been deleted successfully. You have been logged out."
     });
 });

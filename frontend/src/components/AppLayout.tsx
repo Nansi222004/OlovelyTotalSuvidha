@@ -60,12 +60,32 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Check if location is required for current route
   const requiresLocation = () => {
-    const publicRoutes = ['/login', '/signup', '/seller/login', '/seller/signup', '/delivery/login', '/delivery/signup', '/admin/login', '/language-selection'];
-    // Don't require location on login/signup/language-selection pages
+    const publicRoutes = [
+      '/login',
+      '/signup',
+      '/seller/login',
+      '/seller/signup',
+      '/delivery/login',
+      '/delivery/signup',
+      '/admin/login',
+      '/language-selection',
+      '/privacy-policy',
+      '/customer-policy',
+      '/support',
+      '/about-us',
+      '/faq',
+      '/seller/privacy-policy',
+      '/seller/support',
+      '/delivery/privacy-policy',
+      '/delivery/terms-and-conditions',
+      '/delivery/support',
+      '/delivery/help',
+    ];
+    // Don't require location on login/signup/public informational pages
     if (publicRoutes.includes(location.pathname)) {
       return false;
     }
-    // Require location for ALL routes (not just authenticated users)
+    // Require location for ALL other routes (not just authenticated users)
     // This ensures location is mandatory for everyone visiting the platform
     return true;
   };

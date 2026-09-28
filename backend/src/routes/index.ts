@@ -101,6 +101,44 @@ router.use("/fcm-tokens", authenticate, fcmTokenRoutes);
 // Admin language management routes
 router.use("/admin/languages", adminLanguageRoutes);
 
+// Public Delivery Policy & Help endpoints (accessible without authentication)
+router.get("/delivery/policy", async (req, res) => {
+  try {
+    const { default: Policy } = await import("../models/Policy");
+    const docType = (req.query.type || req.query.docType || "").toString().toLowerCase();
+    let query: any = { type: "delivery", isActive: true };
+    if (docType === "privacy") {
+      query.title = { $regex: /privacy/i };
+    } else if (docType === "terms") {
+      query.title = { $regex: /terms|condition/i };
+    }
+
+    let policy = await Policy.findOne(query).sort({ createdAt: -1 });
+    if (!policy && docType) {
+      policy = await Policy.findOne({ type: "delivery", isActive: true }).sort({ createdAt: -1 });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: policy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
+router.get("/delivery/help", async (req, res, next) => {
+  try {
+    const { getHelpSupport } = await import("../modules/delivery/controllers/deliveryDashboardController");
+    return getHelpSupport(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // Delivery routes (protected)
 router.use(
   "/delivery",

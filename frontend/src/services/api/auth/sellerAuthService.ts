@@ -136,4 +136,12 @@ export const toggleShopStatus = async (): Promise<any> => {
   return response.data;
 };
 
+/**
+ * Self-service account deletion for authenticated seller
+ */
+export const deleteSellerAccount = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await api.delete<{ success: boolean; message: string }>('/auth/seller/account');
+  return response.data;
+};
+
 

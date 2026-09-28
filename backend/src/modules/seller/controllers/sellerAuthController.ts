@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
 import Seller from "../../../models/Seller";
+import OrderItem from "../../../models/OrderItem";
+import Return from "../../../models/Return";
+import WithdrawRequest from "../../../models/WithdrawRequest";
+import Product from "../../../models/Product";
 import {
   sendOTP as sendOTPService,
   verifyOTP as verifyOTPService,
@@ -471,3 +475,117 @@ export const toggleShopStatus = asyncHandler(
     });
   },
 );
+
+/**
+ * Self-service Account Deletion for Authenticated Seller
+ */
+export const deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+  const sellerId = (req as any).user?.userId;
+
+  if (!sellerId || (req as any).user?.userType !== "Seller") {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. Only sellers can delete their seller account.",
+    });
+  }
+
+  const seller = await Seller.findById(sellerId);
+  if (!seller) {
+    return res.status(401).json({
+      success: false,
+      code: "SELLER_DELETED",
+      message: "Seller account is no longer available. Please log in again.",
+    });
+  }
+
+  // 1. Check for active/pending orders or items awaiting fulfillment
+  const activeItemsCount = await OrderItem.countDocuments({
+    seller: sellerId,
+    status: { $in: ["Pending", "Shipped"] },
+  });
+
+  if (activeItemsCount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Your account cannot be deleted while you have pending orders or unfulfilled items.",
+    });
+  }
+
+  // 2. Check for pending returns or exchanges
+  const sellerItems = await OrderItem.find({ seller: sellerId }).select("_id");
+  const sellerItemIds = sellerItems.map((item) => item._id);
+
+  if (sellerItemIds.length > 0) {
+    const activeReturnsCount = await Return.countDocuments({
+      orderItem: { $in: sellerItemIds },
+      status: {
+        $in: [
+          "Pending",
+          "Approved",
+          "Pickup Pending",
+          "Delivery Partner Assigned",
+          "Picked Up",
+          "In Transit",
+          "Handed To Seller",
+        ],
+      },
+    });
+
+    if (activeReturnsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Your account cannot be deleted while you have pending returns or exchanges.",
+      });
+    }
+  }
+
+  // 3. Check for positive wallet balance or pending settlements
+  if (
+    (seller.balance && seller.balance > 0) ||
+    (seller.onHoldBalance && seller.onHoldBalance > 0)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: `Your account cannot be deleted while you have pending settlements or an active wallet balance (₹${(seller.balance || 0).toFixed(2)}). Please withdraw or settle your balance before deleting your account.`,
+    });
+  }
+
+  // 4. Check for pending withdrawal requests
+  const pendingWithdrawalCount = await WithdrawRequest.countDocuments({
+    userId: sellerId,
+    userType: "SELLER",
+    status: { $in: ["Pending", "Approved"] },
+  });
+
+  if (pendingWithdrawalCount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Your account cannot be deleted while you have a pending withdrawal request in progress.",
+    });
+  }
+
+  // 5. Deactivate / unpublish seller's active products
+  try {
+    await Product.updateMany(
+      { seller: sellerId },
+      { status: "Inactive", publish: false }
+    );
+  } catch (prodErr) {
+    console.warn("[DELETE_SELLER_ACCOUNT] Product deactivation warning:", prodErr);
+  }
+
+  // 6. Delete seller document
+  const deleted = await Seller.findByIdAndDelete(sellerId);
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      message: "Seller account not found",
+    });
+  }
+
+  // Historical orders, order items, payouts, and financial transactions are preserved.
+  return res.status(200).json({
+    success: true,
+    message: "Your account has been deleted successfully. You have been logged out.",
+  });
+});

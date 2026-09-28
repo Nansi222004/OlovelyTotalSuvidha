@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSellerProfile, updateSellerProfile } from '../../../services/api/auth/sellerAuthService';
+import { getSellerProfile, updateSellerProfile, deleteSellerAccount } from '../../../services/api/auth/sellerAuthService';
+import { clearSellerSession } from '../../../services/api/config';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import { getHeaderCategoriesPublic, HeaderCategory } from '../../../services/api/headerCategoryService';
 import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
 import LocationPickerMap from '../../../components/LocationPickerMap';
+import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import { useSellerChannel } from '../../../context/SellerChannelContext';
 
 const SellerAccountSettings = () => {
-    const { user, updateUser } = useAuth();
+    const navigate = useNavigate();
+    const { user, updateUser, logout } = useAuth();
+    const { showToast } = useToast();
     const { activeChannel, isHybrid, isQuickCommerceOnly, isEcommerceOnly, isLegacy } = useSellerChannel();
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
@@ -16,6 +22,8 @@ const SellerAccountSettings = () => {
     const [error, setError] = useState<string | null>(null);
     const [headerCategories, setHeaderCategories] = useState<HeaderCategory[]>([]);
     const [saveLoading, setSaveLoading] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Initial state with empty values
     const [sellerData, setSellerData] = useState({
@@ -172,6 +180,28 @@ const SellerAccountSettings = () => {
         }
     };
 
+    const handleDeleteAccount = async () => {
+        if (isDeleting) return;
+        setIsDeleting(true);
+        try {
+            const res = await deleteSellerAccount();
+            if (res && res.success) {
+                setIsDeleteModalOpen(false);
+                clearSellerSession();
+                logout();
+                showToast(res.message || "Your seller account has been deleted. You have been logged out.", "success");
+                navigate('/seller/login', { replace: true });
+            } else {
+                showToast(res?.message || "Failed to delete account", "error");
+            }
+        } catch (err: any) {
+            const msg = err.response?.data?.message || err.message || "Failed to delete account";
+            showToast(msg, "error");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     if (loading && !sellerData.sellerName) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-neutral-50">
@@ -214,6 +244,15 @@ const SellerAccountSettings = () => {
             icon: (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+            )
+        },
+        {
+            id: 'danger',
+            label: 'Danger Zone',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
             )
         },
@@ -675,6 +714,43 @@ const SellerAccountSettings = () => {
                                                 </section>
                                             </div>
                                         )}
+
+                                        {activeTab === 'danger' && (
+                                            <div className="space-y-6">
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-lg font-bold text-gray-900">Danger Zone</h4>
+                                                        <p className="text-xs text-gray-500">Irreversible actions for your store</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 bg-red-50/50 rounded-xl border border-red-200">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                        <div>
+                                                            <h5 className="text-sm font-bold text-red-900">Delete Seller Store Account</h5>
+                                                            <p className="text-xs text-red-700/80 mt-1 max-w-xl leading-relaxed">
+                                                                Permanently delete your vendor store account. All your catalog listings will be unpublished. You cannot recover your store once deleted.
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsDeleteModalOpen(true)}
+                                                            className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                            Delete Account
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {isEditing && (
@@ -710,6 +786,19 @@ const SellerAccountSettings = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Confirmation Modal for Delete Account */}
+            <ConfirmationModal
+                isOpen={isDeleteModalOpen}
+                title="Delete your seller account?"
+                message="This action will permanently delete your seller store and unpublish your products. You will be logged out immediately. This action cannot be undone."
+                confirmText="Delete Account"
+                cancelText="Cancel"
+                variant="danger"
+                isLoading={isDeleting}
+                onConfirm={handleDeleteAccount}
+                onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
+            />
         </div>
     );
 };

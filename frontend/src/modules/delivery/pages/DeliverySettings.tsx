@@ -2,16 +2,24 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
-import { updateSettings, getDeliveryProfile } from '../../../services/api/delivery/deliveryService';
+import { updateSettings, getDeliveryProfile, deleteDeliveryAccount } from '../../../services/api/delivery/deliveryService';
+import { clearDeliverySession } from '../../../services/api/config';
+import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 import LanguageSelector from '../../../components/LanguageSelector';
 
 export default function DeliverySettings() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { showToast } = useToast();
   const { t, language } = useLanguage();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [appVersion, setAppVersion] = useState("1.0.0");
   const [showLangModal, setShowLangModal] = useState(false);
@@ -42,6 +50,28 @@ export default function DeliverySettings() {
       await updateSettings({ [key]: value });
     } catch (error) {
       console.error("Failed to update settings", error);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteDeliveryAccount();
+      if (res && res.success) {
+        setIsDeleteModalOpen(false);
+        clearDeliverySession();
+        logout();
+        showToast(res.message || "Your delivery partner account has been deleted. You have been logged out.", "success");
+        navigate('/delivery/login', { replace: true });
+      } else {
+        showToast(res?.message || "Failed to delete account", "error");
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "Failed to delete account";
+      showToast(msg, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -181,6 +211,28 @@ export default function DeliverySettings() {
           </div>
         </div>
 
+        {/* Danger Zone: Delete Account */}
+        <div className="bg-white rounded-xl shadow-sm border border-red-200 overflow-hidden mt-4">
+          <div className="p-4 border-b border-red-100 bg-red-50/50">
+            <h3 className="text-red-900 font-semibold text-sm">Danger Zone</h3>
+          </div>
+          <div className="p-4">
+            <p className="text-xs text-neutral-600 mb-3 leading-relaxed">
+              Permanently delete your delivery partner account. This action cannot be undone and will terminate all active deliveries, assignments, and location tracking.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6" />
+              </svg>
+              {t("delivery.deleteAccount", "Delete Delivery Account")}
+            </button>
+          </div>
+        </div>
+
         {/* App Version */}
         <div className="mt-4 text-center">
           <p className="text-neutral-400 text-xs">App Version {appVersion}</p>
@@ -189,6 +241,22 @@ export default function DeliverySettings() {
 
       {/* Language Selection Modal */}
       <LanguageSelector variant="modal" isOpen={showLangModal} onClose={() => setShowLangModal(false)} />
+
+      {/* Confirmation Modal for Delete Account */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title={t("delivery.deleteModalTitle", "Delete your account?")}
+        message={t(
+          "delivery.deleteModalMessage",
+          "This action will permanently delete your delivery partner account and you will be logged out. All GPS tracking and order assignments will be stopped immediately."
+        )}
+        confirmText={t("delivery.confirmDelete", "Delete Account")}
+        cancelText={t("common.cancel", "Cancel")}
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
+      />
 
       <DeliveryBottomNav />
     </div>

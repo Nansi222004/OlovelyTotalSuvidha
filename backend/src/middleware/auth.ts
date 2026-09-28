@@ -86,6 +86,32 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         }
       }
 
+      // Seller session validation:
+      // If an authenticated seller token is presented, verify the seller record still exists in DB.
+      // If deleted by Admin or self-deleted, reject immediately with SELLER_DELETED so the client
+      // can gracefully clear session and redirect to Login instead of leaving a phantom session active.
+      if (decoded.userType === 'Seller' && decoded.userId) {
+        if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
+          res.status(401).json({
+            success: false,
+            code: 'SELLER_DELETED',
+            message: 'Seller account is no longer available. Please log in again.',
+          });
+          return;
+        }
+
+        const Seller = (await import('../models/Seller')).default;
+        const sellerExists = await Seller.exists({ _id: decoded.userId });
+        if (!sellerExists) {
+          res.status(401).json({
+            success: false,
+            code: 'SELLER_DELETED',
+            message: 'Seller account is no longer available. Please log in again.',
+          });
+          return;
+        }
+      }
+
       next();
     } catch (error: any) {
       res.status(401).json({

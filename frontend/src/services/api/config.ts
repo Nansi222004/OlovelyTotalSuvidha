@@ -124,6 +124,7 @@ api.interceptors.response.use(
     const errorCode = error.response?.data?.code;
     const isCustomerDeleted = errorCode === 'CUSTOMER_DELETED';
     const isDeliveryDeleted = errorCode === 'DELIVERY_PARTNER_DELETED';
+    const isSellerDeleted = errorCode === 'SELLER_DELETED';
 
     // 1. Explicit Customer-deleted / invalid session detection
     if (isCustomerDeleted) {
@@ -151,7 +152,20 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // 2. Handle 401 (Unauthorized) for auto-logout
+    // 3. Explicit Seller-deleted / invalid session detection
+    if (isSellerDeleted) {
+      clearSellerSession({
+        sessionExpiredMessage: 'Your seller account is no longer available. Please log in again.',
+      });
+
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!currentPath.includes('/seller/login') && !currentPath.includes('/seller/signup')) {
+        window.location.href = '/seller/login';
+      }
+      return Promise.reject(error);
+    }
+
+    // 4. Handle 401 (Unauthorized) for auto-logout
     // 403 (Forbidden) means user is authenticated but doesn't have permission - DO NOT LOGOUT
     if (status === 401) {
       const isAuthEndpoint = error.config?.url?.includes("/auth/");
@@ -180,6 +194,10 @@ api.interceptors.response.use(
           });
         } else if (panel === 'delivery') {
           clearDeliverySession({
+            sessionExpiredMessage: 'Your session has expired. Please log in again.',
+          });
+        } else if (panel === 'seller') {
+          clearSellerSession({
             sessionExpiredMessage: 'Your session has expired. Please log in again.',
           });
         } else {
@@ -318,6 +336,28 @@ export const clearDeliverySession = (options?: { sessionExpiredMessage?: string 
     window.dispatchEvent(
       new CustomEvent('olovely:delivery-logged-out', {
         detail: { reason: options?.sessionExpiredMessage || 'DELIVERY_PARTNER_DELETED' },
+      })
+    );
+  }
+};
+
+/**
+ * Safely clear all seller-specific authentication and cached session data
+ * without affecting Customer, Delivery, Admin, or global app settings.
+ */
+export const clearSellerSession = (options?: { sessionExpiredMessage?: string }) => {
+  removeAuthToken('seller');
+  localStorage.removeItem('seller_authToken');
+  localStorage.removeItem('seller_userData');
+
+  if (options?.sessionExpiredMessage && typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('seller_session_notice', options.sessionExpiredMessage);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('olovely:seller-logged-out', {
+        detail: { reason: options?.sessionExpiredMessage || 'SELLER_DELETED' },
       })
     );
   }

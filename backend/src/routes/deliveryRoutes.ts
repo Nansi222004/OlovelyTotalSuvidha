@@ -15,6 +15,7 @@ const router = Router();
 router.get("/profile", getProfile);
 router.put("/profile", deliveryProfileController.updateProfile);
 router.put("/settings", deliveryProfileController.updateSettings);
+router.delete("/account", deliveryProfileController.deleteAccount);
 
 // Help & Support
 router.get("/help", deliveryDashboardController.getHelpSupport);

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as sellerAuthController from "../modules/seller/controllers/sellerAuthController";
 import { otpRateLimiter, loginRateLimiter } from "../middleware/rateLimiter";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireUserType } from "../middleware/auth";
 
 const router = Router();
 
@@ -18,5 +18,8 @@ router.post("/register", sellerAuthController.register);
 router.get("/profile", authenticate, sellerAuthController.getProfile);
 router.put("/profile", authenticate, sellerAuthController.updateProfile);
 router.put("/toggle-shop-status", authenticate, sellerAuthController.toggleShopStatus);
+
+// Self-service delete seller account (protected, seller only)
+router.delete("/account", authenticate, requireUserType("Seller"), sellerAuthController.deleteAccount);
 
 export default router;

@@ -36,6 +36,8 @@ export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
         const profile = await getDeliveryProfile();
         setIsOnlineLocal(profile?.isOnline || false);
       } catch (error) {
@@ -178,7 +180,16 @@ export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
 export function useDeliveryStatus() {
   const context = useContext(DeliveryStatusContext);
   if (context === undefined) {
-    throw new Error('useDeliveryStatus must be used within a DeliveryStatusProvider');
+    return {
+      isOnline: false,
+      setIsOnline: () => {},
+      toggleStatus: async () => {},
+      currentLocation: null,
+      sellersInRangeCount: 0,
+      sellersInRange: [],
+      locationError: null,
+      isLoadingSellers: false,
+    };
   }
   return context;
 }

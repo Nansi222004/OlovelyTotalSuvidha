@@ -36,7 +36,8 @@ import { getProducts } from "../../services/api/customerProductService";
 import { getProfile, updateProfile } from "../../services/api/customerService";
 import { calculateProductPrice } from "../../utils/priceUtils";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
-import { getCustomerWalletBalance } from "../../services/api/customerWalletService";
+// Customer Wallet service temporarily commented out
+// import { getCustomerWalletBalance } from "../../services/api/customerWalletService";
 
 // const STORAGE_KEY = 'saved_address'; // Removed
 
@@ -75,9 +76,13 @@ export default function Checkout() {
   const [hasAppliedCouponBefore, setHasAppliedCouponBefore] = useState(false);
   const [showOrderSuccess, setShowOrderSuccess] = useState(false);
 
-  // Wallet State
+  // Wallet State (Customer Wallet temporarily disabled)
+  /*
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState<boolean>(false);
+  */
+  const [walletBalance] = useState<number>(0);
+  const [useWallet] = useState<boolean>(false);
 
   // Fulfillment-Aware Delivery Option State (Authoritatively Instant for QC, Courier for Ecom)
   const [deliverySelections, setDeliverySelections] = useState<{
@@ -135,9 +140,9 @@ export default function Checkout() {
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [isMapSelected, setIsMapSelected] = useState(false);
 
-  // Payment Method State
+  // Payment Method State (Online payment temporarily disabled; default to COD)
   const [paymentMethod, setPaymentMethod] = useState<"Online" | "COD">(
-    "Online",
+    "COD",
   );
 
   // Order Processing State
@@ -384,6 +389,7 @@ export default function Checkout() {
       }
     };
 
+    /* Customer Wallet fetch temporarily commented out
     const fetchWallet = async () => {
       try {
         const res = await getCustomerWalletBalance();
@@ -394,9 +400,10 @@ export default function Checkout() {
         console.error("Failed to load wallet balance", err);
       }
     };
+    */
 
     fetchInitialData();
-    fetchWallet();
+    // fetchWallet();
   }, []);
 
   // Fetch similar products dynamically
@@ -857,12 +864,20 @@ export default function Checkout() {
           setShowOrderSuccess(true);
           showGlobalToast("Order placed successfully!", "success");
         } else {
+          // USER Razorpay online checkout temporarily commented out
+          /*
           // For Online with remaining payable, trigger Razorpay payment
           setPendingOrderId(placedId);
           setShowRazorpayCheckout(true);
+          */
+          // Fallback to direct success if non-COD reached
+          setPlacedOrderId(placedId);
+          clearCart();
+          setShowOrderSuccess(true);
+          showGlobalToast("Order placed successfully!", "success");
         }
         // Note: For Online payment, the cart will be cleared and success shown only after successful payment
-        // See the RazorpayCheckout onSuccess handler (lines 1840-1846)
+        // See the RazorpayCheckout onSuccess handler
       }
     } catch (error: any) {
       console.error("Order placement failed", error);
@@ -3063,7 +3078,8 @@ export default function Checkout() {
         )}
       </div>
 
-      {/* Wallet Balance Usage Toggle */}
+      {/* Wallet Balance Usage Toggle - Customer Wallet temporarily commented out */}
+      {/*
       <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200 bg-emerald-50/40">
         <label className="flex items-center justify-between cursor-pointer">
           <div className="flex items-center gap-3">
@@ -3092,6 +3108,7 @@ export default function Checkout() {
           </div>
         </label>
       </div>
+      */}
 
       {/* Payment Method Selection */}
       <div className="px-4 md:px-6 lg:px-8 py-3 border-b border-neutral-200">
@@ -3103,7 +3120,9 @@ export default function Checkout() {
             ✓ Order 100% Covered by Wallet (No additional payment needed)
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
+            {/* Online Payment (Razorpay) temporarily disabled for customer checkout */}
+            {/*
             <button
               onClick={() => setPaymentMethod("Online")}
               className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
@@ -3131,6 +3150,7 @@ export default function Checkout() {
                 (Cards, UPI, NetBanking)
               </p>
             </button>
+            */}
 
             <button
               onClick={() => setPaymentMethod("COD")}
@@ -3348,13 +3368,15 @@ export default function Checkout() {
             </span>
           </div>
 
-          {/* Wallet deduction */}
+          {/* Wallet deduction - Customer Wallet temporarily commented out */}
+          {/*
           {useWallet && walletDeduction > 0 && (
             <div className="flex items-center justify-between text-emerald-600 font-medium">
               <span className="text-xs">Wallet Balance Applied</span>
               <span className="text-xs font-bold">-₹{walletDeduction.toFixed(2)}</span>
             </div>
           )}
+          */}
 
           {/* Final Payable total */}
           <div className="pt-2 border-t border-neutral-300 flex items-center justify-between">
@@ -3898,7 +3920,8 @@ export default function Checkout() {
         }
       `}</style>
 
-      {/* Razorpay Checkout Modal */}
+      {/* Razorpay Checkout Modal (temporarily commented out for customer checkout) */}
+      {/*
       {showRazorpayCheckout && pendingOrderId && user && (
         <RazorpayCheckout
           orderId={pendingOrderId}
@@ -3926,6 +3949,7 @@ export default function Checkout() {
           }}
         />
       )}
+      */}
     </div>
   );
 }

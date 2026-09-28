@@ -40,7 +40,10 @@ export function DeliveryUserProvider({ children }: { children: ReactNode }) {
 export function useDeliveryUser() {
   const context = useContext(DeliveryUserContext);
   if (context === undefined) {
-    throw new Error('useDeliveryUser must be used within a DeliveryUserProvider');
+    return {
+      userName: '',
+      setUserName: () => {},
+    };
   }
   return context;
 }

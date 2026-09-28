@@ -3,15 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { useDeliveryUser } from '../context/DeliveryUserContext';
-import { getDeliveryProfile, updateProfile } from '../../../services/api/delivery/deliveryService';
+import { useAuth } from '../../../context/AuthContext';
+import { clearDeliverySession } from '../../../services/api/config';
+import { getDeliveryProfile, updateProfile, deleteDeliveryAccount } from '../../../services/api/delivery/deliveryService';
+import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
 
 export default function DeliveryProfile() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const { showToast } = useToast();
   const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { userName, setUserName } = useDeliveryUser();
 
   const [profileData, setProfileData] = useState({
@@ -89,6 +95,28 @@ export default function DeliveryProfile() {
     } catch (error) {
       console.error("Failed to update profile", error);
       showToast("Failed to update profile", "error");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteDeliveryAccount();
+      if (res && res.success) {
+        setIsDeleteModalOpen(false);
+        clearDeliverySession();
+        logout();
+        showToast(res.message || "Your delivery partner account has been deleted. You have been logged out.", "success");
+        navigate('/delivery/login', { replace: true });
+      } else {
+        showToast(res?.message || "Failed to delete account", "error");
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "Failed to delete account";
+      showToast(msg, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -354,7 +382,38 @@ export default function DeliveryProfile() {
             {t("delivery.editProfile", "Edit Profile")}
           </button>
         )}
+
+        {/* Danger Zone: Delete Account */}
+        <div className="mt-8 pt-4 border-t border-neutral-200">
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-semibold text-sm border border-red-200 transition-colors cursor-pointer"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6" />
+            </svg>
+            {t("delivery.deleteAccount", "Delete Delivery Account")}
+          </button>
+        </div>
       </div>
+
+      {/* Confirmation Modal for Delete Account */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title={t("delivery.deleteModalTitle", "Delete your account?")}
+        message={t(
+          "delivery.deleteModalMessage",
+          "This action will permanently delete your delivery partner account and you will be logged out. All GPS tracking and order assignments will be stopped immediately."
+        )}
+        confirmText={t("delivery.confirmDelete", "Delete Account")}
+        cancelText={t("common.cancel", "Cancel")}
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
+      />
+
       <DeliveryBottomNav />
     </div>
   );

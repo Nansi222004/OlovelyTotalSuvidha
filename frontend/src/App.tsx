@@ -48,6 +48,7 @@ const Login = lazyWithRetry(() => import("./modules/user/Login"), "Login");
 const LanguageSelection = lazyWithRetry(() => import("./modules/user/pages/LanguageSelection"), "LanguageSelection");
 
 const AboutUs = lazyWithRetry(() => import("./modules/user/AboutUs"), "AboutUs");
+const Support = lazyWithRetry(() => import("./modules/user/Support"), "Support");
 const CustomerPolicy = lazyWithRetry(() => import("./modules/user/CustomerPolicy"), "CustomerPolicy");
 const FAQ = lazyWithRetry(() => import("./modules/user/FAQ"), "FAQ");
 const Wishlist = lazyWithRetry(() => import("./modules/user/Wishlist"), "Wishlist");
@@ -516,7 +517,41 @@ function App() {
                             }
                           />
 
-                          {/* Delivery App Routes */}
+                          {/* Public Delivery Routes (Accessible without login) */}
+                          <Route
+                            path="/delivery/privacy-policy"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <DeliveryPolicy />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/delivery/terms-and-conditions"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <DeliveryPolicy />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/delivery/support"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <DeliveryHelp />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/delivery/help"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <DeliveryHelp />
+                              </Suspense>
+                            }
+                          />
+
+                          {/* Delivery App Routes (Protected) */}
                           <Route
                             path="/delivery/*"
                             element={
@@ -587,6 +622,10 @@ function App() {
                                         path="help"
                                         element={<DeliveryHelp />}
                                       />
+                                      <Route
+                                        path="support"
+                                        element={<DeliveryHelp />}
+                                      />
                                        <Route
                                          path="about"
                                          element={<DeliveryAbout />}
@@ -610,7 +649,25 @@ function App() {
                             }
                           />
 
-                          {/* Seller App Routes */}
+                          {/* Public Seller Routes (Accessible without login) */}
+                          <Route
+                            path="/seller/privacy-policy"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <CustomerPolicy />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/seller/support"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <Support />
+                              </Suspense>
+                            }
+                          />
+
+                          {/* Seller App Routes (Protected) */}
                           <Route
                             path="/seller/*"
                             element={
@@ -703,6 +760,14 @@ function App() {
                                       <Route
                                         path="profile"
                                         element={<SellerProfile />}
+                                      />
+                                      <Route
+                                        path="privacy-policy"
+                                        element={<CustomerPolicy />}
+                                      />
+                                      <Route
+                                        path="support"
+                                        element={<Support />}
                                       />
                                     </Routes>
                                   </SellerLayout>
@@ -985,10 +1050,12 @@ function App() {
                                       path="/account"
                                       element={<Account />}
                                     />
+                                    {/* Customer Wallet - Temporarily Commented Out
                                     <Route
                                       path="/account/wallet"
                                       element={<CustomerWallet />}
                                     />
+                                    */}
                                     <Route
                                       path="/notifications"
                                       element={<UserNotifications />}
@@ -996,6 +1063,10 @@ function App() {
                                     <Route
                                       path="/about-us"
                                       element={<AboutUs />}
+                                    />
+                                    <Route
+                                      path="/support"
+                                      element={<Support />}
                                     />
                                     <Route
                                       path="/privacy-policy"

@@ -8,7 +8,9 @@ import {
   getSellerProfile,
   updateSellerProfile,
   toggleShopStatus,
+  deleteSellerAccount,
 } from '../../../services/api/auth/sellerAuthService';
+import { clearSellerSession } from '../../../services/api/config';
 import { uploadImage } from '../../../services/api/uploadService';
 import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import LanguageSelector from '../../../components/LanguageSelector';
@@ -72,6 +74,39 @@ export default function SellerProfile() {
 
   // Logout Modal State
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  // Delete Account Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleLogoutConfirm = () => {
+    setIsLogoutModalOpen(false);
+    clearSellerSession();
+    logout();
+    navigate('/seller/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteSellerAccount();
+      if (res && res.success) {
+        setIsDeleteModalOpen(false);
+        clearSellerSession();
+        logout();
+        showToast(res.message || "Your seller account has been deleted. You have been logged out.", "success");
+        navigate('/seller/login', { replace: true });
+      } else {
+        showToast(res?.message || "Failed to delete account", "error");
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "Failed to delete account";
+      showToast(msg, "error");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -242,11 +277,6 @@ export default function SellerProfile() {
     } finally {
       setSavingPassword(false);
     }
-  };
-
-  const handleLogoutConfirm = () => {
-    logout();
-    navigate('/seller/login');
   };
 
   if (loading) {
@@ -655,13 +685,35 @@ export default function SellerProfile() {
       <div className="pt-2">
         <button
           onClick={() => setIsLogoutModalOpen(true)}
-          className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-600 font-semibold text-sm border border-red-200 transition-colors"
+          className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold text-sm border border-neutral-200 transition-colors cursor-pointer"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
           Log Out from Vendor Portal
         </button>
+      </div>
+
+      {/* 5. Danger Zone: Delete Account */}
+      <div className="pt-2">
+        <div className="p-4 rounded-2xl bg-red-50/60 border border-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-red-900">Delete Vendor Account</h4>
+            <p className="text-xs text-red-700/80 mt-0.5">
+              Permanently delete your seller store and unpublish your products. This action cannot be undone.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="self-start sm:self-auto px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete Account
+          </button>
+        </div>
       </div>
 
       {/* Edit Profile Modal */}
@@ -931,9 +983,22 @@ export default function SellerProfile() {
         message="Are you sure you want to log out from the Seller Portal?"
         confirmText="Log Out"
         cancelText="Cancel"
-        variant="danger"
+        variant="warning"
         onConfirm={handleLogoutConfirm}
         onCancel={() => setIsLogoutModalOpen(false)}
+      />
+
+      {/* Confirmation Modal for Delete Account */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title="Delete your seller account?"
+        message="This action will permanently delete your seller store and unpublish your products. You will be logged out immediately. This action cannot be undone."
+        confirmText="Delete Account"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
       />
     </div>
   );

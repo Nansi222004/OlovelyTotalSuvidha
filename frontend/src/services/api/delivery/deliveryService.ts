@@ -439,3 +439,12 @@ export const markNotificationRead = async (id: string) => {
     throw handleApiError(error);
   }
 };
+
+export const deleteDeliveryAccount = async () => {
+  try {
+    const response = await api.delete(`${BASE_URL}/account`);
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};

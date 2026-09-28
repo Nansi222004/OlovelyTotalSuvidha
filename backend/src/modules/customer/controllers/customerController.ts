@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import Customer from "../../../models/Customer";
 import Address from "../../../models/Address";
+import Order from "../../../models/Order";
+import Return from "../../../models/Return";
+import Cart from "../../../models/Cart";
+import Wishlist from "../../../models/Wishlist";
 import SupportedLanguage from "../../../models/SupportedLanguage";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
@@ -345,5 +349,108 @@ export const getLocation = asyncHandler(async (req: Request, res: Response) => {
       pincode: customer.pincode,
       locationUpdatedAt: customer.locationUpdatedAt,
     },
+  });
+});
+
+/**
+ * Self-service Account Deletion for Authenticated Customer
+ */
+export const deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+
+  if (!userId || (req as any).user?.userType !== "Customer") {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. Only customers can delete their customer account.",
+    });
+  }
+
+  const customer = await Customer.findById(userId);
+  if (!customer) {
+    return res.status(401).json({
+      success: false,
+      code: "CUSTOMER_DELETED",
+      message: "Customer account is no longer available. Please log in again.",
+    });
+  }
+
+  // 1. Check for active/ongoing orders
+  const activeOrdersCount = await Order.countDocuments({
+    customer: userId,
+    status: {
+      $in: [
+        "Received",
+        "Accepted",
+        "Pending",
+        "Processed",
+        "Shipped",
+        "Picked up",
+        "On the way",
+        "Out for Delivery",
+      ],
+    },
+  });
+
+  if (activeOrdersCount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Your account cannot be deleted while you have active orders in progress.",
+    });
+  }
+
+  // 2. Check for pending return/exchange requests
+  const activeReturnsCount = await Return.countDocuments({
+    customer: userId,
+    status: {
+      $in: [
+        "Pending",
+        "Approved",
+        "Pickup Pending",
+        "Delivery Partner Assigned",
+        "Picked Up",
+        "In Transit",
+      ],
+    },
+  });
+
+  if (activeReturnsCount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Your account cannot be deleted while you have pending return or exchange requests.",
+    });
+  }
+
+  // 3. Check for positive wallet balance
+  if (customer.walletAmount && customer.walletAmount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: `Your account cannot be deleted while you have an active wallet balance (₹${customer.walletAmount.toFixed(2)}). Please spend your balance before deleting your account.`,
+    });
+  }
+
+  // 4. Perform customer deletion
+  const deleted = await Customer.findByIdAndDelete(userId);
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      message: "Customer account not found",
+    });
+  }
+
+  // Clean up customer-specific transient state (cart, wishlist, saved addresses)
+  // Historical orders, payments, invoices, and reviews are preserved for legal & financial audits.
+  try {
+    await Promise.all([
+      Cart.deleteMany({ customer: userId }),
+      Wishlist.deleteMany({ customer: userId }),
+      Address.deleteMany({ customer: userId }),
+    ]);
+  } catch (cleanupErr) {
+    console.warn("[DELETE_CUSTOMER_ACCOUNT] Non-critical transient cleanup error:", cleanupErr);
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Your account has been deleted successfully. You have been logged out.",
   });
 });

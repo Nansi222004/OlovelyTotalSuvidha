@@ -16,6 +16,7 @@ import {
   getPanelFromContext,
   clearCustomerSession,
   clearDeliverySession,
+  clearSellerSession,
 } from "../services/api/config";
 
 interface User {
@@ -159,6 +160,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener("olovely:delivery-logged-out", handleDeliveryLoggedOut);
     return () => {
       window.removeEventListener("olovely:delivery-logged-out", handleDeliveryLoggedOut);
+    };
+  }, []);
+
+  // Synchronize state when custom seller-logged-out event is dispatched (e.g. from Axios interceptor)
+  useEffect(() => {
+    const handleSellerLoggedOut = () => {
+      const panel = getPanelFromContext(userRef.current?.userType, window.location.pathname);
+      if (panel === "seller" || userRef.current?.userType === "Seller") {
+        setToken(null);
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+    };
+
+    window.addEventListener("olovely:seller-logged-out", handleSellerLoggedOut);
+    return () => {
+      window.removeEventListener("olovely:seller-logged-out", handleSellerLoggedOut);
     };
   }, []);
 
@@ -317,6 +335,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearCustomerSession();
     } else if (userType === "Delivery" || (!currentUser?.userType && getPanelFromContext(undefined, window.location.pathname) === "delivery")) {
       clearDeliverySession();
+    } else if (userType === "Seller" || (!currentUser?.userType && getPanelFromContext(undefined, window.location.pathname) === "seller")) {
+      clearSellerSession();
     } else {
       removeAuthToken(userType);
     }

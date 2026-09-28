@@ -90,4 +90,12 @@ export const submitCustomerSupport = async (data: SupportContactData): Promise<S
   return response.data;
 };
 
+/**
+ * Self-service account deletion for authenticated customer
+ */
+export const deleteCustomerAccount = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await api.delete<{ success: boolean; message: string }>('/customer/account');
+  return response.data;
+};
+
 
