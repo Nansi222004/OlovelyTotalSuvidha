@@ -32,7 +32,7 @@ export interface UpdateFAQData {
 
 export interface Policy {
   _id: string;
-  type: "customer" | "delivery";
+  type: "customer" | "seller" | "delivery";
   title: string;
   content: string;
   version: string;
@@ -42,7 +42,7 @@ export interface Policy {
 }
 
 export interface CreatePolicyData {
-  type: "customer" | "delivery";
+  type: "customer" | "seller" | "delivery";
   title: string;
   content: string;
   version: string;

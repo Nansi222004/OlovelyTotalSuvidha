@@ -103,13 +103,25 @@ export default function DeliveryPolicy() {
               )}
             </div>
           ) : (
-            <div className="text-center py-12">
-              <h3 className="text-neutral-900 font-bold mb-2">{title}</h3>
-              <p className="text-neutral-500 text-sm leading-relaxed">
-                {isPrivacy
-                  ? "Olovely Total Suvidha respects your privacy and ensures all delivery partner location and personal data are protected in accordance with industry security standards."
-                  : "By using the Olovely Total Suvidha Delivery Partner app, you agree to fulfill assigned deliveries promptly, maintain customer privacy, and comply with safety and service guidelines."}
+            <div className="text-center py-10 max-w-md mx-auto">
+              <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-orange-100">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+              </div>
+              <h3 className="text-neutral-900 font-bold text-base mb-2">Policy Currently Unavailable</h3>
+              <p className="text-neutral-500 text-xs leading-relaxed mb-5">
+                The delivery partner {isPrivacy ? "privacy policy" : "terms and conditions"} are currently being updated. Please check back shortly or reach out to partner support.
               </p>
+              <button
+                onClick={() => navigate('/delivery/support')}
+                className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold transition-colors"
+              >
+                Delivery Partner Support
+              </button>
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IPolicy extends Document {
-    type: "customer" | "delivery";
+    type: "customer" | "seller" | "delivery";
     title: string;
     content: string;
     version: string;
@@ -15,7 +15,7 @@ const PolicySchema = new Schema<IPolicy>(
     {
         type: {
             type: String,
-            enum: ["customer", "delivery"],
+            enum: ["customer", "seller", "delivery"],
             required: [true, "Policy type is required"],
         },
         title: {

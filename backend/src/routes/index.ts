@@ -139,6 +139,23 @@ router.get("/delivery/help", async (req, res, next) => {
   }
 });
 
+// Public Seller Policy endpoint (accessible without authentication)
+router.get("/seller/policy", async (_req, res) => {
+  try {
+    const { default: Policy } = await import("../models/Policy");
+    const policy = await Policy.findOne({ type: "seller", isActive: true }).sort({ createdAt: -1 });
+    return res.status(200).json({
+      success: true,
+      data: policy,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
 // Delivery routes (protected)
 router.use(
   "/delivery",

@@ -185,6 +185,9 @@ const SellerReviews = lazyWithRetry(
 const SellerLogin = lazyWithRetry(() => import("./modules/seller/pages/SellerLogin"), "SellerLogin");
 const SellerSignUp = lazyWithRetry(() => import("./modules/seller/pages/SellerSignUp"), "SellerSignUp");
 const SellerUnderReview = lazyWithRetry(() => import("./modules/seller/pages/SellerUnderReview"), "SellerUnderReview");
+const SellerPolicy = lazyWithRetry(
+  () => import("./modules/seller/pages/SellerPolicy"), "SellerPolicy"
+);
 
 // Lazy load admin routes
 const AdminLayout = lazyWithRetry(
@@ -296,6 +299,9 @@ const AdminCancelledOrders = lazyWithRetry(
 );
 const AdminCustomerAppPolicy = lazyWithRetry(
   () => import("./modules/admin/pages/AdminCustomerAppPolicy"), "AdminCustomerAppPolicy"
+);
+const AdminSellerAppPolicy = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminSellerAppPolicy"), "AdminSellerAppPolicy"
 );
 const AdminDeliveryAppPolicy = lazyWithRetry(
   () => import("./modules/admin/pages/AdminDeliveryAppPolicy"), "AdminDeliveryAppPolicy"
@@ -654,7 +660,15 @@ function App() {
                             path="/seller/privacy-policy"
                             element={
                               <Suspense fallback={<IconLoader forceShow />}>
-                                <CustomerPolicy />
+                                <SellerPolicy />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/seller/policy"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <SellerPolicy />
                               </Suspense>
                             }
                           />
@@ -763,7 +777,7 @@ function App() {
                                       />
                                       <Route
                                         path="privacy-policy"
-                                        element={<CustomerPolicy />}
+                                        element={<SellerPolicy />}
                                       />
                                       <Route
                                         path="support"
@@ -894,6 +908,10 @@ function App() {
                                       <Route
                                         path="customer-app-policy"
                                         element={<AdminCustomerAppPolicy />}
+                                      />
+                                      <Route
+                                        path="seller-app-policy"
+                                        element={<AdminSellerAppPolicy />}
                                       />
                                       <Route
                                         path="delivery-app-policy"
