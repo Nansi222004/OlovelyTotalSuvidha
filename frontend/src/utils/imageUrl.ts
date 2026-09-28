@@ -22,8 +22,8 @@ export function resolveImageUrl(url?: string | null): string {
 
   // Determine current backend server origin (e.g. http://localhost:5000)
   const apiBase =
-    import.meta.env.VITE_API_BASE_URL ||
-    import.meta.env.VITE_API_URL ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
     "http://localhost:5000/api/v1";
   const serverOrigin = apiBase.replace(/\/api\/v\d+\/?$|\/api\/?$/, "");
 
@@ -33,11 +33,25 @@ export function resolveImageUrl(url?: string | null): string {
     return `${serverOrigin}${pathPart}`;
   }
 
+  // Guard against localhost / 127.0.0.1 URLs in live production
+  const isLocalhostUrl = trimmed.includes("localhost:") || trimmed.includes("127.0.0.1:");
+  if (isLocalhostUrl) {
+    const isBrowserLocalhost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname === "");
+    // If not in local browser environment, never attempt to fetch localhost
+    if (!isBrowserLocalhost) {
+      return "";
+    }
+  }
+
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed;
   }
 
-  // Handle relative /uploads/... or /assets/...
+  // Handle relative /assets/... or /assets/...
   const cleanUrl = trimmed.replace(/\\/g, "/");
   if (cleanUrl.startsWith("/assets/") || cleanUrl.startsWith("assets/")) {
     return cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
@@ -45,3 +59,4 @@ export function resolveImageUrl(url?: string | null): string {
 
   return `${serverOrigin}/${cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl}`;
 }
+

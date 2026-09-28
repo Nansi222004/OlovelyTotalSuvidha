@@ -36,6 +36,7 @@
     "verify:45-categories": "tsx src/scripts/verify45Categories.ts",
     "sync:header-categories": "tsx src/scripts/syncHeaderCategories.ts",
     "migrate:category-images": "tsx src/scripts/migrateCategoryImagesToCloudinary.ts",
+    "migrate:product-images": "tsx src/scripts/migrateProductImagesToCloudinary.ts",
     "postinstall": "npm run build"
   },
   "keywords": [

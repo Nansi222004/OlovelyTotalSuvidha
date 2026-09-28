@@ -28,7 +28,7 @@ import { checkPincodeServiceability, PincodeServiceabilityResult } from '../../s
 import { useCustomerChannel } from '../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
-import { getProductImage } from '../../utils/productImageHelper';
+import { getProductImage, getProductFallback, resolveProductImage } from '../../utils/productImageHelper';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -134,11 +134,12 @@ export default function ProductDetail() {
           // Set location availability flag
           setIsAvailableAtLocation(productData.isAvailableAtLocation !== false);
 
-          // Get all images (main + gallery)
-          const primaryImage = productData.mainImage || productData.imageUrl || getProductImage(productData);
+          // Get all images (main + gallery) safely resolved
+          const primaryImage = getProductImage(productData);
+          const rawGallery = productData.galleryImages || productData.galleryImageUrls || [];
           const allImages = [
             primaryImage,
-            ...(productData.galleryImages || productData.galleryImageUrls || []),
+            ...rawGallery.map((g: string) => resolveProductImage(g, productData)),
           ].filter(Boolean);
 
           setProduct({
@@ -553,6 +554,17 @@ export default function ProductDetail() {
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                       draggable={false}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const stage = target.dataset.fallbackStage || "0";
+                        if (stage === "0") {
+                          target.dataset.fallbackStage = "1";
+                          target.src = getProductFallback(product);
+                        } else {
+                          target.onerror = null;
+                          target.src = "/assets/fallback-quick-commerce.jpg";
+                        }
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-neutral-400 text-6xl">
@@ -573,6 +585,17 @@ export default function ProductDetail() {
                   alt={product.name}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    const stage = target.dataset.fallbackStage || "0";
+                    if (stage === "0") {
+                      target.dataset.fallbackStage = "1";
+                      target.src = getProductFallback(product);
+                    } else {
+                      target.onerror = null;
+                      target.src = "/assets/fallback-quick-commerce.jpg";
+                    }
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-neutral-400 text-6xl">
@@ -690,6 +713,17 @@ export default function ProductDetail() {
                       alt={`${product.name} - Image ${index + 1}`}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        const stage = target.dataset.fallbackStage || "0";
+                        if (stage === "0") {
+                          target.dataset.fallbackStage = "1";
+                          target.src = getProductFallback(product);
+                        } else {
+                          target.onerror = null;
+                          target.src = "/assets/fallback-quick-commerce.jpg";
+                        }
+                      }}
                     />
                   </button>
                 ))}
@@ -1396,29 +1430,25 @@ export default function ProductDetail() {
                           )
                         }
                         className="w-full h-32 bg-neutral-100 flex items-center justify-center overflow-hidden cursor-pointer">
-                        {similarProduct.imageUrl || similarProduct.mainImage ? (
-                          <img
-                            src={
-                              similarProduct.imageUrl ||
-                              similarProduct.mainImage
+                        <img
+                          src={getProductImage(similarProduct)}
+                          alt={
+                            similarProduct.name || similarProduct.productName
+                          }
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            const stage = target.dataset.fallbackStage || "0";
+                            if (stage === "0") {
+                              target.dataset.fallbackStage = "1";
+                              target.src = getProductFallback(similarProduct);
+                            } else {
+                              target.onerror = null;
+                              target.src = "/assets/fallback-quick-commerce.jpg";
                             }
-                            alt={
-                              similarProduct.name || similarProduct.productName
-                            }
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-2xl">
-                            {(
-                              similarProduct.name ||
-                              similarProduct.productName ||
-                              "P"
-                            )
-                              .charAt(0)
-                              .toUpperCase()}
-                          </div>
-                        )}
+                          }}
+                        />
                       </div>
 
                       {/* Info */}

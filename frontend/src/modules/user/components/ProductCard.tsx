@@ -12,7 +12,7 @@ import { useAppSettings } from '../../../context/AppSettingsContext';
 import { useCustomerChannel } from '../../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../../utils/priceUtils';
-import { getProductImage } from '../../../utils/productImageHelper';
+import { getProductImage, getProductFallback } from '../../../utils/productImageHelper';
 
 interface ProductCardProps {
   product: Product;
@@ -303,10 +303,16 @@ export default function ProductCard({
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            const fallback = getProductImage(product);
-            if (target.src !== fallback) {
-              target.src = fallback;
+            const target = e.currentTarget;
+            const stage = target.dataset.fallbackStage || "0";
+            if (stage === "0") {
+              target.dataset.fallbackStage = "1";
+              target.src = getProductFallback(product);
+            } else if (stage === "1") {
+              target.dataset.fallbackStage = "2";
+              target.src = "/assets/fallback-quick-commerce.jpg";
+            } else {
+              target.onerror = null;
             }
           }}
         />
