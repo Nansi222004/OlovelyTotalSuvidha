@@ -3,17 +3,17 @@
   "name": "Olovely - Olovely Total Suvidha",
   "icons": [
     {
-      "src": "/assets/favicon-circle.png",
-      "sizes": "64x64 32x32 24x24 16x16",
+      "src": "/assets/favicon-user-32.png",
+      "sizes": "32x32",
       "type": "image/png"
     },
     {
-      "src": "/assets/favicon-circle.png",
+      "src": "/assets/favicon-user-192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "/assets/favicon-circle.png",
+      "src": "/assets/favicon-user.png",
       "type": "image/png",
       "sizes": "512x512"
     }

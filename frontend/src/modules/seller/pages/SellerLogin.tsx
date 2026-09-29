@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../../services/api/auth/sellerAuthService';
 import OTPInput from '../../../components/OTPInput';
 import { useAuth } from '../../../context/AuthContext';
+import sellerLogo from '@assets/seller_logo.jpg';
 
 export default function SellerLogin() {
   const navigate = useNavigate();
@@ -101,7 +102,7 @@ export default function SellerLogin() {
         <div className="px-6 py-4 text-center border-b border-green-700 bg-white">
           <div className="mb-2">
             <img
-              src="/assets/olovelylogo_transparent.png"
+              src={sellerLogo}
               alt="Olovely Total Suvidha"
               className="h-24 w-auto max-w-xs mx-auto object-contain"
             />

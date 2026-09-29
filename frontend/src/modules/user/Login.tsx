@@ -4,6 +4,7 @@ import { sendOTP, verifyOTP } from '../../services/api/auth/customerAuthService'
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import OTPInput from '../../components/OTPInput';
+import userLogo from '@assets/user_logo.jpg';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -89,7 +90,7 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col justify-between relative overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 select-none bg-white"
+      className="min-h-screen w-full flex flex-col justify-between relative overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 select-none bg-white customer-app-root"
       style={{
         minHeight: '100vh',
         width: '100%',
@@ -131,7 +132,7 @@ export default function Login() {
           {/* Logo */}
           <div className="mb-2.5 transition-transform duration-200 hover:scale-[1.02]">
             <img
-              src="/assets/olovelylogo_transparent.png"
+              src={userLogo}
               alt="Olovely Total Suvidha"
               className="w-32 sm:w-36 h-auto max-h-14 object-contain mx-auto"
             />

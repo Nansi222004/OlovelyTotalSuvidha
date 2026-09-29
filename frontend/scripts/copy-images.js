@@ -212,7 +212,14 @@ function copyShopByStoreImages() {
 
 // Copy olovely logo & background & manifest icons
 function copyOlovelyLogo() {
-  const files = ['olovelylogo.jpeg', 'olovelylogo.png', 'olovelylogo_transparent.png', 'login_background_mobile.jfif', 'favicon-circle.png', 'favicon-circle-192.png', 'favicon-circle-64.png', 'favicon-circle-32.png', 'favicon-squircle.png'];
+  const files = [
+    'olovelylogo.jpeg', 'olovelylogo.png', 'olovelylogo_transparent.png', 'login_background_mobile.jfif',
+    'favicon-circle.png', 'favicon-circle-192.png', 'favicon-circle-64.png', 'favicon-circle-32.png', 'favicon-squircle.png',
+    'user_logo.jpg', 'seller_logo.jpg', 'delivery_logo.jpg',
+    'favicon-user.png', 'favicon-user-192.png', 'favicon-user-48.png', 'favicon-user-32.png', 'favicon-user-16.png', 'favicon-user.ico',
+    'favicon-seller.png', 'favicon-seller-192.png', 'favicon-seller-48.png', 'favicon-seller-32.png', 'favicon-seller-16.png', 'favicon-seller.ico',
+    'favicon-delivery.png', 'favicon-delivery-192.png', 'favicon-delivery-48.png', 'favicon-delivery-32.png', 'favicon-delivery-16.png', 'favicon-delivery.ico'
+  ];
   files.forEach((file) => {
     // Check public/assets first, then assetsDir
     const publicAssetPath = path.join(__dirname, '../public/assets', file);

@@ -4,6 +4,7 @@ import { sendOTP, verifyOTP } from '../../../services/api/auth/deliveryAuthServi
 import OTPInput from '../../../components/OTPInput';
 import { useAuth } from '../../../context/AuthContext';
 import { removeAuthToken, getAuthToken } from '../../../services/api/config';
+import deliveryLogo from '@assets/delivery_logo.jpg';
 
 export default function DeliveryLogin() {
   const navigate = useNavigate();
@@ -107,7 +108,7 @@ export default function DeliveryLogin() {
         <div className="px-6 py-4 text-center border-b border-green-700 bg-white">
           <div className="mb-2">
             <img
-              src="/assets/olovelylogo_transparent.png"
+              src={deliveryLogo}
               alt="Olovely Total Suvidha"
               className="h-24 w-auto max-w-xs mx-auto object-contain"
             />

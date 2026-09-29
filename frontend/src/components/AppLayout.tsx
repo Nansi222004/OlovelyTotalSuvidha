@@ -10,6 +10,7 @@ import { checkServiceability } from '../services/api/customerHomeService';
 import { useAppSettings } from '../context/AppSettingsContext';
 import LanguageSelector from './LanguageSelector';
 import { useTranslation } from '../hooks/useTranslation';
+import userLogo from '@assets/user_logo.jpg';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -237,7 +238,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="flex flex-col min-h-screen w-full overflow-x-hidden">
+    <div className="flex flex-col min-h-screen w-full overflow-x-hidden customer-app-root">
       {/* Foreground In-App Push Notification Banner Alert */}
       <AnimatePresence>
         {activeNotification && (
@@ -295,11 +296,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {/* Brand Logo & Name */}
               <Link to="/" className="flex items-center gap-2.5 hover:opacity-95 transition-opacity">
                 <img
-                  src={appSettings?.appLogo || '/assets/olovelylogo.png'}
+                  src={userLogo}
                   alt={appSettings?.appName || 'Olovely'}
                   className="w-10 h-10 object-contain rounded-xl bg-white p-1 shadow-sm border border-white/80"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/olovelylogo.png';
+                    (e.target as HTMLImageElement).src = userLogo;
                   }}
                 />
                 <span

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSettings } from '../../context/AppSettingsContext';
 import SupportModal from '../../components/SupportModal';
+import userLogo from '@assets/user_logo.jpg';
 
 export default function AboutUs() {
     const navigate = useNavigate();
@@ -34,11 +35,11 @@ export default function AboutUs() {
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white p-2 mb-4 shadow-md border border-neutral-200">
                         <img
-                            src={appSettings?.appLogo || '/assets/olovelylogo.png'}
+                            src={userLogo}
                             alt={appSettings?.appName || 'Olovely'}
                             className="w-full h-full object-contain"
                             onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/assets/olovelylogo.png';
+                                (e.target as HTMLImageElement).src = userLogo;
                             }}
                         />
                     </div>

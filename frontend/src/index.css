@@ -83,6 +83,59 @@
   }
 }
 
+/* ==========================================================================
+   Customer / User Mobile App Native UX Hardening
+   Applies strictly on mobile screens (max-width: 768px) within .customer-app-root
+   Does NOT affect Desktop, Seller, Delivery, or Admin apps.
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* 1. Accidental Zoom & Gesture Stability:
+     Allows native vertical scrolling (pan-y) and horizontal scrolling/carousels (pan-x)
+     while preventing accidental pinch-zoom on the overall customer app shell */
+  .customer-app-root {
+    touch-action: pan-x pan-y;
+  }
+
+  /* 2. Prevent accidental text selection on mobile app chrome & interactive controls */
+  .customer-app-root nav,
+  .customer-app-root header,
+  .customer-app-root button,
+  .customer-app-root [role="button"],
+  .customer-app-root a,
+  .customer-app-root .cursor-pointer,
+  .customer-app-root [class*="tab"],
+  .customer-app-root [class*="badge"],
+  .customer-app-root [class*="pill"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 3. STRICT EXCLUSIONS: Search inputs, text fields, textareas, contenteditable,
+     and copyable text content MUST remain 100% selectable and editable */
+  .customer-app-root input,
+  .customer-app-root textarea,
+  .customer-app-root [contenteditable="true"],
+  .customer-app-root [class*="selectable"],
+  .customer-app-root [class*="copyable"],
+  .customer-app-root pre,
+  .customer-app-root code,
+  .customer-app-root p,
+  .customer-app-root article {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    -webkit-touch-callout: default !important;
+  }
+
+  /* Re-assert input interactive touch behavior so focus, tapping, and voice search work smoothly */
+  .customer-app-root input,
+  .customer-app-root textarea,
+  .customer-app-root select {
+    touch-action: manipulation !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide,
   .scrollbar-none {

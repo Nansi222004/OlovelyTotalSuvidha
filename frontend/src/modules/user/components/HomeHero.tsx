@@ -14,6 +14,7 @@ import { useTranslation } from '../../../hooks/useTranslation';
 import { useToast } from '../../../context/ToastContext';
 import { isVoiceSearchSupported } from '../../../hooks/useVoiceSearch';
 import VoiceSearchMicButton from '../../../components/VoiceSearchMicButton';
+import userLogo from '@assets/user_logo.jpg';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -366,7 +367,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
               }}
             >
               <img
-                src={appSettings?.appLogo || '/assets/olovelylogo.png'}
+                src={userLogo}
                 alt={appSettings?.appName || 'Olovely'}
                 style={{
                   width: '100%',
@@ -374,7 +375,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
                   objectFit: 'contain',
                 }}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/assets/olovelylogo.png';
+                  (e.target as HTMLImageElement).src = userLogo;
                 }}
               />
             </div>

@@ -9,6 +9,7 @@ import { getHeaderCategoriesPublic, HeaderCategory } from '../../../services/api
 import LocationPickerMap from '../../../components/LocationPickerMap';
 import { useEffect } from 'react';
 import { useAppSettings } from '../../../context/AppSettingsContext';
+import sellerLogo from '@assets/seller_logo.jpg';
 
 export default function SellerSignUp() {
   const navigate = useNavigate();
@@ -259,7 +260,7 @@ export default function SellerSignUp() {
         <div className="px-6 py-4 text-center border-b border-green-700 bg-white">
           <div className="mb-2">
             <img
-              src="/assets/olovelylogo_transparent.png"
+              src={sellerLogo}
               alt="Olovely Total Suvidha"
               className="h-24 w-auto max-w-xs mx-auto object-contain"
             />

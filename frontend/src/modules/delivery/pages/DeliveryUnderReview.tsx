@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { getDeliveryProfile } from '../../../services/api/auth/deliveryAuthService';
+import deliveryLogo from '@assets/delivery_logo.jpg';
 
 export default function DeliveryUnderReview() {
   const navigate = useNavigate();
@@ -105,7 +106,7 @@ export default function DeliveryUnderReview() {
       <div className="relative z-10 flex flex-col items-center pt-2 pb-4">
         <div className="mb-2 transition-transform duration-200 hover:scale-[1.02]">
           <img
-            src="/assets/olovelylogo_transparent.png"
+            src={deliveryLogo}
             alt="Olovely Total Suvidha"
             className="w-32 sm:w-36 h-auto max-h-14 object-contain mx-auto"
           />

@@ -4,6 +4,7 @@ import { useLanguage, LanguageOption, DEFAULT_LANGUAGES } from "../../../context
 import { useAuth } from "../../../context/AuthContext";
 import { updateCustomerLanguage } from "../../../services/api/customerService";
 import api from "../../../services/api/config";
+import userLogo from "@assets/user_logo.jpg";
 
 export const LanguageSelection: React.FC = () => {
   const navigate = useNavigate();
@@ -82,7 +83,7 @@ export const LanguageSelection: React.FC = () => {
 
   return (
     <div
-      className="min-h-[100dvh] w-full bg-white flex flex-col justify-between items-center relative overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 select-none"
+      className="min-h-[100dvh] w-full bg-white flex flex-col justify-between items-center relative overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 select-none customer-app-root"
       style={{
         minHeight: "100dvh",
         paddingTop: "calc(1.5rem + env(safe-area-inset-top))",
@@ -101,11 +102,11 @@ export const LanguageSelection: React.FC = () => {
           {/* Logo Badge Container */}
           <div className="mb-4 p-2 bg-white/90 rounded-2xl shadow-xs border border-slate-100 flex items-center justify-center transition-transform hover:scale-105">
             <img
-              src="/assets/olovelylogo_transparent.png"
+              src={userLogo}
               alt="Olovely Total Suvidha"
               className="w-32 sm:w-36 h-auto max-h-12 object-contain"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = "/assets/olovelylogo.png";
+                (e.target as HTMLImageElement).src = userLogo;
               }}
             />
           </div>

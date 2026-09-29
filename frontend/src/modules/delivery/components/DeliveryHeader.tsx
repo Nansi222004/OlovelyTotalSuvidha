@@ -2,6 +2,7 @@ import { useDeliveryStatus } from '../context/DeliveryStatusContext';
 import { useDeliveryUser } from '../context/DeliveryUserContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import LanguageSelector from '../../../components/LanguageSelector';
+import deliveryLogo from '@assets/delivery_logo.jpg';
 
 interface DeliveryHeaderProps {
   userName?: string;
@@ -26,12 +27,18 @@ export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
       <div className="px-4 py-3">
         {/* App Title and Language Selector */}
         <div className="flex items-center justify-between mb-3">
-          <div className="w-10"></div>
-          <h1 className={`text-xl font-bold transition-colors ${
-            isOnline ? 'text-green-600' : 'text-neutral-500'
-          }`}>
-            Olovely Delivery
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <img
+              src={deliveryLogo}
+              alt="Olovely Delivery"
+              className="w-8 h-8 rounded-lg object-contain shadow-xs border border-neutral-100"
+            />
+            <h1 className={`text-xl font-bold transition-colors ${
+              isOnline ? 'text-green-600' : 'text-neutral-500'
+            }`}>
+              Olovely Delivery
+            </h1>
+          </div>
           <LanguageSelector variant="dropdown" />
         </div>
         

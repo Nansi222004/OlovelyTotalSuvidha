@@ -4,6 +4,7 @@ import DeliveryHeader from '../components/DeliveryHeader';
 import DeliveryBottomNav from '../components/DeliveryBottomNav';
 import { getDeliveryProfile } from '../../../services/api/delivery/deliveryService';
 import { useLanguage } from '../../../context/LanguageContext';
+import deliveryLogo from '@assets/delivery_logo.jpg';
 
 export default function DeliveryAbout() {
   const navigate = useNavigate();
@@ -86,17 +87,12 @@ export default function DeliveryAbout() {
         {/* App Info Card */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-neutral-200 mb-4">
           <div className="flex flex-col items-center mb-6">
-            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center mb-4">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M2 17H4L5 12H19L20 17H22M2 17C2 18.1046 2.89543 19 4 19C5.10457 19 6 18.1046 6 17M2 17C2 15.8954 2.89543 15 4 15C5.10457 15 6 15.8954 6 17M22 17C22 18.1046 21.1046 19 20 19C18.8954 19 18 18.1046 18 17M22 17C22 15.8954 21.1046 15 20 15C18.8954 15 18 15.8954 18 17M6 17H18M5 12L4 7H2M20 12L21 7H22"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
+            <div className="w-20 h-20 rounded-2xl bg-white p-2 border border-neutral-200 shadow-sm flex items-center justify-center mb-4">
+              <img
+                src={deliveryLogo}
+                alt="Olovely Delivery"
+                className="w-full h-full object-contain rounded-xl"
+              />
             </div>
             <h3 className="text-neutral-900 text-xl font-semibold mb-1">{t("delivery.dashboard", "Delivery App")}</h3>
             <p className="text-neutral-500 text-sm">Version 1.0.0</p>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import api from '../services/api/config';
+import userLogo from '@assets/user_logo.jpg';
 
 export interface AppSettingsData {
   appName: string;
@@ -71,7 +72,7 @@ interface AppSettingsContextType {
 
 const defaultSettings: AppSettingsData = {
   appName: 'Olovely Total Suvidha',
-  appLogo: '/assets/olovelylogo.png',
+  appLogo: userLogo,
   estimatedDeliveryTime: '12-15 mins',
   contactEmail: 'OLOVELYTOTALSUVIDHA@GMAIL.COM',
   contactPhone: '9601715367',
@@ -197,22 +198,6 @@ export const AppSettingsProvider: React.FC<{ children: ReactNode }> = ({ childre
       }
     };
   }, []);
-
-  // Sync favicon with website logo / custom favicon
-  useEffect(() => {
-    const faviconUrl = settings.appFavicon || '/assets/favicon-circle.png';
-    const iconLinks: NodeListOf<HTMLLinkElement> = document.querySelectorAll("link[rel*='icon']");
-    if (iconLinks.length > 0) {
-      iconLinks.forEach((link) => {
-        link.href = faviconUrl;
-      });
-    } else {
-      const link = document.createElement('link');
-      link.rel = 'icon';
-      link.href = faviconUrl;
-      document.head.appendChild(link);
-    }
-  }, [settings.appFavicon]);
 
   return (
     <AppSettingsContext.Provider

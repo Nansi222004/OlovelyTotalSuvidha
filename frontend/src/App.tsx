@@ -15,6 +15,7 @@ import { LoadingProvider } from "./context/LoadingContext";
 import { AxiosLoadingInterceptor } from "./context/AxiosLoadingInterceptor";
 import IconLoader from "./components/loaders/IconLoader";
 import RouteLoaderTrigger from "./components/loaders/RouteLoaderTrigger";
+import FaviconManager from "./components/FaviconManager";
 import PageLoader from "./components/PageLoader";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -427,6 +428,7 @@ function App() {
                               v7_relativeSplatPath: true,
                             }}>
                             <RouteLoaderTrigger />
+                            <FaviconManager />
                             <Routes>
                           {/* Public Routes */}
                           <Route

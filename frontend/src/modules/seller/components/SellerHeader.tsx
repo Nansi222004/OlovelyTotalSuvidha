@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import olovelyLogo from '@assets/olovelylogo.jpeg';
+import sellerLogo from '@assets/seller_logo.jpg';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useSellerChannel } from '../../../context/SellerChannelContext';
@@ -118,7 +118,7 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
             className="hover:opacity-80 transition-opacity"
           >
             <img
-              src={olovelyLogo}
+              src={sellerLogo}
               alt="Olovely Total Suvidha"
               className="h-10 sm:h-12 w-auto object-contain cursor-pointer"
               style={{ maxWidth: '200px' }}
