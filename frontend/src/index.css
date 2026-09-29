@@ -56,8 +56,9 @@
 @media (max-width: 768px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="color"]):not([type="file"]),
   select,
-  textarea {
-    font-size: 16px;
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
   }
 
   /* Override smaller Tailwind text classes on mobile inputs, selects, and textareas */
@@ -79,21 +80,25 @@
   textarea.text-sm,
   textarea[class*="text-xs"],
   textarea[class*="text-sm"] {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 }
 
 /* ==========================================================================
-   Customer / User Mobile App Native UX Hardening
-   Applies strictly on mobile screens (max-width: 768px) within .customer-app-root
-   Does NOT affect Desktop, Seller, Delivery, or Admin apps.
+   Customer, Seller & Delivery Mobile App Native UX Hardening
+   Applies strictly on mobile screens (max-width: 768px) within their root classes.
+   Does NOT affect Desktop or Admin app.
    ========================================================================== */
 @media (max-width: 768px) {
   /* 1. Accidental Zoom & Gesture Stability:
      Allows native vertical scrolling (pan-y) and horizontal scrolling/carousels (pan-x)
-     while preventing accidental pinch-zoom on the overall customer app shell */
-  .customer-app-root {
+     while preventing accidental pinch-zoom and page scaling */
+  .customer-app-root,
+  .seller-app-root,
+  .delivery-app-root {
     touch-action: pan-x pan-y;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   /* 2. Prevent accidental text selection on mobile app chrome & interactive controls */
@@ -105,24 +110,77 @@
   .customer-app-root .cursor-pointer,
   .customer-app-root [class*="tab"],
   .customer-app-root [class*="badge"],
-  .customer-app-root [class*="pill"] {
+  .customer-app-root [class*="pill"],
+  .seller-app-root nav,
+  .seller-app-root header,
+  .seller-app-root button,
+  .seller-app-root [role="button"],
+  .seller-app-root a,
+  .seller-app-root .cursor-pointer,
+  .seller-app-root [class*="tab"],
+  .seller-app-root [class*="badge"],
+  .seller-app-root [class*="pill"],
+  .delivery-app-root nav,
+  .delivery-app-root header,
+  .delivery-app-root button,
+  .delivery-app-root [role="button"],
+  .delivery-app-root a,
+  .delivery-app-root .cursor-pointer,
+  .delivery-app-root [class*="tab"],
+  .delivery-app-root [class*="badge"],
+  .delivery-app-root [class*="pill"] {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* 3. STRICT EXCLUSIONS: Search inputs, text fields, textareas, contenteditable,
-     and copyable text content MUST remain 100% selectable and editable */
+  /* 3. Delivery Google Maps Exception: Maps must support free pan, pinch-zoom, and controls */
+  .delivery-app-root .gm-style,
+  .delivery-app-root .gm-style *,
+  .delivery-app-root [class*="map"],
+  .delivery-app-root [data-allow-zoom="true"],
+  .customer-app-root .gm-style,
+  .customer-app-root .gm-style *,
+  .customer-app-root [class*="map"],
+  .customer-app-root [data-allow-zoom="true"] {
+    touch-action: auto !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
+  }
+
+  /* 4. STRICT EXCLUSIONS: Search inputs, text fields, textareas, contenteditable,
+     and copyable text content MUST remain 100% selectable and editable across all 3 apps */
   .customer-app-root input,
   .customer-app-root textarea,
+  .customer-app-root select,
   .customer-app-root [contenteditable="true"],
   .customer-app-root [class*="selectable"],
   .customer-app-root [class*="copyable"],
   .customer-app-root pre,
   .customer-app-root code,
   .customer-app-root p,
-  .customer-app-root article {
+  .customer-app-root article,
+  .seller-app-root input,
+  .seller-app-root textarea,
+  .seller-app-root select,
+  .seller-app-root [contenteditable="true"],
+  .seller-app-root [class*="selectable"],
+  .seller-app-root [class*="copyable"],
+  .seller-app-root pre,
+  .seller-app-root code,
+  .seller-app-root p,
+  .seller-app-root article,
+  .delivery-app-root input,
+  .delivery-app-root textarea,
+  .delivery-app-root select,
+  .delivery-app-root [contenteditable="true"],
+  .delivery-app-root [class*="selectable"],
+  .delivery-app-root [class*="copyable"],
+  .delivery-app-root pre,
+  .delivery-app-root code,
+  .delivery-app-root p,
+  .delivery-app-root article {
     -webkit-user-select: text !important;
     user-select: text !important;
     -webkit-touch-callout: default !important;
@@ -131,7 +189,13 @@
   /* Re-assert input interactive touch behavior so focus, tapping, and voice search work smoothly */
   .customer-app-root input,
   .customer-app-root textarea,
-  .customer-app-root select {
+  .customer-app-root select,
+  .seller-app-root input,
+  .seller-app-root textarea,
+  .seller-app-root select,
+  .delivery-app-root input,
+  .delivery-app-root textarea,
+  .delivery-app-root select {
     touch-action: manipulation !important;
   }
 }

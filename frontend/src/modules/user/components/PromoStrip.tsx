@@ -622,7 +622,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
 
   return (
     <div
-      className="relative"
+      className="relative w-full max-w-full overflow-x-hidden"
       style={{
         background: `linear-gradient(to bottom, ${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]}, ${theme.primary[3]}, ${theme.primary[3]})`,
         paddingTop: "12px",
@@ -696,16 +696,16 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
           ))}
         </div>
 
-        <div className="relative z-10">
-          <div className="flex items-center justify-center gap-3 mb-0">
+        <div className="relative z-10 max-w-full overflow-hidden">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-3 mb-0 max-w-full px-2">
             {/* Left Lightning Bolt */}
             <svg
-              width="28"
-              height="36"
+              width="24"
+              height="30"
               viewBox="0 0 24 30"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="flex-shrink-0">
+              className="flex-shrink-0 w-5 h-7 sm:w-7 sm:h-9">
               <path
                 d="M13 2L3 14H12L11 22L21 10H12L13 2Z"
                 fill="#FFD700"
@@ -717,7 +717,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
             {/* HOUSEFULL Text */}
             <h1
               ref={housefullRef}
-              className="text-3xl font-black text-white"
+              className="text-2xl sm:text-3xl font-black text-white truncate max-w-full"
               style={
                 {
                   fontFamily: '"Poppins", sans-serif',
@@ -741,12 +741,12 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
 
             {/* Right Lightning Bolt */}
             <svg
-              width="28"
-              height="36"
+              width="24"
+              height="30"
               viewBox="0 0 24 30"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="flex-shrink-0"
+              className="flex-shrink-0 w-5 h-7 sm:w-7 sm:h-9"
               style={{ transform: "scaleX(-1)" }}>
               <path
                 d="M13 2L3 14H12L11 22L21 10H12L13 2Z"
@@ -794,8 +794,8 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
       </div>
 
       {/* Main Content: Crazy Deals + Category Cards */}
-      <div className="px-4 md:px-6 lg:px-8 mt-2">
-        <div ref={containerRef} className="flex gap-2">
+      <div className="px-4 md:px-6 lg:px-8 mt-2 max-w-full overflow-x-hidden">
+        <div ref={containerRef} className="flex gap-2 max-w-full">
           {/* Crazy Deals Section - Left */}
           <div className="flex-shrink-0 w-[105px] sm:w-[120px] promo-card">
             <div
@@ -916,7 +916,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
           </div>
 
           {/* Category Cards Grid - Right */}
-          <div className={`flex-1 grid grid-cols-2 ${categoryCards.length >= 4 ? 'md:grid-cols-4' : categoryCards.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-2`}>
+          <div className={`flex-1 min-w-0 grid grid-cols-2 ${categoryCards.length >= 4 ? 'md:grid-cols-4' : categoryCards.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-2`}>
             {categoryCards.map((card) => {
               // Use subcategory images from the map if available, otherwise check card.subcategoryImages, then fallback to emoji icons
               const subcategoryImages = subcategoryImagesMap[card.id] || card.subcategoryImages || [];
@@ -924,7 +924,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               const categoryIcons = getCategoryIcons(card.slug || card.categoryId || "", card.title || "");
 
               return (
-                <div key={card.id} className="promo-card">
+                <div key={card.id} className="promo-card min-w-0">
                   <Link
                     to={card.slug || card.categoryId ? `/category/${card.slug || card.categoryId}` : "#"}
                     className="group rounded-lg transition-all duration-300 hover:shadow-md active:scale-[0.98] h-full flex flex-col overflow-hidden relative"

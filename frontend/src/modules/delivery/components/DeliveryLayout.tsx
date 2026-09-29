@@ -77,7 +77,7 @@ function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
   };
 
   return (
-    <div className={`flex flex-col min-h-screen bg-neutral-100 transition-all duration-300 ${!isOnline ? 'grayscale' : ''}`}>
+    <div className={`flex flex-col min-h-screen bg-neutral-100 transition-all duration-300 delivery-app-root ${!isOnline ? 'grayscale' : ''}`}>
       {autoplayBlocked && (
         <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">
           <span>🔔 Incoming delivery ringtone blocked by browser. Click to enable sound!</span>

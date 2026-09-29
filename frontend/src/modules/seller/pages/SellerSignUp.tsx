@@ -242,7 +242,7 @@ export default function SellerSignUp() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-green-50 flex flex-col items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-green-50 flex flex-col items-center justify-center px-4 py-8 seller-app-root">
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}

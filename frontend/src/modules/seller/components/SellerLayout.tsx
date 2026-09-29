@@ -159,7 +159,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
 
   return (
     <SellerChannelProvider>
-      <div className="flex min-h-screen bg-neutral-50 flex-col">
+      <div className="flex min-h-screen bg-neutral-50 flex-col seller-app-root">
         {/* Autoplay blocked fallback banner */}
         {autoplayBlocked && (
           <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">

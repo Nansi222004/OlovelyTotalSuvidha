@@ -50,6 +50,33 @@ if (rootElement) {
   rootElement.style.backgroundColor = '#ffffff';
 }
 
+// Prevent accidental pinch-to-zoom on iOS Safari (except inside Google Maps)
+if (typeof window !== 'undefined') {
+  document.addEventListener(
+    'gesturestart',
+    (e: any) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('.gm-style, [class*="map"], [data-allow-zoom="true"]')) {
+        return;
+      }
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+
+  document.addEventListener(
+    'gesturechange',
+    (e: any) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('.gm-style, [class*="map"], [data-allow-zoom="true"]')) {
+        return;
+      }
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+}
+
 ReactDOM.createRoot(rootElement!).render(
   <React.StrictMode>
     <App />

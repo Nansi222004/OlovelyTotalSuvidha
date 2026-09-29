@@ -96,7 +96,7 @@ export default function SellerUnderReview() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col justify-between items-center relative overflow-x-hidden overflow-y-auto px-4 py-8 select-none bg-slate-50"
+      className="min-h-screen w-full flex flex-col justify-between items-center relative overflow-x-hidden overflow-y-auto px-4 py-8 select-none bg-slate-50 seller-app-root"
       style={{ minHeight: '100vh', boxSizing: 'border-box' }}
     >
       {/* Background Soft Glow Blobs */}
