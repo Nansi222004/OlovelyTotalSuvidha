@@ -1,12 +1,22 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DeliveryHeader from "../components/DeliveryHeader";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
-import { removeAuthToken } from "../../../services/api/config";
+import { removeAuthToken, clearDeliverySession } from "../../../services/api/config";
 import { useLanguage } from "../../../context/LanguageContext";
+import { useAuth } from "../../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
+import { deleteDeliveryAccount } from "../../../services/api/delivery/deliveryService";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 
 export default function DeliveryMenu() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { showToast } = useToast();
   const { t } = useLanguage();
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const menuItems = [
     { id: "menu-1", title: t("delivery.profile", "Profile"), route: "/delivery/profile" },
@@ -17,6 +27,7 @@ export default function DeliveryMenu() {
     { id: "menu-4", title: t("delivery.helpSupport", "Help & Support"), route: "/delivery/help" },
     { id: "menu-5", title: t("delivery.about", "About"), route: "/delivery/about" },
     { id: "menu-6", title: t("delivery.logout", "Logout"), route: "/delivery/login" },
+    { id: "menu-delete", title: t("delivery.deleteAccount", "Delete Delivery Account"), route: "" },
   ];
 
   const getMenuIcon = (menuId: string) => {
@@ -234,19 +245,59 @@ export default function DeliveryMenu() {
             />
           </svg>
         );
+      case "menu-delete": // Delete Account
+        return (
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round">
+            <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6" />
+          </svg>
+        );
       default:
         return null;
     }
   };
 
-  const handleMenuClick = (route: string) => {
-    if (route === "/delivery/login") {
+  const handleMenuClick = (item: (typeof menuItems)[0]) => {
+    if (item.id === "menu-delete") {
+      setIsDeleteModalOpen(true);
+      return;
+    }
+    if (item.route === "/delivery/login") {
       // Handle logout logic here
       removeAuthToken('delivery');
-      navigate(route);
-    } else {
+      navigate(item.route);
+    } else if (item.route) {
       // Navigate to the selected route
-      navigate(route);
+      navigate(item.route);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteDeliveryAccount();
+      if (res && res.success) {
+        setIsDeleteModalOpen(false);
+        clearDeliverySession();
+        logout();
+        showToast(res.message || "Your delivery partner account has been deleted. You have been logged out.", "success");
+        navigate('/delivery/login', { replace: true });
+      } else {
+        showToast(res?.message || "Failed to delete account", "error");
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "Failed to delete account";
+      showToast(msg, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -257,42 +308,47 @@ export default function DeliveryMenu() {
         <h2 className="text-neutral-900 text-xl font-semibold mb-4">{t("delivery.menu", "Menu")}</h2>
         {menuItems.length > 0 ? (
           <div className="space-y-2">
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleMenuClick(item.route)}
-                className={`w-full bg-white rounded-xl p-4 shadow-sm border border-neutral-200 flex items-center gap-3 hover:shadow-md transition-shadow ${item.id === "menu-6"
-                  ? "text-red-600 hover:bg-red-50"
-                  : "hover:bg-neutral-50"
+            {menuItems.map((item) => {
+              const isDanger = item.id === "menu-6" || item.id === "menu-delete";
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleMenuClick(item)}
+                  className={`w-full bg-white rounded-xl p-4 shadow-sm border border-neutral-200 flex items-center gap-3 hover:shadow-md transition-shadow ${
+                    isDanger
+                      ? "text-red-600 hover:bg-red-50"
+                      : "hover:bg-neutral-50"
                   }`}>
-                <span
-                  className={`flex-shrink-0 ${item.id === "menu-6" ? "text-red-600" : "text-neutral-600"}`}>
-                  {getMenuIcon(item.id)}
-                </span>
-                <span
-                  className={`text-sm font-medium flex-1 text-left ${item.id === "menu-6" ? "text-red-600" : "text-neutral-900"
+                  <span
+                    className={`flex-shrink-0 ${isDanger ? "text-red-600" : "text-neutral-600"}`}>
+                    {getMenuIcon(item.id)}
+                  </span>
+                  <span
+                    className={`text-sm font-medium flex-1 text-left ${
+                      isDanger ? "text-red-600" : "text-neutral-900"
                     }`}>
-                  {item.title}
-                </span>
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className={
-                    item.id === "menu-6" ? "text-red-600" : "text-neutral-400"
-                  }>
-                  <path
-                    d="M9 18L15 12L9 6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            ))}
+                    {item.title}
+                  </span>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={
+                      isDanger ? "text-red-600" : "text-neutral-400"
+                    }>
+                    <path
+                      d="M9 18L15 12L9 6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="bg-white rounded-xl p-8 min-h-[400px] flex items-center justify-center shadow-sm border border-neutral-200">
@@ -300,6 +356,23 @@ export default function DeliveryMenu() {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Delete Account */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title={t("delivery.deleteModalTitle", "Delete your account?")}
+        message={t(
+          "delivery.deleteModalMessage",
+          "This action will permanently delete your delivery partner account and you will be logged out. All GPS tracking and order assignments will be stopped immediately."
+        )}
+        confirmText={t("delivery.confirmDelete", "Delete Account")}
+        cancelText={t("common.cancel", "Cancel")}
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => !isDeleting && setIsDeleteModalOpen(false)}
+      />
+
       <DeliveryBottomNav />
     </div>
   );

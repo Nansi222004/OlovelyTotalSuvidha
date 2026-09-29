@@ -1602,7 +1602,7 @@ export default function Checkout() {
       {/* Order Success Celebration Page */}
       {showOrderSuccess && (
         <div
-          className="fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center h-screen w-screen overflow-hidden"
+          className="fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center h-full w-full overflow-hidden"
           style={{ animation: "fadeIn 0.3s ease-out" }}>
           {/* Confetti Background */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">

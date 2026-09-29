@@ -5,22 +5,22 @@
 
 
 @layer base {
-  body {
-    @apply bg-white md:bg-white text-neutral-900;
-    margin: 0;
-    padding: 0;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    width: 100%;
-    overflow-x: hidden;
-  }
-
   html {
     margin: 0;
     padding: 0;
     width: 100%;
     overflow-x: hidden;
     background: white;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-white md:bg-white text-neutral-900;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    overflow-x: hidden;
   }
 
   #root {
@@ -30,6 +30,56 @@
     min-height: 100vh;
     background: white;
     overflow-x: hidden;
+  }
+
+  /* Disable accidental double-tap zoom delay on interactive elements while preserving pinch zoom accessibility */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  .cursor-pointer {
+    touch-action: manipulation;
+  }
+
+  /* Ensure media elements cannot overflow viewport */
+  img,
+  video,
+  canvas,
+  iframe {
+    max-width: 100%;
+  }
+}
+
+/* Prevent iOS Safari automatic viewport zoom on form inputs by ensuring computed font-size is at least 16px */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Override smaller Tailwind text classes on mobile inputs, selects, and textareas */
+  input.text-xs,
+  input.text-sm,
+  input[class*="text-xs"],
+  input[class*="text-sm"],
+  input[class*="text-[10px]"],
+  input[class*="text-[11px]"],
+  input[class*="text-[12px]"],
+  input[class*="text-[13px]"],
+  input[class*="text-[14px]"],
+  input[class*="text-[15px]"],
+  select.text-xs,
+  select.text-sm,
+  select[class*="text-xs"],
+  select[class*="text-sm"],
+  textarea.text-xs,
+  textarea.text-sm,
+  textarea[class*="text-xs"],
+  textarea[class*="text-sm"] {
+    font-size: 16px;
   }
 }
 
