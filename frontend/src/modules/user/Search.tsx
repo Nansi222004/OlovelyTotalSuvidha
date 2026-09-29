@@ -7,6 +7,10 @@ import { useLocation } from '../../hooks/useLocation';
 import ChannelFilter, { ChannelFilterValue } from '../../components/ChannelFilter';
 import { useCustomerChannel } from '../../context/CustomerChannelContext';
 import SearchSuggestionsDropdown from '../../components/SearchSuggestionsDropdown';
+import { useToast } from '../../context/ToastContext';
+import { useTranslation } from '../../hooks/useTranslation';
+import { useVoiceSearch } from '../../hooks/useVoiceSearch';
+import VoiceSearchMicButton from '../../components/VoiceSearchMicButton';
 
 export default function Search() {
   const navigate = useNavigate();
@@ -19,6 +23,48 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { showToast } = useToast();
+  const { language } = useTranslation();
+
+  const {
+    isListening,
+    isProcessing,
+    startListening,
+    stopListening,
+    toggleListening,
+  } = useVoiceSearch({
+    lang: language,
+    onResult: (transcript, isFinal) => {
+      setSearchInput(transcript);
+      if (transcript.trim().length >= 2) {
+        setShowSuggestions(true);
+      }
+      if (isFinal) {
+        setSearchParams({ q: transcript.trim() }, { replace: true });
+      }
+    },
+    onError: (errorMessage, errorCode) => {
+      if (errorCode === 'not-allowed') {
+        showToast('Microphone permission is required for voice search.', 'error');
+      } else if (errorCode === 'unsupported') {
+        showToast("Voice search isn't supported in this browser.", 'info');
+      } else if (errorCode === 'no-speech') {
+        showToast('No speech was detected. Please try again.', 'info');
+      } else if (errorCode !== 'aborted') {
+        showToast(errorMessage, 'error');
+      }
+    },
+  });
+
+  // Auto-start voice recognition if navigated with ?voice=true parameter
+  useEffect(() => {
+    if (searchParams.get('voice') === 'true') {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('voice');
+      setSearchParams(nextParams, { replace: true });
+      startListening();
+    }
+  }, [searchParams, setSearchParams, startListening]);
 
   // Update input when URL param changes (e.g. back button)
   useEffect(() => {
@@ -139,21 +185,35 @@ export default function Search() {
                   setShowSuggestions(true);
                 }
               }}
-              placeholder="Search for groceries, snacks and more"
-              className="w-full bg-neutral-100 border-none rounded-xl py-2.5 pl-10 pr-10 text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-              autoFocus
+              placeholder={isListening ? "Listening... Speak now" : "Search for groceries, snacks and more"}
+              className="w-full bg-neutral-100 border-none rounded-xl py-2.5 pl-10 pr-20 text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
+              autoFocus={!isListening}
             />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
-            )}
+            {/* Right side controls: Clear button + Voice search microphone button */}
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  aria-label="Clear search"
+                  className="p-1 text-neutral-400 hover:text-neutral-600 rounded-full hover:bg-neutral-200/60 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              <VoiceSearchMicButton
+                isListening={isListening}
+                isProcessing={isProcessing}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleListening();
+                }}
+                size="md"
+              />
+            </div>
 
             {/* Real-time Search Autocomplete Suggestions Popover */}
             <SearchSuggestionsDropdown
@@ -170,6 +230,14 @@ export default function Search() {
               inputRef={inputRef}
             />
           </div>
+
+          {/* Accessible active listening indicator banner */}
+          {isListening && (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-700 text-xs font-medium rounded-full border border-red-200 shadow-sm animate-pulse whitespace-nowrap">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span>Listening...</span>
+            </div>
+          )}
 
           <button
             type="submit"
