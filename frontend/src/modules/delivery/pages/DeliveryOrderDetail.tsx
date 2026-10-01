@@ -219,6 +219,12 @@ export default function DeliveryOrderDetail() {
                     : ((Number(item.unitPrice ?? item.price ?? 0)) * (Number(item.quantity ?? 1)));
                 return sum + lineTotal;
             }, 0);
+    const displayedShipping = typeof order?.assignedShippingFee === 'number'
+        ? order.assignedShippingFee
+        : 0;
+    const displayedTotal = typeof order?.assignedTotal === 'number'
+        ? order.assignedTotal
+        : displayedSubtotal + displayedShipping;
 
     const isAssignedToMe = Boolean(
         order &&
@@ -1082,9 +1088,19 @@ export default function DeliveryOrderDetail() {
                             })}
                         </div>
                     )}
-                    <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 flex justify-between items-center">
-                        <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Item Subtotal (QC)")}</span>
-                        <span className="text-xl font-bold text-neutral-900">₹{displayedSubtotal.toFixed(2)}</span>
+                    <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 space-y-2">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="font-medium text-neutral-600">QC item subtotal</span>
+                            <span className="font-semibold text-neutral-900">₹{displayedSubtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="font-medium text-neutral-600">QC delivery / shipping</span>
+                            <span className="font-semibold text-neutral-900">₹{displayedShipping.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                            <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Assigned QC total")}</span>
+                            <span className="text-xl font-bold text-neutral-900">₹{displayedTotal.toFixed(2)}</span>
+                        </div>
                     </div>
 
                     {/* Payment & Cash Collection Scoping */}
@@ -1105,7 +1121,7 @@ export default function DeliveryOrderDetail() {
                                 <p className="text-[11px] text-amber-600">QC assigned delivery responsibility</p>
                             </div>
                             <span className="text-xl font-extrabold text-amber-900">
-                                ₹{(order.codAmountToCollect != null ? order.codAmountToCollect : displayedSubtotal).toFixed(2)}
+                                ₹{(order.codAmountToCollect != null ? order.codAmountToCollect : displayedTotal).toFixed(2)}
                             </span>
                         </div>
                     ) : (

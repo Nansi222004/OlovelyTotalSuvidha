@@ -12,6 +12,11 @@ import {
   getOrderEarningBreakdown,
 } from "../../../services/commissionService";
 import { getSellerPendingOrderAlerts } from "../../../services/orderAlertService";
+import {
+  buildSellerInvoiceScope,
+  isSellerInvoiceChannel,
+} from "../../../utils/sellerInvoiceScoping";
+import { getChannelFulfillmentStatus } from "../../../utils/fulfillmentStatus";
 
 /**
  * Get pending order alerts that require seller action (survives page refresh).
@@ -465,6 +470,13 @@ export const getOrderById = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
+    const requestedChannel = req.query.channel;
+    if (requestedChannel !== undefined && !isSellerInvoiceChannel(requestedChannel)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice channel must be QUICK_COMMERCE or ECOMMERCE",
+      });
+    }
 
     // Resolve order document whether id is MongoDB ObjectId or orderNumber (e.g. ORD1789980388371771)
     const isObjectId = mongoose.Types.ObjectId.isValid(id);
@@ -484,7 +496,7 @@ export const getOrderById = asyncHandler(
 
     // Check if this seller has items in this order using resolved order._id
     const sellerItems = await OrderItem.find({ order: order._id, seller: sellerId })
-      .populate("seller", "storeName")
+      .populate("seller", "storeName sellerName taxName taxNumber address city state pincode isPlatform")
       .populate("product");
 
     if (!sellerItems || sellerItems.length === 0) {
@@ -495,11 +507,21 @@ export const getOrderById = asyncHandler(
     }
 
     // Get only this seller's order items
-    const orderItems = sellerItems;
+    const invoiceScope = requestedChannel
+      ? buildSellerInvoiceScope(sellerItems, order.fulfillmentGroups || [], requestedChannel)
+      : null;
+    if (requestedChannel && invoiceScope?.items.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No ${requestedChannel === "QUICK_COMMERCE" ? "Quick Commerce" : "Ecommerce"} items found for this seller`,
+      });
+    }
+
+    const orderItems = invoiceScope?.items || sellerItems;
     const sellerItemIds = new Set(orderItems.map((it) => it._id.toString()));
 
     // Filter fulfillment groups to ONLY groups containing this seller's items
-    const sellerScopedGroups = (order.fulfillmentGroups || []).filter((g: any) => {
+    const sellerScopedGroups = (invoiceScope?.groups || order.fulfillmentGroups || []).filter((g: any) => {
       const isOwnSeller = g.seller && g.seller.toString() === sellerId.toString();
       const hasOwnItems = Array.isArray(g.items) && g.items.some((itId: any) => sellerItemIds.has(itId.toString()));
       return isOwnSeller || hasOwnItems;
@@ -571,12 +593,15 @@ export const getOrderById = asyncHandler(
         soldBy: (item.seller as any)?.storeName || "N/A",
         unit: unit,
         price: item.unitPrice || 0,
-        tax: 0,
-        taxPercent: 0,
+        tax: item.taxAmount || 0,
+        taxPercent: item.taxRate || 0,
         qty: item.quantity || 0,
         subtotal: item.total || 0,
         productType: isEcom ? 'ECOMMERCE' : 'QUICK_COMMERCE',
         fulfillmentType: isEcom ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+        ownerType: item.ownerType,
+        billingEntityName: item.billingEntityName,
+        billingEntityGstin: item.billingEntityGstin,
         isWholesale: Boolean(item.isWholesale),
         wholesalePrice: item.wholesalePrice,
         wholesaleMinimumQuantity: item.wholesaleMinimumQuantity,
@@ -587,13 +612,17 @@ export const getOrderById = asyncHandler(
     const sellerOrderType = isMixedOrder ? 'MIXED' : sellerHasQc ? 'QUICK_COMMERCE' : 'ECOMMERCE';
 
     // Format order data for frontend - strictly scoped to this seller
+    const scopedFulfillmentStatus = requestedChannel
+      ? getChannelFulfillmentStatus(sellerScopedGroups, requestedChannel, order.status)
+      : order.status;
     const orderDetail = {
       id: order._id,
       orderType: sellerOrderType,
       parentOrderType: order.orderType || "QUICK_COMMERCE",
       fulfillmentGroups: sellerScopedGroups,
       trackingNumber: order.trackingNumber || "",
-      invoiceNumber: order.invoiceNumber || order.orderNumber || "N/A",
+      invoiceNumber: `${order.invoiceNumber || order.orderNumber || "N/A"}${requestedChannel ? (requestedChannel === "QUICK_COMMERCE" ? "-QC" : "-ECOM") : ""}`,
+      invoiceChannel: requestedChannel,
       orderDate: order.orderDate
         ? order.orderDate.toISOString()
         : new Date().toISOString(),
@@ -601,7 +630,9 @@ export const getOrderById = asyncHandler(
         ? order.estimatedDeliveryDate.toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0],
       timeSlot: order.timeSlot || "N/A",
-      status: order.status === "On the way" ? "Out For Delivery" : order.status,
+      status: scopedFulfillmentStatus === "On the way" ? "Out For Delivery" : scopedFulfillmentStatus,
+      parentStatus: order.status === "On the way" ? "Out For Delivery" : order.status,
+      fulfillmentStatus: scopedFulfillmentStatus,
       customerName: (order.customer as any)?.name || order.customerName || "",
       customerEmail:
         (order.customer as any)?.email || order.customerEmail || "",
@@ -617,17 +648,18 @@ export const getOrderById = asyncHandler(
       deliveryPreference: sellerHasQc ? order.deliveryPreference : undefined,
       deliveryOption: order.deliveryOption,
       items: formattedItems,
-      subtotal: formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
+      subtotal: invoiceScope?.subtotal ?? formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
       orderSubtotal: order.subtotal || 0,
-      tax: order.tax || 0,
-      shipping: order.shipping || 0,
+      tax: invoiceScope?.taxIncluded ?? (order.tax || 0),
+      taxIncluded: invoiceScope?.taxIncluded ?? (order.tax || 0),
+      shipping: invoiceScope?.shipping ?? (order.shipping || 0),
       firstOrderFreeShippingApplied: Boolean(order.firstOrderFreeShippingApplied),
       normalShippingAmount: order.normalShippingAmount || 0,
       shippingDiscount: order.shippingDiscount || 0,
-      platformFee: order.platformFee || 0,
-      discount: order.discount || 0,
-      couponCode: order.couponCode || "",
-      grandTotal: formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
+      platformFee: requestedChannel ? 0 : (order.platformFee || 0),
+      discount: requestedChannel ? 0 : (order.discount || 0),
+      couponCode: requestedChannel ? "" : (order.couponCode || ""),
+      grandTotal: invoiceScope?.total ?? formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
       orderGrandTotal: order.total || 0,
       orderTotal: order.total || 0,
       paymentMethod: order.paymentMethod || "N/A",

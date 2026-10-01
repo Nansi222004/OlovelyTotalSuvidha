@@ -12,6 +12,8 @@ import { processOrderStatusTransition } from "../../../services/orderService";
 import { getDeliveryPendingOrderAlerts } from "../../../services/orderAlertService";
 import { formatDeliveryAddress } from "../../../utils/addressUtils";
 import { getDeliveryPartnerQcContext } from "../utils/deliveryOrderScopingHelper";
+import DeliveryAssignment from "../../../models/DeliveryAssignment";
+import { areAllFulfillmentGroupsDelivered } from "../../../utils/fulfillmentStatus";
 
 /**
  * Get pending delivery order alerts (survives page refresh).
@@ -116,7 +118,7 @@ export const getAllOrdersHistory = asyncHandler(
 
         address: formatDeliveryAddress(order.deliveryAddress).formatted,
         deliveryAddress: order.deliveryAddress,
-        totalAmount: qcCtx.assignedQcSubtotal,
+        totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
         deliveryEarning: commissionMap.get(order._id.toString()) || 0, // Add Earning
@@ -184,7 +186,7 @@ export const getTodayOrders = asyncHandler(
         address: formatDeliveryAddress(order.deliveryAddress).formatted,
         deliveryAddress: order.deliveryAddress,
         items: mapOrderItems(qcCtx.assignedQcItems), // Real assigned QC items only
-        totalAmount: qcCtx.assignedQcSubtotal,
+        totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
         estimatedDeliveryTime: order.estimatedDeliveryDate
@@ -214,26 +216,23 @@ export const getPendingOrders = asyncHandler(
   async (req: Request, res: Response) => {
     const deliveryId = req.user?.userId;
 
-    // Pending statuses: Ready for pickup, Out for delivery, Picked Up, Assigned, In Transit
+    // Parent status is not authoritative for a rider on MIXED orders. Fetch the
+    // rider's local-delivery candidates and filter by fulfillment actionability.
     const orders = await Order.find({
       deliveryBoy: deliveryId,
       orderType: { $ne: "ECOMMERCE" },
-      status: {
-        $in: [
-          "Ready for pickup",
-          "Out for Delivery",
-          "Picked Up",
-          "Assigned",
-          "In Transit",
-        ],
-      },
     })
       .populate("items")
       .sort({ createdAt: -1 });
 
     const formattedOrders = orders.reduce((acc: any[], order) => {
       const qcCtx = getDeliveryPartnerQcContext(order, deliveryId!);
-      if (!qcCtx.isAuthorized || !qcCtx.hasQcItems || qcCtx.isEcommerceOnly) {
+      if (
+        !qcCtx.isAuthorized ||
+        !qcCtx.hasQcItems ||
+        qcCtx.isEcommerceOnly ||
+        !qcCtx.isActionable
+      ) {
         return acc;
       }
 
@@ -245,7 +244,7 @@ export const getPendingOrders = asyncHandler(
         status: qcCtx.displayStatus,
         address: formatDeliveryAddress(order.deliveryAddress).formatted,
         items: mapOrderItems(qcCtx.assignedQcItems), // Real assigned QC items only
-        totalAmount: qcCtx.assignedQcSubtotal,
+        totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
         estimatedDeliveryTime: order.estimatedDeliveryDate
@@ -346,9 +345,11 @@ export const getOrderDetails = asyncHandler(
       deliveryAssignmentStatus: (order as any).deliveryAssignmentStatus,
       sellerPickups: qcCtx.relevantSellerPickups,
       items: mapOrderItems(qcCtx.assignedQcItems), // ONLY assigned QC items
-      totalAmount: qcCtx.assignedQcSubtotal, // QC-only subtotal!
+      totalAmount: qcCtx.assignedQcTotal,
       subtotal: qcCtx.assignedQcSubtotal,
       assignedSubtotal: qcCtx.assignedQcSubtotal,
+      assignedShippingFee: qcCtx.assignedQcShippingFee,
+      assignedTotal: qcCtx.assignedQcTotal,
       codAmountToCollect: qcCtx.assignedQcCodAmount,
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
@@ -393,8 +394,9 @@ export const updateOrderStatus = asyncHandler(
 
     // Scope status transition to QC fulfillment group
     if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
+      const assignedGroupIds = new Set(qcCtx.assignedQcGroups.map((group: any) => group.groupId));
       order.fulfillmentGroups.forEach((g: any) => {
-        if (g.fulfillmentType === "LOCAL_DELIVERY") {
+        if (g.fulfillmentType === "LOCAL_DELIVERY" && assignedGroupIds.has(g.groupId)) {
           if (status === "Picked up") g.status = "Shipped";
           else if (status === "Out for Delivery") g.status = "OutForDelivery";
           else if (status === "Delivered") g.status = "Delivered";
@@ -412,9 +414,7 @@ export const updateOrderStatus = asyncHandler(
 
       // In a mixed order, set order.status to Delivered only if all groups are delivered
       if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
-        const allGroupsDelivered = order.fulfillmentGroups.every(
-          (g: any) => g.status === "Delivered"
-        );
+        const allGroupsDelivered = areAllFulfillmentGroupsDelivered(order.fulfillmentGroups);
         if (allGroupsDelivered || order.orderType !== "MIXED") {
           order.status = "Delivered";
           order.deliveredAt = new Date();
@@ -458,6 +458,12 @@ export const updateOrderStatus = asyncHandler(
     }
 
     await order.save();
+    if (status === "Delivered") {
+      await DeliveryAssignment.findOneAndUpdate(
+        { order: order._id, deliveryBoy: deliveryId },
+        { $set: { status: "Delivered", deliveredAt: new Date() } },
+      );
+    }
 
     // Emit socket events for status changes
     const io = (req.app as any).get("io");
@@ -471,17 +477,29 @@ export const updateOrderStatus = asyncHandler(
       }
 
       if (status === "Delivered" && previousStatus !== "Delivered") {
+        const parentDelivered = order.status === "Delivered";
         // Emit order-delivered event to all relevant parties
         io.to(`order-${id}`).emit("order-delivered", {
           orderId: id,
           orderNumber: order.orderNumber,
-          message: "Order has been delivered successfully",
+          scope: "LOCAL_DELIVERY",
+          fulfillmentStatus: "Delivered",
+          fulfillmentGroupIds: qcCtx.assignedQcGroups.map((group: any) => group.groupId),
+          parentStatus: order.status,
+          parentDelivered,
+          message: parentDelivered
+            ? "Order has been delivered successfully"
+            : "Quick Commerce shipment has been delivered successfully",
         });
 
         // Also emit to delivery boy room
         io.to(`delivery-${deliveryId}`).emit("order-delivered", {
           orderId: id,
           orderNumber: order.orderNumber,
+          scope: "LOCAL_DELIVERY",
+          fulfillmentStatus: "Delivered",
+          parentStatus: order.status,
+          parentDelivered,
           message: "Order delivered successfully",
         });
       }
@@ -544,7 +562,7 @@ export const getReturnOrders = asyncHandler(
         status: qcCtx.displayStatus,
         address: formatDeliveryAddress(order.deliveryAddress).formatted,
         items: mapOrderItems(qcCtx.assignedQcItems),
-        totalAmount: qcCtx.assignedQcSubtotal,
+        totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
         createdAt: order.createdAt,
@@ -658,13 +676,13 @@ export const sendDeliveryOtp = asyncHandler(
         .json({ success: false, message: "This order is not assigned to you" });
     }
 
-    if (order.status === "Delivered") {
+    if (!qcCtx.isActionable) {
       return res
         .status(400)
-        .json({ success: false, message: "Order is already delivered" });
+        .json({ success: false, message: "Local delivery is already complete" });
     }
 
-    if (order.status !== "Picked up" && order.status !== "Out for Delivery") {
+    if (qcCtx.displayStatus !== "Picked up" && qcCtx.displayStatus !== "Out for Delivery") {
       return res
         .status(400)
         .json({
@@ -759,34 +777,40 @@ export const verifyDeliveryOtpController = asyncHandler(
         .status(403)
         .json({ success: false, message: "This order is not assigned to you" });
     }
+    if (!qcCtx.isActionable) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Local delivery is already complete" });
+    }
 
     try {
       const previousStatus = order.status;
-      const result = await verifyDeliveryOtp(id, otp);
+      // The controller owns fulfillment-aware status updates. The OTP service
+      // must not transiently mark a MIXED parent order Delivered.
+      const result = await verifyDeliveryOtp(id, otp, { markOrderDelivered: false });
       // Note: verifyDeliveryOtp is from service, not this controller
 
       // Reload order to get updated status
       const updatedOrder = await Order.findById(id).populate("items");
 
       if (updatedOrder) {
-        // Update QC fulfillment group status to Delivered
+        // Update only the QC fulfillment group(s) assigned to this rider.
         if (updatedOrder.fulfillmentGroups && updatedOrder.fulfillmentGroups.length > 0) {
+          const assignedGroupIds = new Set(qcCtx.assignedQcGroups.map((group: any) => group.groupId));
           updatedOrder.fulfillmentGroups.forEach((g: any) => {
-            if (g.fulfillmentType === "LOCAL_DELIVERY") {
+            if (g.fulfillmentType === "LOCAL_DELIVERY" && assignedGroupIds.has(g.groupId)) {
               g.status = "Delivered";
             }
           });
 
-          const allGroupsDelivered = updatedOrder.fulfillmentGroups.every(
-            (g: any) => g.status === "Delivered"
-          );
+          const allGroupsDelivered = areAllFulfillmentGroupsDelivered(updatedOrder.fulfillmentGroups);
 
           // In a MIXED order, if courier groups are NOT delivered yet, parent order is not fully Delivered
-          if (!allGroupsDelivered && updatedOrder.orderType === "MIXED") {
-            updatedOrder.status = previousStatus === "Delivered" ? "Processed" : previousStatus;
-          } else {
+          if (allGroupsDelivered || updatedOrder.orderType !== "MIXED") {
             updatedOrder.status = "Delivered";
             updatedOrder.deliveredAt = new Date();
+          } else {
+            updatedOrder.status = previousStatus;
           }
         } else {
           updatedOrder.status = "Delivered";
@@ -795,6 +819,10 @@ export const verifyDeliveryOtpController = asyncHandler(
 
         updatedOrder.deliveryBoyStatus = "Delivered";
         await updatedOrder.save();
+        await DeliveryAssignment.findOneAndUpdate(
+          { order: updatedOrder._id, deliveryBoy: deliveryId },
+          { $set: { status: "Delivered", deliveredAt: new Date() } },
+        );
 
         // Process order status transition for financial transactions
         try {
@@ -812,17 +840,32 @@ export const verifyDeliveryOtpController = asyncHandler(
       if (updatedOrder && (updatedOrder.status === "Delivered" || updatedOrder.deliveryBoyStatus === "Delivered")) {
         const io = (req.app as any).get("io");
         if (io && previousStatus !== "Delivered") {
-          // Emit order-delivered event to customer
+          const parentDelivered = updatedOrder.status === "Delivered";
+          const deliveredGroupIds = qcCtx.assignedQcGroups.map((group: any) => group.groupId);
+
+          // This event ends local rider tracking. Its payload explicitly
+          // distinguishes a QC fulfillment completion from parent completion.
           io.to(`order-${id}`).emit("order-delivered", {
             orderId: id,
             orderNumber: updatedOrder.orderNumber,
-            message: "Order has been delivered successfully",
+            scope: "LOCAL_DELIVERY",
+            fulfillmentStatus: "Delivered",
+            fulfillmentGroupIds: deliveredGroupIds,
+            parentStatus: updatedOrder.status,
+            parentDelivered,
+            message: parentDelivered
+              ? "Order has been delivered successfully"
+              : "Quick Commerce shipment has been delivered successfully",
           });
 
           // Also emit to delivery boy room
           io.to(`delivery-${deliveryId}`).emit("order-delivered", {
             orderId: id,
             orderNumber: updatedOrder.orderNumber,
+            scope: "LOCAL_DELIVERY",
+            fulfillmentStatus: "Delivered",
+            parentStatus: updatedOrder.status,
+            parentDelivered,
             message: "Order delivered successfully",
           });
 

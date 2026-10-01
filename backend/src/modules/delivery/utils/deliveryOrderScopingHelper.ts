@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { isFulfillmentStatusActionable } from "../../../utils/fulfillmentStatus";
 
 export interface DeliveryPartnerQcContext {
   isAuthorized: boolean;
@@ -14,7 +15,11 @@ export interface DeliveryPartnerQcContext {
   assignedFulfillmentGroup?: any;
   relevantSellerPickups: any[];
   displayStatus: string;
+  isActionable: boolean;
 }
+
+export const isDeliveryQcStatusActionable = (status: unknown): boolean =>
+  isFulfillmentStatusActionable(status);
 
 /**
  * Pure helper function to inspect an order and resolve Quick Commerce scoping
@@ -45,6 +50,7 @@ export function getDeliveryPartnerQcContext(
       assignedQcGroups: [],
       relevantSellerPickups: [],
       displayStatus: "Pending",
+      isActionable: false,
     };
   }
 
@@ -86,6 +92,7 @@ export function getDeliveryPartnerQcContext(
       assignedQcGroups: [],
       relevantSellerPickups: [],
       displayStatus: orderObj.status || "Pending",
+      isActionable: false,
     };
   }
 
@@ -137,6 +144,7 @@ export function getDeliveryPartnerQcContext(
       assignedQcGroups: [],
       relevantSellerPickups: [],
       displayStatus: orderObj.status || "Pending",
+      isActionable: false,
     };
   }
 
@@ -208,18 +216,10 @@ export function getDeliveryPartnerQcContext(
         // Pure QC single-rider order: full COD pending belongs to this rider
         assignedQcCodAmount = fullCodPending;
       } else {
-        // Mixed order or multiple QC groups:
-        // Apportion COD responsibility proportionally based on assigned QC gross vs total order gross
-        const orderSubtotal = Number(orderObj.subtotal || 0);
-        const orderShipping = Number(orderObj.shipping || 0);
-        const totalGross = orderSubtotal + orderShipping;
-
-        if (totalGross > 0) {
-          const ratio = assignedQcTotal / totalGross;
-          assignedQcCodAmount = Number((fullCodPending * ratio).toFixed(2));
-        } else {
-          assignedQcCodAmount = assignedQcTotal;
-        }
+        // Mixed/multi-group orders are explicit fulfillment partitions. The
+        // local rider collects no more than the assigned QC items + QC shipping;
+        // Ecommerce and parent-level charges never enter this amount.
+        assignedQcCodAmount = Math.min(assignedQcTotal, fullCodPending);
       }
       // Safety cap: cannot exceed full COD pending or assigned gross
       assignedQcCodAmount = Math.min(assignedQcCodAmount, fullCodPending);
@@ -247,8 +247,11 @@ export function getDeliveryPartnerQcContext(
 
   // 7. Determine display status for the delivery partner view
   let displayStatus = orderObj.status || "Pending";
-  if (assignedQcGroups.length === 1) {
-    const groupStatus = assignedQcGroups[0].status;
+  if (assignedQcGroups.length > 0) {
+    const groupStatuses = assignedQcGroups.map((group: any) => group.status);
+    const groupStatus = groupStatuses.every((status: string) => status === "Delivered")
+      ? "Delivered"
+      : groupStatuses.find((status: string) => isDeliveryQcStatusActionable(status)) || groupStatuses[0];
     if (groupStatus === "Delivered") {
       displayStatus = "Delivered";
     } else if (groupStatus === "OutForDelivery") {
@@ -259,6 +262,10 @@ export function getDeliveryPartnerQcContext(
       displayStatus = "Ready for pickup";
     }
   }
+
+  const isActionable = hasFulfillmentGroups
+    ? assignedQcGroups.some((group: any) => isDeliveryQcStatusActionable(group.status))
+    : isDeliveryQcStatusActionable(displayStatus);
 
   return {
     isAuthorized,
@@ -274,5 +281,6 @@ export function getDeliveryPartnerQcContext(
     assignedFulfillmentGroup: assignedQcGroups[0] || null,
     relevantSellerPickups,
     displayStatus,
+    isActionable,
   };
 }

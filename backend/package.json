@@ -10,6 +10,8 @@
     "test": "tsx test-auth.ts",
     "test:auth": "tsx src/scripts/testAuth.ts",
     "test:integration": "tsx src/scripts/test-frontend-backend-auth.ts",
+    "test:invoice-scoping": "tsx src/scripts/testInvoiceChannelAndDeliveryScoping.ts",
+    "test:mixed-status-sync": "tsx src/scripts/testMixedOrderStatusSynchronization.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
     "seed:grocery-kitchen": "tsx src/scripts/seedGroceryKitchen.ts",
     "seed:personal-care": "tsx src/scripts/seedPersonalCare.ts",

@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "../../components/ui/button";
 import { useOrders } from "../../hooks/useOrders";
@@ -18,6 +18,53 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { formatDeliveryAddress } from "../../utils/addressUtils";
 import SupportModal from "../../components/SupportModal";
+
+const TERMINAL_FULFILLMENT_STATUSES = new Set([
+  "Delivered",
+  "Completed",
+  "Cancelled",
+  "Failed",
+  "Rejected",
+  "Returned",
+]);
+
+const getLocalDeliveryState = (order: any) => {
+  const groups = Array.isArray(order?.fulfillmentGroups) ? order.fulfillmentGroups : [];
+  const localGroups = groups.filter((group: any) => group.fulfillmentType === "LOCAL_DELIVERY");
+  if (groups.length === 0) {
+    const hasLocalDelivery = order?.orderType !== "ECOMMERCE";
+    return {
+      hasLocalDelivery,
+      isActive: hasLocalDelivery && !TERMINAL_FULFILLMENT_STATUSES.has(order?.status),
+    };
+  }
+  return {
+    hasLocalDelivery: localGroups.length > 0,
+    isActive: localGroups.some((group: any) => !TERMINAL_FULFILLMENT_STATUSES.has(group.status)),
+  };
+};
+
+const getCustomerDisplayStatus = (order: any, fallbackStatus: string): string => {
+  if (!order || TERMINAL_FULFILLMENT_STATUSES.has(order.status)) return order?.status || fallbackStatus;
+  const groups = Array.isArray(order.fulfillmentGroups) ? order.fulfillmentGroups : [];
+  if (groups.length === 0) return fallbackStatus;
+
+  const localGroups = groups.filter((group: any) => group.fulfillmentType === "LOCAL_DELIVERY");
+  const localDeliveryComplete = localGroups.length > 0 && localGroups.every(
+    (group: any) => TERMINAL_FULFILLMENT_STATUSES.has(group.status),
+  );
+  if (!localDeliveryComplete) return fallbackStatus;
+
+  const ecommerceGroups = groups.filter((group: any) =>
+    group.fulfillmentType === "COURIER_SHIPPING" || group.fulfillmentType === "THIRD_PARTY_API"
+  );
+  if (ecommerceGroups.length === 0) return fallbackStatus;
+  if (ecommerceGroups.every((group: any) => group.status === "Delivered")) return "Delivered";
+  if (ecommerceGroups.some((group: any) => group.status === "Shipped" || group.status === "OutForDelivery")) {
+    return "Shipped";
+  }
+  return "Processed";
+};
 
 // Icon Components
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
@@ -459,7 +506,7 @@ export default function OrderDetail() {
   const [loading, setLoading] = useState(!order);
 
   const [showConfirmation, setShowConfirmation] = useState(confirmed);
-  const [orderStatus, setOrderStatus] = useState<OrderStatus>(
+  const [orderStatus, setOrderStatus] = useState<string>(
     order?.status || "Received"
   );
   const [estimatedTime, setEstimatedTime] = useState(29);
@@ -472,6 +519,7 @@ export default function OrderDetail() {
   const { user } = useAuth();
   const [showRazorpayCheckout, setShowRazorpayCheckout] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const handledLocalDeliveryEventRef = useRef<string | null>(null);
 
   // Modal states
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -515,12 +563,9 @@ export default function OrderDetail() {
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
 
-  // Real-time delivery tracking via WebSocket (disabled for loading, delivered, completed, or cancelled orders)
-  const activeOrderStatus = order?.status || (orderStatus !== "Received" ? orderStatus : "");
-  const isTerminalOrDelivered = Boolean(
-    activeOrderStatus && ["Delivered", "Completed", "Cancelled", "Returned"].includes(activeOrderStatus)
-  );
-  const isLiveTrackingEnabled = Boolean(order && activeOrderStatus && !isTerminalOrDelivered);
+  // Rider tracking belongs only to an active LOCAL_DELIVERY fulfillment.
+  const localDeliveryState = getLocalDeliveryState(order);
+  const isLiveTrackingEnabled = Boolean(order && localDeliveryState.isActive);
 
 
   const {
@@ -529,6 +574,7 @@ export default function OrderDetail() {
     distance,
     status: trackingStatus,
     orderStatus: socketOrderStatus, // Real-time order status from socket
+    localDeliveryStatus: socketLocalDeliveryStatus,
     isConnected,
     lastUpdate,
     error: trackingError,
@@ -720,6 +766,21 @@ export default function OrderDetail() {
       }
     }
   }, [socketOrderStatus, orderStatus, id, fetchOrderById]);
+
+  // A mixed-order QC completion may leave the parent status unchanged. Refetch
+  // on the fulfillment event itself so the delivered local group replaces any
+  // stale map/ETA/OTP state without pretending the whole order is delivered.
+  useEffect(() => {
+    if (socketLocalDeliveryStatus !== "Delivered" || !id) return;
+    if (handledLocalDeliveryEventRef.current === id) return;
+    handledLocalDeliveryEventRef.current = id;
+    fetchOrderById(id).then((fetchedOrder) => {
+      if (fetchedOrder) {
+        setOrder(fetchedOrder);
+        setOrderStatus(fetchedOrder.status);
+      }
+    });
+  }, [socketLocalDeliveryStatus, id, fetchOrderById]);
 
   // Simulate order status progression
   useEffect(() => {
@@ -936,7 +997,9 @@ export default function OrderDetail() {
     },
   };
 
-  const currentStatus = statusConfig[orderStatus] || statusConfig["Received"];
+  const displayStatus = getCustomerDisplayStatus(order, orderStatus);
+  const currentStatus = statusConfig[displayStatus] || statusConfig["Received"];
+  const showActiveLocalDelivery = localDeliveryState.isActive && socketLocalDeliveryStatus !== "Delivered";
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -1041,7 +1104,7 @@ export default function OrderDetail() {
       </motion.div>
 
       {/* Map Section */}
-      {!showConfirmation && !['Delivered', 'Cancelled', 'Returned'].includes(order?.status) && (
+      {!showConfirmation && showActiveLocalDelivery && (
         <GoogleMapsTracking
           sellerLocations={sellerLocations.map(s => ({
             lat: s.latitude,
@@ -1095,7 +1158,7 @@ export default function OrderDetail() {
       )}
 
       {/* Delivery Partner Card — hide OTP and card after delivery */}
-      {!["Delivered", "Completed", "Cancelled"].includes(orderStatus) && (order?.deliveryPartner || order?.deliveryOtp) && (
+      {showActiveLocalDelivery && (order?.deliveryPartner || order?.deliveryOtp) && (
         <DeliveryPartnerCard
           partner={{
             name: order?.deliveryPartner?.name || "Delivery Partner",

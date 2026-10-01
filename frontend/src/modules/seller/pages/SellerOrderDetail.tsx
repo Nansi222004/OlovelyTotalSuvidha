@@ -321,9 +321,26 @@ export default function SellerOrderDetail() {
                 </div>
               )}
             </div>
-            <button
+            {isMixedOrder ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/seller/orders/${orderDetail.id}/invoice?channel=QUICK_COMMERCE`)}
+                  className="flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-3 py-2 rounded-lg text-sm font-semibold"
+                >
+                  QC Bill
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/seller/orders/${orderDetail.id}/invoice?channel=ECOMMERCE`)}
+                  className="flex items-center gap-1.5 bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 px-3 py-2 rounded-lg text-sm font-semibold"
+                >
+                  Ecommerce Bill
+                </button>
+              </>
+            ) : <button
               type="button"
-              onClick={() => navigate(`/seller/orders/${orderDetail.id}/invoice`)}
+              onClick={() => navigate(`/seller/orders/${orderDetail.id}/invoice?channel=${isPureEcommerce ? 'ECOMMERCE' : 'QUICK_COMMERCE'}`)}
               className="flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300 px-3 py-2 rounded-lg transition-colors text-sm font-semibold cursor-pointer shadow-xs"
               title="Open full page invoice"
             >
@@ -332,8 +349,8 @@ export default function SellerOrderDetail() {
                 <circle cx="12" cy="12" r="3" />
               </svg>
               View Invoice
-            </button>
-            <button
+            </button>}
+            {!isMixedOrder && <button
               type="button"
               onClick={handleExportPDF}
               disabled={isExporting}
@@ -347,8 +364,8 @@ export default function SellerOrderDetail() {
                 <polyline points="10 9 9 9 8 9" />
               </svg>
               {isExporting ? 'Exporting PDF...' : 'Export Invoice PDF'}
-            </button>
-            <button
+            </button>}
+            {!isMixedOrder && <button
               type="button"
               onClick={handlePrint}
               className="flex items-center gap-2 bg-neutral-900 hover:bg-black text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold shadow-xs cursor-pointer"
@@ -359,7 +376,7 @@ export default function SellerOrderDetail() {
                 <rect x="6" y="14" width="12" height="8" />
               </svg>
               Print Invoice
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -487,7 +504,7 @@ export default function SellerOrderDetail() {
                 </span>
               </div>
               <div className="flex items-center gap-2 lg:justify-end">
-                <span className="text-sm font-medium text-neutral-700">Order Status:</span>
+                <span className="text-sm font-medium text-neutral-700">Parent Order Status:</span>
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(orderStatus)}`}>
                   {orderStatus}
                 </span>
@@ -921,7 +938,7 @@ export default function SellerOrderDetail() {
           width: '850px',
         }}
       >
-        {orderDetail && (
+        {orderDetail && !isMixedOrder && (
           <SellerInvoice ref={invoicePrintRef} orderDetail={orderDetail} />
         )}
       </div>

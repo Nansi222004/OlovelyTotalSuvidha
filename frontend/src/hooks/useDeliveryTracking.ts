@@ -22,6 +22,7 @@ interface TrackingData {
     distance: number
     status: string
     orderStatus: string | null // The actual order status (Placed, Out for Delivery, Delivered, etc.)
+    localDeliveryStatus: string | null
     isConnected: boolean
     lastUpdate: Date | null
     error: string | null
@@ -38,6 +39,7 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
         distance: 0,
         status: 'idle',
         orderStatus: null,
+        localDeliveryStatus: null,
         isConnected: false,
         lastUpdate: null,
         error: null,
@@ -142,6 +144,15 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
         })
 
         // Listen for order status updates
+        socket.on('order-status-update', (data: any) => {
+            if (!data?.status) return
+            setTrackingData(prev => ({
+                ...prev,
+                orderStatus: data.status,
+                lastUpdate: new Date(),
+            }))
+        })
+
         socket.on('order-taken', (data: any) => {
             console.log('📦 Order picked up from seller:', data)
             setTrackingData(prev => ({
@@ -166,7 +177,13 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
             console.log('✅ Order delivered:', data)
             setTrackingData(prev => ({
                 ...prev,
-                orderStatus: 'Delivered',
+                deliveryLocation: null,
+                eta: 0,
+                distance: 0,
+                status: 'completed',
+                isConnected: false,
+                localDeliveryStatus: data.fulfillmentStatus || 'Delivered',
+                orderStatus: data.parentStatus || (data.parentDelivered ? 'Delivered' : prev.orderStatus),
                 lastUpdate: new Date(),
             }))
         })
@@ -203,7 +220,7 @@ export const useDeliveryTracking = (orderId: string | undefined, enabled: boolea
         })
 
         return socket
-    }, [orderId])
+    }, [orderId, enabled])
 
     const attemptReconnect = useCallback(() => {
         reconnectAttemptsRef.current += 1

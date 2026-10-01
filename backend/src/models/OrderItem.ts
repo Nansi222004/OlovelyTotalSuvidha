@@ -15,6 +15,16 @@ export interface IOrderItem extends Document {
   quantity: number;
   total: number;
 
+  // Immutable commerce / tax invoice snapshots captured at checkout
+  productType: "QUICK_COMMERCE" | "ECOMMERCE";
+  fulfillmentType: "LOCAL_DELIVERY" | "COURIER_SHIPPING";
+  ownerType: "PLATFORM" | "VENDOR";
+  billingEntityName: string;
+  billingEntityGstin?: string;
+  taxRate: number;
+  /** GST included in `total`; it is informational and must not be added again. */
+  taxAmount: number;
+
   // Variation
   variation?: string;
   variantTitle?: string;
@@ -94,6 +104,41 @@ const OrderItemSchema = new Schema<IOrderItem>(
       type: Number,
       required: [true, "Total is required"],
       min: [0, "Total cannot be negative"],
+    },
+    productType: {
+      type: String,
+      enum: ["QUICK_COMMERCE", "ECOMMERCE"],
+      default: "QUICK_COMMERCE",
+    },
+    fulfillmentType: {
+      type: String,
+      enum: ["LOCAL_DELIVERY", "COURIER_SHIPPING"],
+      default: "LOCAL_DELIVERY",
+    },
+    ownerType: {
+      type: String,
+      enum: ["PLATFORM", "VENDOR"],
+      default: "VENDOR",
+    },
+    billingEntityName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    billingEntityGstin: {
+      type: String,
+      trim: true,
+    },
+    taxRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    taxAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     // Variation

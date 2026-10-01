@@ -49,6 +49,9 @@ export interface OrderItem {
   isWholesale?: boolean;
   wholesalePrice?: number;
   wholesaleMinimumQuantity?: number;
+  ownerType?: 'PLATFORM' | 'VENDOR';
+  billingEntityName?: string;
+  billingEntityGstin?: string;
 }
 
 export interface DeliveryAddress {
@@ -68,7 +71,9 @@ export interface OrderDetail {
   orderDate: string;
   deliveryDate: string;
   timeSlot: string;
-  status: 'Out For Delivery' | 'Received' | 'Payment Pending' | 'Cancelled' | 'Rejected';
+  status: string;
+  parentStatus?: string;
+  fulfillmentStatus?: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -100,6 +105,8 @@ export interface OrderDetail {
   hasQcItems?: boolean;
   hasEcomItems?: boolean;
   requiresLocalDelivery?: boolean;
+  invoiceChannel?: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  taxIncluded?: number;
 }
 
 export interface AvailableDeliveryPartner {
@@ -165,8 +172,13 @@ export const getPendingOrderAlerts = async (): Promise<ApiResponse<any[]>> => {
 /**
  * Get order by ID
  */
-export const getOrderById = async (id: string): Promise<ApiResponse<OrderDetail>> => {
-  const response = await api.get<ApiResponse<OrderDetail>>(`/orders/${id}`);
+export const getOrderById = async (
+  id: string,
+  channel?: 'QUICK_COMMERCE' | 'ECOMMERCE',
+): Promise<ApiResponse<OrderDetail>> => {
+  const response = await api.get<ApiResponse<OrderDetail>>(`/orders/${id}`, {
+    params: channel ? { channel } : undefined,
+  });
   return response.data;
 };
 

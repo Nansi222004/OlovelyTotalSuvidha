@@ -936,6 +936,8 @@ export const calculateCODOrderBreakdown = async (
 
     const resolvedDeliveryBoyId = deliveryBoyId || order.deliveryBoy?.toString();
     let assignedCodAmount = (order.orderType === "ECOMMERCE") ? 0 : order.total;
+    let deliveryScopedSubtotal = Number(order.subtotal || 0);
+    let deliveryScopedShipping = Number(order.shipping || 0);
 
     if (resolvedDeliveryBoyId) {
       const { getDeliveryPartnerQcContext } = await import(
@@ -944,8 +946,12 @@ export const calculateCODOrderBreakdown = async (
       const qcCtx = getDeliveryPartnerQcContext(order, resolvedDeliveryBoyId);
       if (qcCtx.isAuthorized && qcCtx.hasQcItems && !qcCtx.isEcommerceOnly) {
         assignedCodAmount = qcCtx.assignedQcCodAmount;
+        deliveryScopedSubtotal = qcCtx.assignedQcSubtotal;
+        deliveryScopedShipping = qcCtx.assignedQcShippingFee;
       } else if (qcCtx.isEcommerceOnly) {
         assignedCodAmount = 0;
+        deliveryScopedSubtotal = 0;
+        deliveryScopedShipping = 0;
       }
     } else if (order.orderType === "MIXED") {
       const qcGroup = order.fulfillmentGroups?.find(
@@ -961,13 +967,11 @@ export const calculateCODOrderBreakdown = async (
           assignedCodAmount = qcCtx.assignedQcCodAmount;
         } else {
           // If no rider assigned yet, the QC portion is strictly the QC group total
-          const orderGross = Number(order.subtotal || 0) + Number(order.shipping || 0);
           const qcGroupGross = Number(qcGroup.subtotal || 0) + Number(qcGroup.shippingFee || 0);
-          if (orderGross > 0) {
-            assignedCodAmount = Number((order.total * (qcGroupGross / orderGross)).toFixed(2));
-          } else {
-            assignedCodAmount = qcGroupGross;
-          }
+          const fullCodPending = Number(order.codAmountPending ?? order.total ?? 0);
+          assignedCodAmount = Math.min(qcGroupGross, fullCodPending);
+          deliveryScopedSubtotal = Number(qcGroup.subtotal || 0);
+          deliveryScopedShipping = Number(qcGroup.shippingFee || 0);
         }
       } else {
         assignedCodAmount = 0;
@@ -982,7 +986,7 @@ export const calculateCODOrderBreakdown = async (
       adminProductCommission: 0,
       sellerEarnings: new Map<string, number>(),
       platformFee: order.platformFee || 0,
-      totalDeliveryCharge: order.shipping || 0,
+      totalDeliveryCharge: deliveryScopedShipping,
       deliveryBoyCommission: 0,
       adminDeliveryCommission: 0,
       totalAdminEarning: 0,
@@ -1057,7 +1061,7 @@ export const calculateCODOrderBreakdown = async (
         // Use subtotal instead of shipping charge to avoid zero commission on free delivery.
         // This ensures the delivery boy always gets paid even if shipping is free.
         breakdown.deliveryBoyCommission =
-          (order.subtotal * deliveryBoyRate) / 100;
+          (deliveryScopedSubtotal * deliveryBoyRate) / 100;
 
         // Use subtotal based delivery boy pay, but admin still keeps the full delivery charge 
         // We will subtract the DB commission from total admin earning later
@@ -1115,6 +1119,18 @@ export const getOrderEarningBreakdown = async (
 
   // Online / Prepaid: compute same-shaped breakdown
   const isSelfAssign = order.deliveryPreference === "Self";
+  let deliveryScopedSubtotal = Number(order.subtotal || 0);
+  let deliveryScopedShipping = Number(order.shipping || 0);
+  if (order.deliveryBoy) {
+    const { getDeliveryPartnerQcContext } = await import(
+      "../modules/delivery/utils/deliveryOrderScopingHelper"
+    );
+    const qcCtx = getDeliveryPartnerQcContext(order, order.deliveryBoy.toString());
+    if (qcCtx.isAuthorized && qcCtx.hasQcItems && !qcCtx.isEcommerceOnly) {
+      deliveryScopedSubtotal = qcCtx.assignedQcSubtotal;
+      deliveryScopedShipping = qcCtx.assignedQcShippingFee;
+    }
+  }
   const breakdown: ICODOrderBreakdown = {
     orderId: order._id.toString(),
     orderNumber: order.orderNumber,
@@ -1122,7 +1138,7 @@ export const getOrderEarningBreakdown = async (
     adminProductCommission: 0,
     sellerEarnings: new Map<string, number>(),
     platformFee: order.platformFee || 0,
-    totalDeliveryCharge: order.shipping || 0,
+    totalDeliveryCharge: deliveryScopedShipping,
     deliveryBoyCommission: 0,
     adminDeliveryCommission: 0,
     totalAdminEarning: 0,
@@ -1185,7 +1201,7 @@ export const getOrderEarningBreakdown = async (
     } else {
       const deliveryBoy = await Delivery.findById(order.deliveryBoy);
       const rate = deliveryBoy?.commissionRate ?? 5;
-      breakdown.deliveryBoyCommission = (order.subtotal * rate) / 100;
+      breakdown.deliveryBoyCommission = (deliveryScopedSubtotal * rate) / 100;
       breakdown.adminDeliveryCommission = breakdown.totalDeliveryCharge;
     }
   } else {

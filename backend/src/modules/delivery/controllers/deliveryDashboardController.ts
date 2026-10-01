@@ -53,27 +53,6 @@ export const getDashboardStats = asyncHandler(
       {
         $group: {
           _id: null,
-          // Pending: Active statuses
-          pendingOrders: {
-            $sum: {
-              $cond: [
-                {
-                  $in: [
-                    "$status",
-                    [
-                      "Ready for pickup",
-                      "Out for Delivery",
-                      "Picked Up",
-                      "Assigned",
-                      "In Transit",
-                    ],
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
           // All Orders Today: Created today OR Updated today
           allOrdersToday: {
             $sum: {
@@ -105,57 +84,13 @@ export const getDashboardStats = asyncHandler(
               ],
             },
           },
-          // Daily Collection: Cash collected from COD orders delivered TODAY
-          dailyCollection: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$status", "Delivered"] },
-                    { $eq: ["$paymentMethod", "COD"] }, // Assuming 'COD' string for Cash on Delivery
-                    { $gte: ["$deliveredAt", todayStart] },
-                    { $lte: ["$deliveredAt", todayEnd] },
-                  ],
-                },
-                "$total", // Sum the order total
-                0,
-              ],
-            },
-          },
-          // Today's Earning: Commission earned today (Mock calculation: 40 per order)
-          // In real app, this should come from a Commission model or field on Order
-          todayDeliveredCount: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$status", "Delivered"] },
-                    { $gte: ["$deliveredAt", todayStart] },
-                    { $lte: ["$deliveredAt", todayEnd] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
-          // Total Completed Deliveries (Lifetime)
-          totalDeliveredCount: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "Delivered"] }, 1, 0],
-            },
-          },
         },
       },
     ]);
 
     const result = stats[0] || {
-      pendingOrders: 0,
       allOrdersToday: 0,
       returnOrdersToday: 0,
-      dailyCollection: 0,
-      todayDeliveredCount: 0,
-      totalDeliveredCount: 0,
     };
 
     // Calculate Earnings (Real Logic from Commission Collection)
@@ -222,34 +157,41 @@ export const getDashboardStats = asyncHandler(
       dailyCollectionAmount = 0;
     }
 
-    // Fetch list of Pending Orders for the "Today's Pending Order" section
-    const pendingOrdersList = await Order.find({
+    // Fetch assigned local-delivery candidates, then determine actionability
+    // from the rider's fulfillment group rather than the mixed parent status.
+    const pendingOrderCandidates = await Order.find({
       deliveryBoy: deliveryId,
-      status: {
-        $in: [
-          "Ready for pickup",
-          "Out for Delivery",
-          "Picked Up",
-          "Assigned",
-          "In Transit",
-        ],
-      },
+      orderType: { $ne: "ECOMMERCE" },
     })
       .populate("items")
       .select(
-        "orderNumber customerName deliveryAddress status total grandTotal subtotal shipping items fulfillmentGroups orderType estimatedDeliveryDate",
+        "orderNumber customerName deliveryAddress status total grandTotal subtotal shipping items fulfillmentGroups orderType deliveryBoy estimatedDeliveryDate createdAt updatedAt",
       )
-      .sort({ createdAt: -1 })
-      .limit(5);
+      .sort({ createdAt: -1 });
 
     const { getDeliveryPartnerQcContext } = await import(
       "../utils/deliveryOrderScopingHelper"
     );
 
-    // format pending list for Frontend - scoped to QC items
-    const formattedPendingList = pendingOrdersList.map((order) => {
-      const qcCtx = getDeliveryPartnerQcContext(order, deliveryId);
-      const displayTotal = qcCtx.hasQcItems ? qcCtx.assignedQcSubtotal : order.total;
+    const scopedQcAssignments = pendingOrderCandidates
+      .map((order) => ({ order, qcCtx: getDeliveryPartnerQcContext(order, deliveryId) }))
+      .filter(({ qcCtx }) =>
+        qcCtx.isAuthorized &&
+        qcCtx.hasQcItems &&
+        !qcCtx.isEcommerceOnly
+      );
+    const actionablePendingOrders = scopedQcAssignments.filter(({ qcCtx }) => qcCtx.isActionable);
+    const completedQcAssignments = scopedQcAssignments.filter(
+      ({ qcCtx }) => !qcCtx.isActionable && qcCtx.displayStatus === "Delivered",
+    );
+    const todayDeliveredCount = completedQcAssignments.filter(({ order }) => {
+      const completedAt = new Date(order.updatedAt || order.createdAt);
+      return completedAt >= todayStart && completedAt <= todayEnd;
+    }).length;
+
+    // Format only active QC assignments for the dashboard preview.
+    const formattedPendingList = actionablePendingOrders.slice(0, 5).map(({ order, qcCtx }) => {
+      const displayTotal = qcCtx.hasQcItems ? qcCtx.assignedQcTotal : 0;
       return {
         id: order._id,
         orderId: order.orderNumber,
@@ -294,15 +236,15 @@ export const getDashboardStats = asyncHandler(
       data: {
         dailyCollection: dailyCollectionAmount,
         cashBalance: deliveryPartner.cashCollected, // This field stores total cash holding
-        pendingOrders: result.pendingOrders,
+        pendingOrders: actionablePendingOrders.length,
         allOrders: result.allOrdersToday,
         returnOrders: activeReturnPickupsCount || result.returnOrdersToday,
         returnItems: activeReturnPickupsCount,
         todayEarning: todayEarning,
         totalEarning: totalEarning,
         walletBalance: walletBalance,
-        todayDeliveredCount: result.todayDeliveredCount,
-        totalDeliveredCount: result.totalDeliveredCount,
+        todayDeliveredCount,
+        totalDeliveredCount: completedQcAssignments.length,
         pendingOrdersList: formattedPendingList,
       },
     });

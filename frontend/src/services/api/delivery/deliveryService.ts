@@ -59,6 +59,8 @@ export interface DeliveryOrderDetails {
   deliveryBoyStatus?: string;
   deliveryAssignmentStatus?: string;
   assignedSubtotal?: number;
+  assignedShippingFee?: number;
+  assignedTotal?: number;
   subtotal?: number;
   totalAmount?: number;
   total?: number;

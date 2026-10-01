@@ -286,6 +286,27 @@ export default function Invoice() {
   });
 
   const isHybrid = qcItems.length > 0 && ecommerceItems.length > 0;
+  const billingEntities = Array.from(
+    (order.items || []).reduce((entities: Map<string, any>, item: any) => {
+      const name = item.billingEntityName || item.seller?.storeName || item.seller?.sellerName;
+      if (!name) return entities;
+      const gstin = item.billingEntityGstin || '';
+      const key = `${item.ownerType || 'VENDOR'}:${name}:${gstin}`;
+      const existing = entities.get(key) || {
+        name,
+        gstin,
+        ownerType: item.ownerType,
+        channels: new Set<string>(),
+      };
+      existing.channels.add(
+        item.productType === 'ECOMMERCE' || item.fulfillmentType === 'COURIER_SHIPPING'
+          ? 'Ecommerce'
+          : 'Quick Commerce'
+      );
+      entities.set(key, existing);
+      return entities;
+    }, new Map<string, any>()).values()
+  );
 
   const formatPackOrVariant = (item: any): string | null => {
     if (typeof item.variantTitle === "string" && item.variantTitle.trim()) {
@@ -533,6 +554,27 @@ export default function Invoice() {
               </div>
             </div>
           </div>
+
+          {billingEntities.length > 0 && (
+            <div className="mb-8 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                Supplying / Billing Entities
+              </div>
+              <div className="divide-y divide-gray-100">
+                {billingEntities.map((entity: any, index: number) => (
+                  <div key={`${entity.name}-${index}`} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm">
+                    <div>
+                      <span className="font-semibold text-gray-900">{entity.name}</span>
+                      <span className="ml-2 text-xs text-gray-500">{Array.from(entity.channels).join(' + ')}</span>
+                    </div>
+                    {entity.gstin && (
+                      <span className="font-mono font-semibold text-gray-800">GSTIN: {entity.gstin}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Order Items Table(s) - Hybrid Support */}
           {isHybrid ? (

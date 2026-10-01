@@ -50,6 +50,8 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
     const sellerStoreName = orderDetail.items?.[0]?.soldBy && orderDetail.items[0].soldBy !== 'N/A'
       ? orderDetail.items[0].soldBy
       : 'Olovely Partner Store';
+    const billingEntityName = orderDetail.items?.[0]?.billingEntityName || sellerStoreName;
+    const billingEntityGstin = orderDetail.items?.[0]?.billingEntityGstin;
 
     // Financial snapshot calculations
     const itemsSubtotal = (orderDetail.items || []).reduce(
@@ -69,20 +71,26 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
       (sum, g) => sum + (g.shippingFee || 0),
       0
     );
-    const shippingCharge = isMultiSeller
+    const shippingCharge = orderDetail.invoiceChannel
+      ? (orderDetail.shipping || 0)
+      : isMultiSeller
       ? sellerGroupShipping
       : (orderDetail.shipping !== undefined ? orderDetail.shipping : 0);
 
     const isFirstOrderFree = Boolean(orderDetail.firstOrderFreeShippingApplied);
-    const normalShipping = isMultiSeller ? shippingCharge : (orderDetail.normalShippingAmount || shippingCharge);
+    const normalShipping = orderDetail.invoiceChannel || isMultiSeller
+      ? shippingCharge
+      : (orderDetail.normalShippingAmount || shippingCharge);
     
     // In multi-seller orders, platform fee and global coupons are platform-level and not allocated to sellers
-    const platformFee = isMultiSeller ? 0 : (orderDetail.platformFee || 0);
-    const discount = isMultiSeller ? 0 : (orderDetail.discount || 0);
-    const taxAmount = isMultiSeller ? 0 : (orderDetail.tax || 0);
+    const platformFee = orderDetail.invoiceChannel || isMultiSeller ? 0 : (orderDetail.platformFee || 0);
+    const discount = orderDetail.invoiceChannel || isMultiSeller ? 0 : (orderDetail.discount || 0);
+    const taxAmount = orderDetail.taxIncluded ?? (isMultiSeller ? 0 : (orderDetail.tax || 0));
 
     // Authoritative grand total: strictly seller-scoped for multi-seller, order-snapshot for single-seller
-    const computedGrandTotal = isMultiSeller
+    const computedGrandTotal = orderDetail.invoiceChannel
+      ? itemsSubtotal + shippingCharge
+      : isMultiSeller
       ? itemsSubtotal + shippingCharge
       : (orderDetail.orderGrandTotal || orderDetail.grandTotal || (
           itemsSubtotal + shippingCharge + platformFee + taxAmount - discount
@@ -155,14 +163,23 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
                   Hyperlocal Quick Commerce & E-Commerce Platform
                 </p>
                 <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                  Sold by: <span className="font-bold">{sellerStoreName}</span>
+                  Sold by: <span className="font-bold">{billingEntityName}</span>
                 </p>
+                {billingEntityGstin && (
+                  <p className="text-[11px] text-neutral-700 font-semibold mt-0.5">
+                    GSTIN: <span className="font-mono font-bold">{billingEntityGstin}</span>
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="text-left sm:text-right bg-neutral-50 sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none w-full sm:w-auto">
               <div className="inline-block px-3 py-1 bg-emerald-100 text-emerald-900 font-black text-xs uppercase tracking-wider rounded border border-emerald-300 mb-1">
-                TAX INVOICE
+                {orderDetail.invoiceChannel === 'QUICK_COMMERCE'
+                  ? 'QUICK COMMERCE TAX INVOICE'
+                  : orderDetail.invoiceChannel === 'ECOMMERCE'
+                    ? 'ECOMMERCE TAX INVOICE'
+                    : 'TAX INVOICE'}
               </div>
               <div className="text-xs text-neutral-600">
                 <span className="font-semibold text-neutral-800">Invoice #: </span>
@@ -236,9 +253,17 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-0.5">
-                  <span className="text-neutral-600">Order Status:</span>
+                  <span className="text-neutral-600">
+                    {orderDetail.invoiceChannel ? 'Fulfillment Status:' : 'Order Status:'}
+                  </span>
                   <span className="font-semibold text-neutral-800">{orderDetail.status || 'Received'}</span>
                 </div>
+                {orderDetail.invoiceChannel && orderDetail.parentStatus && (
+                  <div className="flex justify-between items-center py-0.5">
+                    <span className="text-neutral-600">Parent Order Status:</span>
+                    <span className="font-semibold text-neutral-800">{orderDetail.parentStatus}</span>
+                  </div>
+                )}
                 {orderDetail.orderType && (
                   <div className="flex justify-between items-center py-0.5">
                     <span className="text-neutral-600">Fulfillment Model:</span>
@@ -371,10 +396,10 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
               </div>
             )}
 
-            {/* Tax if stored */}
+            {/* Tax is already included in immutable item prices. */}
             {taxAmount > 0 && (
               <div className="flex justify-between text-neutral-700">
-                <span>Taxes & GST:</span>
+                <span>GST included in item prices:</span>
                 <span className="font-semibold text-neutral-900">{formatCurrency(taxAmount)}</span>
               </div>
             )}

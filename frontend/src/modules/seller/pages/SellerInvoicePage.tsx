@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { getOrderById, type OrderDetail } from '../../../services/api/orderService';
 import { SellerInvoice } from '../components/SellerInvoice';
@@ -8,6 +8,11 @@ import { useToast } from '../../../context/ToastContext';
 export default function SellerInvoicePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedChannel = searchParams.get('channel');
+  const channel = requestedChannel === 'QUICK_COMMERCE' || requestedChannel === 'ECOMMERCE'
+    ? requestedChannel
+    : undefined;
   const { showToast } = useToast();
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +26,7 @@ export default function SellerInvoicePage() {
       setLoading(true);
       setError('');
       try {
-        const response = await getOrderById(id);
+        const response = await getOrderById(id, channel);
         if (response.success && response.data) {
           setOrderDetail(response.data);
         } else {
@@ -35,7 +40,7 @@ export default function SellerInvoicePage() {
     };
 
     fetchOrder();
-  }, [id]);
+  }, [id, channel]);
 
   const handlePrint = () => {
     window.print();
@@ -81,6 +86,21 @@ export default function SellerInvoicePage() {
           >
             Back to Order Details
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!channel && orderDetail.hasQcItems && orderDetail.hasEcomItems) {
+    return (
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4">
+        <div className="bg-white p-6 rounded-xl border border-neutral-200 shadow-sm max-w-lg w-full">
+          <h2 className="text-lg font-bold text-neutral-900 mb-2">Select bill channel</h2>
+          <p className="text-sm text-neutral-600 mb-5">This order contains both fulfillment channels. Each bill is generated separately.</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <button onClick={() => navigate(`/seller/orders/${id}/invoice?channel=QUICK_COMMERCE`)} className="px-4 py-3 rounded-lg bg-amber-100 text-amber-900 font-bold border border-amber-300">Quick Commerce bill</button>
+            <button onClick={() => navigate(`/seller/orders/${id}/invoice?channel=ECOMMERCE`)} className="px-4 py-3 rounded-lg bg-blue-100 text-blue-900 font-bold border border-blue-300">Ecommerce bill</button>
+          </div>
         </div>
       </div>
     );

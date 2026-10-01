@@ -54,7 +54,11 @@ export async function generateDeliveryOtp(orderId: string): Promise<{ success: b
 /**
  * Verify delivery OTP checking expiration, attempt limits, and exact match
  */
-export async function verifyDeliveryOtp(orderId: string, otp: string): Promise<{ success: boolean; message: string }> {
+export async function verifyDeliveryOtp(
+  orderId: string,
+  otp: string,
+  options: { markOrderDelivered?: boolean } = {},
+): Promise<{ success: boolean; message: string }> {
   try {
     const order = await Order.findById(orderId).populate('customer');
 
@@ -95,8 +99,10 @@ export async function verifyDeliveryOtp(orderId: string, otp: string): Promise<{
     // Developer bypass for testing
     if ((process.env.NODE_ENV !== 'production' || process.env.USE_MOCK_OTP === 'true') && otp === '9999') {
       order.deliveryOtpVerified = true;
-      order.status = 'Delivered';
-      order.deliveredAt = new Date();
+      if (options.markOrderDelivered !== false) {
+        order.status = 'Delivered';
+        order.deliveredAt = new Date();
+      }
       order.invoiceEnabled = true;
       order.deliveryOtpAttempts = 0;
       await order.save();
@@ -124,8 +130,10 @@ export async function verifyDeliveryOtp(orderId: string, otp: string): Promise<{
 
     // Mark order as delivered on successful verification
     order.deliveryOtpVerified = true;
-    order.status = 'Delivered';
-    order.deliveredAt = new Date();
+    if (options.markOrderDelivered !== false) {
+      order.status = 'Delivered';
+      order.deliveredAt = new Date();
+    }
     order.invoiceEnabled = true;
     order.deliveryOtpAttempts = 0;
     await order.save();

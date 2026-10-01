@@ -13,6 +13,7 @@ import ProcessedWebhookEvent from '../../models/ProcessedWebhookEvent';
 import { IThirdPartyCommerceProvider, ShipmentRequest, ShipmentItem } from '../../types/thirdPartyCommerce';
 import { mockCommerceProvider } from './mockCommerceProvider';
 import { shiprocketProvider } from './shiprocketProvider';
+import { areAllFulfillmentGroupsDelivered } from '../../utils/fulfillmentStatus';
 
 /**
  * Provider Registry
@@ -315,7 +316,7 @@ export async function handleShippingWebhook(payload: any, signature?: string) {
     }
 
     // If all groups are delivered, update overall order status
-    const allDelivered = order.fulfillmentGroups.every((g) => g.status === 'Delivered');
+    const allDelivered = areAllFulfillmentGroupsDelivered(order.fulfillmentGroups);
     if (allDelivered) {
       order.status = 'Delivered';
       order.deliveredAt = new Date();

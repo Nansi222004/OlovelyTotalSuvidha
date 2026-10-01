@@ -16,6 +16,7 @@ import { getRoadDistances } from "../../../services/mapService";
 import { Server as SocketIOServer } from "socket.io";
 import { getOrderItemCommissionRate } from "../../../services/commissionService";
 import DeliveryAssignment from "../../../models/DeliveryAssignment";
+import { hasActiveLocalDeliveryFulfillment } from "../../../utils/fulfillmentStatus";
 import Coupon from "../../../models/Coupon";
 import Return from "../../../models/Return";
 import { debitWallet } from "../../../services/walletManagementService";
@@ -31,6 +32,8 @@ import {
   releaseFirstOrderFreeShippingClaim,
 } from "../../../services/shipping/shippingPromotionService";
 import { getCommerceChannels } from "../../../services/commerceChannelService";
+import Tax from "../../../models/Tax";
+import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -310,6 +313,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const settings = await AppSettings.getSettings();
 
     let calculatedSubtotal = 0;
+    let calculatedTax = 0;
     let qcSubtotal = 0;
     let ecomSubtotal = 0;
     const orderItemIds: mongoose.Types.ObjectId[] = [];
@@ -342,6 +346,10 @@ export const createOrder = async (req: Request, res: Response) => {
       authoritativeMoq?: number;
       itemPrice: number;
       itemTotal: number;
+      ownerType: 'PLATFORM' | 'VENDOR';
+      billingEntityName: string;
+      billingEntityGstin?: string;
+      taxRate: number;
     }
 
     const validatedItems: ValidatedOrderItem[] = [];
@@ -580,6 +588,33 @@ export const createOrder = async (req: Request, res: Response) => {
       }
       const itemTotal = itemPrice * qty;
 
+      const sellerDoc = await Seller.findById(product.seller).select(
+        "sellerName storeName taxNumber taxName isPlatform category email"
+      );
+      if (!sellerDoc) {
+        const err: any = new Error(`Seller not found for product "${product.productName}"`);
+        err.statusCode = 400;
+        throw err;
+      }
+      const resolvedOwner = resolveInventoryOwner(sellerDoc, product);
+
+      // Product tax is authoritative when configured. AppSettings GST is the
+      // existing fallback for products without a product-specific tax record.
+      let taxRate = 0;
+      const rawTax = (product as any).tax;
+      if (rawTax && typeof rawTax === "object" && Number.isFinite(Number(rawTax.percentage))) {
+        taxRate = Number(rawTax.percentage);
+      } else if (rawTax && mongoose.Types.ObjectId.isValid(String(rawTax))) {
+        const taxDoc: any = await Tax.findById(rawTax).select("percentage status").lean();
+        if (taxDoc?.status === "Active") taxRate = Number(taxDoc.percentage) || 0;
+      } else if (typeof rawTax === "string") {
+        const match = rawTax.match(/(?:^|\D)(\d+(?:\.\d+)?)\s*%?$/);
+        if (match) taxRate = Number(match[1]) || 0;
+      }
+      if (taxRate <= 0 && settings?.gstEnabled) {
+        taxRate = Number(settings.gstRate) || 0;
+      }
+
       validatedItems.push({
         item,
         product,
@@ -593,6 +628,10 @@ export const createOrder = async (req: Request, res: Response) => {
         authoritativeMoq,
         itemPrice,
         itemTotal,
+        ownerType: resolvedOwner.ownerType,
+        billingEntityName: resolvedOwner.storeName || resolvedOwner.sellerName || sellerDoc.storeName,
+        billingEntityGstin: sellerDoc.taxNumber?.trim() || undefined,
+        taxRate,
       });
     }
 
@@ -614,6 +653,10 @@ export const createOrder = async (req: Request, res: Response) => {
         authoritativeMoq,
         itemPrice,
         itemTotal,
+        ownerType,
+        billingEntityName,
+        billingEntityGstin,
+        taxRate,
       } = vItem;
 
       const orderItemId = new mongoose.Types.ObjectId();
@@ -656,6 +699,9 @@ export const createOrder = async (req: Request, res: Response) => {
       }
 
       calculatedSubtotal += itemTotal;
+      if (taxRate > 0) {
+        calculatedTax += itemTotal * taxRate / (100 + taxRate);
+      }
 
       // Calculate commission rate snapshot
       const commRate = await getOrderItemCommissionRate(
@@ -685,6 +731,16 @@ export const createOrder = async (req: Request, res: Response) => {
         unitPrice: itemPrice,
         quantity: qty,
         total: itemTotal,
+        productType: product.productType === 'ECOMMERCE' ? 'ECOMMERCE' : 'QUICK_COMMERCE',
+        fulfillmentType: product.productType === 'ECOMMERCE' ? 'COURIER_SHIPPING' : 'LOCAL_DELIVERY',
+        ownerType,
+        billingEntityName,
+        billingEntityGstin,
+        taxRate,
+        // Prices are tax-inclusive in the existing checkout architecture.
+        taxAmount: taxRate > 0
+          ? Number((itemTotal * taxRate / (100 + taxRate)).toFixed(2))
+          : 0,
         commissionRate: commRate,
         variation: resolvedVarLabel || (typeof variationValue === 'string' ? variationValue : variationValue?.title || variationValue?.name || String(variationValue || 'Standard')),
         variantTitle: resolvedVarLabel,
@@ -1185,6 +1241,8 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
     newOrder.orderType = determinedOrderType;
     newOrder.fulfillmentGroups = fulfillmentGroups;
     newOrder.subtotal = Number(calculatedSubtotal.toFixed(2));
+    // Informational GST already included in item prices; never add it to total again.
+    newOrder.tax = Number(calculatedTax.toFixed(2));
     newOrder.total = Number(finalTotal.toFixed(2));
     newOrder.grandTotal = Number(finalTotal.toFixed(2)); // Sync grandTotal alias
     newOrder.items = orderItemIds;
@@ -1470,9 +1528,9 @@ export const getOrderById = async (req: Request, res: Response) => {
       });
     }
 
-    // Suppress OTP for delivered/cancelled orders
+    // OTP belongs to the local-delivery fulfillment, not the mixed parent.
     const customer = await Customer.findById(userId).select("deliveryOtp");
-    const deliveryOtp = (order.status === "Delivered" || order.status === "Cancelled")
+    const deliveryOtp = !hasActiveLocalDeliveryFulfillment(order)
       ? null
       : (order.deliveryOtp || customer?.deliveryOtp);
 
@@ -1599,10 +1657,10 @@ export const refreshDeliveryOtp = async (req: Request, res: Response) => {
         .json({ success: false, message: "Order not found" });
     }
 
-    if (order.status === "Delivered") {
+    if (!hasActiveLocalDeliveryFulfillment(order)) {
       return res
         .status(400)
-        .json({ success: false, message: "Order is already delivered" });
+        .json({ success: false, message: "Local delivery is already complete" });
     }
 
     // Generate and send new OTP
