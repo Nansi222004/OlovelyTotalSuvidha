@@ -54,6 +54,7 @@ export default function DeliveryUnderReview() {
   // Initial check on mount + FCM Token Registration + 30-second periodic background revalidation
   useEffect(() => {
     isMountedRef.current = true;
+    let unsubscribeForeground: (() => void) | void;
     checkStatus(false);
 
     // Register Web Push FCM token so browser receives push notifications
@@ -68,6 +69,9 @@ export default function DeliveryUnderReview() {
           if (payload?.data?.type === 'ACCOUNT_APPROVED' || payload?.notification?.title?.includes('Activated') || payload?.notification?.title?.includes('Approved')) {
             checkStatus(false);
           }
+        }).then((unsubscribe) => {
+          if (isMountedRef.current) unsubscribeForeground = unsubscribe;
+          else unsubscribe?.();
         });
       }
     );
@@ -78,6 +82,7 @@ export default function DeliveryUnderReview() {
 
     return () => {
       isMountedRef.current = false;
+      unsubscribeForeground?.();
       clearInterval(intervalId);
     };
   }, [checkStatus]);

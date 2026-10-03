@@ -6,6 +6,7 @@ export interface INotification extends Document {
   recipientId?: mongoose.Types.ObjectId; // Specific user ID if not 'All'
   broadcastBatchId?: string;
   broadcastRecipientType?: "Admin" | "Seller" | "Customer" | "Delivery" | "All";
+  eventId?: string;
 
   // Notification Content
   title: string;
@@ -61,6 +62,10 @@ const NotificationSchema = new Schema<INotification>(
     broadcastRecipientType: {
       type: String,
       enum: ["Admin", "Seller", "Customer", "Delivery", "All"],
+    },
+    eventId: {
+      type: String,
+      trim: true,
     },
 
     // Notification Content
@@ -140,6 +145,15 @@ NotificationSchema.index({ recipientType: 1, recipientId: 1, isRead: 1 });
 NotificationSchema.index({ createdAt: -1 });
 NotificationSchema.index({ expiresAt: 1 });
 NotificationSchema.index({ broadcastBatchId: 1, createdAt: -1 });
+// Only new idempotent events carry eventId, so historical notifications remain untouched.
+NotificationSchema.index(
+  { recipientType: 1, recipientId: 1, eventId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { eventId: { $type: "string" } },
+    name: "unique_logical_notification_event",
+  },
+);
 
 const Notification = (mongoose.models.Notification as mongoose.Model<INotification>) || mongoose.model<INotification>(
   "Notification",

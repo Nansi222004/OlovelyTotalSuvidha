@@ -27,6 +27,7 @@ export default function SellerSignUp() {
     city: '',
     pickupPincode: '',
     pickupAddress: '',
+    pickupState: '',
     searchLocation: '',
     latitude: '',
     longitude: '',
@@ -173,6 +174,10 @@ export default function SellerSignUp() {
           setError('Please enter a valid 6-digit pickup pincode for courier shipments');
           return;
         }
+        if (!formData.pickupState.trim()) {
+          setError('Please enter the pickup state for courier shipments');
+          return;
+        }
       }
 
       const response = await register({
@@ -192,6 +197,8 @@ export default function SellerSignUp() {
         serviceRadiusKm: formData.serviceRadiusKm,
         pickupPincode: formData.pickupPincode,
         pickupAddress: formData.pickupAddress || formData.address,
+        pickupCity: formData.city,
+        pickupState: formData.pickupState,
       });
 
       if (response.success) {
@@ -504,6 +511,7 @@ export default function SellerSignUp() {
                                 longitude: lng.toString(),
                                 address: address,
                                 city: components?.city || prev.city,
+                                pickupState: components?.state || prev.pickupState,
                               }));
                             }}
                             placeholder="Search your store location..."
@@ -626,6 +634,21 @@ export default function SellerSignUp() {
                         placeholder="e.g. 110001 (6-digit postal code)"
                         maxLength={6}
                         required={formData.vendorType === 'ECOMMERCE'}
+                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-700 mb-1">
+                        Pickup State <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="pickupState"
+                        value={formData.pickupState}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Maharashtra"
+                        required
                         className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                         disabled={loading}
                       />

@@ -20,7 +20,7 @@ import {
   TrackingMilestone,
 } from '../../types/thirdPartyCommerce';
 import { shiprocketHttpClient } from './shiprocketHttpClient';
-import ProcessedWebhookEvent from '../../models/ProcessedWebhookEvent';
+import crypto from 'node:crypto';
 
 /**
  * Shiprocket Status Code Mapping to Olovely Internal Lifecycle
@@ -37,7 +37,12 @@ const SHIPROCKET_STATUS_MAP: Record<string, string> = {
   DELIVERED: 'Delivered',
   CANCELLED: 'Cancelled',
   RTO_INITIATED: 'Returned',
+  RTO_PICKED_UP: 'Returned',
+  RTO_IN_TRANSIT: 'Returned',
   RTO_DELIVERED: 'Returned',
+  NDR: 'Action Required',
+  UNDELIVERED: 'Action Required',
+  'ACTION REQUIRED': 'Action Required',
 };
 
 const STATUS_HIERARCHY: Record<string, number> = {
@@ -460,22 +465,13 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
    */
   verifyWebhookSignature(headers: Record<string, string>, _rawBody: string | Buffer): boolean {
     const webhookToken = process.env.SHIPROCKET_WEBHOOK_TOKEN;
-    if (!webhookToken) {
-      // If no token configured in environment, warn and accept in development
-      if (process.env.NODE_ENV === 'production') {
-        console.warn('⚠️ [Shiprocket Webhook] SHIPROCKET_WEBHOOK_TOKEN not configured in production');
-        return false;
-      }
-      return true;
-    }
+    const rawHeader = headers['x-api-key'];
+    const incomingToken = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+    if (!webhookToken || !incomingToken || typeof incomingToken !== 'string') return false;
 
-    const incomingToken =
-      headers['x-api-key'] ||
-      headers['X-Api-Key'] ||
-      headers['x-shiprocket-token'] ||
-      headers['authorization']?.replace('Bearer ', '');
-
-    return incomingToken === webhookToken;
+    const expectedDigest = crypto.createHash('sha256').update(webhookToken, 'utf8').digest();
+    const incomingDigest = crypto.createHash('sha256').update(incomingToken, 'utf8').digest();
+    return crypto.timingSafeEqual(expectedDigest, incomingDigest);
   }
 
   /**
@@ -486,8 +482,6 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
   async processWebhook(payload: any, signature?: string): Promise<WebhookProcessResult> {
     const awbNumber = payload.awb || payload.awb_code;
     const currentStatus = payload.current_status || payload.status;
-    const eventId = payload.eventId || payload.id || `${awbNumber}_${currentStatus}_${payload.current_timestamp || Date.now()}`;
-
     if (!awbNumber || !currentStatus) {
       return {
         handled: false,
@@ -495,56 +489,61 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
       };
     }
 
-    // 1. Persistent Deduplication via MongoDB ProcessedWebhookEvent
-    try {
-      const alreadyProcessed = await ProcessedWebhookEvent.findOne({ eventId });
-      if (alreadyProcessed) {
-        return {
-          handled: true,
-          awbNumber,
-          ignoredReason: `Duplicate Shiprocket webhook event '${eventId}' already processed`,
-        };
-      }
-    } catch (dbErr: any) {
-      console.warn('[Shiprocket Webhook] Event deduplication check warning:', dbErr.message);
-    }
+    const currentStatusText = String(currentStatus);
+    const normalizedStatus = SHIPROCKET_STATUS_MAP[currentStatusText.toUpperCase()] || currentStatusText;
 
-    const normalizedStatus = SHIPROCKET_STATUS_MAP[currentStatus.toUpperCase()] || currentStatus;
+    const scans = Array.isArray(payload.scans) ? payload.scans : [];
+    const latestScan = scans[scans.length - 1];
+    const deterministicFields = {
+      awb: String(awbNumber),
+      currentStatus: String(currentStatus),
+      currentStatusId: payload.current_status_id ?? '',
+      shipmentStatus: payload.shipment_status ?? '',
+      shipmentStatusId: payload.shipment_status_id ?? '',
+      timestamp: payload.current_timestamp ?? latestScan?.date ?? '',
+      orderId: payload.order_id ?? '',
+      shiprocketOrderId: payload.sr_order_id ?? '',
+      scanStatus: latestScan?.status ?? '',
+      scanActivity: latestScan?.activity ?? '',
+    };
+    const sourceEventId = payload.eventId || payload.id;
+    const eventId = sourceEventId
+      ? `shiprocket:${String(sourceEventId)}`
+      : `shiprocket:${crypto
+      .createHash('sha256')
+      .update(JSON.stringify(deterministicFields))
+      .digest('hex')}`;
 
-    // 2. Persist event to MongoDB to guarantee idempotency across restarts
-    try {
-      await ProcessedWebhookEvent.create({
-        eventId,
-        provider: 'shiprocket',
-        awbNumber,
-        orderId: payload.order_id,
-        statusUpdate: normalizedStatus,
-        rawPayload: payload,
-      });
-    } catch (createErr: any) {
-      // If unique index collision, it's a concurrent duplicate
-      if (createErr.code === 11000) {
-        return {
-          handled: true,
-          awbNumber,
-          ignoredReason: `Duplicate concurrent event '${eventId}' caught by MongoDB unique index`,
-        };
-      }
-    }
+    const parseDate = (value: unknown): Date | undefined => {
+      if (!value) return undefined;
+      const normalized = String(value).replace(
+        /^(\d{2}) (\d{2}) (\d{4}) (\d{2}:\d{2}:\d{2})$/,
+        '$3-$2-$1T$4'
+      );
+      const date = new Date(normalized);
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    };
 
     const milestone: TrackingMilestone = {
       status: normalizedStatus,
-      description: payload.scans?.[0]?.activity || `Status updated to ${normalizedStatus}`,
-      location: payload.scans?.[0]?.location || 'Transit Hub',
-      timestamp: payload.current_timestamp ? new Date(payload.current_timestamp) : new Date(),
+      description: latestScan?.activity || `Status updated to ${normalizedStatus}`,
+      location: latestScan?.location || 'Transit Hub',
+      timestamp: parseDate(payload.current_timestamp || latestScan?.date) || new Date(),
     };
 
     return {
       handled: true,
+      eventId,
       orderId: payload.order_id,
       awbNumber,
       statusUpdate: normalizedStatus,
       milestone,
+      courierName: payload.courier_name,
+      trackingUrl: payload.tracking_url || payload.track_url,
+      estimatedDelivery: parseDate(payload.etd),
+      shipmentId: payload.shipment_id ? String(payload.shipment_id) : undefined,
+      statusCode: payload.current_status_id ? String(payload.current_status_id) : undefined,
+      shipmentStatus: payload.shipment_status,
     };
   }
 

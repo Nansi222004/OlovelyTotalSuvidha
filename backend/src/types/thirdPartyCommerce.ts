@@ -122,11 +122,18 @@ export interface ExternalReturnResult {
 
 export interface WebhookProcessResult {
   handled: boolean;
+  eventId?: string;
   orderId?: string;
   fulfillmentGroupId?: string;
   awbNumber?: string;
   statusUpdate?: string;
   milestone?: TrackingMilestone;
+  courierName?: string;
+  trackingUrl?: string;
+  estimatedDelivery?: Date;
+  shipmentId?: string;
+  statusCode?: string;
+  shipmentStatus?: string;
   ignoredReason?: string;
 }
 

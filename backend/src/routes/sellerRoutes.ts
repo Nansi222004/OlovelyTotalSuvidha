@@ -6,6 +6,7 @@ import {
   updateSeller,
   deleteSeller,
   updateSellerCategoryCommissions,
+  retrySellerPickupProvisioning,
 } from "../modules/seller/controllers/sellerController";
 import { authenticate, requireUserType } from "../middleware/auth";
 
@@ -23,6 +24,9 @@ router.get("/:id", getSellerById);
 
 // Update seller status
 router.patch("/:id/status", updateSellerStatus);
+
+// Retry the recoverable external courier-pickup setup after approval.
+router.post("/:id/courier-pickup/retry", retrySellerPickupProvisioning);
 
 // Update seller category commissions
 router.put("/:id/category-commissions", updateSellerCategoryCommissions);

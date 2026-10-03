@@ -82,10 +82,19 @@ export interface ISeller extends Document {
     warehouseAddress?: string;
     pickupAddress?: string;
     pickupPincode?: string;
+    pickupCity?: string;
+    pickupState?: string;
     returnAddress?: string;
     defaultCourier?: string;
     freeShippingThreshold?: number;
     flatShippingFee?: number;
+    shiprocketPickupLocationId?: string;
+    shiprocketPickupLocationName?: string;
+    shiprocketPickupStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'FAILED';
+    shiprocketPickupLastError?: string;
+    shiprocketPickupAddressFingerprint?: string;
+    shiprocketPickupLastSyncedAt?: Date;
+    shiprocketPickupSyncStartedAt?: Date;
   };
 
   // Wholesale Capability (set by Admin)
@@ -346,10 +355,22 @@ const SellerSchema = new Schema<ISeller>(
       warehouseAddress: { type: String, trim: true },
       pickupAddress: { type: String, trim: true },
       pickupPincode: { type: String, trim: true },
+      pickupCity: { type: String, trim: true },
+      pickupState: { type: String, trim: true },
       returnAddress: { type: String, trim: true },
       defaultCourier: { type: String, trim: true },
       freeShippingThreshold: { type: Number, default: 0 },
       flatShippingFee: { type: Number, default: 0 },
+      shiprocketPickupLocationId: { type: String, trim: true },
+      shiprocketPickupLocationName: { type: String, trim: true },
+      shiprocketPickupStatus: {
+        type: String,
+        enum: ['NOT_REQUIRED', 'PENDING', 'PROVISIONING', 'ACTIVE', 'FAILED'],
+      },
+      shiprocketPickupLastError: { type: String, trim: true },
+      shiprocketPickupAddressFingerprint: { type: String, trim: true },
+      shiprocketPickupLastSyncedAt: { type: Date },
+      shiprocketPickupSyncStartedAt: { type: Date },
     },
     // Wholesale Capability (Admin-controlled per seller)
     wholesaleEnabled: {

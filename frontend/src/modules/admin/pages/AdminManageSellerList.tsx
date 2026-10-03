@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getAllSellers, updateSellerStatus, deleteSeller, Seller as SellerType, updateSeller, updateSellerCategoryCommissions } from '../../../services/api/sellerService';
+import { getAllSellers, updateSellerStatus, deleteSeller, Seller as SellerType, updateSeller, updateSellerCategoryCommissions, retrySellerPickupProvisioning } from '../../../services/api/sellerService';
 import { getHeaderCategoriesAdmin, HeaderCategory } from '../../../services/api/headerCategoryService';
 import SellerServiceMap from '../components/SellerServiceMap';
 import ConfirmationModal from '../../../components/ConfirmationModal';
@@ -52,13 +52,21 @@ interface Seller {
         warehouseAddress?: string;
         pickupAddress?: string;
         pickupPincode?: string;
+        pickupCity?: string;
+        pickupState?: string;
         returnAddress?: string;
         defaultCourier?: string;
         freeShippingThreshold?: number;
         flatShippingFee?: number;
+        shiprocketPickupLocationId?: string;
+        shiprocketPickupLocationName?: string;
+        shiprocketPickupStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'FAILED';
+        shiprocketPickupLastError?: string;
+        shiprocketPickupLastSyncedAt?: string;
     };
     pickupAddress?: string;
     pickupPincode?: string;
+    pickupState?: string;
 }
 
 export const getSellerTypeBadge = (vendorType?: string) => {
@@ -160,6 +168,7 @@ const mapSellerToFrontend = (seller: SellerType): Seller => {
         shippingConfig: seller.shippingConfig,
         pickupAddress: seller.shippingConfig?.pickupAddress || '',
         pickupPincode: seller.shippingConfig?.pickupPincode || '',
+        pickupState: seller.shippingConfig?.pickupState || '',
     };
 };
 
@@ -396,6 +405,7 @@ export default function AdminManageSellerList() {
                 wholesaleEnabled: Boolean(seller.wholesaleEnabled),
                 pickupAddress: seller.pickupAddress || seller.shippingConfig?.pickupAddress || seller.address || '',
                 pickupPincode: seller.pickupPincode || seller.shippingConfig?.pickupPincode || '',
+                pickupState: seller.pickupState || seller.shippingConfig?.pickupState || '',
             });
             setNewRadius(radius);
             setEditError('');
@@ -445,6 +455,8 @@ export default function AdminManageSellerList() {
                     ...editingSeller.shippingConfig,
                     pickupAddress: editForm.pickupAddress || editingSeller.shippingConfig?.pickupAddress || editForm.address || '',
                     pickupPincode: editForm.pickupPincode || editingSeller.shippingConfig?.pickupPincode || '',
+                    pickupCity: editForm.city || editingSeller.shippingConfig?.pickupCity || '',
+                    pickupState: editForm.pickupState || editingSeller.shippingConfig?.pickupState || '',
                     warehouseAddress: editForm.pickupAddress || editingSeller.shippingConfig?.warehouseAddress || editForm.address || '',
                 };
             }
@@ -463,6 +475,32 @@ export default function AdminManageSellerList() {
         } catch (err: any) {
             console.error('Error saving seller details:', err);
             setEditError(err.response?.data?.message || 'Failed to update seller details. Please try again.');
+        } finally {
+            setIsSavingSeller(false);
+        }
+    };
+
+    const handleRetryPickupProvisioning = async () => {
+        if (!editingSeller) return;
+        try {
+            setIsSavingSeller(true);
+            setEditError('');
+            const response = await retrySellerPickupProvisioning(editingSeller._id);
+            if (response.data) {
+                const updatedSeller = mapSellerToFrontend(response.data);
+                setSellers(prev => prev.map(s => s._id === editingSeller._id ? updatedSeller : s));
+                setEditingSeller(updatedSeller);
+            }
+            setSuccessMessage(response.message || 'Courier pickup synchronized');
+            setTimeout(() => setSuccessMessage(''), 3000);
+        } catch (err: any) {
+            const updated = err.response?.data?.data;
+            if (updated) {
+                const updatedSeller = mapSellerToFrontend(updated);
+                setSellers(prev => prev.map(s => s._id === editingSeller._id ? updatedSeller : s));
+                setEditingSeller(updatedSeller);
+            }
+            setEditError(err.response?.data?.message || 'Courier pickup synchronization failed. You can retry safely.');
         } finally {
             setIsSavingSeller(false);
         }
@@ -578,15 +616,19 @@ export default function AdminManageSellerList() {
         try {
             const response = await updateSellerStatus(sellerId, 'Approved');
             if (response.success) {
-                // Update local state
+                const updatedSeller = response.data ? mapSellerToFrontend(response.data) : undefined;
                 setSellers(prevSellers =>
                     prevSellers.map(seller =>
                         seller._id === sellerId
-                            ? { ...seller, status: 'Approved', needApproval: false }
+                            ? (updatedSeller || { ...seller, status: 'Approved', needApproval: false })
                             : seller
                     )
                 );
-                setSuccessMessage('Seller has been approved.');
+                if (response.pickupProvisioning?.status === 'FAILED') {
+                    setSuccessMessage(`Seller approved. ${response.pickupProvisioning.message}`);
+                } else {
+                    setSuccessMessage('Seller has been approved.');
+                }
                 setIsEditModalOpen(false);
                 setEditingSeller(null);
                 setTimeout(() => setSuccessMessage(''), 3000);
@@ -1336,6 +1378,36 @@ export default function AdminManageSellerList() {
                                 </p>
                             </div>
 
+                            {/* Courier pickup provisioning is visible and retryable for Ecommerce-capable vendors. */}
+                            {(editingSeller.vendorType === 'ECOMMERCE' || editingSeller.vendorType === 'HYBRID') && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-semibold text-blue-900">Shiprocket pickup synchronization</p>
+                                            <p className="mt-1 text-blue-800">
+                                                Status: <span className="font-bold">{editingSeller.shippingConfig?.shiprocketPickupStatus || 'PENDING APPROVAL'}</span>
+                                            </p>
+                                            {editingSeller.shippingConfig?.shiprocketPickupLocationName && (
+                                                <p className="mt-1 text-blue-700">Location: {editingSeller.shippingConfig.shiprocketPickupLocationName}</p>
+                                            )}
+                                            {editingSeller.shippingConfig?.shiprocketPickupLastError && (
+                                                <p className="mt-2 text-amber-800">{editingSeller.shippingConfig.shiprocketPickupLastError}</p>
+                                            )}
+                                        </div>
+                                        {editingSeller.status === 'Approved' && editingSeller.shippingConfig?.shiprocketPickupStatus !== 'ACTIVE' && (
+                                            <button
+                                                type="button"
+                                                onClick={handleRetryPickupProvisioning}
+                                                disabled={isSavingSeller}
+                                                className="px-3 py-2 rounded bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 disabled:opacity-50"
+                                            >
+                                                {isSavingSeller ? 'Synchronizing…' : 'Retry pickup setup'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Location & Fulfillment Configuration */}
                             {editingSeller.vendorType === 'ECOMMERCE' ? (
                                 /* Ecommerce: Courier Pickup & Warehouse Details */
@@ -1369,6 +1441,18 @@ export default function AdminManageSellerList() {
                                                     onChange={(e) => setEditForm(prev => ({ ...prev, pickupPincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
                                                     className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
                                                     placeholder="6-digit Indian PIN (e.g. 110001)"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup State <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.pickupState || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupState: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="e.g. Maharashtra"
                                                 />
                                             </div>
                                             <div>
@@ -1498,6 +1582,18 @@ export default function AdminManageSellerList() {
                                                     onChange={(e) => setEditForm(prev => ({ ...prev, pickupPincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
                                                     className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
                                                     placeholder="6-digit Indian PIN (e.g. 110001)"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                                    Pickup State <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.pickupState || ''}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, pickupState: e.target.value }))}
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                                                    placeholder="e.g. Maharashtra"
                                                 />
                                             </div>
                                         </div>

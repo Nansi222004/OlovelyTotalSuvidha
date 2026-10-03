@@ -1,11 +1,6 @@
 import api, { setAuthToken, removeAuthToken } from '../config';
 
-export interface SendOTPResponse {
-  success: boolean;
-  message: string;
-}
-
-export interface VerifyOTPResponse {
+export interface AdminLoginResponse {
   success: boolean;
   message: string;
   data: {
@@ -47,18 +42,10 @@ export interface RegisterResponse {
 }
 
 /**
- * Send OTP to admin mobile number
+ * Login admin with email and password
  */
-export const sendOTP = async (mobile: string): Promise<SendOTPResponse> => {
-  const response = await api.post<SendOTPResponse>('/auth/admin/send-otp', { mobile });
-  return response.data;
-};
-
-/**
- * Verify OTP and login admin
- */
-export const verifyOTP = async (mobile: string, otp: string): Promise<VerifyOTPResponse> => {
-  const response = await api.post<VerifyOTPResponse>('/auth/admin/verify-otp', { mobile, otp });
+export const login = async (email: string, password: string): Promise<AdminLoginResponse> => {
+  const response = await api.post<AdminLoginResponse>('/auth/admin/login', { email, password });
 
   if (response.data.success && response.data.data.token) {
     const userWithUserType = {

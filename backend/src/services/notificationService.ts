@@ -33,6 +33,7 @@ const buildPushPayload = (
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
     data?: Record<string, string>;
+    eventId?: string;
   },
 ) => {
   const link = options?.link || DEFAULT_NOTIFICATION_LINKS[recipientType];
@@ -52,6 +53,7 @@ const buildPushPayload = (
       priority: options?.priority || "Medium",
       ...(derivedOrderId ? { orderId: derivedOrderId } : {}),
       ...(options?.data || {}),
+      ...(options?.eventId ? { eventId: options.eventId } : {}),
     },
   };
 };
@@ -85,6 +87,8 @@ const pushNotificationToRecipients = async (
     actionLabel?: string;
     priority?: "Low" | "Medium" | "High" | "Urgent";
     expiresAt?: Date;
+    data?: Record<string, string>;
+    eventId?: string;
   },
 ) => {
   if (recipients.length === 0) {
@@ -140,34 +144,90 @@ export const sendNotification = async (
     broadcastBatchId?: string;
     createdBy?: string | mongoose.Types.ObjectId;
     data?: Record<string, string>;
+    eventId?: string;
   },
 ) => {
-  const notification = await Notification.create({
+  const result = await sendNotificationOnce(
     recipientType,
     recipientId,
-    broadcastBatchId: options?.broadcastBatchId,
-    createdBy: options?.createdBy,
     title,
     message,
-    type: options?.type || "Info",
-    link: options?.link,
-    actionLabel: options?.actionLabel,
-    priority: options?.priority || "Medium",
-    expiresAt: options?.expiresAt,
-    isRead: false,
-  });
+    options,
+  );
+  return result.notification;
+};
+
+/**
+ * Persist and push one logical notification event exactly once.
+ * The database constraint closes the race between concurrent event handlers.
+ */
+export const sendNotificationOnce = async (
+  recipientType: RecipientType,
+  recipientId: string,
+  title: string,
+  message: string,
+  options?: {
+    type?: "Info" | "Success" | "Warning" | "Error" | "Order" | "Payment" | "System";
+    link?: string;
+    actionLabel?: string;
+    priority?: "Low" | "Medium" | "High" | "Urgent";
+    expiresAt?: Date;
+    broadcastBatchId?: string;
+    createdBy?: string | mongoose.Types.ObjectId;
+    data?: Record<string, string>;
+    eventId?: string;
+  },
+): Promise<{ notification: any; created: boolean }> => {
+  let notification: any;
+  let created = true;
+
+  try {
+    notification = await Notification.create({
+      recipientType,
+      recipientId,
+      eventId: options?.eventId,
+      broadcastBatchId: options?.broadcastBatchId,
+      createdBy: options?.createdBy,
+      title,
+      message,
+      type: options?.type || "Info",
+      link: options?.link,
+      actionLabel: options?.actionLabel,
+      priority: options?.priority || "Medium",
+      expiresAt: options?.expiresAt,
+      isRead: false,
+    });
+  } catch (error: any) {
+    if (error?.code !== 11000 || !options?.eventId) throw error;
+    notification = await Notification.findOne({
+      recipientType,
+      recipientId,
+      eventId: options.eventId,
+    });
+    if (!notification) throw error;
+    created = false;
+  }
+
+  if (!created) return { notification, created };
 
   await pushNotificationToRecipients(
     recipientType,
     [{ notificationId: notification._id.toString(), userId: recipientId }],
     title,
     message,
-    options,
+    {
+      ...options,
+      eventId: options?.eventId,
+      data: {
+        ...(options?.data || {}),
+        notificationId: notification._id.toString(),
+      },
+    },
   );
 
   // Return refreshed doc to capture sentAt if push delivered
   const refreshed = await Notification.findById(notification._id);
-  return refreshed || notification;
+  return { notification: refreshed || notification, created };
 };
 
 /**
@@ -328,24 +388,8 @@ export const sendOrderStatusNotification = async (
 
   console.log(`[FCM DEBUG] Sending order status notification: event=ORDER_${normStatus.toUpperCase()}, orderId=${orderId}, customerId=${customerId}`);
 
-  if (io) {
-    io.to(`order-${orderId}`).emit("order-status-update", {
-      orderId,
-      status: normStatus,
-      title: statusInfo.title,
-      message: statusInfo.message,
-      timestamp: new Date(),
-    });
-    io.to(`customer-${customerId}`).emit("customer-notification", {
-      orderId,
-      status: normStatus,
-      title: statusInfo.title,
-      message: statusInfo.message,
-      timestamp: new Date(),
-    });
-  }
-
-  return sendNotification(
+  const eventId = `order:${orderId}:status:${normStatus.toLowerCase()}`;
+  const result = await sendNotificationOnce(
     "Customer",
     customerId,
     statusInfo.title,
@@ -354,8 +398,31 @@ export const sendOrderStatusNotification = async (
       type: "Order",
       link: `/orders/${orderId}`,
       priority: normStatus.toLowerCase() === "cancelled" || normStatus.toLowerCase() === "delivered" ? "High" : "Medium",
+      eventId,
+      data: { orderId, status: normStatus },
     },
   );
+
+  if (io && result.created) {
+    io.to(`order-${orderId}`).emit("order-status-update", {
+      eventId,
+      orderId,
+      status: normStatus,
+      title: statusInfo.title,
+      message: statusInfo.message,
+      timestamp: new Date(),
+    });
+    io.to(`customer-${customerId}`).emit("customer-notification", {
+      eventId,
+      orderId,
+      status: normStatus,
+      title: statusInfo.title,
+      message: statusInfo.message,
+      timestamp: new Date(),
+    });
+  }
+
+  return result.notification;
 };
 
 /**

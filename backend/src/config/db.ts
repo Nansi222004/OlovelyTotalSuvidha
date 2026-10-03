@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import dns from 'node:dns';
 import PosCheckoutAttempt from '../models/PosCheckoutAttempt';
 import Product from '../models/Product';
+import Notification from '../models/Notification';
+import ProcessedWebhookEvent from '../models/ProcessedWebhookEvent';
 
 dotenv.config();
 
@@ -26,6 +28,33 @@ const connectDB = async (): Promise<void> => {
     // autoIndex is intentionally disabled globally. This targeted additive index is
     // required for concurrency-safe POS request idempotency.
     await PosCheckoutAttempt.createIndexes();
+    // Historical notifications do not have eventId. The partial unique index
+    // applies only to new logical events and makes concurrent retries safe.
+    await Notification.createIndexes();
+    // Carrier callbacks are retried; this unique key makes processing idempotent
+    // across restarts and concurrent webhook deliveries. Never attempt the unique
+    // index blindly if historical duplicate event IDs are present.
+    const webhookIndexes = await ProcessedWebhookEvent.collection.indexes().catch((error: any) => {
+      if (error?.codeName === 'NamespaceNotFound' || error?.code === 26) return [];
+      throw error;
+    });
+    const hasWebhookEventUniqueIndex = webhookIndexes.some(
+      (index: any) => index.unique === true && index.key?.eventId === 1
+    );
+    if (!hasWebhookEventUniqueIndex) {
+      const duplicateWebhookEvent = await ProcessedWebhookEvent.aggregate([
+        { $match: { eventId: { $type: 'string', $ne: '' } } },
+        { $group: { _id: '$eventId', count: { $sum: 1 } } },
+        { $match: { count: { $gt: 1 } } },
+        { $limit: 1 },
+      ]).then((rows) => rows[0]);
+      if (duplicateWebhookEvent) {
+        throw new Error(
+          'Cannot enable webhook idempotency index: duplicate historical event IDs exist. Resolve them through an audited, non-destructive data process first.'
+        );
+      }
+    }
+    await ProcessedWebhookEvent.createIndexes();
     // Barcode indexes are additive. They enforce uniqueness within product and
     // variation scopes; cross-scope uniqueness is enforced by barcodeHelper.
     await Product.collection.createIndex(
