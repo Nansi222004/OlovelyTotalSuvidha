@@ -54,6 +54,8 @@ export interface IProduct extends Document {
   manufacturer?: string;
   madeIn?: string;
   tax?: string;
+  /** Optional Harmonized System of Nomenclature code used on tax invoices. */
+  hsnCode?: string;
   fssaiLicNo?: string;
   totalAllowedQuantity?: number;
 
@@ -224,6 +226,9 @@ const ProductSchema = new Schema<IProduct>(
     barcode: {
       type: String,
       trim: true,
+      minlength: [4, "Barcode must be at least 4 characters"],
+      maxlength: [64, "Barcode cannot exceed 64 characters"],
+      match: [/^[A-Za-z0-9._\/-]+$/, "Barcode contains unsupported characters"],
     },
 
     // Variations
@@ -249,6 +254,9 @@ const ProductSchema = new Schema<IProduct>(
           barcode: {
             type: String,
             trim: true,
+            minlength: [4, "Barcode must be at least 4 characters"],
+            maxlength: [64, "Barcode cannot exceed 64 characters"],
+            match: [/^[A-Za-z0-9._\/-]+$/, "Barcode contains unsupported characters"],
           },
         },
       ],
@@ -284,6 +292,10 @@ const ProductSchema = new Schema<IProduct>(
       trim: true,
     },
     tax: {
+      type: String,
+      trim: true,
+    },
+    hsnCode: {
       type: String,
       trim: true,
     },
@@ -508,6 +520,8 @@ ProductSchema.index({ subcategory: 1 });
 ProductSchema.index({ brand: 1 });
 ProductSchema.index({ status: 1 });
 ProductSchema.index({ publish: 1 });
+ProductSchema.index({ barcode: 1 }, { unique: true, sparse: true, name: "uniq_product_barcode" });
+ProductSchema.index({ "variations.barcode": 1 }, { unique: true, sparse: true, name: "uniq_variation_barcode" });
 // Compound indexes for common queries
 ProductSchema.index({ status: 1, publish: 1 }); // For getProducts
 ProductSchema.index({ productType: 1, status: 1, publish: 1 }); // For channel-filtered queries

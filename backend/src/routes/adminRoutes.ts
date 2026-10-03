@@ -140,6 +140,7 @@ router.get("/products", productController.getProducts);
 // Product order functionality removed
 // router.put("/products/order", productController.updateProductOrder);
 router.get("/products/:id", productController.getProductById);
+router.post("/products/:id/barcode/generate", productController.generateProductBarcode);
 router.put("/products/:id", productController.updateProduct);
 router.delete("/products/:id", productController.deleteProduct);
 // Product approval no longer needed - products show directly in list

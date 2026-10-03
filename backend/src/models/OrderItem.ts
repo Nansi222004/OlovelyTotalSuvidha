@@ -9,6 +9,8 @@ export interface IOrderItem extends Document {
   productName: string;
   productImage?: string;
   sku?: string;
+  /** Immutable HSN snapshot captured at checkout. */
+  hsnCode?: string;
 
   // Pricing
   unitPrice: number;
@@ -85,6 +87,10 @@ const OrderItemSchema = new Schema<IOrderItem>(
       trim: true,
     },
     sku: {
+      type: String,
+      trim: true,
+    },
+    hsnCode: {
       type: String,
       trim: true,
     },

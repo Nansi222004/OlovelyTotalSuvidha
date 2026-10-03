@@ -40,6 +40,8 @@ export interface MutateStockOptions {
   performedBy?: string;
   performedByRole?: 'ADMIN' | 'SELLER' | 'SYSTEM';
   note?: string;
+  /** Optional caller-owned transaction session (used by atomic POS checkout). */
+  session?: mongoose.ClientSession;
 }
 
 export interface MutateStockResult {
@@ -70,6 +72,7 @@ export async function mutateStock(
     performedBy,
     performedByRole = 'SYSTEM',
     note,
+    session: callerSession,
   } = options;
 
   if (quantity === 0) {
@@ -87,7 +90,7 @@ export async function mutateStock(
   // --- Idempotency Deduplication Check ---
   if (effectiveIdempotencyKey) {
     // 1. Direct query by deterministic key
-    let existing = await InventoryTransaction.findOne({ idempotencyKey: effectiveIdempotencyKey });
+    let existing = await InventoryTransaction.findOne({ idempotencyKey: effectiveIdempotencyKey }).session(callerSession || null);
 
     // 2. Backward-compatible fallback for transactions created before idempotencyKey was stored
     if (!existing && referenceId) {
@@ -98,7 +101,7 @@ export async function mutateStock(
         type,
         variationId: variationId ? new mongoose.Types.ObjectId(variationId) : { $exists: false },
         ...(orderItemId ? { orderItemId } : {}),
-      });
+      }).session(callerSession || null);
     }
 
     if (existing) {
@@ -111,8 +114,9 @@ export async function mutateStock(
     }
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const session = callerSession || await mongoose.startSession();
+  const ownsSession = !callerSession;
+  if (ownsSession) session.startTransaction();
 
   try {
     let previousStock: number;
@@ -231,7 +235,7 @@ export async function mutateStock(
       { session }
     );
 
-    await session.commitTransaction();
+    if (ownsSession) await session.commitTransaction();
 
     return {
       success: true,
@@ -240,10 +244,10 @@ export async function mutateStock(
       transactionId: tx._id.toString(),
     };
   } catch (err) {
-    await session.abortTransaction();
+    if (ownsSession) await session.abortTransaction();
     throw err;
   } finally {
-    session.endSession();
+    if (ownsSession) await session.endSession();
   }
 }
 

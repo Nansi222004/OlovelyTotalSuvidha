@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import {
   getInventoryTransactions,
   getLowStockProducts,
@@ -350,11 +351,20 @@ export default function AdminInventoryLedger() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Track stock movements, view platform & vendor ledger, monitor low-stock variations, and lookup POS barcodes.
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Track stock movements, view platform & vendor ledger, monitor low-stock variations, and lookup POS barcodes.
+            </p>
+          </div>
+          <Link
+            to="/admin/pos"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg shadow-sm hover:shadow transition-all shrink-0"
+          >
+            <span>Open POS Terminal</span>
+            <span>⚡</span>
+          </Link>
         </div>
 
         {/* Alerts */}
@@ -763,8 +773,19 @@ export default function AdminInventoryLedger() {
         {activeTab === "barcode" && (
           <div className="max-w-xl mx-auto">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">POS Barcode Lookup</h2>
-              <p className="text-sm text-gray-500 mb-4">Scan or type a barcode to find the product, variant, and authoritative stock</p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-1">POS Barcode Lookup</h2>
+                  <p className="text-sm text-gray-500">Scan or type a barcode to find the product, variant, and authoritative stock</p>
+                </div>
+                <Link
+                  to="/admin/pos"
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-medium text-xs rounded-lg shadow-sm hover:shadow transition-all shrink-0"
+                >
+                  <span>Launch POS Terminal</span>
+                  <span>🚀</span>
+                </Link>
+              </div>
               <form onSubmit={handleBarcodeSearch} className="flex gap-2">
                 <input
                   ref={barcodeRef}

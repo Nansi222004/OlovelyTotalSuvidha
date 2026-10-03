@@ -13,6 +13,11 @@
     "test:invoice-scoping": "tsx src/scripts/testInvoiceChannelAndDeliveryScoping.ts",
     "test:mixed-status-sync": "tsx src/scripts/testMixedOrderStatusSynchronization.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
+    "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
+    "test:pos-isolated": "tsx src/scripts/testPosCheckoutIsolated.ts",
+    "test:pos-invoice-ui": "tsx ../frontend/src/scripts/testPosInvoiceRendering.tsx",
+    "test:pos-barcode": "node scripts/runTypeScriptTest.cjs src/scripts/testPosBarcodeIsolated.ts",
+    "test:pos-barcode-ui": "node scripts/runTypeScriptTest.cjs ../frontend/src/scripts/testPosBarcodeRendering.tsx",
     "seed:grocery-kitchen": "tsx src/scripts/seedGroceryKitchen.ts",
     "seed:personal-care": "tsx src/scripts/seedPersonalCare.ts",
     "seed:grocery-categories": "tsx src/scripts/seedGroceryCategories.ts",
@@ -81,6 +86,7 @@
   "devDependencies": {
     "@types/node-fetch": "^2.6.13",
     "@types/socket.io-client": "^1.4.36",
+    "mongodb-memory-server": "^10.2.3",
     "typescript": "^5.7.2"
   }
 }

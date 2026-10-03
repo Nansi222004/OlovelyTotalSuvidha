@@ -73,9 +73,12 @@ export interface IAppSettings extends Document {
     deliveryBoyKmRate?: number;
   };
 
-  // Tax Settings
+  // Tax & Business Billing Settings
   gstEnabled: boolean;
   gstRate?: number;
+  gstin?: string;
+  businessName?: string;
+  stateCode?: string;
 
   // Policies
   privacyPolicy?: string;
@@ -244,6 +247,10 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     companyPincode: {
       type: String,
       trim: true,
+      validate: {
+        validator: (value?: string) => !value || /^\d{6}$/.test(value),
+        message: "Company pincode must be 6 digits",
+      },
     },
     companyCountry: {
       type: String,
@@ -363,7 +370,7 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       kmRate: { type: Number, default: 0 },
       deliveryBoyKmRate: { type: Number, default: 0 },
     },
-    // Tax Settings
+    // Tax & Business Billing Settings
     gstEnabled: {
       type: Boolean,
       default: false,
@@ -372,6 +379,27 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: Number,
       min: [0, "GST rate cannot be negative"],
       max: [100, "GST rate cannot exceed 100%"],
+    },
+    gstin: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      validate: {
+        validator: (value?: string) => !value || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value),
+        message: "GSTIN must be a valid 15-character Indian GSTIN",
+      },
+    },
+    businessName: {
+      type: String,
+      trim: true,
+    },
+    stateCode: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: (value?: string) => !value || /^\d{2}$/.test(value),
+        message: "State code must be a 2-digit Indian GST state code",
+      },
     },
 
     // Policies

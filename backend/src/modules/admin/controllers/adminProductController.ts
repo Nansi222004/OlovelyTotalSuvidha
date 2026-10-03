@@ -9,7 +9,11 @@ import Seller from "../../../models/Seller";
 import HeaderCategory from "../../../models/HeaderCategory";
 import { cache } from "../../../utils/cache";
 import AppSettings from "../../../models/AppSettings";
-import { validateBarcodeUniqueness } from "../../../utils/barcodeHelper";
+import {
+  generateUniqueBarcode,
+  validateBarcodeFormat,
+  validateBarcodeUniqueness,
+} from "../../../utils/barcodeHelper";
 import {
   validateAndNormalizeCommerceChannels,
   isProductTypeAllowedForCategory,
@@ -1019,6 +1023,10 @@ export const createProduct = asyncHandler(
 
       // Cross-product DB uniqueness checks (product-level and variation-level across all products)
       for (const { barcode, scopeLabel } of payloadBarcodes) {
+        const formatCheck = validateBarcodeFormat(barcode);
+        if (!formatCheck.valid) {
+          return res.status(400).json({ success: false, message: formatCheck.error, field: scopeLabel });
+        }
         const barcodeCheck = await validateBarcodeUniqueness({ barcode, targetProductId: undefined });
         if (!barcodeCheck.valid) {
           return res.status(409).json({
@@ -1107,6 +1115,12 @@ export const createProduct = asyncHandler(
         return res.status(400).json({
           success: false,
           message: `Invalid value for ${error.path}: ${error.value}`,
+        });
+      }
+      if (error?.code === 11000 && (error?.keyPattern?.barcode || error?.keyPattern?.["variations.barcode"])) {
+        return res.status(409).json({
+          success: false,
+          message: "This barcode is already assigned to another product.",
         });
       }
 
@@ -1431,6 +1445,10 @@ export const updateProduct = asyncHandler(
 
     // 3. Cross-product DB uniqueness checks (product-level and variation-level)
     for (const { barcode, scopeLabel } of updatePayloadBarcodes) {
+      const formatCheck = validateBarcodeFormat(barcode);
+      if (!formatCheck.valid) {
+        return res.status(400).json({ success: false, message: formatCheck.error, field: scopeLabel });
+      }
       const barcodeCheck = await validateBarcodeUniqueness({
         barcode,
         targetProductId: product._id.toString(),
@@ -1526,7 +1544,17 @@ export const updateProduct = asyncHandler(
       product.markModified("variations");
     }
 
-    await product.save();
+    try {
+      await product.save();
+    } catch (error: any) {
+      if (error?.code === 11000 && (error?.keyPattern?.barcode || error?.keyPattern?.["variations.barcode"])) {
+        return res.status(409).json({
+          success: false,
+          message: "This barcode is already assigned to another product.",
+        });
+      }
+      throw error;
+    }
 
     // Update inventory if stock changed
     if (product.stock !== undefined) {
@@ -1555,6 +1583,51 @@ export const updateProduct = asyncHandler(
       success: true,
       message: "Product updated successfully",
       data: populatedProduct,
+    });
+  }
+);
+
+/**
+ * Generate and immediately persist a unique EAN-13 barcode for an existing
+ * product or one of its embedded sellable variations.
+ */
+export const generateProductBarcode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const variationId = req.body?.variationId ? String(req.body.variationId) : undefined;
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    const barcode = await generateUniqueBarcode();
+    if (variationId) {
+      const variation = product.variations?.find((item: any) => item._id?.toString() === variationId);
+      if (!variation) {
+        return res.status(404).json({ success: false, message: "Product variation not found" });
+      }
+      variation.barcode = barcode;
+      product.markModified("variations");
+    } else {
+      product.barcode = barcode;
+    }
+
+    try {
+      await product.save();
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message: "The generated barcode collided with an existing barcode. Please retry.",
+        });
+      }
+      throw error;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: variationId ? "Variation barcode generated and saved" : "Product barcode generated and saved",
+      data: { productId: product._id, variationId: variationId || null, barcode },
     });
   }
 );

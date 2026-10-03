@@ -1,12 +1,14 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import AppSettings from "../../../models/AppSettings";
+import Seller from "../../../models/Seller";
 import {
   getCommerceChannels,
   validateChannelsState,
   invalidateCommerceChannelCache,
 } from "../../../services/commerceChannelService";
 import { cache } from "../../../utils/cache";
+import { GSTIN_PATTERN, normalizeStateCode, validateStateIdentity } from "../../../utils/indianStates";
 
 /**
  * Get app settings
@@ -48,6 +50,51 @@ export const updateAppSettings = asyncHandler(
 
     let settings = await AppSettings.findOne();
 
+    const billingKeys = [
+      "businessName", "companyAddress", "companyCity", "companyState",
+      "companyPincode", "gstin", "stateCode", "gstEnabled", "gstRate",
+    ];
+    const isBillingUpdate = billingKeys.some((key) => Object.prototype.hasOwnProperty.call(updateData, key));
+
+    if (isBillingUpdate) {
+      const current = settings?.toObject() || {};
+      const effective = { ...current, ...updateData } as any;
+      const businessName = String(effective.businessName || "").trim();
+      const companyAddress = String(effective.companyAddress || "").trim();
+      const companyState = String(effective.companyState || "").trim();
+      const stateCode = normalizeStateCode(effective.stateCode);
+      const gstin = String(effective.gstin || "").trim().toUpperCase();
+      const stateIdentity = validateStateIdentity(companyState, stateCode);
+
+      if (!businessName) {
+        return res.status(400).json({ success: false, message: "Business name is required." });
+      }
+      if (!companyState || !stateCode || !stateIdentity.valid) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid business state and its matching GST state code are required.",
+        });
+      }
+      if (effective.gstEnabled && (!companyAddress || !/^\d{6}$/.test(String(effective.companyPincode || "").trim()) || !gstin)) {
+        return res.status(400).json({
+          success: false,
+          message: "GSTIN, registered business address, and a 6-digit pincode are required when GST billing is enabled.",
+        });
+      }
+      if (gstin && (!GSTIN_PATTERN.test(gstin) || gstin.slice(0, 2) !== stateIdentity.code)) {
+        return res.status(400).json({
+          success: false,
+          message: "GSTIN is invalid or its state prefix does not match the selected business state.",
+        });
+      }
+
+      updateData.businessName = businessName;
+      updateData.companyAddress = companyAddress;
+      updateData.companyState = stateIdentity.name;
+      updateData.stateCode = stateIdentity.code;
+      updateData.gstin = gstin;
+    }
+
     // ── COMMERCE CHANNELS INVARIANT VALIDATION ──────────────────────────────
     // Check if commerceChannels update is present in payload (nested or flat)
     const incomingChannels = updateData.commerceChannels || {
@@ -84,6 +131,18 @@ export const updateAppSettings = asyncHandler(
         new: true,
         runValidators: true,
       });
+    }
+
+    // Sync GSTIN and business name to canonical platform seller if provided
+    if (updateData.gstin !== undefined) {
+      await Seller.findOneAndUpdate(
+        { isPlatform: true },
+        {
+          taxNumber: updateData.gstin.trim(),
+          taxName: "GSTIN",
+          ...(updateData.businessName ? { storeName: updateData.businessName.trim() } : {}),
+        }
+      );
     }
 
     // Invalidate centralized channel cache and category cache immediately
