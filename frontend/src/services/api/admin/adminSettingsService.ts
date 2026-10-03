@@ -93,6 +93,9 @@ export interface AppSettings {
   };
   gstEnabled: boolean;
   gstRate?: number;
+  gstin?: string;
+  businessName?: string;
+  stateCode?: string;
   privacyPolicy?: string;
   termsOfService?: string;
   returnPolicy?: string;

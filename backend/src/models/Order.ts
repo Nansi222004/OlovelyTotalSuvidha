@@ -90,6 +90,26 @@ export interface IOrder extends Document {
   deliveryOtpAttempts?: number;
   deliveryOtpVerified?: boolean;
   invoiceEnabled?: boolean;
+  isPosOrder?: boolean;
+  posBusinessSnapshot?: {
+    businessName: string;
+    businessAddress?: string;
+    companyState: string;
+    stateCode: string;
+    gstin?: string;
+  };
+  posTaxSummary?: {
+    taxModel: "INTRA_STATE" | "INTER_STATE" | "NONE";
+    businessState: string;
+    businessStateCode: string;
+    customerState: string;
+    customerStateCode: string;
+    taxableAmount: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    totalTax: number;
+  };
   deliveryDistanceKm?: number;
 
   // Seller Pickups (for multi-seller orders)
@@ -430,6 +450,29 @@ const OrderSchema = new Schema<IOrder>(
     invoiceEnabled: {
       type: Boolean,
       default: false,
+    },
+    isPosOrder: {
+      type: Boolean,
+      default: false,
+    },
+    posBusinessSnapshot: {
+      businessName: { type: String, trim: true },
+      businessAddress: { type: String, trim: true },
+      companyState: { type: String, trim: true },
+      stateCode: { type: String, trim: true },
+      gstin: { type: String, trim: true },
+    },
+    posTaxSummary: {
+      taxModel: { type: String, enum: ["INTRA_STATE", "INTER_STATE", "NONE"] },
+      businessState: { type: String, trim: true },
+      businessStateCode: { type: String, trim: true },
+      customerState: { type: String, trim: true },
+      customerStateCode: { type: String, trim: true },
+      taxableAmount: { type: Number, min: 0 },
+      cgst: { type: Number, min: 0 },
+      sgst: { type: Number, min: 0 },
+      igst: { type: Number, min: 0 },
+      totalTax: { type: Number, min: 0 },
     },
     deliveryDistanceKm: {
       type: Number,

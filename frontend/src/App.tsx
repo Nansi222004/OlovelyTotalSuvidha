@@ -268,6 +268,9 @@ const AdminBanners = lazyWithRetry(
 const AdminInventoryLedger = lazyWithRetry(
   () => import("./modules/admin/pages/AdminInventoryLedger"), "AdminInventoryLedger"
 );
+const AdminPosTerminal = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminPosTerminal"), "AdminPosTerminal"
+);
 const AdminLowestPrices = lazyWithRetry(
   () => import("./modules/admin/pages/AdminLowestPrices"), "AdminLowestPrices"
 );
@@ -841,6 +844,10 @@ function App() {
                                       <Route
                                         path="inventory-ledger"
                                         element={<AdminInventoryLedger />}
+                                      />
+                                      <Route
+                                        path="pos"
+                                        element={<AdminPosTerminal />}
                                       />
                                       <Route
                                         path="product/edit/:id"

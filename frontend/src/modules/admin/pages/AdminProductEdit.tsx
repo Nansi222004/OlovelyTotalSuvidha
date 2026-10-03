@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { uploadImage, uploadImages } from "../../../services/api/uploadService";
 import {
@@ -13,6 +13,7 @@ import {
   getCategories,
   getBrands,
   getSellers,
+  generateProductBarcode,
   type Category,
   type Brand,
   type Seller,
@@ -24,6 +25,7 @@ import { getTaxes, type Tax } from "../../../services/api/admin/adminTaxService"
 import { getShopByStores, type ShopByStore } from "../../../services/api/admin/adminMiscService";
 import { useToast } from "../../../context/ToastContext";
 import { useAppSettings } from "../../../context/AppSettingsContext";
+import { BarcodeGraphic, printBarcodeLabel } from "../components/BarcodeLabel";
 
 interface VariationItem {
   _id?: string;
@@ -44,6 +46,8 @@ export default function AdminProductEdit() {
   const isAddMode = !id || id === "add" || id === "new";
   const { showToast } = useToast();
   const { settings: appSettings } = useAppSettings();
+  const productFormRef = useRef<HTMLFormElement>(null);
+  const generateAfterCreateRef = useRef<"product" | number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +66,7 @@ export default function AdminProductEdit() {
     popular: "No",
     dealOfDay: "No",
     brand: "",
+    sku: "",
     barcode: "",
     wholesaleEnabled: "No",
     wholesalePrice: "",
@@ -75,6 +80,7 @@ export default function AdminProductEdit() {
     manufacturer: "",
     madeIn: "",
     tax: "",
+    hsnCode: "",
     isReturnable: "No",
     maxReturnDays: "",
     fssaiLicNo: "",
@@ -92,6 +98,7 @@ export default function AdminProductEdit() {
     discPrice: "0",
     stock: "0",
     status: "Available" as "Available" | "Sold out",
+    sku: "",
     barcode: "",
   });
 
@@ -249,6 +256,7 @@ export default function AdminProductEdit() {
             popular: product.popular ? "Yes" : "No",
             dealOfDay: product.dealOfDay ? "Yes" : "No",
             brand: brandId,
+            sku: product.sku || "",
             barcode: product.barcode || "",
             wholesaleEnabled: product.wholesaleEnabled ? "Yes" : "No",
             wholesalePrice: product.wholesalePrice?.toString() || "",
@@ -262,6 +270,7 @@ export default function AdminProductEdit() {
             manufacturer: product.manufacturer || "",
             madeIn: product.madeIn || "",
             tax: taxId,
+            hsnCode: product.hsnCode || "",
             isReturnable: product.isReturnable ? "Yes" : "No",
             maxReturnDays: product.maxReturnDays?.toString() || "",
             fssaiLicNo: product.fssaiLicNo || "",
@@ -294,6 +303,7 @@ export default function AdminProductEdit() {
                 discPrice: Number(v.discPrice) || 0,
                 stock: Number(v.stock) || 0,
                 status: v.status || (v.stock > 0 ? "Available" : "Sold out"),
+                sku: v.sku || "",
                 barcode: v.barcode || "",
               }))
             );
@@ -574,6 +584,7 @@ export default function AdminProductEdit() {
       discPrice,
       stock,
       status: variationForm.status,
+      sku: variationForm.sku?.trim() || undefined,
       barcode: variationForm.barcode?.trim() || undefined,
     };
 
@@ -584,6 +595,7 @@ export default function AdminProductEdit() {
       discPrice: "0",
       stock: "0",
       status: "Available",
+      sku: "",
       barcode: "",
     });
     setUploadError("");
@@ -593,9 +605,46 @@ export default function AdminProductEdit() {
     setVariations((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const generateAndSaveBarcode = async (variationIndex?: number) => {
+    if (isAddMode || !id) {
+      generateAfterCreateRef.current = variationIndex === undefined ? "product" : variationIndex;
+      setUploadError("Complete the required product fields. Generate Barcode will create the product and persist the generated code.");
+      productFormRef.current?.requestSubmit();
+      return;
+    }
+    const variation = variationIndex === undefined ? undefined : variations[variationIndex];
+    if (variationIndex !== undefined && !variation?._id) {
+      setUploadError("Save this new variation first, then generate its persisted barcode.");
+      return;
+    }
+    const existingBarcode = variationIndex === undefined ? formData.barcode : variation?.barcode;
+    if (existingBarcode && !window.confirm(`Replace saved barcode ${existingBarcode} with a newly generated barcode?`)) {
+      return;
+    }
+    try {
+      const response = await generateProductBarcode(id, variation?._id);
+      const barcode = response.data?.barcode;
+      if (!barcode) throw new Error("Barcode generation returned no value");
+      if (variationIndex === undefined) {
+        setFormData((previous) => ({ ...previous, barcode }));
+      } else {
+        setVariations((previous) => previous.map((item, index) => index === variationIndex ? { ...item, barcode } : item));
+      }
+      setUploadError("");
+      showToast("Barcode generated and saved.", "success");
+    } catch (error: any) {
+      setUploadError(error?.response?.data?.message || error?.message || "Unable to generate barcode");
+    }
+  };
+
+  const copyBarcode = async (barcode: string) => {
+    await navigator.clipboard.writeText(barcode);
+    showToast("Barcode copied.", "success");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id) return;
+    if (!isAddMode && !id) return;
 
     setUploadError("");
 
@@ -667,6 +716,7 @@ export default function AdminProductEdit() {
         subcategoryId: formData.subcategory || null,
         subSubCategoryId: formData.subSubCategory || null,
         brandId: formData.brand || null,
+        sku: formData.sku.trim() || undefined,
         publish: formData.publish === "Yes",
         popular: formData.popular === "Yes",
         dealOfDay: formData.dealOfDay === "Yes",
@@ -682,6 +732,7 @@ export default function AdminProductEdit() {
         manufacturer: formData.manufacturer || "",
         madeIn: formData.madeIn || "",
         taxId: formData.tax || null,
+        hsnCode: formData.hsnCode.trim() || undefined,
         isReturnable: formData.isReturnable === "Yes",
         maxReturnDays: formData.maxReturnDays ? parseInt(formData.maxReturnDays, 10) : undefined,
         totalAllowedQuantity: parseInt(formData.totalAllowedQuantity || "10", 10),
@@ -700,6 +751,7 @@ export default function AdminProductEdit() {
           discPrice: v.discPrice || 0,
           stock: v.stock || 0,
           status: v.status || "Available",
+          sku: v.sku ? v.sku.trim() : undefined,
           barcode: v.barcode ? v.barcode.trim() : undefined,
         })),
         variationType: formData.variationType || undefined,
@@ -713,6 +765,22 @@ export default function AdminProductEdit() {
         : await updateProduct(id!, productPayload);
 
       if (res.success) {
+        if (isAddMode && generateAfterCreateRef.current !== null && res.data?._id) {
+          const target = generateAfterCreateRef.current;
+          const variationId = typeof target === "number" ? res.data.variations?.[target]?._id : undefined;
+          if (typeof target !== "number" || variationId) {
+            try {
+              await generateProductBarcode(res.data._id, variationId);
+              showToast("Product created and barcode generated and saved.", "success");
+            } catch (generationError: any) {
+              showToast(generationError?.response?.data?.message || "Product was created, but barcode generation failed. Retry from the edit screen.", "error");
+            } finally {
+              generateAfterCreateRef.current = null;
+              navigate(`/admin/product/edit/${res.data._id}`);
+            }
+            return;
+          }
+        }
         showToast(
           isAddMode
             ? "Product and images created successfully!"
@@ -810,7 +878,7 @@ export default function AdminProductEdit() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form ref={productFormRef} onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Product Info */}
         <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
           <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
@@ -1007,16 +1075,47 @@ export default function AdminProductEdit() {
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Product Barcode / EAN / UPC <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
+                  Product SKU <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
                 </label>
                 <input
                   type="text"
-                  name="barcode"
-                  value={formData.barcode}
+                  name="sku"
+                  value={formData.sku}
                   onChange={handleChange}
-                  placeholder="e.g. 8901234567890"
-                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
+                  placeholder="e.g. SALT-001"
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Product Barcode / EAN / UPC <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="barcode"
+                    value={formData.barcode}
+                    onChange={handleChange}
+                    placeholder="e.g. 8901234567890"
+                    className="min-w-0 flex-1 px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
+                  />
+                  <button type="button" onClick={() => generateAndSaveBarcode()} className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700">
+                    Generate Barcode
+                  </button>
+                </div>
+                {formData.barcode && (
+                  <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+                    <BarcodeGraphic value={formData.barcode} height={52} />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs break-all">{formData.barcode}</span>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => copyBarcode(formData.barcode)} className="text-xs text-teal-700 font-semibold">Copy</button>
+                        <button type="button" onClick={() => printBarcodeLabel({ productName: formData.productName || "Product", sku: formData.sku, barcode: formData.barcode })} className="text-xs text-teal-700 font-semibold">Print Label</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1157,7 +1256,7 @@ export default function AdminProductEdit() {
             </div>
 
             {/* Add Variation Inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
                   Title (e.g., 500g, Large) <span className="text-red-500">*</span>
@@ -1213,6 +1312,18 @@ export default function AdminProductEdit() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  SKU (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={variationForm.sku}
+                  onChange={(e) => setVariationForm({ ...variationForm, sku: e.target.value })}
+                  placeholder="SALT-1KG"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
                   Barcode (Optional)
                 </label>
                 <input
@@ -1241,10 +1352,9 @@ export default function AdminProductEdit() {
                 </h3>
                 <div className="divide-y divide-neutral-200 border border-neutral-200 rounded-lg bg-white overflow-hidden">
                   {variations.map((variation, index) => (
-                    <div
-                      key={index}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3 gap-2 hover:bg-neutral-50 transition-colors">
-                      <div className="flex items-center gap-3">
+                    <div key={variation._id || index} className="p-3 hover:bg-neutral-50 transition-colors">
+                      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <span className="w-6 h-6 rounded-full bg-teal-100 text-teal-800 text-xs flex items-center justify-center font-bold">
                           {index + 1}
                         </span>
@@ -1256,14 +1366,20 @@ export default function AdminProductEdit() {
                               (Disc: ₹{variation.discPrice})
                             </span>
                           )}
-                          {variation.barcode && (
-                            <span className="text-neutral-500 text-xs ml-2 font-mono bg-neutral-100 px-1.5 py-0.5 rounded">
-                              Barcode: {variation.barcode}
-                            </span>
-                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-neutral-600">
+                      <div className="flex flex-wrap items-end gap-2 text-xs text-neutral-600">
+                        <label className="block">
+                          <span className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">SKU</span>
+                          <input value={variation.sku || ""} onChange={(event) => setVariations((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} className="w-28 px-2 py-1.5 border rounded font-mono" placeholder="SKU" />
+                        </label>
+                        <label className="block">
+                          <span className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Barcode</span>
+                          <input value={variation.barcode || ""} onChange={(event) => setVariations((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, barcode: event.target.value } : item))} className="w-40 px-2 py-1.5 border rounded font-mono" placeholder="Barcode" />
+                        </label>
+                        <button type="button" onClick={() => generateAndSaveBarcode(index)} className="px-2 py-1.5 rounded bg-teal-600 text-white font-semibold">Generate</button>
+                        {variation.barcode && <button type="button" onClick={() => copyBarcode(variation.barcode!)} className="px-2 py-1.5 text-teal-700 font-semibold">Copy</button>}
+                        {variation.barcode && <button type="button" onClick={() => printBarcodeLabel({ productName: formData.productName || "Product", variantName: variation.title || variation.value, sku: variation.sku, barcode: variation.barcode! })} className="px-2 py-1.5 text-teal-700 font-semibold">Print Label</button>}
                         <span>
                           Stock:{" "}
                           <strong>{variation.stock === 0 ? "Unlimited" : variation.stock}</strong>
@@ -1284,6 +1400,8 @@ export default function AdminProductEdit() {
                           Remove
                         </button>
                       </div>
+                      </div>
+                      {variation.barcode && <div className="mt-2 max-w-sm"><BarcodeGraphic value={variation.barcode} height={38} /></div>}
                     </div>
                   ))}
                 </div>
@@ -1472,6 +1590,20 @@ export default function AdminProductEdit() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  HSN Code
+                </label>
+                <input
+                  type="text"
+                  name="hsnCode"
+                  value={formData.hsnCode}
+                  onChange={handleChange}
+                  placeholder="Optional; shown on GST invoices"
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
 
               <div>

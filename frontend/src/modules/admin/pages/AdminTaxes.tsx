@@ -9,9 +9,14 @@ import {
   type CreateTaxData,
   type UpdateTaxData,
 } from "../../../services/api/admin/adminTaxService";
+import {
+  getAppSettings,
+  updateAppSettings,
+} from "../../../services/api/admin/adminSettingsService";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import { GSTIN_PATTERN, INDIAN_STATES, getStateByName, normalizeStateCode } from "../../../utils/indianStates";
 
 export default function AdminTaxes() {
   const { isAuthenticated, token } = useAuth();
@@ -31,6 +36,19 @@ export default function AdminTaxes() {
   const [error, setError] = useState<string | null>(null);
   const [totalTaxes, setTotalTaxes] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+
+  // Business GST & Billing Identity State (Centralized Admin/Platform settings)
+  const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
+  const [businessSettingsSaving, setBusinessSettingsSaving] = useState(false);
+  const [businessName, setBusinessName] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [companyCity, setCompanyCity] = useState("");
+  const [companyState, setCompanyState] = useState("");
+  const [companyPincode, setCompanyPincode] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [gstRate, setGstRate] = useState<number | string>(18);
+  const [gstEnabled, setGstEnabled] = useState(false);
 
   // Fetch taxes on component mount
   useEffect(() => {
@@ -81,6 +99,85 @@ export default function AdminTaxes() {
     sortColumn,
     sortDirection,
   ]);
+
+  // Fetch centralized business settings (Admin GSTIN, company address, etc.)
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    const fetchBusinessSettings = async () => {
+      try {
+        setBusinessSettingsLoading(true);
+        const res = await getAppSettings();
+        if (res?.success && res.data) {
+          const d = res.data;
+          setBusinessName(d.businessName || d.appName || "");
+          setBusinessAddress(d.companyAddress || "");
+          setCompanyCity(d.companyCity || "");
+          setCompanyState(d.companyState || "");
+          setCompanyPincode(d.companyPincode || "");
+          setGstin(d.gstin || "");
+          setStateCode(normalizeStateCode(d.stateCode));
+          setGstRate(d.gstRate ?? 18);
+          setGstEnabled(d.gstEnabled ?? false);
+        }
+      } catch (err) {
+        console.error("Failed to load business GST settings:", err);
+      } finally {
+        setBusinessSettingsLoading(false);
+      }
+    };
+    fetchBusinessSettings();
+  }, [isAuthenticated, token]);
+
+  const handleSaveBusinessSettings = async () => {
+    const normalizedGstin = gstin.trim().toUpperCase();
+    const selectedState = getStateByName(companyState);
+    if (!businessName.trim()) {
+      showToast("Business name is required", "error");
+      return;
+    }
+    if (!selectedState || selectedState[0] !== stateCode) {
+      showToast("Select a valid business state and matching state code", "error");
+      return;
+    }
+    if (gstEnabled && (!normalizedGstin || !businessAddress.trim() || !/^\d{6}$/.test(companyPincode.trim()))) {
+      showToast("GSTIN, registered business address, and a 6-digit pincode are required for GST billing", "error");
+      return;
+    }
+    if (normalizedGstin && (!GSTIN_PATTERN.test(normalizedGstin) || normalizedGstin.slice(0, 2) !== stateCode)) {
+      showToast("GSTIN is invalid or does not match the selected state", "error");
+      return;
+    }
+    try {
+      setBusinessSettingsSaving(true);
+      const res = await updateAppSettings({
+        businessName: businessName.trim(),
+        companyAddress: businessAddress.trim(),
+        companyCity: companyCity.trim(),
+        companyState: companyState.trim(),
+        companyPincode: companyPincode.trim(),
+        gstin: normalizedGstin,
+        stateCode: stateCode.trim(),
+        gstRate: Number(gstRate) || 0,
+        gstEnabled,
+      });
+
+      if (res?.success) {
+        showToast("Business GST & Billing Identity saved successfully!", "success");
+      } else {
+        showToast(
+          "Failed to save business settings: " + (res?.message || "Unknown error"),
+          "error"
+        );
+      }
+    } catch (err: any) {
+      showToast(
+        err.response?.data?.message || "Failed to save business settings",
+        "error"
+      );
+    } finally {
+      setBusinessSettingsSaving(false);
+    }
+  };
 
   // Note: Filtering is done server-side, so we just use the taxes as is
   const displayedTaxes = taxes;
@@ -250,8 +347,222 @@ export default function AdminTaxes() {
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Page Content */}
-      <div className="flex-1 p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+      <div className="flex-1 p-6 space-y-6">
+        {/* SECTION 1: BUSINESS GST & BILLING IDENTITY */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-teal-800 to-teal-700 text-white px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🏢</span>
+                <h2 className="text-lg font-bold tracking-tight">
+                  Business GST & Billing Identity
+                </h2>
+              </div>
+              <p className="text-xs text-teal-100 mt-0.5">
+                Authoritative platform business details for customer invoices, tax compliance, and POS counter billing.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase font-mono ${
+                  gstin
+                    ? "bg-teal-900/60 text-teal-100 border border-teal-500/50"
+                    : "bg-amber-500/20 text-amber-200 border border-amber-400/40"
+                }`}
+              >
+                {gstin ? `GSTIN: ${gstin}` : "GSTIN Not Configured"}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {businessSettingsLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      Business Legal Name
+                    </label>
+                    <input
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="e.g. Olovely Total Suvidha"
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Legal entity name displayed on invoices
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      Business GSTIN
+                    </label>
+                    <input
+                      type="text"
+                      value={gstin}
+                      onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                      placeholder="15-character GSTIN (optional)"
+                      maxLength={15}
+                      className="w-full px-3 py-2 text-sm font-mono tracking-wider border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none uppercase"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      15-character Goods & Services Tax Number
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      Default Catalog GST Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={gstRate}
+                      onChange={(e) => setGstRate(e.target.value)}
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      placeholder="18"
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Fallback tax rate for products without specific slab
+                    </p>
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={gstEnabled}
+                        onChange={(e) => setGstEnabled(e.target.checked)}
+                        className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      Enable GST billing and GST invoices
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      Registered Business Address
+                    </label>
+                    <input
+                      type="text"
+                      value={businessAddress}
+                      onChange={(e) => setBusinessAddress(e.target.value)}
+                      placeholder="e.g. Shop 12, Main Commercial Complex"
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      value={companyCity}
+                      onChange={(e) => setCompanyCity(e.target.value)}
+                      placeholder="e.g. Indore"
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      value={companyPincode}
+                      onChange={(e) => setCompanyPincode(e.target.value)}
+                      placeholder="e.g. 452001"
+                      maxLength={6}
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      State / Province
+                    </label>
+                    <select
+                      value={companyState}
+                      onChange={(e) => {
+                        const selected = INDIAN_STATES.find(([, name]) => name === e.target.value);
+                        setCompanyState(e.target.value);
+                        setStateCode(selected?.[0] || "");
+                      }}
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white"
+                    >
+                      <option value="">Select state</option>
+                      {INDIAN_STATES.map(([code, name]) => (
+                        <option key={code} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      State Code
+                    </label>
+                    <input
+                      type="text"
+                      value={stateCode}
+                      readOnly
+                      placeholder="Auto-filled"
+                      maxLength={2}
+                      className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none font-mono"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      2-digit Indian GST State Code
+                    </p>
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleSaveBusinessSettings}
+                      disabled={businessSettingsSaving}
+                      className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-neutral-400 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-2"
+                    >
+                      {businessSettingsSaving ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>💾</span>
+                          <span>Save Business Details</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION 2: PRODUCT TAX SLABS */}
+        <div>
+          <div className="mb-3">
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>🏷️</span> Product Tax Slabs (Catalog GST Percentages)
+            </h3>
+            <p className="text-xs text-gray-500">
+              Configure product-level GST percentage slabs (e.g., 0%, 5%, 12%, 18%, 28%) selectable during product creation.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Panel: Add Tax */}
           <div className="bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
             <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
@@ -575,6 +886,7 @@ export default function AdminTaxes() {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Footer */}
       <footer className="text-center py-4 text-sm text-neutral-600 border-t border-neutral-200 bg-white">

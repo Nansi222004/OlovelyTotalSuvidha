@@ -130,12 +130,16 @@ export interface Product {
   barcode?: string;
   variationType?: string;
   variations?: Array<{
+    _id?: string;
+    title?: string;
     name: string;
     value: string;
     price?: number;
+    discPrice?: number;
     stock?: number;
     sku?: string;
     barcode?: string;
+    status?: "Available" | "Sold out" | "In stock";
   }>;
   wholesaleEnabled?: boolean;
   wholesalePrice?: number;
@@ -147,6 +151,7 @@ export interface Product {
   manufacturer?: string;
   madeIn?: string;
   tax?: string;
+  hsnCode?: string;
   fssaiLicNo?: string;
   totalAllowedQuantity?: number;
   isReturnable: boolean;
@@ -197,6 +202,7 @@ export interface CreateProductData {
   manufacturer?: string;
   madeIn?: string;
   tax?: string;
+  hsnCode?: string;
   fssaiLicNo?: string;
   totalAllowedQuantity?: number;
   isReturnable?: boolean;
@@ -519,6 +525,16 @@ export const updateProduct = async (
     `/admin/products/${id}`,
     data
   );
+  return response.data;
+};
+
+export const generateProductBarcode = async (
+  productId: string,
+  variationId?: string
+): Promise<ApiResponse<{ productId: string; variationId: string | null; barcode: string }>> => {
+  const response = await api.post(`/admin/products/${productId}/barcode/generate`, {
+    variationId,
+  });
   return response.data;
 };
 

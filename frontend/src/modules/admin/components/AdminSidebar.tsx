@@ -224,6 +224,28 @@ const menuSections: MenuSection[] = [
             ),
           },
           {
+            label: "POS Billing Terminal",
+            path: "/admin/pos",
+            icon: (
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+                <path d="M6 7h4v4H6z"></path>
+                <path d="M14 7h4"></path>
+                <path d="M14 11h4"></path>
+              </svg>
+            ),
+          },
+          {
             label: "Wholesale Settings",
             path: "/admin/wholesale-settings",
             icon: (

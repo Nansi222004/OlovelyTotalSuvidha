@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import dns from 'node:dns';
+import PosCheckoutAttempt from '../models/PosCheckoutAttempt';
+import Product from '../models/Product';
 
 dotenv.config();
 
@@ -21,6 +23,19 @@ const connectDB = async (): Promise<void> => {
 
     mongoose.set('autoIndex', false);
     const conn = await mongoose.connect(mongoUri);
+    // autoIndex is intentionally disabled globally. This targeted additive index is
+    // required for concurrency-safe POS request idempotency.
+    await PosCheckoutAttempt.createIndexes();
+    // Barcode indexes are additive. They enforce uniqueness within product and
+    // variation scopes; cross-scope uniqueness is enforced by barcodeHelper.
+    await Product.collection.createIndex(
+      { barcode: 1 },
+      { unique: true, sparse: true, name: 'uniq_product_barcode' }
+    );
+    await Product.collection.createIndex(
+      { 'variations.barcode': 1 },
+      { unique: true, sparse: true, name: 'uniq_variation_barcode' }
+    );
 
     console.log('\n\x1b[32m✓\x1b[0m \x1b[1mMongoDB Connected Successfully\x1b[0m');
     console.log(`   \x1b[36mHost:\x1b[0m ${conn.connection.host}`);
