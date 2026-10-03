@@ -1,14 +1,41 @@
 import axios from "axios";
+import { randomInt } from "crypto";
 import Otp from "../models/Otp";
 
-const SMS_INDIA_HUB_API_URL =
-  "http://cloud.smsindiahub.in/vendorsms/pushsms.aspx";
 const API_TIMEOUT = 30000;
+const DEFAULT_TEST_OTP = "9999";
 
-const DEBUG_SMS = process.env.DEBUG_SMS === "true";
+function isDefaultOtpMode(): boolean {
+  return String(process.env.USE_DEFAULT_OTP).trim().toLowerCase() === "true";
+}
+
+function isSmsDebugEnabled(): boolean {
+  return process.env.DEBUG_SMS === "true";
+}
+
+function getSmsApiUrl(): string | undefined {
+  return process.env.SMS_INDIA_HUB_URL?.trim();
+}
+
+function sanitizeDebugData(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      key,
+      /otp|msg|message|mobile|msisdn|password|api.?key|token|raw/i.test(key)
+        ? "[REDACTED]"
+        : value,
+    ]),
+  );
+}
+
 function debugLog(label: string, data: Record<string, unknown>): void {
-  if (DEBUG_SMS || process.env.NODE_ENV !== "production") {
-    console.log(`[SMS DEBUG] ${label}`, JSON.stringify(data, null, 2));
+  if (isSmsDebugEnabled()) {
+    console.log(
+      `[SMS DEBUG] ${label}`,
+      JSON.stringify(sanitizeDebugData(data), null, 2),
+    );
   }
 }
 
@@ -48,8 +75,14 @@ function getSmsUsername(): string {
 function getDltTemplateText(): string | undefined {
   return (
     process.env.SMS_INDIA_HUB_DLT_TEMPLATE_TEXT?.trim() ||
+    process.env.SMS_INDIA_HUB_TEMPLATE_TEXT?.trim() ||
     process.env.SMS_INDIA_HUB_OTP_TEMPLATE?.trim()
   );
+}
+
+function getOtpExpiryMinutes(): number {
+  const configured = Number(process.env.OTP_EXPIRY_MINUTES);
+  return Number.isInteger(configured) && configured > 0 ? configured : 10;
 }
 
 /**
@@ -82,10 +115,9 @@ type UserType = "Customer" | "Delivery" | "Seller" | "Admin";
  * Generate numeric OTP
  */
 function generateOTP(length: number = 4): string {
-  const digits = "0123456789";
   let otp = "";
   for (let i = 0; i < length; i++) {
-    otp += digits[Math.floor(Math.random() * 10)];
+    otp += randomInt(0, 10).toString();
   }
   return otp;
 }
@@ -139,16 +171,32 @@ function buildOtpMessage(otp: string, customTemplate?: string): string {
     getSmsUsername() ||
     "Olovely Total Suvidha"
   ).trim();
+  const poweredBy = process.env.SMS_INDIA_HUB_POWERED_BY?.trim();
+  if (!poweredBy) {
+    throw new Error(
+      "SMS India HUB configuration missing. Set SMS_INDIA_HUB_POWERED_BY for the approved DLT template.",
+    );
+  }
   const otpTrimmed = String(otp).trim().replace(/\s/g, "");
   const template =
     customTemplate ||
     getDltTemplateText() ||
     "Welcome to the {APP_NAME} powered by Appzeto. Your OTP for registration is {OTP}.";
 
-  return template
+  const dltValues = [appName, poweredBy, otpTrimmed];
+  let dltValueIndex = 0;
+  const rendered = template
+    .replace(/##var##/gi, () => dltValues[dltValueIndex++] || "")
     .replace(/\{APP_NAME\}/g, appName)
+    .replace(/\{POWERED_BY\}/g, poweredBy)
     .replace(/\{OTP\}/g, otpTrimmed)
     .trim();
+
+  if (/##var##|\{APP_NAME\}|\{POWERED_BY\}|\{OTP\}/i.test(rendered)) {
+    throw new Error("SMS India HUB template contains unresolved placeholders.");
+  }
+
+  return rendered;
 }
 
 /**
@@ -237,9 +285,10 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
   const password = getSmsAuthPassword();
   const senderId = getSmsSenderId();
   const apiKey = getSmsApiKey();
-  if (!username || !password || !senderId) {
+  const apiUrl = getSmsApiUrl();
+  if (!apiUrl || !username || !password || !senderId) {
     throw new Error(
-      "SMS India HUB credentials missing. Set SMS_INDIA_HUB_USERNAME, SMS_INDIA_HUB_PASSWORD (or API_KEY), SMS_INDIA_HUB_SENDER_ID.",
+      "SMS India HUB configuration missing. Set SMS_INDIA_HUB_URL, SMS_INDIA_HUB_USERNAME, SMS_INDIA_HUB_PASSWORD (or API_KEY), and SMS_INDIA_HUB_SENDER_ID.",
     );
   }
 
@@ -252,7 +301,7 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
       sid: senderId,
       msg: message,
       fl: "0",
-      gwid: "2",
+      gwid: process.env.SMS_INDIA_HUB_GWID?.trim() || "2",
     };
     if (auth === "APIKey") {
       params.APIKey = apiKey || password;
@@ -274,7 +323,7 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
   };
 
   const doRequest = (params: Record<string, string>) =>
-    axios.get<SmsIndiaHubResponse | string>(SMS_INDIA_HUB_API_URL, {
+    axios.get<SmsIndiaHubResponse | string>(apiUrl, {
       params,
       timeout: API_TIMEOUT,
       validateStatus: () => true,
@@ -289,7 +338,7 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
   let params = buildParams(initialAuth);
 
   debugLog("SMS India HUB request", {
-    url: SMS_INDIA_HUB_API_URL,
+    url: apiUrl,
     user: username,
     sid: senderId,
     msisdn,
@@ -298,16 +347,6 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
     msg: message,
     auth: initialAuth,
   });
-
-  console.log("--- SMS India HUB Debug ---");
-  console.log("Provider: SMS_INDIA_HUB");
-  console.log("Auth Mode:", initialAuth);
-  console.log("Template ID:", params.DLT_TE_ID);
-  console.log("Entity ID (PE ID):", params.EntityId);
-  console.log("Message Content:", params.msg);
-  console.log("Sender ID:", params.sid);
-  console.log("Mobile:", params.msisdn);
-  console.log("--------------------------");
 
   let response = await doRequest(params);
   let data = response.data;
@@ -329,53 +368,6 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
     data = response.data;
   }
 
-  const isDltError = (d: any) =>
-    (typeof d === "object" && d && String(d.ErrorCode) === "006") ||
-    (typeof d === "string" && d.toLowerCase().includes("006"));
-
-  const isSuccess = (d: any) =>
-    (typeof d === "object" &&
-      d &&
-      (String(d.ErrorCode) === "000" ||
-        d.JobId ||
-        (Array.isArray(d.MessageData) && d.MessageData.length > 0))) ||
-    (typeof d === "string" &&
-      d.toLowerCase().includes("jobid") &&
-      !d.toLowerCase().includes("failed"));
-
-  // Fallback if DLT template error 006 occurs: try combinations of gwid and dlt parameter names
-  if (isDltError(data)) {
-    console.warn(
-      "[SMS India HUB] DLT Error 006 encountered. Attempting gateway route and DLT parameter fallbacks...",
-    );
-    const gwidCandidates = ["1", "3", "2"];
-    const dltKeyCandidates = ["DLT_TE_ID", "templateid", "tempid", "none"];
-
-    for (const gw of gwidCandidates) {
-      for (const dltKey of dltKeyCandidates) {
-        const testParams: Record<string, string> = { ...params, gwid: gw };
-        delete testParams.DLT_TE_ID;
-        delete testParams.templateid;
-        delete testParams.tempid;
-
-        if (dltKey !== "none" && getSmsDltTemplateId()) {
-          testParams[dltKey] = getSmsDltTemplateId()!;
-        }
-
-        debugLog("SMS India HUB 006 fallback try", { gwid: gw, dltKey });
-        const res = await doRequest(testParams);
-        if (isSuccess(res.data)) {
-          console.log(
-            `[SMS India HUB] SUCCESS! Gateway matched with gwid=${gw}, dltKey=${dltKey}`,
-          );
-          data = res.data;
-          break;
-        }
-      }
-      if (isSuccess(data)) break;
-    }
-  }
-
   debugLog("SMS India HUB response", {
     status: response.status,
     raw: data,
@@ -391,82 +383,7 @@ async function deliverOtp(mobile: string, otp: string): Promise<void> {
     msgPreview: primaryMessage.slice(0, 80),
   });
 
-  try {
-    await sendSmsViaApi(mobile, primaryMessage);
-    return;
-  } catch (err: any) {
-    const isDltError =
-      err.message?.includes("006") ||
-      err.message?.includes("Invalid DLT template") ||
-      err.message?.includes("template text");
-
-    if (!isDltError) {
-      throw err;
-    }
-
-    console.warn(
-      "[SMS India HUB] DLT template mismatch on primary message. Trying candidate DLT template variations...",
-    );
-
-    const candidateAppNames = [
-      "OLOVELY",
-      "Olovely",
-      "Olovely Total Suvidha",
-      "DHAKADSNAZZY",
-      "Dhakad Snazzy",
-      "Kosil",
-      "DhakadSnazzy",
-      "dhakadsnazzy",
-      "DHAKAD SNAZZY",
-      "Appzeto",
-      "Dhakad",
-      "Snazzy",
-    ];
-
-    const candidateTemplates = [
-      // Exact Portal Template with .BGADEC
-      "Welcome to the {APP_NAME} powered by Appzeto.Your OTP for registration is {OTP}.BGADEC",
-      "Welcome to the {APP_NAME} powered by Appzeto. Your OTP for registration is {OTP}.BGADEC",
-      "Welcome to the {APP_NAME} powered by Appzeto.Your OTP for registration is {OTP}",
-      "Welcome to the {APP_NAME} powered by Appzeto. Your OTP for registration is {OTP}.",
-      "Welcome to the {APP_NAME} powered by SMSINDIAHUB. Your OTP for registration is {OTP}.",
-    ];
-
-    let lastError = err;
-
-    // First try all candidate app names with exact portal template
-    for (const appNameVar of candidateAppNames) {
-      const candMsg = `Welcome to the ${appNameVar} powered by Appzeto.Your OTP for registration is ${otp}.BGADEC`;
-      if (candMsg === primaryMessage) continue;
-      try {
-        console.log(`[SMS India HUB] Trying candidate message: "${candMsg}"`);
-        await sendSmsViaApi(mobile, candMsg);
-        console.log(
-          `[SMS India HUB] SUCCESS! Matched DLT template message: "${candMsg}"`,
-        );
-        return;
-      } catch (candErr: any) {
-        lastError = candErr;
-      }
-    }
-
-    // Next try generic candidate templates
-    for (const candTemplate of candidateTemplates) {
-      const candMsg = buildOtpMessage(otp, candTemplate);
-      if (candMsg === primaryMessage) continue;
-      try {
-        console.log(`[SMS India HUB] Trying candidate template: "${candMsg}"`);
-        await sendSmsViaApi(mobile, candMsg);
-        console.log(
-          `[SMS India HUB] SUCCESS! Matched DLT template: "${candMsg}"`,
-        );
-        return;
-      } catch (candErr: any) {
-        lastError = candErr;
-      }
-    }
-    throw lastError;
-  }
+  await sendSmsViaApi(mobile, primaryMessage);
 }
 
 /**
@@ -489,7 +406,7 @@ async function saveOtpToDb(
     mobile: normalizedMobile,
     otp: otp.trim(),
     userType,
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes expiry
+    expiresAt: new Date(Date.now() + getOtpExpiryMinutes() * 60 * 1000),
   });
 }
 
@@ -536,35 +453,8 @@ async function verifyOtpFromDb(
   return true;
 }
 
-/**
- * Check if special bypass should be used (normalized comparison)
- */
-function isSpecialBypass(mobile: string): boolean {
-  const digits = mobile.replace(/\D/g, "");
-  return (
-    digits === "9111966732" || // existing special test number
-    digits === "11966732" || // legacy variant
-    digits === "6268423926" // requested default OTP number
-  );
-}
-
-/**
- * Check if mock mode should be used (credentials read at runtime)
- */
-function isMockMode(): boolean {
-  if (process.env.USE_MOCK_OTP === "true") return true;
-  return !getSmsAuthPassword() || !getSmsSenderId();
-}
-
-/**
- * Check if developer bypass OTP
- */
-function isDeveloperBypass(otp: string): boolean {
-  return (
-    (process.env.NODE_ENV !== "production" ||
-      process.env.USE_MOCK_OTP === "true") &&
-    (otp === "999999" || otp === "9999" || otp === process.env.DEFAULT_OTP)
-  );
+function isDefaultOtpBypass(otp: string): boolean {
+  return isDefaultOtpMode() && String(otp).trim() === DEFAULT_TEST_OTP;
 }
 
 // ==========================================
@@ -580,33 +470,18 @@ export async function sendSmsOtp(
     mobile: mobileStr,
     mobileLength: mobileStr.length,
     userType,
-    isMockMode: isMockMode(),
-    isSpecialBypass: isSpecialBypass(mobileStr),
+    isDefaultOtpMode: isDefaultOtpMode(),
   });
 
   try {
-    const otp = generateOTP(4);
+    const defaultMode = isDefaultOtpMode();
+    const otp = defaultMode ? DEFAULT_TEST_OTP : generateOTP(4);
 
-    // Special number bypass
-    if (isSpecialBypass(mobileStr)) {
-      const specialOtp = "1234";
-      await saveOtpToDb(mobileStr, specialOtp, userType);
-      return {
-        success: true,
-        sessionId: "DB_VERIFIED_" + mobileStr,
-        message: "OTP sent successfully",
-      };
-    }
-
-    // Mock mode
-    if (isMockMode()) {
+    if (defaultMode) {
       await saveOtpToDb(mobileStr, otp, userType);
-      if (process.env.NODE_ENV !== "production" || DEBUG_SMS) {
-        console.log(`[SMS] Mock OTP for ${mobileStr}: ${otp}`);
-      }
       return {
         success: true,
-        sessionId: "MOCK_SESSION_" + mobileStr,
+        sessionId: "DEFAULT_OTP_SESSION_" + mobileStr,
         message: "OTP sent successfully",
       };
     }
@@ -614,9 +489,7 @@ export async function sendSmsOtp(
     // Real mode - deliver via configured provider; rollback saved OTP if send fails
     const normalizedMobile10 = normalizeMobileTo10(mobileStr);
     await saveOtpToDb(mobileStr, otp, userType);
-    if (process.env.NODE_ENV !== "production" || DEBUG_SMS) {
-      console.log(`🔑 [SMS DEBUG] Generated OTP for ${mobileStr}: ${otp}`);
-    }
+    debugLog("Real OTP generated", { mobile: mobileStr, otp });
     try {
       await deliverOtp(mobileStr, otp);
     } catch (sendErr) {
@@ -634,7 +507,7 @@ export async function sendSmsOtp(
       error.message || "Failed to send OTP. Please try again.";
     console.error("SMS OTP Error (sendSmsOtp):", {
       error: errorMessage,
-      mobile: mobileStr,
+      mobile: "[REDACTED]",
       userType,
     });
     throw new Error(errorMessage);
@@ -647,7 +520,7 @@ export async function verifySmsOtp(
   mobile?: string,
   userType: "Customer" | "Delivery" = "Delivery",
 ): Promise<boolean> {
-  if (isDeveloperBypass(otpInput)) {
+  if (isDefaultOtpBypass(otpInput)) {
     return true;
   }
 
@@ -656,8 +529,8 @@ export async function verifySmsOtp(
 
   if (!normalizedOtp || normalizedOtp.length !== 4) {
     console.error("OTP verification failed - invalid OTP format:", {
-      otpInput,
-      normalizedOtp,
+      otpInput: "[REDACTED]",
+      normalizedOtp: "[REDACTED]",
       length: normalizedOtp.length,
     });
     return false;
@@ -667,8 +540,8 @@ export async function verifySmsOtp(
   if (!targetMobile && sessionId) {
     if (sessionId.startsWith("DB_VERIFIED_")) {
       targetMobile = sessionId.replace("DB_VERIFIED_", "");
-    } else if (sessionId.startsWith("MOCK_SESSION_")) {
-      targetMobile = sessionId.replace("MOCK_SESSION_", "");
+    } else if (sessionId.startsWith("DEFAULT_OTP_SESSION_")) {
+      targetMobile = sessionId.replace("DEFAULT_OTP_SESSION_", "");
     } else if (sessionId.startsWith("OTP_SESSION_")) {
       targetMobile = sessionId.replace("OTP_SESSION_", "");
     }
@@ -677,7 +550,7 @@ export async function verifySmsOtp(
   if (!targetMobile) {
     console.error("OTP verification failed - no mobile number:", {
       sessionId,
-      mobile,
+      mobile: "[REDACTED]",
       userType,
     });
     return false;
@@ -707,20 +580,10 @@ export async function sendOTP(
   _isLogin: boolean = true,
 ): Promise<OtpResponse> {
   try {
-    const otp = generateOTP(4);
+    const defaultMode = isDefaultOtpMode();
+    const otp = defaultMode ? DEFAULT_TEST_OTP : generateOTP(4);
 
-    // Special number bypass
-    if (isSpecialBypass(mobile)) {
-      const specialOtp = "1234";
-      await saveOtpToDb(mobile, specialOtp, userType);
-      return {
-        success: true,
-        message: "OTP sent successfully",
-      };
-    }
-
-    // Mock mode
-    if (isMockMode()) {
+    if (defaultMode) {
       await saveOtpToDb(mobile, otp, userType);
       return {
         success: true,
@@ -747,7 +610,7 @@ export async function sendOTP(
       error.message || "Failed to send OTP. Please try again.";
     console.error("SMS OTP Error (sendOTP):", {
       error: errorMessage,
-      mobile,
+      mobile: "[REDACTED]",
       userType,
     });
     throw new Error(errorMessage);
@@ -759,7 +622,7 @@ export async function verifyOTP(
   otpInput: string,
   userType: "Seller" | "Admin" | "Customer" | "Delivery",
 ): Promise<boolean> {
-  if (isDeveloperBypass(otpInput)) {
+  if (isDefaultOtpBypass(otpInput)) {
     return true;
   }
 
@@ -768,8 +631,8 @@ export async function verifyOTP(
 
   if (!normalizedOtp || normalizedOtp.length !== 4) {
     console.error("OTP verification failed - invalid OTP format:", {
-      otpInput,
-      normalizedOtp,
+      otpInput: "[REDACTED]",
+      normalizedOtp: "[REDACTED]",
       length: normalizedOtp.length,
     });
     return false;

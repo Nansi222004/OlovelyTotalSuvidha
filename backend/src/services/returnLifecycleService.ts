@@ -12,6 +12,7 @@
  * - OTP has 10-minute expiry and 5-attempt limit (mirrors forward delivery pattern).
  */
 
+import { randomInt } from "crypto";
 import Return, { IReturn } from "../models/Return";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,12 +130,9 @@ export function validateDPReturnTransition(
 const PICKUP_OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_PICKUP_OTP_ATTEMPTS = 5;
 
-/** Returns true if delivery test mode is active */
+/** Returns true if the single default OTP mode is active. */
 function isReturnTestMode(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    String(process.env.DELIVERY_TEST_MODE).trim().toLowerCase() === "true"
-  );
+  return String(process.env.USE_DEFAULT_OTP).trim().toLowerCase() === "true";
 }
 
 /**
@@ -159,7 +157,7 @@ export async function generateReturnPickupOtp(
   const testMode = isReturnTestMode();
   const newOtp = testMode
     ? "9999"
-    : Math.floor(1000 + Math.random() * 9000).toString();
+    : randomInt(1000, 10000).toString();
 
   returnReq.pickupOtp = newOtp;
   returnReq.pickupOtpExpiresAt = new Date(Date.now() + PICKUP_OTP_EXPIRY_MS);
@@ -168,7 +166,7 @@ export async function generateReturnPickupOtp(
   await returnReq.save();
 
   console.log(
-    `[Return OTP] ${testMode ? "TEST MODE OTP (9999)" : "Dynamic OTP"} generated for return ${returnReq._id}`
+    `[Return OTP] ${testMode ? "Default" : "Dynamic"} OTP generated for return ${returnReq._id}`
   );
 
   return {
@@ -221,12 +219,8 @@ export async function verifyReturnPickupOtp(
     throw new Error("Return pickup OTP has expired. Please request a new OTP.");
   }
 
-  // Dev bypass
-  if (
-    (process.env.NODE_ENV !== "production" ||
-      process.env.USE_MOCK_OTP === "true") &&
-    otp === "9999"
-  ) {
+  // Controlled default OTP bypass
+  if (isReturnTestMode() && otp === "9999") {
     returnReq.pickupOtpVerified = true;
     returnReq.pickupOtpAttempts = 0;
     returnReq.status = "Picked Up";

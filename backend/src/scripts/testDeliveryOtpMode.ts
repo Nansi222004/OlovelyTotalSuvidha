@@ -90,6 +90,7 @@ async function runDeliveryOtpTestSuite() {
 
   // Set test mode active explicitly for tests 1-7
   process.env.NODE_ENV = 'development';
+  process.env.USE_DEFAULT_OTP = 'true';
   process.env.DELIVERY_TEST_MODE = 'true';
 
   // -------------------------------------------------------------
@@ -359,6 +360,7 @@ async function runDeliveryOtpTestSuite() {
   // TEST 8: DELIVERY_TEST_MODE=false -> Verify normal GPS distance enforced
   // -------------------------------------------------------------
   try {
+    process.env.USE_DEFAULT_OTP = 'false';
     process.env.DELIVERY_TEST_MODE = 'false';
     const { sendDeliveryOtp } = await import('../modules/delivery/controllers/deliveryOrderController');
     

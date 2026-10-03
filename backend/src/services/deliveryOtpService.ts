@@ -1,11 +1,12 @@
 import Order from '../models/Order';
 import Customer from '../models/Customer';
+import { randomInt } from 'crypto';
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 Minutes Expiry
 const MAX_OTP_ATTEMPTS = 5;
 
-export const isDeliveryTestMode = (): boolean => {
-  return process.env.NODE_ENV !== "production" && String(process.env.DELIVERY_TEST_MODE).trim().toLowerCase() === "true";
+export const isDefaultOtpMode = (): boolean => {
+  return String(process.env.USE_DEFAULT_OTP).trim().toLowerCase() === "true";
 };
 
 /**
@@ -24,10 +25,10 @@ export async function generateDeliveryOtp(orderId: string): Promise<{ success: b
       throw new Error('Order is already delivered');
     }
 
-    const testModeActive = isDeliveryTestMode();
+    const testModeActive = isDefaultOtpMode();
 
     // Fixed test OTP '9999' when in test mode, else random 4-digit OTP
-    const newOtp = testModeActive ? "9999" : Math.floor(1000 + Math.random() * 9000).toString();
+    const newOtp = testModeActive ? "9999" : randomInt(1000, 10000).toString();
 
     // Set order-specific dynamic OTP with expiry and reset attempts
     order.deliveryOtp = newOtp;
@@ -35,7 +36,7 @@ export async function generateDeliveryOtp(orderId: string): Promise<{ success: b
     order.deliveryOtpAttempts = 0;
     await order.save();
 
-    console.log(`[Delivery OTP] ${testModeActive ? 'TEST MODE OTP (9999)' : 'Dynamic OTP'} generated for order ${order.orderNumber}: ${newOtp} (Expires in 10 mins)`);
+    console.log(`[Delivery OTP] ${testModeActive ? 'Test' : 'Dynamic'} OTP generated for order ${order.orderNumber} (expires in 10 minutes)`);
 
     return {
       success: true,
@@ -97,7 +98,7 @@ export async function verifyDeliveryOtp(
     }
 
     // Developer bypass for testing
-    if ((process.env.NODE_ENV !== 'production' || process.env.USE_MOCK_OTP === 'true') && otp === '9999') {
+    if (isDefaultOtpMode() && otp === '9999') {
       order.deliveryOtpVerified = true;
       if (options.markOrderDelivered !== false) {
         order.status = 'Delivered';
