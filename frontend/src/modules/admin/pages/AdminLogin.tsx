@@ -1,43 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sendOTP, verifyOTP } from '../../../services/api/auth/adminAuthService';
-import OTPInput from '../../../components/OTPInput';
+import { login as loginAdmin } from '../../../services/api/auth/adminAuthService';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [showOTP, setShowOTP] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleMobileLogin = async () => {
-    if (mobileNumber.length !== 10) return;
-
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      await sendOTP(mobileNumber);
-      setShowOTP(true);
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message || "Failed to send OTP. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOTPComplete = async (otp: string) => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await verifyOTP(mobileNumber, otp);
+      const response = await loginAdmin(email.trim(), password);
       if (response.success && response.data) {
-        // Update AuthContext with token and user data
         login(response.data.token, {
           ...response.data.user,
           userType: "Admin",
@@ -45,21 +27,13 @@ export default function AdminLogin() {
         navigate("/admin");
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Invalid OTP. Please try again.");
+      setError(err.response?.data?.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOlovelyLogin = () => {
-    // Handle Olovely login logic here
-    navigate("/admin");
-  };
-
-  const handleSellerLogin = () => {
-    // Navigate to seller login page
-    navigate("/seller/login");
-  };
+  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) && password.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-green-50 flex flex-col items-center justify-center px-4 py-8">
@@ -105,94 +79,54 @@ export default function AdminLogin() {
         </div>
 
         {/* Login Form */}
-        <div className="p-6 space-y-4">
-          {!showOTP ? (
-            /* Mobile Login Form */
-            <div className="space-y-4">
+        <form className="p-6 space-y-4" onSubmit={handleSubmit} noValidate>
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Mobile Number
+                  Email
                 </label>
-                <div className="flex items-center bg-white border border-neutral-300 rounded-lg overflow-hidden focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-200 transition-all">
-                  <div className="px-3 py-2.5 text-sm font-medium text-neutral-600 border-r border-neutral-300 bg-neutral-50">
-                    +91
-                  </div>
                   <input
-                    type="tel"
-                    value={mobileNumber}
-                    onChange={(e) =>
-                      setMobileNumber(
-                        e.target.value.replace(/\D/g, "").slice(0, 10)
-                      )
-                    }
-                    placeholder="Enter mobile number"
-                    className="flex-1 px-3 py-2.5 text-sm placeholder:text-neutral-400 focus:outline-none"
-                    maxLength={10}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter admin email"
+                    autoComplete="username"
+                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg placeholder:text-neutral-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                     disabled={loading}
+                    required
                   />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    autoComplete="current-password"
+                    className="w-full px-3 py-2.5 pr-16 text-sm border border-neutral-300 rounded-lg placeholder:text-neutral-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+                    disabled={loading}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute inset-y-0 right-0 px-3 text-xs font-semibold text-teal-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
                 </div>
               </div>
-
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
-                  {error}
-                </div>
-              )}
-
-              <button
-                onClick={handleMobileLogin}
-                disabled={mobileNumber.length !== 10 || loading}
-                className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-colors ${mobileNumber.length === 10 && !loading
-                  ? "bg-teal-600 text-white hover:bg-teal-700 shadow-md"
-                  : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                  }`}>
-                {loading ? "Sending..." : "Continue"}
-              </button>
-            </div>
-          ) : (
-            /* OTP Verification Form */
-            <div className="space-y-4">
-              <div className="text-center">
-                <p className="text-sm text-neutral-600 mb-2">
-                  Enter the 4-digit OTP sent to
-                </p>
-                <p className="text-sm font-semibold text-neutral-800">
-                  +91 {mobileNumber}
-                </p>
-              </div>
-
-              <OTPInput onComplete={handleOTPComplete} disabled={loading} />
-
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-2 rounded text-center">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setShowOTP(false);
-                    setError("");
-                  }}
-                  disabled={loading}
-                  className="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-colors border border-neutral-300">
-                  Change Number
-                </button>
-                <button
-                  onClick={handleMobileLogin}
-                  disabled={loading}
-                  className="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-teal-600 text-white hover:bg-teal-700 transition-colors">
-                  {loading ? "Verifying..." : "Resend OTP"}
-                </button>
-              </div>
-            </div>
-          )}
-
-
-
-
-        </div>
+          {error && <div role="alert" className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+          <button
+            type="submit"
+            disabled={!isValid || loading}
+            className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-colors ${isValid && !loading ? "bg-teal-600 text-white hover:bg-teal-700 shadow-md" : "bg-neutral-300 text-neutral-500 cursor-not-allowed"}`}
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
       </div>
 
       {/* Footer Text */}

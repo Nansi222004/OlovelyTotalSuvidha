@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import Seller from "../../../models/Seller";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { parseSafeBoolean } from "./sellerAuthController";
+import {
+  isShiprocketPickupRequired,
+  provisionShiprocketPickupLocation,
+} from "../../../services/shipping/shiprocketPickupService";
 
 /**
  * Get all sellers (Admin only)
@@ -75,7 +79,7 @@ export const updateSellerStatus = asyncHandler(
       });
     }
 
-    const seller = await Seller.findByIdAndUpdate(
+    let seller = await Seller.findByIdAndUpdate(
       id,
       { status },
       { new: true, runValidators: true }
@@ -86,6 +90,14 @@ export const updateSellerStatus = asyncHandler(
         success: false,
         message: "Seller not found",
       });
+    }
+
+    let pickupProvisioning;
+    if (status === "Approved") {
+      // Approval is the platform decision. Courier provisioning is recoverable and
+      // must never roll the seller back if Shiprocket is temporarily unavailable.
+      pickupProvisioning = await provisionShiprocketPickupLocation(id);
+      seller = await Seller.findById(id).select("-password");
     }
 
     // Trigger push notification and in-app alert to seller asynchronously
@@ -99,6 +111,40 @@ export const updateSellerStatus = asyncHandler(
       success: true,
       message: `Seller status updated to ${status}`,
       data: seller,
+      ...(pickupProvisioning && { pickupProvisioning }),
+    });
+  }
+);
+
+/** Retry the external courier pickup provisioning step for an approved seller. */
+export const retrySellerPickupProvisioning = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const seller = await Seller.findById(id).select("status vendorType");
+
+    if (!seller) {
+      return res.status(404).json({ success: false, message: "Seller not found" });
+    }
+    if (seller.status !== "Approved") {
+      return res.status(409).json({
+        success: false,
+        message: "Approve the seller before provisioning a courier pickup location",
+      });
+    }
+    if (!isShiprocketPickupRequired(seller.vendorType)) {
+      return res.status(409).json({
+        success: false,
+        message: "Courier pickup provisioning does not apply to Quick Commerce vendors",
+      });
+    }
+
+    const pickupProvisioning = await provisionShiprocketPickupLocation(id);
+    const updatedSeller = await Seller.findById(id).select("-password");
+    return res.status(pickupProvisioning.status === "ACTIVE" ? 200 : 409).json({
+      success: pickupProvisioning.status === "ACTIVE",
+      message: pickupProvisioning.message,
+      data: updatedSeller,
+      pickupProvisioning,
     });
   }
 );
@@ -113,6 +159,44 @@ export const updateSeller = asyncHandler(
 
     // Remove password from update data if present
     delete updateData.password;
+
+    const existingSeller = await Seller.findById(id);
+    if (!existingSeller) {
+      return res.status(404).json({ success: false, message: "Seller not found" });
+    }
+
+    if (updateData.shippingConfig) {
+      // Integration state is server-owned. Admin may edit authoritative address data,
+      // but cannot forge an ACTIVE synchronization state or a remote identifier.
+      const incomingConfig = { ...updateData.shippingConfig };
+      for (const key of [
+        "shiprocketPickupLocationId",
+        "shiprocketPickupLocationName",
+        "shiprocketPickupStatus",
+        "shiprocketPickupLastError",
+        "shiprocketPickupAddressFingerprint",
+        "shiprocketPickupLastSyncedAt",
+        "shiprocketPickupSyncStartedAt",
+      ]) {
+        delete incomingConfig[key];
+      }
+
+      const oldConfig = existingSeller.shippingConfig || {};
+      const mergedConfig: any = { ...oldConfig, ...incomingConfig };
+      const addressChanged = ["pickupAddress", "pickupPincode", "pickupCity", "pickupState"]
+        .some((key) => String((oldConfig as any)[key] || "").trim() !== String(mergedConfig[key] || "").trim());
+
+      if (
+        addressChanged &&
+        isShiprocketPickupRequired(existingSeller.vendorType) &&
+        oldConfig.shiprocketPickupLocationId
+      ) {
+        mergedConfig.shiprocketPickupStatus = "PENDING";
+        mergedConfig.shiprocketPickupLastError =
+          "Pickup address changed. Update the existing Shiprocket pickup location, then retry synchronization; a duplicate will not be created.";
+      }
+      updateData.shippingConfig = mergedConfig;
+    }
 
     // Handle location update (convert lat/lng to GeoJSON)
     if (updateData.latitude && updateData.longitude) {
@@ -163,22 +247,22 @@ export const updateSeller = asyncHandler(
       updateData.wholesaleEnabled = parseSafeBoolean(updateData.wholesaleEnabled, false);
     }
 
-    const seller = await Seller.findByIdAndUpdate(id, updateData, {
+    let seller = await Seller.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     }).select("-password");
 
-    if (!seller) {
-      return res.status(404).json({
-        success: false,
-        message: "Seller not found",
-      });
+    let pickupProvisioning;
+    if (updateData.status === "Approved" && existingSeller.status !== "Approved") {
+      pickupProvisioning = await provisionShiprocketPickupLocation(id);
+      seller = await Seller.findById(id).select("-password");
     }
 
     return res.status(200).json({
       success: true,
       message: "Seller updated successfully",
       data: seller,
+      ...(pickupProvisioning && { pickupProvisioning }),
     });
   }
 );

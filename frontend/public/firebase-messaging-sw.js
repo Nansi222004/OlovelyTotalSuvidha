@@ -23,37 +23,38 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
         // Handle background messages
         messaging.onBackgroundMessage((payload) => {
             console.log('[firebase-messaging-sw.js] Received background message', payload);
-
-            const isOrderAlert = payload.data?.type === 'NEW_ORDER_REQUEST' || payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'Order';
-            const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
-
-            // Unique notification tag per order prevents Chrome from replacing/overwriting previous order notifications
-            const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
-            const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
-
-            const notificationOptions = {
-                body: payload.notification?.body || payload.data?.body || '',
-                icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
-                badge: '/logo192.png',
-                image: payload.notification?.image || payload.data?.image || undefined,
-                data: payload.data || {},
-                tag: notificationTag,
-                requireInteraction: true,
-                renotify: true,
-                silent: false,
-                vibrate: [200, 100, 200, 100, 200, 100, 400]
-            };
-
-            if (isOrderAlert) {
-                notificationOptions.sound = '/assets/sound/delivery-alert.mp3';
-            }
-
-            self.registration.showNotification(notificationTitle, notificationOptions);
+            // The backend sends a notification payload, which Firebase displays
+            // automatically in the background. Manual display here caused a second OS notification.
         });
     } catch (err) {
         console.warn('[firebase-messaging-sw.js] Firebase SW initialization error:', err);
     }
 }
+
+const recentlyDisplayedEvents = new Set();
+self.addEventListener('message', (event) => {
+    if (event.data?.type !== 'SHOW_FCM_NOTIFICATION') return;
+    const payload = event.data.payload || {};
+    const eventId = event.data.eventId || payload.data?.eventId || payload.data?.notificationId || payload.messageId;
+    if (!eventId || recentlyDisplayedEvents.has(eventId)) return;
+    recentlyDisplayedEvents.add(eventId);
+
+    event.waitUntil((async () => {
+        const existing = await self.registration.getNotifications({ tag: eventId });
+        if (existing.length > 0) return;
+        await self.registration.showNotification(
+            payload.notification?.title || payload.data?.title || 'New Notification',
+            {
+                body: payload.notification?.body || payload.data?.body || '',
+                icon: payload.data?.icon || '/logo192.png',
+                badge: '/logo192.png',
+                data: payload.data || {},
+                tag: eventId,
+                requireInteraction: false,
+            },
+        );
+    })());
+});
 
 
 // Service worker installation

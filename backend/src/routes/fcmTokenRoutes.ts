@@ -58,7 +58,37 @@ router.post("/save", async (req: Request, res: Response): Promise<void> => {
         return;
     }
 
-    const user = await UserModel.findById(userId);
+    const tokenField = platform === "web"
+      ? "fcmTokens"
+      : platform === "mobile"
+        ? "fcmTokenMobile"
+        : null;
+    if (!tokenField) {
+      res.status(400).json({
+        success: false,
+        message: 'Platform must be either "web" or "mobile"',
+      });
+      return;
+    }
+
+    // Pipeline update is atomic, removes any historical duplicates, and stays
+    // idempotent when StrictMode/login initialization submits the same token.
+    const user = await UserModel.findByIdAndUpdate(
+      userId,
+      [
+        {
+          $set: {
+            [tokenField]: {
+              $slice: [
+                { $setUnion: [{ $ifNull: [`$${tokenField}`, []] }, [token]] },
+                -10,
+              ],
+            },
+          },
+        },
+      ],
+      { new: true },
+    );
 
     if (!user) {
       res.status(404).json({
@@ -67,39 +97,6 @@ router.post("/save", async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
-
-    // Add token to appropriate array based on platform
-    if (platform === "web") {
-      if (!user.fcmTokens) {
-        user.fcmTokens = [];
-      }
-      // Only add if not already present
-      if (!user.fcmTokens.includes(token)) {
-        user.fcmTokens.push(token);
-        // Limit to 10 tokens per platform
-        if (user.fcmTokens.length > 10) {
-          user.fcmTokens = user.fcmTokens.slice(-10);
-        }
-      }
-    } else if (platform === "mobile") {
-      if (!user.fcmTokenMobile) {
-        user.fcmTokenMobile = [];
-      }
-      if (!user.fcmTokenMobile.includes(token)) {
-        user.fcmTokenMobile.push(token);
-        if (user.fcmTokenMobile.length > 10) {
-          user.fcmTokenMobile = user.fcmTokenMobile.slice(-10);
-        }
-      }
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Platform must be either "web" or "mobile"',
-      });
-      return;
-    }
-
-    await user.save();
 
     console.log(
       `✅ FCM token saved for ${userType} user ${userId} (${platform})`,

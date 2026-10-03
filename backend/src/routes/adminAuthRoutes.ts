@@ -4,7 +4,9 @@ import { otpRateLimiter, loginRateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
-// Send OTP route
+router.post("/login", loginRateLimiter, adminAuthController.login);
+
+// Compatibility endpoints: explicitly retired and never enter the shared OTP service.
 router.post("/send-otp", otpRateLimiter, adminAuthController.sendOTP);
 
 // Verify OTP and login route

@@ -7,6 +7,9 @@ export interface IProcessedWebhookEvent extends Document {
   orderId?: string;
   statusUpdate?: string;
   rawPayload?: any;
+  processingState?: 'PROCESSING' | 'COMPLETED';
+  lockedAt?: Date;
+  completedAt?: Date;
   createdAt: Date;
 }
 
@@ -40,6 +43,12 @@ const ProcessedWebhookEventSchema = new Schema<IProcessedWebhookEvent>(
     rawPayload: {
       type: Schema.Types.Mixed,
     },
+    processingState: {
+      type: String,
+      enum: ['PROCESSING', 'COMPLETED'],
+    },
+    lockedAt: { type: Date },
+    completedAt: { type: Date },
   },
   {
     timestamps: true,

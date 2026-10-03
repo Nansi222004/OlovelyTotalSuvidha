@@ -6,6 +6,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_A
 type FirebaseMessagingModule = typeof import('./firebase');
 
 let firebaseMessagingModulePromise: Promise<FirebaseMessagingModule> | null = null;
+let registrationPromise: Promise<string | null> | null = null;
+let foregroundUnsubscribe: (() => void) | null = null;
+const foregroundHandlers = new Set<(payload: any) => void>();
 
 async function loadFirebaseMessagingModule(): Promise<FirebaseMessagingModule> {
     if (!firebaseMessagingModulePromise) {
@@ -111,6 +114,19 @@ export async function registerFCMToken(
     forceUpdate: boolean = false,
     panelOrUserType?: string,
 ): Promise<string | null> {
+    if (registrationPromise) return registrationPromise;
+    registrationPromise = registerFCMTokenInternal(forceUpdate, panelOrUserType);
+    try {
+        return await registrationPromise;
+    } finally {
+        registrationPromise = null;
+    }
+}
+
+async function registerFCMTokenInternal(
+    forceUpdate: boolean,
+    panelOrUserType?: string,
+): Promise<string | null> {
     try {
         const hasPermission = await requestNotificationPermission();
         if (!hasPermission) {
@@ -170,6 +186,7 @@ export async function registerFCMToken(
 export async function setupForegroundNotificationHandler(
     handler?: (payload: any) => void,
 ): Promise<(() => void) | void> {
+    if (handler) foregroundHandlers.add(handler);
     const { messaging, onMessage } = await loadFirebaseMessagingModule();
 
     if (!messaging) {
@@ -177,7 +194,7 @@ export async function setupForegroundNotificationHandler(
         return;
     }
 
-    return onMessage(messaging, (payload) => {
+    if (!foregroundUnsubscribe) foregroundUnsubscribe = onMessage(messaging, (payload) => {
         console.log('Foreground message received in app:', payload);
 
         // 1. Dispatch custom event so app UI components can render an in-app banner alert
@@ -195,49 +212,18 @@ export async function setupForegroundNotificationHandler(
             }
         }
 
-        // 3. Try standard HTML5 Notification API (for desktop/web browsers)
-        if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-                const orderId = payload.data?.orderId || payload.data?.id || payload.data?.orderNumber;
-                const notificationTag = orderId ? `order-${orderId}` : (payload.data?.tag || `notif-${Date.now()}`);
+        // A single service worker coordinates OS display across all open tabs.
+        const eventId = payload.data?.eventId || payload.data?.notificationId || payload.messageId;
+        navigator.serviceWorker?.ready.then((registration) => {
+            registration.active?.postMessage({ type: 'SHOW_FCM_NOTIFICATION', eventId, payload });
+        }).catch(() => {});
 
-                const notification = new Notification(payload.notification?.title || 'New Notification', {
-                    body: payload.notification?.body || '',
-                    icon: payload.notification?.icon || payload.data?.icon || '/logo192.png',
-                    badge: '/logo192.png',
-                    tag: notificationTag,
-                    requireInteraction: false,
-                    silent: false,
-                    data: payload.data,
-                });
-
-                notification.onclick = (event) => {
-                    event.preventDefault();
-                    const role = (payload.data?.role || payload.data?.panel || '').toLowerCase();
-                    const isDeliveryNewOrder = role === 'delivery' && (payload.data?.type === 'NEW_ORDER' || payload.data?.type === 'NEW_ORDER_REQUEST');
-                    let targetLink = isDeliveryNewOrder ? '/delivery' : (payload.data?.link || '/');
-                    if (!targetLink || targetLink === '/') {
-                        if (role === 'customer' && orderId) {
-                            targetLink = `/orders/${orderId}`;
-                        } else if (role === 'delivery') {
-                            targetLink = '/delivery';
-                        }
-                    }
-                    window.focus();
-                    window.location.href = targetLink;
-                    notification.close();
-                };
-
-                console.log('Foreground notification displayed');
-            } catch (err) {
-                console.warn('HTML5 Notification failed:', err);
-            }
-        }
-
-        if (handler) {
-            handler(payload);
-        }
+        foregroundHandlers.forEach((registeredHandler) => registeredHandler(payload));
     });
+
+    return () => {
+        if (handler) foregroundHandlers.delete(handler);
+    };
 }
 
 /**

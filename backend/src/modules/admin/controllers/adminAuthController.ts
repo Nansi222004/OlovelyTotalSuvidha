@@ -1,84 +1,42 @@
 import { Request, Response } from "express";
 import Admin from "../../../models/Admin";
-import {
-  sendOTP as sendOTPService,
-  verifyOTP as verifyOTPService,
-} from "../../../services/otpService";
 import { generateToken } from "../../../services/jwtService";
 import { asyncHandler } from "../../../utils/asyncHandler";
 
 /**
- * Send OTP to admin mobile number
+ * Admin OTP login was retired. Keep explicit responses for older clients without
+ * touching the shared OTP service used by customers and delivery flows.
  */
 export const sendOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { mobile } = req.body;
-
-  if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
-    return res.status(400).json({
-      success: false,
-      message: "Valid 10-digit mobile number is required",
-    });
-  }
-
-  // Check if admin exists with this mobile
-  const admin = await Admin.findOne({ mobile });
-  if (!admin) {
-    return res.status(404).json({
-      success: false,
-      message: "Admin not found with this mobile number",
-    });
-  }
-
-  // Send OTP - for login, always use default OTP
-  const result = await sendOTPService(mobile, "Admin", true);
-
-  return res.status(200).json({
-    success: true,
-    message: result.message,
+  return res.status(410).json({
+    success: false,
+    message: "Admin OTP login is no longer supported. Please use email and password.",
   });
 });
 
-/**
- * Verify OTP and login admin
- */
 export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { mobile, otp } = req.body;
+  return res.status(410).json({
+    success: false,
+    message: "Admin OTP login is no longer supported. Please use email and password.",
+  });
+});
 
-  if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
-    return res.status(400).json({
-      success: false,
-      message: "Valid 10-digit mobile number is required",
-    });
+/** Authenticate an existing admin with the model's bcrypt comparison method. */
+export const login = asyncHandler(async (req: Request, res: Response) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+  if (!email || !password || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: "Email and password are required" });
   }
 
-  if (!otp || !/^[0-9]{4}$/.test(otp)) {
-    return res.status(400).json({
-      success: false,
-      message: "Valid 4-digit OTP is required",
-    });
+  const admin = await Admin.findOne({ email }).select("+password");
+  const isValid = admin ? await admin.comparePassword(password) : false;
+  if (!admin || !isValid) {
+    return res.status(401).json({ success: false, message: "Invalid email or password" });
   }
 
-  // Verify OTP
-  const isValid = await verifyOTPService(mobile, otp, "Admin");
-  if (!isValid) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid or expired OTP",
-    });
-  }
-
-  // Find admin
-  const admin = await Admin.findOne({ mobile }).select("-password");
-  if (!admin) {
-    return res.status(404).json({
-      success: false,
-      message: "Admin not found",
-    });
-  }
-
-  // Generate JWT token
   const token = generateToken(admin._id.toString(), "Admin", admin.role);
-
   return res.status(200).json({
     success: true,
     message: "Login successful",

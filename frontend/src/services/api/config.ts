@@ -1,8 +1,20 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 
-// Base API URL - adjust based on your backend URL
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
+/**
+ * Accept either supported frontend setting and normalize it to the backend's
+ * mounted `/api/v1` prefix. This prevents `/auth/admin/login` from being sent
+ * to the server root (or `/api`) and falling through to "Route not found".
+ */
+export const normalizeApiBaseUrl = (configuredUrl?: string): string => {
+  const cleanUrl = String(configuredUrl || "http://localhost:5000").trim().replace(/\/+$/, "");
+  if (/\/api\/v\d+$/i.test(cleanUrl)) return cleanUrl;
+  if (/\/api$/i.test(cleanUrl)) return `${cleanUrl}/v1`;
+  return `${cleanUrl}/api/v1`;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL
+);
 
 export type UserPanel = 'admin' | 'seller' | 'delivery' | 'customer';
 

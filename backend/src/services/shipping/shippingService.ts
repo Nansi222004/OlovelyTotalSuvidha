@@ -119,13 +119,24 @@ export async function createEcommerceShipment(
   // Fetch seller pickup details if available
   let pickupDetails;
   if (group.seller) {
-    const seller = await Seller.findById(group.seller).select('storeName address shippingConfig');
+    const seller = await Seller.findById(group.seller).select('storeName address vendorType shippingConfig');
     if (seller) {
+      if (
+        provider.providerId === 'shiprocket' &&
+        (seller.vendorType === 'ECOMMERCE' || seller.vendorType === 'HYBRID') &&
+        (
+          seller.shippingConfig?.shiprocketPickupStatus !== 'ACTIVE' ||
+          !seller.shippingConfig?.shiprocketPickupLocationName
+        )
+      ) {
+        throw new Error('Courier shipment cannot be created until the vendor Shiprocket pickup location is ACTIVE');
+      }
       pickupDetails = {
         sellerId: seller._id.toString(),
         sellerName: seller.storeName,
-        pickupAddress: seller.shippingConfig?.pickupAddress || seller.address,
-        pickupPincode: seller.shippingConfig?.pickupPincode || '110001',
+        pickupAddress: seller.shippingConfig?.pickupAddress || '',
+        pickupPincode: seller.shippingConfig?.pickupPincode || '',
+        pickupLocationName: seller.shippingConfig?.shiprocketPickupLocationName,
       };
     }
   }
@@ -255,20 +266,79 @@ export async function cancelEcommerceShipment(
 /**
  * Handle incoming carrier webhook
  */
-export async function handleShippingWebhook(payload: any, signature?: string) {
-  const provider = getShippingProvider();
+export async function handleShippingWebhook(payload: any, signature?: string, providerId?: string) {
+  const provider = getShippingProvider(providerId);
   const result = await provider.processWebhook(payload, signature);
 
   if (!result.handled || !result.awbNumber || !result.statusUpdate) {
     return result;
   }
 
-  // Find order containing this AWB
+  let eventClaimed = false;
+  if (result.eventId) {
+    const existing: any = await ProcessedWebhookEvent.findOne({ eventId: result.eventId }).lean();
+    if (existing) {
+      const staleBefore = Date.now() - 5 * 60 * 1000;
+      const canReclaim =
+        existing.processingState === 'PROCESSING' &&
+        existing.lockedAt &&
+        new Date(existing.lockedAt).getTime() < staleBefore;
+      if (!canReclaim) {
+        return { ...result, ignoredReason: 'Duplicate webhook event already processed' };
+      }
+      const reclaimed = await ProcessedWebhookEvent.updateOne(
+        { _id: existing._id, processingState: 'PROCESSING', lockedAt: existing.lockedAt },
+        { $set: { lockedAt: new Date() } }
+      );
+      if (reclaimed.modifiedCount !== 1) {
+        return { ...result, ignoredReason: 'Duplicate webhook event is already being processed' };
+      }
+      eventClaimed = true;
+    } else {
+      try {
+        await ProcessedWebhookEvent.create({
+        eventId: result.eventId,
+        provider: provider.providerId,
+        awbNumber: result.awbNumber,
+        orderId: result.orderId,
+        statusUpdate: result.statusUpdate,
+        rawPayload: payload,
+          processingState: 'PROCESSING',
+          lockedAt: new Date(),
+        });
+        eventClaimed = true;
+      } catch (error: any) {
+        if (error?.code === 11000) {
+          return { ...result, ignoredReason: 'Duplicate webhook event is already being processed' };
+        }
+        throw error;
+      }
+    }
+  }
+
+  const completeEvent = async () => {
+    if (!result.eventId || !eventClaimed) return;
+    await ProcessedWebhookEvent.updateOne(
+      { eventId: result.eventId, processingState: 'PROCESSING' },
+      { $set: { processingState: 'COMPLETED', completedAt: new Date() }, $unset: { lockedAt: 1 } }
+    );
+  };
+
+  try {
+
+  // Match only courier fulfillment groups. A QC/local AWB-shaped value must never
+  // allow a carrier callback to mutate local-delivery state.
   const order = await Order.findOne({
-    'fulfillmentGroups.shippingDetails.awbNumber': result.awbNumber,
+    fulfillmentGroups: {
+      $elemMatch: {
+        fulfillmentType: { $in: ['COURIER_SHIPPING', 'THIRD_PARTY_API'] },
+        'shippingDetails.awbNumber': result.awbNumber,
+      },
+    },
   });
 
   if (!order || !order.fulfillmentGroups) {
+    await completeEvent();
     return {
       ...result,
       ignoredReason: `No order found with AWB ${result.awbNumber}`,
@@ -276,7 +346,9 @@ export async function handleShippingWebhook(payload: any, signature?: string) {
   }
 
   const group = order.fulfillmentGroups.find(
-    (g) => g.shippingDetails?.awbNumber === result.awbNumber
+    (g) =>
+      g.shippingDetails?.awbNumber === result.awbNumber &&
+      (g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API')
   );
 
   if (group) {
@@ -288,6 +360,7 @@ export async function handleShippingWebhook(payload: any, signature?: string) {
       Delivered: 'Delivered',
       Cancelled: 'Cancelled',
       Returned: 'Cancelled',
+      'Action Required': 'ActionRequired',
     };
 
     const targetGroupStatus = statusMap[result.statusUpdate] || 'Processing';
@@ -300,19 +373,33 @@ export async function handleShippingWebhook(payload: any, signature?: string) {
       Shipped: 3,
       OutForDelivery: 4,
       Delivered: 5,
+      ActionRequired: 98,
       Cancelled: 99,
     };
 
     const currentWeight = HIERARCHY[group.status] || 0;
     const incomingWeight = HIERARCHY[targetGroupStatus] || 0;
 
-    if (incomingWeight >= currentWeight || group.status === 'Cancelled') {
+    const terminalRegression =
+      (group.status === 'Delivered' && targetGroupStatus !== 'Delivered') ||
+      (group.status === 'Cancelled' && targetGroupStatus !== 'Cancelled');
+
+    if (!terminalRegression && incomingWeight >= currentWeight) {
       group.status = targetGroupStatus;
       if (group.thirdPartyOrderDetails) {
         group.thirdPartyOrderDetails.status = result.statusUpdate;
       }
     } else {
       console.log(`ℹ️ [Webhook] Ignored out-of-order status downgrade on group ${group.groupId} from '${group.status}' to '${targetGroupStatus}'`);
+    }
+
+    group.shippingDetails = group.shippingDetails || {};
+    if (result.courierName) group.shippingDetails.carrier = result.courierName;
+    if (result.trackingUrl) group.shippingDetails.trackingUrl = result.trackingUrl;
+    if (result.estimatedDelivery) group.shippingDetails.estimatedDelivery = result.estimatedDelivery;
+    if (group.thirdPartyOrderDetails) {
+      if (result.shipmentId) group.thirdPartyOrderDetails.shipmentId = result.shipmentId;
+      group.thirdPartyOrderDetails.providerId = 'shiprocket';
     }
 
     // If all groups are delivered, update overall order status
@@ -325,5 +412,18 @@ export async function handleShippingWebhook(payload: any, signature?: string) {
     await order.save();
   }
 
+  await completeEvent();
+
   return result;
+  } catch (error) {
+    // Release only this in-flight claim. A provider retry can then safely process
+    // the callback instead of losing it after a transient database failure.
+    if (result.eventId && eventClaimed) {
+      await ProcessedWebhookEvent.deleteOne({
+        eventId: result.eventId,
+        processingState: 'PROCESSING',
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
 }

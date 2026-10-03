@@ -18,6 +18,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { formatDeliveryAddress } from "../../utils/addressUtils";
 import SupportModal from "../../components/SupportModal";
+import { getFulfillmentTrackingMessage, getOrderTrackingHeader, isCourierGroup } from "../../utils/orderTrackingMessaging";
 
 const TERMINAL_FULFILLMENT_STATUSES = new Set([
   "Delivered",
@@ -937,7 +938,7 @@ export default function OrderDetail() {
 
   const statusConfig: Record<
     string,
-    { title: string; subtitle: string; color: string }
+    { title: string; subtitle: string; color: string; isLocalEta?: boolean }
   > = {
     Received: {
       title: "Order received",
@@ -998,7 +999,8 @@ export default function OrderDetail() {
   };
 
   const displayStatus = getCustomerDisplayStatus(order, orderStatus);
-  const currentStatus = statusConfig[displayStatus] || statusConfig["Received"];
+  const fulfillmentHeader = getOrderTrackingHeader(order, estimatedTime);
+  const currentStatus = fulfillmentHeader || statusConfig[displayStatus] || statusConfig["Received"];
   const showActiveLocalDelivery = localDeliveryState.isActive && socketLocalDeliveryStatus !== "Delivered";
 
   return (
@@ -1086,7 +1088,7 @@ export default function OrderDetail() {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.2 }}>
             <span className="text-sm">{currentStatus.subtitle}</span>
-            {(orderStatus === "Accepted" || orderStatus === "On the way") && (
+            {currentStatus.isLocalEta && (
               <>
                 <span className="w-1 h-1 rounded-full bg-white" />
                 <span className="text-sm text-green-200">On time</span>
@@ -1192,7 +1194,8 @@ export default function OrderDetail() {
             </div>
 
             {order.fulfillmentGroups.map((group: any, idx: number) => {
-              const isEcommerce = group.fulfillmentType === 'COURIER_SHIPPING';
+              const isEcommerce = isCourierGroup(group);
+              const shippingDetails = group.shippingDetails || {};
 
               // Match order items belonging to this fulfillment group
               const groupItems = (order.items || []).filter((orderItem: any) => {
@@ -1251,11 +1254,7 @@ export default function OrderDetail() {
                           </span>
                         </div>
                         <p className="text-[11px] text-neutral-500 mt-0.5">
-                          {isEcommerce
-                            ? (group.courierDetails?.estimatedDays
-                                ? `Estimated Delivery: ${group.courierDetails.estimatedDays} days`
-                                : 'Delivery estimate shown at checkout')
-                            : `Quick local delivery • ${order.estimatedDeliveryTime || '12–15 mins'}`}
+                          {getFulfillmentTrackingMessage(group, order, isEcommerce ? undefined : estimatedTime)}
                         </p>
                       </div>
                     </div>
@@ -1366,11 +1365,11 @@ export default function OrderDetail() {
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div>
                           <span className="text-xs font-semibold text-neutral-800 block">
-                            Courier Partner: {group.courierDetails?.courierName || group.courierDetails?.provider || 'Verified Courier Partner'}
+                            Courier Partner: {shippingDetails.carrier || 'Verified Courier Partner'}
                           </span>
-                          {group.courierDetails?.awbNumber ? (
+                          {shippingDetails.awbNumber ? (
                             <span className="text-[11px] text-neutral-600 font-mono">
-                              AWB: <strong className="text-blue-700">{group.courierDetails.awbNumber}</strong>
+                              AWB: <strong className="text-blue-700">{shippingDetails.awbNumber}</strong>
                             </span>
                           ) : (
                             <span className="text-[11px] text-neutral-500 italic">
@@ -1378,21 +1377,21 @@ export default function OrderDetail() {
                             </span>
                           )}
                         </div>
-                        {group.courierDetails?.trackingNumber && (
+                        {(shippingDetails.trackingNumber || shippingDetails.awbNumber) && (
                           <div className="text-right">
                             <span className="text-[10px] text-neutral-500 block">Tracking ID</span>
                             <span className="text-xs font-mono font-medium text-neutral-700">
-                              {group.courierDetails.trackingNumber}
+                              {shippingDetails.trackingNumber || shippingDetails.awbNumber}
                             </span>
                           </div>
                         )}
                       </div>
 
                       {/* External Tracking Link if provided */}
-                      {group.courierDetails?.trackingUrl && (
+                      {shippingDetails.trackingUrl && (
                         <div className="mt-2">
                           <a
-                            href={group.courierDetails.trackingUrl}
+                            href={shippingDetails.trackingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg border border-blue-200"

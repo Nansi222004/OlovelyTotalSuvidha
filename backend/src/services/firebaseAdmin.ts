@@ -98,6 +98,7 @@ export async function sendPushNotification(
                     body: payload.body,
                     icon: logoIcon,
                     badge: logoIcon,
+                    ...(payload.data?.eventId && { tag: payload.data.eventId }),
                     requireInteraction: true,
                     vibrate: [200, 100, 200, 100, 200, 100, 400],
                 },

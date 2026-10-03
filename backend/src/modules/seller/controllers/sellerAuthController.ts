@@ -224,6 +224,8 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   // Shipping configuration for Ecommerce / Hybrid
   const rawPincode = req.body.shippingConfig?.pickupPincode || req.body.pickupPincode;
   const rawPickupAddress = req.body.shippingConfig?.pickupAddress || req.body.pickupAddress || address;
+  const rawPickupCity = req.body.shippingConfig?.pickupCity || req.body.pickupCity || city;
+  const rawPickupState = req.body.shippingConfig?.pickupState || req.body.pickupState;
 
   if (vendorType === "ECOMMERCE" || vendorType === "HYBRID") {
     if (!rawPincode || !/^[1-9][0-9]{5}$/.test(String(rawPincode).trim())) {
@@ -238,11 +240,25 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
         message: "Pickup/warehouse address is required for Ecommerce shipping configuration",
       });
     }
+    if (!rawPickupCity || String(rawPickupCity).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup city is required for Ecommerce shipping configuration",
+      });
+    }
+    if (!rawPickupState || String(rawPickupState).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup state is required for Ecommerce shipping configuration",
+      });
+    }
   }
 
   const shippingConfig = req.body.shippingConfig ? {
     pickupAddress: rawPickupAddress,
     pickupPincode: rawPincode,
+    pickupCity: rawPickupCity,
+    pickupState: rawPickupState,
     warehouseAddress: req.body.shippingConfig.warehouseAddress || rawPickupAddress,
     returnAddress: req.body.shippingConfig.returnAddress || rawPickupAddress,
     freeShippingThreshold: Number(req.body.shippingConfig.freeShippingThreshold) || 0,
@@ -250,6 +266,8 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   } : (rawPincode || rawPickupAddress) ? {
     pickupAddress: rawPickupAddress,
     pickupPincode: rawPincode,
+    pickupCity: rawPickupCity,
+    pickupState: rawPickupState,
   } : undefined;
 
   // Check if seller already exists

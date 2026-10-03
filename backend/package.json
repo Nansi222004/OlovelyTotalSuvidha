@@ -12,6 +12,8 @@
     "test:integration": "tsx src/scripts/test-frontend-backend-auth.ts",
     "test:invoice-scoping": "tsx src/scripts/testInvoiceChannelAndDeliveryScoping.ts",
     "test:mixed-status-sync": "tsx src/scripts/testMixedOrderStatusSynchronization.ts",
+    "test:three-issues": "node scripts/runTypeScriptTest.cjs src/scripts/testThreeIssueFixes.ts",
+    "test:shiprocket-integration": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketIntegration.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
     "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
     "test:pos-isolated": "tsx src/scripts/testPosCheckoutIsolated.ts",

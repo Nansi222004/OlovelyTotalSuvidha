@@ -46,10 +46,14 @@ export interface RegisterData {
   shippingConfig?: {
     pickupAddress?: string;
     pickupPincode?: string;
+    pickupCity?: string;
+    pickupState?: string;
     returnAddress?: string;
   };
   pickupPincode?: string;
   pickupAddress?: string;
+  pickupCity?: string;
+  pickupState?: string;
 }
 
 export interface RegisterResponse {

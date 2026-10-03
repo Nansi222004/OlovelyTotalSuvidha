@@ -4,6 +4,11 @@ export interface ApiResponse<T> {
   success: boolean;
   message: string;
   data: T;
+  pickupProvisioning?: {
+    required: boolean;
+    status: "NOT_REQUIRED" | "PENDING" | "PROVISIONING" | "ACTIVE" | "FAILED";
+    message: string;
+  };
 }
 
 export interface Seller {
@@ -48,10 +53,18 @@ export interface Seller {
     warehouseAddress?: string;
     pickupAddress?: string;
     pickupPincode?: string;
+    pickupCity?: string;
+    pickupState?: string;
     returnAddress?: string;
     defaultCourier?: string;
     freeShippingThreshold?: number;
     flatShippingFee?: number;
+    shiprocketPickupLocationId?: string;
+    shiprocketPickupLocationName?: string;
+    shiprocketPickupStatus?: "NOT_REQUIRED" | "PENDING" | "PROVISIONING" | "ACTIVE" | "FAILED";
+    shiprocketPickupLastError?: string;
+    shiprocketPickupAddressFingerprint?: string;
+    shiprocketPickupLastSyncedAt?: string;
   };
   createdAt?: string;
   updatedAt?: string;
@@ -133,6 +146,13 @@ export const updateSellerStatus = async (
     `/sellers/${id}/status`,
     { status }
   );
+  return response.data;
+};
+
+export const retrySellerPickupProvisioning = async (
+  id: string
+): Promise<ApiResponse<Seller>> => {
+  const response = await api.post<ApiResponse<Seller>>(`/sellers/${id}/courier-pickup/retry`);
   return response.data;
 };
 
