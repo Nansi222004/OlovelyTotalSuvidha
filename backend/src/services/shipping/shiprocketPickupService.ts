@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import Seller, { ISeller } from '../../models/Seller';
+import ShiprocketPickupRetirement from '../../models/ShiprocketPickupRetirement';
 import { shiprocketHttpClient } from './shiprocketHttpClient';
 
 export type PickupProvisioningStatus =
@@ -7,7 +8,12 @@ export type PickupProvisioningStatus =
   | 'PENDING'
   | 'PROVISIONING'
   | 'ACTIVE'
-  | 'FAILED';
+  | 'FAILED'
+  | 'RETIRING'
+  | 'RETRY_PENDING'
+  | 'RETIRED';
+
+export type PickupCleanupStatus = 'NOT_REQUIRED' | 'RETIRED';
 
 export interface ShiprocketPickupAddress {
   id?: string | number;
@@ -20,6 +26,9 @@ export interface ShiprocketPickupAddress {
   state?: string;
   country?: string;
   pin_code?: string;
+  status?: string | number | boolean;
+  is_primary?: boolean | number;
+  is_primary_location?: boolean | number;
 }
 
 export interface ShiprocketPickupApi {
@@ -39,6 +48,26 @@ export interface PickupProvisioningResult {
   locationId?: string;
   locationName?: string;
   message: string;
+}
+
+export interface PickupCleanupResult {
+  required: boolean;
+  status: PickupCleanupStatus;
+  alreadyRetired?: boolean;
+  remoteLocationFound?: boolean;
+  message: string;
+}
+
+export class ShiprocketPickupCleanupError extends Error {
+  public readonly statusCode: number;
+  public readonly apiCode: string;
+
+  constructor(apiCode: string, message: string, statusCode = 409) {
+    super(message);
+    this.name = 'ShiprocketPickupCleanupError';
+    this.apiCode = apiCode;
+    this.statusCode = statusCode;
+  }
 }
 
 const normalize = (value: unknown): string => String(value || '').trim();
@@ -127,6 +156,202 @@ function getRemoteId(remote: ShiprocketPickupAddress): string {
   return normalize(remote.pickup_id || remote.id || remote.pickup_code || remote.pickup_location);
 }
 
+function remoteAddressFingerprint(remote: ShiprocketPickupAddress): string {
+  return getPickupAddressFingerprint({
+    address: normalize(remote.address),
+    address_2: normalize(remote.address_2),
+    city: normalize(remote.city),
+    state: normalize(remote.state),
+    country: normalize(remote.country || 'India'),
+    pin_code: normalize(remote.pin_code),
+  });
+}
+
+const RESERVED_PICKUP_NAMES = new Set(['home', 'primary', 'default', 'admin', 'admin warehouse', 'main warehouse']);
+
+function isPrimaryOrAdminPickup(remote: ShiprocketPickupAddress | undefined, name: string): boolean {
+  const normalizedName = normalizeComparable(remote?.pickup_location || name);
+  return Boolean(
+    remote?.is_primary === true || remote?.is_primary === 1 ||
+    remote?.is_primary_location === true || remote?.is_primary_location === 1 ||
+    RESERVED_PICKUP_NAMES.has(normalizedName)
+  );
+}
+
+async function markCleanupPending(sellerId: string, message: string): Promise<void> {
+  await Seller.updateOne(
+    { _id: sellerId },
+    {
+      $set: {
+        'shippingConfig.shiprocketPickupStatus': 'RETRY_PENDING',
+        'shippingConfig.shiprocketPickupLastError': message,
+      },
+      $unset: { 'shippingConfig.shiprocketPickupCleanupStartedAt': 1 },
+    }
+  );
+}
+
+/**
+ * Retires a seller-owned Shiprocket pickup before permanent seller deletion.
+ *
+ * Shiprocket's documented pickup-address API currently supports list and create only;
+ * it does not expose a supported delete/deactivate operation. We therefore verify the
+ * stored ID against the deterministic seller name, refuse primary/admin targets, write
+ * a durable local audit tombstone, and make the seller pickup ineligible for shipment.
+ */
+export async function cleanupSellerShiprocketPickup(
+  sellerInput: Pick<ISeller, '_id' | 'vendorType' | 'isPlatform' | 'shippingConfig'>,
+  api: ShiprocketPickupApi = shiprocketPickupApi
+): Promise<PickupCleanupResult> {
+  const sellerId = String(sellerInput._id);
+  if (!isShiprocketPickupRequired(sellerInput.vendorType)) {
+    return {
+      required: false,
+      status: 'NOT_REQUIRED',
+      message: 'Courier pickup cleanup is not required for Quick Commerce vendors.',
+    };
+  }
+
+  const expectedName = buildShiprocketPickupLocationName(sellerId);
+  const initialConfig = sellerInput.shippingConfig;
+
+  if (sellerInput.isPlatform || isPrimaryOrAdminPickup(undefined, initialConfig?.shiprocketPickupLocationName || '')) {
+    throw new ShiprocketPickupCleanupError(
+      'SHIPROCKET_PICKUP_PROTECTED',
+      'Seller deletion was stopped because the courier pickup target is a protected platform location.'
+    );
+  }
+  if (
+    initialConfig?.shiprocketPickupLocationName &&
+    normalizeComparable(initialConfig.shiprocketPickupLocationName) !== normalizeComparable(expectedName)
+  ) {
+    throw new ShiprocketPickupCleanupError(
+      'SHIPROCKET_PICKUP_IDENTITY_MISMATCH',
+      'Seller deletion was stopped because the courier pickup identity did not match this vendor.'
+    );
+  }
+  if (initialConfig?.shiprocketPickupStatus === 'RETIRED') {
+    return {
+      required: true,
+      status: 'RETIRED',
+      alreadyRetired: true,
+      message: 'Courier pickup was already retired locally.',
+    };
+  }
+
+  const leaseExpiry = new Date(Date.now() - 5 * 60 * 1000);
+  const leasedSeller = await Seller.findOneAndUpdate(
+    {
+      _id: sellerId,
+      $or: [
+        { 'shippingConfig.shiprocketPickupStatus': { $ne: 'RETIRING' } },
+        { 'shippingConfig.shiprocketPickupCleanupStartedAt': { $lt: leaseExpiry } },
+      ],
+    },
+    {
+      $set: {
+        'shippingConfig.shiprocketPickupStatus': 'RETIRING',
+        'shippingConfig.shiprocketPickupCleanupStartedAt': new Date(),
+      },
+      $unset: { 'shippingConfig.shiprocketPickupLastError': 1 },
+    },
+    { new: true }
+  );
+
+  if (!leasedSeller) {
+    throw new ShiprocketPickupCleanupError(
+      'SHIPROCKET_PICKUP_CLEANUP_IN_PROGRESS',
+      'Courier pickup cleanup is already in progress. Please retry shortly.',
+      409
+    );
+  }
+
+  const config = leasedSeller.shippingConfig || initialConfig;
+  const storedId = normalize(config?.shiprocketPickupLocationId);
+  try {
+    const locations = await api.listPickupLocations();
+    const remoteById = storedId
+      ? locations.find((location) => getRemoteId(location) === storedId)
+      : undefined;
+    const remoteByName = locations.find(
+      (location) => normalizeComparable(location.pickup_location) === normalizeComparable(expectedName)
+    );
+
+    if (storedId && !remoteById && remoteByName) {
+      throw new ShiprocketPickupCleanupError(
+        'SHIPROCKET_PICKUP_IDENTITY_MISMATCH',
+        'Seller deletion was stopped because the stored courier pickup ID did not match this vendor.'
+      );
+    }
+
+    const remote = remoteById || (!storedId ? remoteByName : undefined);
+    if (remote) {
+      if (
+        normalizeComparable(remote.pickup_location) !== normalizeComparable(expectedName) ||
+        isPrimaryOrAdminPickup(remote, expectedName)
+      ) {
+        throw new ShiprocketPickupCleanupError(
+          'SHIPROCKET_PICKUP_PROTECTED',
+          'Seller deletion was stopped because the courier pickup target is protected or belongs to another vendor.'
+        );
+      }
+      if (
+        config?.shiprocketPickupAddressFingerprint &&
+        remoteAddressFingerprint(remote) !== config.shiprocketPickupAddressFingerprint
+      ) {
+        throw new ShiprocketPickupCleanupError(
+          'SHIPROCKET_PICKUP_ADDRESS_MISMATCH',
+          'Seller deletion was stopped because the courier pickup address did not match the synchronized vendor address.'
+        );
+      }
+    }
+
+    const retiredAt = new Date();
+    await ShiprocketPickupRetirement.updateOne(
+      { sellerId: sellerInput._id },
+      {
+        $setOnInsert: {
+          sellerId: sellerInput._id,
+          pickupLocationId: storedId || (remote ? getRemoteId(remote) : undefined),
+          pickupLocationName: expectedName,
+          addressFingerprint: config?.shiprocketPickupAddressFingerprint,
+          retiredAt,
+          remoteRemovalSupported: false,
+          reason: 'SELLER_DELETED',
+        },
+      },
+      { upsert: true }
+    );
+
+    await Seller.updateOne(
+      { _id: sellerId },
+      {
+        $set: {
+          'shippingConfig.shiprocketPickupStatus': 'RETIRED',
+          'shippingConfig.shiprocketPickupRetiredAt': retiredAt,
+          'shippingConfig.shiprocketPickupLastError':
+            'Shiprocket does not provide a supported pickup-address removal API; this vendor pickup is retired locally and cannot be used for new shipments.',
+        },
+        $unset: { 'shippingConfig.shiprocketPickupCleanupStartedAt': 1 },
+      }
+    );
+
+    return {
+      required: true,
+      status: 'RETIRED',
+      remoteLocationFound: Boolean(remote),
+      message: 'Courier pickup retired locally; remote address removal is not supported by the documented Shiprocket API.',
+    };
+  } catch (error) {
+    const publicMessage = error instanceof ShiprocketPickupCleanupError
+      ? error.message
+      : 'Seller deletion is pending because the courier pickup could not be verified. Please retry when the courier service is available.';
+    await markCleanupPending(sellerId, publicMessage);
+    if (error instanceof ShiprocketPickupCleanupError) throw error;
+    throw new ShiprocketPickupCleanupError('SHIPROCKET_PICKUP_CLEANUP_PENDING', publicMessage, 503);
+  }
+}
+
 export const shiprocketPickupApi: ShiprocketPickupApi = {
   async listPickupLocations() {
     const response = await shiprocketHttpClient.request<any>({
@@ -196,6 +421,17 @@ export async function provisionShiprocketPickupLocation(
       }
     );
     return { required: false, status: 'NOT_REQUIRED', message: 'Courier pickup is not required for Quick Commerce vendors.' };
+  }
+
+  if (['RETIRING', 'RETRY_PENDING', 'RETIRED'].includes(seller.shippingConfig?.shiprocketPickupStatus || '')) {
+    const status = seller.shippingConfig!.shiprocketPickupStatus as 'RETIRING' | 'RETRY_PENDING' | 'RETIRED';
+    return {
+      required: true,
+      status,
+      locationId: seller.shippingConfig?.shiprocketPickupLocationId,
+      locationName: seller.shippingConfig?.shiprocketPickupLocationName,
+      message: 'Courier pickup provisioning is disabled while seller pickup cleanup is pending or complete.',
+    };
   }
 
   let payload: Record<string, string>;

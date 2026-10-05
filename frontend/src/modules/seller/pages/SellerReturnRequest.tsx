@@ -5,6 +5,7 @@ import {
   getReturnRequestById,
   updateReturnStatus,
   confirmSellerReceipt,
+  rejectSellerReturnQc,
   ReturnRequest,
   ReturnRequestDetail,
   GetReturnRequestsParams,
@@ -197,12 +198,16 @@ export default function SellerReturnRequest() {
     }
     setSubmittingAction(true);
     try {
-      const res = await updateReturnStatus(selectedReturn.id, {
-        status: 'Rejected',
-        reason: rejectionReasonInput.trim(),
-      });
+      const res = selectedReturn.status === 'Handed To Seller'
+        ? await rejectSellerReturnQc(selectedReturn.id, rejectionReasonInput.trim())
+        : await updateReturnStatus(selectedReturn.id, {
+            status: 'Rejected',
+            reason: rejectionReasonInput.trim(),
+          });
       if (res.success) {
-        showToast('Return request rejected.', 'info');
+        showToast(selectedReturn.status === 'Handed To Seller'
+          ? 'Product verification rejected. No refund or replacement was released.'
+          : 'Return request rejected.', 'info');
         setShowRejectModal(false);
         setShowDetailModal(false);
         setRejectionReasonInput('');
@@ -217,14 +222,14 @@ export default function SellerReturnRequest() {
     }
   };
 
-  // Handle Confirm Receipt Action
+  // Seller product verification after the physical reverse leg has completed.
   const handleConfirmReceipt = async () => {
     if (!selectedReturn) return;
     setSubmittingAction(true);
     try {
       const res = await confirmSellerReceipt(selectedReturn.id);
       if (res.success) {
-        showToast('✅ Receipt confirmed! Return marked Completed and customer refund processed.', 'success');
+        showToast('Product verification approved. Refund or replacement fulfillment has started.', 'success');
         setShowConfirmReceiptModal(false);
         setShowDetailModal(false);
         fetchReturnRequests();
@@ -244,6 +249,7 @@ export default function SellerReturnRequest() {
         return 'bg-amber-100 text-amber-800 border border-amber-200';
       case 'Approved':
       case 'Pickup Pending':
+      case 'Reverse Shipment Created':
         return 'bg-blue-100 text-blue-800 border border-blue-200';
       case 'Delivery Partner Assigned':
         return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
@@ -252,10 +258,16 @@ export default function SellerReturnRequest() {
       case 'In Transit':
         return 'bg-sky-100 text-sky-800 border border-sky-200';
       case 'Handed To Seller':
+      case 'QC Pending':
         return 'bg-purple-100 text-purple-800 border border-purple-200';
+      case 'Replacement Ready':
+      case 'Forward Shipment Created':
+      case 'Replacement Shipped':
+        return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
       case 'Completed':
         return 'bg-green-100 text-green-800 border border-green-200';
       case 'Rejected':
+      case 'QC Rejected':
         return 'bg-red-100 text-red-800 border border-red-200';
       default:
         return 'bg-neutral-100 text-neutral-700 border border-neutral-200';
@@ -341,6 +353,12 @@ export default function SellerReturnRequest() {
                   <option value="Picked Up">Picked Up</option>
                   <option value="In Transit">In Transit</option>
                   <option value="Handed To Seller">Handed To Seller</option>
+                  <option value="QC Pending">QC Pending</option>
+                  <option value="QC Rejected">QC Rejected</option>
+                  <option value="Reverse Shipment Created">Reverse Shipment Created</option>
+                  <option value="Replacement Ready">Replacement Ready</option>
+                  <option value="Forward Shipment Created">Forward Shipment Created</option>
+                  <option value="Replacement Shipped">Replacement Shipped</option>
                   <option value="Completed">Completed</option>
                 </select>
               </div>
@@ -551,7 +569,7 @@ export default function SellerReturnRequest() {
                               </>
                             )}
 
-                            {/* Handed to Seller Action: Confirm Receipt */}
+                            {/* Handed to Seller Action: product verification/QC */}
                             {reqItem.status === 'Handed To Seller' && (
                               <button
                                 type="button"
@@ -561,7 +579,7 @@ export default function SellerReturnRequest() {
                                 }}
                                 className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow-xs transition-colors"
                               >
-                                ✅ Confirm Receipt
+                                Review QC
                               </button>
                             )}
                           </div>
@@ -786,13 +804,22 @@ export default function SellerReturnRequest() {
                 </>
               )}
               {selectedReturn.status === 'Handed To Seller' && (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmReceiptModal(true)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
-                >
-                  ✅ Confirm Receipt
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setRejectionReasonInput(''); setShowRejectModal(true); }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                  >
+                    Reject QC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmReceiptModal(true)}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                  >
+                    Approve QC
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -883,13 +910,17 @@ export default function SellerReturnRequest() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-neutral-200">
             <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-              <span>🤝</span> Confirm Physical Receipt & Issue Refund
+              <span>🤝</span> Approve Product Verification
             </h3>
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed space-y-1">
               <p className="font-bold text-sm">Product: {selectedReturn.product || 'Product'}</p>
-              <p>Refund Amount: <span className="font-bold">₹{Number(selectedReturn.total || (selectedReturn as any).amount || 0).toFixed(2)}</span></p>
+              {selectedReturn.requestType !== 'EXCHANGE' && (
+                <p>Refund Amount: <span className="font-bold">₹{Number(selectedReturn.total || (selectedReturn as any).amount || 0).toFixed(2)}</span></p>
+              )}
               <p className="mt-2 text-neutral-700">
-                Confirming receipt indicates that you have physically received and inspected the returned product. This will mark the return as <span className="font-bold">Completed</span> and release the customer's refund.
+                Approval confirms that the returned product passed inspection. {selectedReturn.requestType === 'EXCHANGE'
+                  ? 'The replacement shipment can only be created after this approval.'
+                  : "The customer's refund will be released according to the existing settlement rules."}
               </p>
             </div>
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -907,7 +938,7 @@ export default function SellerReturnRequest() {
                 onClick={handleConfirmReceipt}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-2"
               >
-                {submittingAction ? 'Processing...' : 'Confirm & Issue Refund'}
+                {submittingAction ? 'Processing...' : 'Approve QC'}
               </button>
             </div>
           </div>

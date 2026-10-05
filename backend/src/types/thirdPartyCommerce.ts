@@ -32,9 +32,14 @@ export interface ShipmentItem {
   quantity: number;
   unitPrice: number;
   weightKg?: number;
+  variationId?: string;
+  hsnCode?: string;
+  taxRate?: number;
+  discount?: number;
 }
 
 export interface ShipmentRequest {
+  source: 'CUSTOMER_ORDER' | 'EXCHANGE_REPLACEMENT';
   idempotencyKey: string;
   orderId: string;
   fulfillmentGroupId: string;
@@ -54,10 +59,13 @@ export interface ShipmentRequest {
     sellerName: string;
     pickupAddress: string;
     pickupPincode: string;
+    pickupLocationId?: string;
     pickupLocationName?: string;
   };
   items: ShipmentItem[];
   subtotal: number;
+  shippingCharges?: number;
+  totalDiscount?: number;
   totalWeightKg?: number;
   dimensionsCm?: { length: number; width: number; height: number };
 }
@@ -97,24 +105,46 @@ export interface ReturnRequest {
   item: {
     productId: string;
     productName: string;
+    sku: string;
     quantity: number;
+    unitPrice: number;
+    hsnCode?: string;
+    weightKg?: number;
+    dimensionsCm?: { length?: number; width?: number; height?: number };
   };
   pickupAddress: {
+    customerName: string;
+    email?: string;
+    phone: string;
     address: string;
+    address2?: string;
     city: string;
     state?: string;
+    country?: string;
     pincode: string;
   };
-  destinationAddress?: {
+  destinationAddress: {
+    name: string;
+    email: string;
+    phone: string;
     address: string;
+    address2?: string;
+    city: string;
+    state: string;
+    country?: string;
     pincode: string;
   };
+  paymentMethod: 'PREPAID' | 'COD';
+  subtotal: number;
   reason: string;
+  idempotencyKey: string;
 }
 
 export interface ExternalReturnResult {
   returnId: string;
-  returnAwbNumber: string;
+  externalOrderId: string;
+  shipmentId: string;
+  returnAwbNumber?: string;
   carrier: string;
   status: string;
   estimatedPickupDate?: Date;

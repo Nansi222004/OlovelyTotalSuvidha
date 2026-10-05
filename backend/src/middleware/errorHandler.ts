@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 export interface CustomError extends Error {
   statusCode?: number;
   code?: number;
+  apiCode?: string;
   keyValue?: Record<string, any>;
   name: string;
 }
@@ -43,6 +44,7 @@ export const errorHandler = (
 
   res.status(statusCode).json({
     success: false,
+    ...(err.apiCode && { code: err.apiCode }),
     message,
     error: {
       statusCode,

@@ -4,12 +4,18 @@ import path from 'node:path';
 import Order from '../models/Order';
 import Seller from '../models/Seller';
 import ProcessedWebhookEvent from '../models/ProcessedWebhookEvent';
+import ShiprocketPickupRetirement from '../models/ShiprocketPickupRetirement';
+import Return from '../models/Return';
 import { handleWebhook } from '../modules/shipping/controllers/shippingWebhookController';
-import { handleShippingWebhook } from '../services/shipping/shippingService';
+import { getActiveSellerShiprocketPickupName, handleShippingWebhook } from '../services/shipping/shippingService';
 import { shiprocketProvider } from '../services/shipping/shiprocketProvider';
 import {
   buildShiprocketPickupLocationName,
+  buildShiprocketPickupPayload,
+  cleanupSellerShiprocketPickup,
+  getPickupAddressFingerprint,
   provisionShiprocketPickupLocation,
+  ShiprocketPickupCleanupError,
   ShiprocketPickupApi,
 } from '../services/shipping/shiprocketPickupService';
 
@@ -25,6 +31,8 @@ const originalEventDeleteOne = ProcessedWebhookEvent.deleteOne;
 const originalSellerFindById = Seller.findById;
 const originalSellerUpdateOne = Seller.updateOne;
 const originalSellerFindOneAndUpdate = Seller.findOneAndUpdate;
+const originalRetirementUpdateOne = ShiprocketPickupRetirement.updateOne;
+const originalReturnFindOne = Return.findOne;
 const originalWebhookToken = process.env.SHIPROCKET_WEBHOOK_TOKEN;
 
 const validPayload = {
@@ -87,6 +95,7 @@ function installWebhookDb(orderFactory: () => any) {
     if (order) order.save = async () => { saves += 1; };
     return order;
   };
+  (Return.findOne as any) = async () => null;
   return { processed, get saves() { return saves; } };
 }
 
@@ -204,11 +213,17 @@ function installSellerDb(initial: any) {
   (Seller.findById as any) = async () => seller;
   (Seller.updateOne as any) = async (_filter: any, update: any) => { applyUpdate(update); return { modifiedCount: 1 }; };
   (Seller.findOneAndUpdate as any) = async (_filter: any, update: any) => {
-    if (seller.shippingConfig?.shiprocketPickupStatus === 'PROVISIONING') return null;
+    const nextStatus = update.$set?.['shippingConfig.shiprocketPickupStatus'];
+    if (seller.shippingConfig?.shiprocketPickupStatus === nextStatus && ['PROVISIONING', 'RETIRING'].includes(nextStatus)) return null;
     applyUpdate(update);
     return seller;
   };
-  return seller;
+  const retirements: any[] = [];
+  (ShiprocketPickupRetirement.updateOne as any) = async (_filter: any, update: any) => {
+    if (retirements.length === 0) retirements.push({ ...update.$setOnInsert });
+    return { acknowledged: true, upsertedCount: retirements.length === 1 ? 1 : 0 };
+  };
+  return Object.assign(seller, { __retirements: retirements });
 }
 
 const completeSeller = (vendorType: string, suffix: string) => ({
@@ -229,6 +244,28 @@ function pickupApi(existing: any[] = [], failCreate = false) {
     },
   };
   return { api, calls };
+}
+
+function activeCleanupSeller(vendorType: 'ECOMMERCE' | 'HYBRID', suffix: string) {
+  const seller = completeSeller(vendorType, suffix);
+  const payload = buildShiprocketPickupPayload(seller as any);
+  seller.shippingConfig = {
+    ...seller.shippingConfig,
+    shiprocketPickupLocationId: `PICKUP-${suffix}`,
+    shiprocketPickupLocationName: payload.pickup_location,
+    shiprocketPickupStatus: 'ACTIVE',
+    shiprocketPickupAddressFingerprint: getPickupAddressFingerprint(payload),
+  } as any;
+  return seller;
+}
+
+function remoteFor(seller: any, overrides: Record<string, unknown> = {}) {
+  return {
+    id: seller.shippingConfig.shiprocketPickupLocationId,
+    pickup_location: seller.shippingConfig.shiprocketPickupLocationName,
+    address: '12 Test Road', address_2: '', city: 'Pune', state: 'Maharashtra', country: 'India', pin_code: '411001',
+    ...overrides,
+  };
 }
 
 test('QUICK_COMMERCE approval makes zero pickup API calls', async () => {
@@ -329,6 +366,158 @@ test('changed vendor address never creates a duplicate pickup location', async (
   assert.equal(mock.calls.create, 0);
 });
 
+for (const [vendorType, suffix] of [['ECOMMERCE', '010'], ['HYBRID', '011']] as const) {
+  test(`${vendorType} deletion retires its verified pickup exactly once`, async () => {
+    const seller = installSellerDb(activeCleanupSeller(vendorType, suffix));
+    const mock = pickupApi([remoteFor(seller)]);
+    const result = await cleanupSellerShiprocketPickup(seller, mock.api);
+    assert.equal(result.status, 'RETIRED');
+    assert.equal(mock.calls.list, 1);
+    assert.equal(mock.calls.create, 0);
+    assert.equal(seller.shippingConfig.shiprocketPickupStatus, 'RETIRED');
+    assert.equal(seller.__retirements.length, 1);
+    assert.equal(seller.__retirements[0].pickupLocationId, `PICKUP-${suffix}`);
+  });
+}
+
+test('Quick Commerce deletion makes no Shiprocket cleanup call', async () => {
+  const seller = installSellerDb(completeSeller('QUICK_COMMERCE', '012'));
+  const mock = pickupApi();
+  const result = await cleanupSellerShiprocketPickup(seller, mock.api);
+  assert.equal(result.status, 'NOT_REQUIRED');
+  assert.deepEqual(mock.calls, { list: 0, create: 0 });
+});
+
+test('platform/admin pickup cleanup is rejected before any remote call', async () => {
+  const input: any = activeCleanupSeller('ECOMMERCE', '013');
+  input.isPlatform = true;
+  const seller = installSellerDb(input);
+  const mock = pickupApi([remoteFor(seller, { is_primary: 1 })]);
+  await assert.rejects(
+    cleanupSellerShiprocketPickup(seller, mock.api),
+    (error: any) => error instanceof ShiprocketPickupCleanupError && error.apiCode === 'SHIPROCKET_PICKUP_PROTECTED'
+  );
+  assert.equal(mock.calls.list, 0);
+});
+
+test('remote primary pickup is rejected even when its name looks vendor-owned', async () => {
+  const seller = installSellerDb(activeCleanupSeller('ECOMMERCE', '020'));
+  const mock = pickupApi([remoteFor(seller, { is_primary_location: 1 })]);
+  await assert.rejects(
+    cleanupSellerShiprocketPickup(seller, mock.api),
+    (error: any) => error.apiCode === 'SHIPROCKET_PICKUP_PROTECTED'
+  );
+  assert.equal(seller.__retirements.length, 0);
+  assert.equal(seller.shippingConfig.shiprocketPickupStatus, 'RETRY_PENDING');
+});
+
+test('wrong stored pickup ID is rejected without touching another vendor pickup', async () => {
+  const seller = installSellerDb(activeCleanupSeller('ECOMMERCE', '014'));
+  seller.shippingConfig.shiprocketPickupLocationId = 'WRONG-ID';
+  const other = { ...remoteFor(seller), id: 'RIGHT-ID' };
+  const mock = pickupApi([other, { id: 'OTHER-ID', pickup_location: 'OLOVELY-OTHERSELLER000000000001' }]);
+  await assert.rejects(
+    cleanupSellerShiprocketPickup(seller, mock.api),
+    (error: any) => error.apiCode === 'SHIPROCKET_PICKUP_IDENTITY_MISMATCH'
+  );
+  assert.equal(mock.calls.list, 1);
+  assert.equal(mock.calls.create, 0);
+  assert.equal(seller.__retirements.length, 0);
+  assert.equal(seller.shippingConfig.shiprocketPickupStatus, 'RETRY_PENDING');
+});
+
+test('already-retired pickup is idempotent and makes no duplicate request', async () => {
+  const input: any = activeCleanupSeller('ECOMMERCE', '015');
+  input.shippingConfig.shiprocketPickupStatus = 'RETIRED';
+  const seller = installSellerDb(input);
+  const mock = pickupApi([remoteFor(seller)]);
+  const result = await cleanupSellerShiprocketPickup(seller, mock.api);
+  assert.equal(result.alreadyRetired, true);
+  assert.deepEqual(mock.calls, { list: 0, create: 0 });
+});
+
+test('already-absent remote pickup retires locally without inventing a delete call', async () => {
+  const seller = installSellerDb(activeCleanupSeller('ECOMMERCE', '021'));
+  const mock = pickupApi([]);
+  const result = await cleanupSellerShiprocketPickup(seller, mock.api);
+  assert.equal(result.status, 'RETIRED');
+  assert.equal(result.remoteLocationFound, false);
+  assert.deepEqual(mock.calls, { list: 1, create: 0 });
+  assert.equal(seller.__retirements[0].pickupLocationId, 'PICKUP-021');
+});
+
+test('Shiprocket verification outage leaves seller retryable and blocks deletion', async () => {
+  const seller = installSellerDb(activeCleanupSeller('HYBRID', '016'));
+  const api: ShiprocketPickupApi = {
+    async listPickupLocations() { throw new Error('simulated outage with sensitive upstream detail'); },
+    async createPickupLocation() { throw new Error('not used'); },
+  };
+  await assert.rejects(
+    cleanupSellerShiprocketPickup(seller, api),
+    (error: any) => error.apiCode === 'SHIPROCKET_PICKUP_CLEANUP_PENDING' && error.statusCode === 503
+  );
+  assert.equal(seller.shippingConfig.shiprocketPickupStatus, 'RETRY_PENDING');
+  assert.doesNotMatch(seller.shippingConfig.shiprocketPickupLastError, /sensitive upstream detail/);
+  assert.equal(seller.__retirements.length, 0);
+});
+
+test('remote address mismatch fails safely without retirement', async () => {
+  const seller = installSellerDb(activeCleanupSeller('ECOMMERCE', '017'));
+  const mock = pickupApi([remoteFor(seller, { address: 'Different Address' })]);
+  await assert.rejects(
+    cleanupSellerShiprocketPickup(seller, mock.api),
+    (error: any) => error.apiCode === 'SHIPROCKET_PICKUP_ADDRESS_MISMATCH'
+  );
+  assert.equal(seller.__retirements.length, 0);
+  assert.equal(mock.calls.create, 0);
+});
+
+test('second cleanup after success is a no-op', async () => {
+  const seller = installSellerDb(activeCleanupSeller('ECOMMERCE', '018'));
+  const mock = pickupApi([remoteFor(seller)]);
+  await cleanupSellerShiprocketPickup(seller, mock.api);
+  await cleanupSellerShiprocketPickup(seller, mock.api);
+  assert.equal(mock.calls.list, 1);
+  assert.equal(seller.__retirements.length, 1);
+});
+
+test('shipment pickup guard rejects deleted, retired, Quick Commerce, and mismatched sellers', () => {
+  const active: any = activeCleanupSeller('ECOMMERCE', '019');
+  assert.equal(getActiveSellerShiprocketPickupName(active), active.shippingConfig.shiprocketPickupLocationName);
+  assert.throws(() => getActiveSellerShiprocketPickupName(null), /no longer exists/);
+  const retired = { ...active, shippingConfig: { ...active.shippingConfig, shiprocketPickupStatus: 'RETIRED' } };
+  assert.throws(() => getActiveSellerShiprocketPickupName(retired), /ACTIVE and verified/);
+  const quick = { ...active, vendorType: 'QUICK_COMMERCE' };
+  assert.throws(() => getActiveSellerShiprocketPickupName(quick), /Ecommerce or Hybrid/);
+  const wrongName = { ...active, shippingConfig: { ...active.shippingConfig, shiprocketPickupLocationName: 'Home' } };
+  assert.throws(() => getActiveSellerShiprocketPickupName(wrongName), /pickup identity is invalid/);
+});
+
+test('retired seller cannot be reprovisioned by the existing retry flow', async () => {
+  const input: any = activeCleanupSeller('ECOMMERCE', '022');
+  input.shippingConfig.shiprocketPickupStatus = 'RETIRED';
+  installSellerDb(input);
+  const mock = pickupApi();
+  const result = await provisionShiprocketPickupLocation(input._id, mock.api);
+  assert.equal(result.status, 'RETIRED');
+  assert.deepEqual(mock.calls, { list: 0, create: 0 });
+});
+
+test('admin and self-delete controllers use the same centralized cleanup service', () => {
+  const adminSource = fs.readFileSync(path.resolve(__dirname, '../modules/seller/controllers/sellerController.ts'), 'utf8');
+  const selfSource = fs.readFileSync(path.resolve(__dirname, '../modules/seller/controllers/sellerAuthController.ts'), 'utf8');
+  assert.match(adminSource, /await cleanupSellerShiprocketPickup\(seller\)/);
+  assert.match(selfSource, /await cleanupSellerShiprocketPickup\(seller\)/);
+  assert.ok(adminSource.indexOf('cleanupSellerShiprocketPickup(seller)') < adminSource.indexOf('Seller.findByIdAndDelete(id)'));
+  assert.ok(selfSource.indexOf('cleanupSellerShiprocketPickup(seller)') < selfSource.indexOf('Seller.findByIdAndDelete(sellerId)'));
+});
+
+test('pickup integration contains no invented remote delete/deactivate endpoint', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../services/shipping/shiprocketPickupService.ts'), 'utf8');
+  assert.doesNotMatch(source, /method:\s*['"]DELETE['"]/);
+  assert.doesNotMatch(source, /settings\/company\/(delete|deactivate|archive)/i);
+});
+
 test('credentials and bearer tokens are neither logged nor returned by pickup code', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../services/shipping/shiprocketPickupService.ts'), 'utf8');
   assert.doesNotMatch(source, /console\.(log|error|warn)/);
@@ -354,6 +543,8 @@ async function main() {
     (Seller.findById as any) = originalSellerFindById;
     (Seller.updateOne as any) = originalSellerUpdateOne;
     (Seller.findOneAndUpdate as any) = originalSellerFindOneAndUpdate;
+    (ShiprocketPickupRetirement.updateOne as any) = originalRetirementUpdateOne;
+    (Return.findOne as any) = originalReturnFindOne;
     if (originalWebhookToken === undefined) delete process.env.SHIPROCKET_WEBHOOK_TOKEN;
     else process.env.SHIPROCKET_WEBHOOK_TOKEN = originalWebhookToken;
   }

@@ -3,8 +3,8 @@
  *
  * Seller return management with:
  * - AUTHORIZATION: Seller can only view/act on returns for THEIR order items
- * - STATE MACHINE: Seller can only transition Pending→Approved/Rejected and confirm Handed To Seller→Completed
- * - SETTLEMENT: Financial settlement triggered ONLY on seller's confirmSellerReceipt (→ Completed)
+ * - STATE MACHINE: Seller can approve/reject requests and perform QC only after physical receipt
+ * - SETTLEMENT: Refund/replacement processing starts only after positive product verification
  */
 
 import { Request, Response } from "express";
@@ -12,6 +12,11 @@ import { asyncHandler } from "../../../utils/asyncHandler";
 import Return from "../../../models/Return";
 import OrderItem from "../../../models/OrderItem";
 import Order from "../../../models/Order";
+import {
+  createApprovedReturnLogistics,
+  processReturnQc,
+  ReturnLogisticsError,
+} from "../../../services/returnShippingService";
 
 
 /**
@@ -229,11 +234,13 @@ export const updateReturnStatus = asyncHandler(
     }
 
     // State machine: seller can only act from "Pending"
-    try {
-      const { validateSellerReturnTransition } = await import("../../../services/returnLifecycleService");
-      validateSellerReturnTransition(returnReq.status as any, status as any);
-    } catch (err: any) {
-      return res.status(400).json({ success: false, message: err.message });
+    if (!(status === "Approved" && ["Approved", "Reverse Shipment Created", "Pickup Pending"].includes(returnReq.status))) {
+      try {
+        const { validateSellerReturnTransition } = await import("../../../services/returnLifecycleService");
+        validateSellerReturnTransition(returnReq.status as any, status as any);
+      } catch (err: any) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
     }
 
     const updateData: any = {
@@ -257,7 +264,19 @@ export const updateReturnStatus = asyncHandler(
       updateData.rejectionReason = rejectionReason.trim();
     }
 
-    const updatedReturn = await Return.findByIdAndUpdate(id, updateData, { new: true });
+    let updatedReturn: any;
+    if (status === "Approved") {
+      try {
+        updatedReturn = await createApprovedReturnLogistics(id, undefined, sellerId);
+      } catch (error) {
+        if (error instanceof ReturnLogisticsError) {
+          return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });
+        }
+        throw error;
+      }
+    } else {
+      updatedReturn = await Return.findByIdAndUpdate(id, updateData, { new: true });
+    }
     const reqType = returnReq.requestType || "RETURN";
 
     // Send customer notification via notificationService
@@ -290,7 +309,7 @@ export const updateReturnStatus = asyncHandler(
       success: true,
       message:
         status === "Approved"
-          ? `${reqType === "EXCHANGE" ? "Exchange" : "Return"} approved. Now awaiting delivery partner assignment for pickup.`
+          ? `${reqType === "EXCHANGE" ? "Exchange" : "Return"} approved. Reverse pickup processing has started.`
           : `${reqType === "EXCHANGE" ? "Exchange" : "Return"} rejected successfully.`,
       data: updatedReturn,
     });
@@ -301,13 +320,13 @@ export const updateReturnStatus = asyncHandler(
 /**
  * POST /returns/:id/confirm-receipt
  *
- * Seller confirms they physically received the returned item from the delivery partner.
- * This is the FINAL physical step that advances the lifecycle to "Completed" and
- * TRIGGERS FINANCIAL SETTLEMENT:
+ * Seller confirms receipt and approves product verification/QC.
+ * This triggers the next eligible financial or replacement stage:
  *   - For RETURN: Customer receives refund, Seller earning reversed
- *   - For EXCHANGE: Zero refund, replacement dispatch fulfilled
+ *   - For EXCHANGE: Zero refund; replacement dispatch starts only after QC approval
  *
- * Transition: "Handed To Seller" → "Completed" → executeReturnRefundAndReversal()
+ * RETURN: "Handed To Seller" → settlement → "Completed"
+ * EXCHANGE: "Handed To Seller" → replacement shipment creation
  */
 export const confirmSellerReceipt = asyncHandler(
   async (req: Request, res: Response) => {
@@ -336,42 +355,29 @@ export const confirmSellerReceipt = asyncHandler(
     }
 
     // State machine check: must be in "Handed To Seller"
-    if (returnReq.status !== "Handed To Seller") {
+    if (!["Handed To Seller", "QC Pending", "Replacement Ready", "Forward Shipment Created", "Replacement Shipped"].includes(returnReq.status)) {
       return res.status(400).json({
         success: false,
         message: `Cannot confirm receipt — request is in "${returnReq.status}" status. Delivery partner must first hand the item to you.`,
       });
     }
 
-    // *** TRIGGER FINANCIAL SETTLEMENT & COMPLETE RETURN ATOMICALLY ***
-    // This is the ONLY place settlement is triggered in the return lifecycle.
-    let settlementResult: any = null;
+    // Receipt confirmation is also the seller's positive product-verification/QC decision.
+    // Refund/replacement is never released before this point.
+    let finalReturn: any;
     try {
-      const { triggerReturnFinancialSettlement } = await import(
-        "../../../services/returnLifecycleService"
-      );
-      settlementResult = await triggerReturnFinancialSettlement(id, sellerId);
-
-      if (!settlementResult.success) {
-        return res.status(500).json({
-          success: false,
-          message: `Receipt confirmation failed: ${settlementResult.message}`,
-        });
+      finalReturn = await processReturnQc(id, true, sellerId);
+    } catch (error: any) {
+      if (error instanceof ReturnLogisticsError) {
+        return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });
       }
-    } catch (settleErr: any) {
-      return res.status(500).json({
-        success: false,
-        message: `Receipt confirmation error: ${settleErr.message}`,
-      });
+      throw error;
     }
-
-    const finalReturn = await Return.findById(id)
-      .populate("order", "orderNumber")
-      .populate("customer", "name email");
 
     const reqType = returnReq.requestType || "RETURN";
 
-    // Send customer notification that return/exchange is completed
+    // Notify with the actual state. An exchange is not completed until the
+    // independently tracked replacement shipment is delivered.
     try {
       const { sendReturnStatusNotificationToCustomer } = await import("../../../services/notificationService");
       const order = await Order.findById(returnReq.order);
@@ -384,7 +390,7 @@ export const confirmSellerReceipt = asyncHandler(
         returnReq.customer.toString(),
         orderNum,
         productName,
-        "Completed",
+        finalReturn.status,
         undefined,
         returnReq.order.toString(),
         io,
@@ -399,13 +405,32 @@ export const confirmSellerReceipt = asyncHandler(
       success: true,
       message:
         reqType === "EXCHANGE"
-          ? "Exchange completed. Item received and replacement fulfilled (no cash refund)."
-          : "Return completed. Financial settlement executed — customer refund issued.",
+          ? "Product verification approved. The replacement is now in its fulfillment stage."
+          : "Product verification approved. Return settlement completed.",
       data: {
         return: finalReturn,
-        settlement: settlementResult?.data,
       },
     });
 
   }
 );
+
+/** Seller rejects the received product during QC; no refund or replacement is released. */
+export const rejectSellerReturnQc = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const sellerId = (req as any).user?.userId;
+  try {
+    await assertReturnBelongsToSeller(id, sellerId!);
+    const updated = await processReturnQc(id, false, sellerId);
+    if (req.body?.reason) {
+      updated.qcReason = String(req.body.reason).trim();
+      await updated.save();
+    }
+    return res.status(200).json({ success: true, message: "Product verification rejected. No refund or replacement was released.", data: updated });
+  } catch (error: any) {
+    if (error instanceof ReturnLogisticsError) {
+      return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });
+    }
+    throw error;
+  }
+});

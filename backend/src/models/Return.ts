@@ -27,6 +27,12 @@ export interface IReturn extends Document {
     | "Picked Up"
     | "In Transit"
     | "Handed To Seller"
+    | "QC Pending"
+    | "QC Rejected"
+    | "Reverse Shipment Created"
+    | "Replacement Ready"
+    | "Forward Shipment Created"
+    | "Replacement Shipped"
     | "Completed";
 
   // Items
@@ -62,6 +68,38 @@ export interface IReturn extends Document {
   // Ecommerce Reverse Logistics
   returnAwbNumber?: string;
   courierName?: string;
+  reverseLogisticsStatus?: "NOT_REQUIRED" | "PENDING" | "CREATING" | "CREATED" | "FAILED" | "PICKED_UP" | "IN_TRANSIT" | "RECEIVED";
+  reverseProvider?: string;
+  reverseExternalOrderId?: string;
+  reverseShipmentId?: string;
+  reverseIdempotencyKey?: string;
+  reverseLastError?: string;
+  reverseTrackingUrl?: string;
+  qcStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  qcReason?: string;
+  qcProcessedAt?: Date;
+  replacement?: {
+    product: mongoose.Types.ObjectId;
+    variationId?: mongoose.Types.ObjectId;
+    seller: mongoose.Types.ObjectId;
+    productName: string;
+    variantTitle?: string;
+    sku: string;
+    hsnCode?: string;
+    taxRate?: number;
+    unitPrice: number;
+    quantity: number;
+    fulfillmentGroupId?: string;
+    status: "PENDING_QC" | "READY" | "CREATING" | "CREATED" | "FAILED" | "SHIPPED" | "DELIVERED" | "MANUAL_INTERVENTION";
+    idempotencyKey: string;
+    inventoryIdempotencyKey: string;
+    externalOrderId?: string;
+    shipmentId?: string;
+    awbNumber?: string;
+    carrier?: string;
+    trackingUrl?: string;
+    lastError?: string;
+  };
   pickupAddress?: {
     address: string;
     city: string;
@@ -124,6 +162,12 @@ const ReturnSchema = new Schema<IReturn>(
         "Picked Up",
         "In Transit",
         "Handed To Seller",
+        "QC Pending",
+        "QC Rejected",
+        "Reverse Shipment Created",
+        "Replacement Ready",
+        "Forward Shipment Created",
+        "Replacement Shipped",
         "Completed",
       ],
       default: "Pending",
@@ -207,6 +251,44 @@ const ReturnSchema = new Schema<IReturn>(
     courierName: {
       type: String,
       trim: true,
+    },
+    reverseLogisticsStatus: {
+      type: String,
+      enum: ["NOT_REQUIRED", "PENDING", "CREATING", "CREATED", "FAILED", "PICKED_UP", "IN_TRANSIT", "RECEIVED"],
+    },
+    reverseProvider: { type: String, trim: true },
+    reverseExternalOrderId: { type: String, trim: true },
+    reverseShipmentId: { type: String, trim: true },
+    reverseIdempotencyKey: { type: String, trim: true },
+    reverseLastError: { type: String, trim: true },
+    reverseTrackingUrl: { type: String, trim: true },
+    qcStatus: { type: String, enum: ["PENDING", "APPROVED", "REJECTED"] },
+    qcReason: { type: String, trim: true },
+    qcProcessedAt: { type: Date },
+    replacement: {
+      product: { type: Schema.Types.ObjectId, ref: "Product" },
+      variationId: { type: Schema.Types.ObjectId },
+      seller: { type: Schema.Types.ObjectId, ref: "Seller" },
+      productName: { type: String, trim: true },
+      variantTitle: { type: String, trim: true },
+      sku: { type: String, trim: true },
+      hsnCode: { type: String, trim: true },
+      taxRate: { type: Number, min: 0, max: 100 },
+      unitPrice: { type: Number, min: 0 },
+      quantity: { type: Number, min: 1 },
+      fulfillmentGroupId: { type: String, trim: true },
+      status: {
+        type: String,
+        enum: ["PENDING_QC", "READY", "CREATING", "CREATED", "FAILED", "SHIPPED", "DELIVERED", "MANUAL_INTERVENTION"],
+      },
+      idempotencyKey: { type: String, trim: true },
+      inventoryIdempotencyKey: { type: String, trim: true },
+      externalOrderId: { type: String, trim: true },
+      shipmentId: { type: String, trim: true },
+      awbNumber: { type: String, trim: true },
+      carrier: { type: String, trim: true },
+      trackingUrl: { type: String, trim: true },
+      lastError: { type: String, trim: true },
     },
 
     // Refund

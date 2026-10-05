@@ -2,8 +2,8 @@
  * adminReturnController.ts
  *
  * Admin return management: view returns, assign delivery partner for pickup.
- * Financial settlement is NOT triggered here — only after physical completion
- * (seller confirms receipt in seller/returnController.ts → confirmSellerReceipt).
+ * Financial settlement is NOT triggered here — it starts only after seller QC
+ * in seller/returnController.ts.
  */
 
 import { Request, Response } from "express";
@@ -162,6 +162,14 @@ export const assignDeliveryPartnerToReturn = asyncHandler(
 
     if (!returnReq) {
       return res.status(404).json({ success: false, message: "Return request not found" });
+    }
+
+    if ((returnReq.orderItem as any)?.productType === "ECOMMERCE" || returnReq.reverseProvider === "shiprocket") {
+      return res.status(409).json({
+        success: false,
+        code: "RETURN_USES_COURIER_REVERSE_LOGISTICS",
+        message: "This Ecommerce return is handled by its courier reverse shipment and cannot be assigned to a local delivery partner.",
+      });
     }
 
     // Validate state transition

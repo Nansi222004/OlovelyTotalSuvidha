@@ -61,7 +61,7 @@ export interface Seller {
     flatShippingFee?: number;
     shiprocketPickupLocationId?: string;
     shiprocketPickupLocationName?: string;
-    shiprocketPickupStatus?: "NOT_REQUIRED" | "PENDING" | "PROVISIONING" | "ACTIVE" | "FAILED";
+    shiprocketPickupStatus?: "NOT_REQUIRED" | "PENDING" | "PROVISIONING" | "ACTIVE" | "FAILED" | "RETIRING" | "RETRY_PENDING" | "RETIRED";
     shiprocketPickupLastError?: string;
     shiprocketPickupAddressFingerprint?: string;
     shiprocketPickupLastSyncedAt?: string;

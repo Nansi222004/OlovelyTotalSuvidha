@@ -4,6 +4,7 @@ import {
   getReturnRequestById,
   updateReturnStatus,
   confirmSellerReceipt,
+  rejectSellerReturnQc,
 } from "../modules/seller/controllers/returnController";
 import { authenticate, requireUserType, requireApprovedUser } from "../middleware/auth";
 
@@ -25,5 +26,6 @@ router.patch("/:id/status", updateReturnStatus);
 
 // Confirm physical receipt of returned item (Handed To Seller → Completed → triggers settlement)
 router.post("/:id/confirm-receipt", confirmSellerReceipt);
+router.post("/:id/qc-reject", rejectSellerReturnQc);
 
 export default router;

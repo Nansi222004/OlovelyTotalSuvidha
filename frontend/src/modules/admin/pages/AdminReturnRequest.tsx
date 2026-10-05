@@ -201,6 +201,12 @@ export default function AdminReturnRequest() {
     "Picked Up",
     "In Transit",
     "Handed To Seller",
+    "QC Pending",
+    "QC Rejected",
+    "Reverse Shipment Created",
+    "Replacement Ready",
+    "Forward Shipment Created",
+    "Replacement Shipped",
     "Completed",
     "Rejected",
   ];
@@ -215,6 +221,12 @@ export default function AdminReturnRequest() {
       'Picked Up': 'bg-orange-100 text-orange-800',
       'In Transit': 'bg-amber-100 text-amber-800',
       'Handed To Seller': 'bg-purple-100 text-purple-800',
+      'QC Pending': 'bg-purple-100 text-purple-800',
+      'QC Rejected': 'bg-red-100 text-red-800',
+      'Reverse Shipment Created': 'bg-blue-100 text-blue-800',
+      'Replacement Ready': 'bg-cyan-100 text-cyan-800',
+      'Forward Shipment Created': 'bg-cyan-100 text-cyan-800',
+      'Replacement Shipped': 'bg-cyan-100 text-cyan-800',
       Completed: 'bg-green-100 text-green-800',
     };
     return map[status] || 'bg-neutral-100 text-neutral-700';

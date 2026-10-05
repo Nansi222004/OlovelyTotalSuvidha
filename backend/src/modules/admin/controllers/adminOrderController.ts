@@ -14,6 +14,7 @@ import {
   getOrderEarningBreakdown as getOrderEarningBreakdownService,
 } from "../../../services/commissionService";
 import Seller from "../../../models/Seller";
+import { createApprovedReturnLogistics, ReturnLogisticsError } from "../../../services/returnShippingService";
 
 /**
  * Get all orders with filters
@@ -786,7 +787,7 @@ export const processReturnRequest = asyncHandler(
     }
 
     // Validate state machine transition
-    if (status) {
+    if (status && !(status === "Approved" && ["Approved", "Reverse Shipment Created", "Pickup Pending"].includes(returnRequest.status))) {
       try {
         const { validateAdminReturnTransition } = await import("../../../services/returnLifecycleService");
         validateAdminReturnTransition(returnRequest.status as any, status as any);
@@ -815,13 +816,25 @@ export const processReturnRequest = asyncHandler(
       updateData.status = "Pickup Pending"; // Atomic: Approved → Pickup Pending
     }
 
-    const updatedReturn = await Return.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("order")
-      .populate("orderItem")
-      .populate("customer", "name email phone");
+    let updatedReturn: any;
+    if (status === "Approved") {
+      try {
+        updatedReturn = await createApprovedReturnLogistics(id, undefined, req.user?.userId);
+      } catch (error) {
+        if (error instanceof ReturnLogisticsError) {
+          return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });
+        }
+        throw error;
+      }
+    } else {
+      updatedReturn = await Return.findByIdAndUpdate(id, updateData, {
+        new: true,
+        runValidators: true,
+      })
+        .populate("order")
+        .populate("orderItem")
+        .populate("customer", "name email phone");
+    }
 
     // ⚠️ FINANCIAL SETTLEMENT: NEVER fires here.
     // Settlement ONLY occurs after seller confirms physical receipt (Handed To Seller → Completed)

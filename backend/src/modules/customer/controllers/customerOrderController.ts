@@ -34,6 +34,7 @@ import {
 import { getCommerceChannels } from "../../../services/commerceChannelService";
 import Tax from "../../../models/Tax";
 import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
+import { buildExchangeReplacement, ReturnLogisticsError } from "../../../services/returnShippingService";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -1994,7 +1995,10 @@ export const updateOrderNotes = async (req: Request, res: Response) => {
 export const requestItemReturn = async (req: Request, res: Response) => {
   try {
     const id = req.params.id || req.params.orderId;
-    const { orderItemId, reason, description, quantity, requestType: rawRequestType } = req.body;
+    const {
+      orderItemId, reason, description, quantity, requestType: rawRequestType,
+      replacementProductId, replacementVariationId,
+    } = req.body;
     const userId = req.user!.userId;
     const requestType: "RETURN" | "EXCHANGE" = rawRequestType === "EXCHANGE" ? "EXCHANGE" : "RETURN";
     const typeLabel = requestType === "EXCHANGE" ? "Exchange" : "Return";
@@ -2049,6 +2053,13 @@ export const requestItemReturn = async (req: Request, res: Response) => {
 
     const returnQty = quantity && quantity > 0 ? Math.min(quantity, item.quantity) : item.quantity;
 
+    const replacement = requestType === "EXCHANGE"
+      ? await buildExchangeReplacement(item, returnQty, replacementProductId, replacementVariationId)
+      : undefined;
+    const fulfillmentGroupId = order.fulfillmentGroups?.find((group: any) =>
+      group.items?.some((groupItemId: any) => groupItemId.toString() === item._id.toString())
+    )?.groupId;
+
     const newReturn = await Return.create({
       order: order._id,
       orderItem: item._id,
@@ -2058,37 +2069,20 @@ export const requestItemReturn = async (req: Request, res: Response) => {
       description: description || "",
       quantity: returnQty,
       status: "Pending",
+      reverseLogisticsStatus: product.productType === 'ECOMMERCE' ? 'PENDING' : 'NOT_REQUIRED',
+      ...(replacement && {
+        replacement: {
+          ...replacement,
+          fulfillmentGroupId,
+          idempotencyKey: 'pending-until-return-created',
+          inventoryIdempotencyKey: 'pending-until-return-created',
+        },
+      }),
     });
-
-    // For Ecommerce items, initiate carrier reverse logistics
-    if (product.productType === 'ECOMMERCE') {
-      try {
-        const { getShippingProvider } = await import("../../../services/shipping/shippingService");
-        const provider = getShippingProvider();
-        if (provider.createReturn) {
-          const retShipment = await provider.createReturn({
-            orderId: order._id.toString(),
-            returnId: newReturn._id.toString(),
-            item: {
-              productId: product._id.toString(),
-              productName: product.productName,
-              quantity: returnQty,
-            },
-            pickupAddress: {
-              address: order.deliveryAddress.address,
-              city: order.deliveryAddress.city,
-              state: order.deliveryAddress.state,
-              pincode: order.deliveryAddress.pincode,
-            },
-            reason,
-          });
-          newReturn.returnAwbNumber = retShipment.returnAwbNumber;
-          newReturn.courierName = retShipment.carrier;
-          await newReturn.save();
-        }
-      } catch (retErr) {
-        console.error("Failed to generate provider reverse pickup:", retErr);
-      }
+    if (newReturn.replacement) {
+      newReturn.replacement.idempotencyKey = `exchange:${newReturn._id}:replacement:create`;
+      newReturn.replacement.inventoryIdempotencyKey = `exchange:${newReturn._id}:replacement:inventory`;
+      await newReturn.save();
     }
 
     // Notify seller of new return/exchange request
@@ -2130,6 +2124,9 @@ export const requestItemReturn = async (req: Request, res: Response) => {
     });
 
   } catch (error: any) {
+    if (error instanceof ReturnLogisticsError) {
+      return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });
+    }
     console.error("Error requesting item return/exchange:", error);
     return res.status(500).json({ success: false, message: "Failed to submit request", error: error.message });
   }

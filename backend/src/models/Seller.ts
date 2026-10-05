@@ -90,11 +90,13 @@ export interface ISeller extends Document {
     flatShippingFee?: number;
     shiprocketPickupLocationId?: string;
     shiprocketPickupLocationName?: string;
-    shiprocketPickupStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'FAILED';
+    shiprocketPickupStatus?: 'NOT_REQUIRED' | 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'FAILED' | 'RETIRING' | 'RETRY_PENDING' | 'RETIRED';
     shiprocketPickupLastError?: string;
     shiprocketPickupAddressFingerprint?: string;
     shiprocketPickupLastSyncedAt?: Date;
     shiprocketPickupSyncStartedAt?: Date;
+    shiprocketPickupCleanupStartedAt?: Date;
+    shiprocketPickupRetiredAt?: Date;
   };
 
   // Wholesale Capability (set by Admin)
@@ -365,12 +367,14 @@ const SellerSchema = new Schema<ISeller>(
       shiprocketPickupLocationName: { type: String, trim: true },
       shiprocketPickupStatus: {
         type: String,
-        enum: ['NOT_REQUIRED', 'PENDING', 'PROVISIONING', 'ACTIVE', 'FAILED'],
+        enum: ['NOT_REQUIRED', 'PENDING', 'PROVISIONING', 'ACTIVE', 'FAILED', 'RETIRING', 'RETRY_PENDING', 'RETIRED'],
       },
       shiprocketPickupLastError: { type: String, trim: true },
       shiprocketPickupAddressFingerprint: { type: String, trim: true },
       shiprocketPickupLastSyncedAt: { type: Date },
       shiprocketPickupSyncStartedAt: { type: Date },
+      shiprocketPickupCleanupStartedAt: { type: Date },
+      shiprocketPickupRetiredAt: { type: Date },
     },
     // Wholesale Capability (Admin-controlled per seller)
     wholesaleEnabled: {

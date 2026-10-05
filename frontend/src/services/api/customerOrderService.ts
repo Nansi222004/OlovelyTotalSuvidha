@@ -112,7 +112,15 @@ export const updateOrderNotes = async (id: string, data: { deliveryInstructions?
  */
 export const requestCustomerReturn = async (
     orderId: string,
-    data: { orderItemId: string; reason: string; description?: string; quantity?: number; requestType?: 'RETURN' | 'EXCHANGE' }
+    data: {
+      orderItemId: string;
+      reason: string;
+      description?: string;
+      quantity?: number;
+      requestType?: 'RETURN' | 'EXCHANGE';
+      replacementProductId?: string;
+      replacementVariationId?: string;
+    }
 ): Promise<OrderResponse> => {
     const response = await api.post<OrderResponse>(`/customer/orders/${orderId}/return`, data);
     return response.data;

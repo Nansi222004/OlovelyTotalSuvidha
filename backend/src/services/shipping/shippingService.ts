@@ -8,12 +8,14 @@
 
 import Order, { IOrder, IFulfillmentGroup } from '../../models/Order';
 import OrderItem from '../../models/OrderItem';
-import Seller from '../../models/Seller';
+import Seller, { ISeller } from '../../models/Seller';
 import ProcessedWebhookEvent from '../../models/ProcessedWebhookEvent';
+import Return from '../../models/Return';
 import { IThirdPartyCommerceProvider, ShipmentRequest, ShipmentItem } from '../../types/thirdPartyCommerce';
 import { mockCommerceProvider } from './mockCommerceProvider';
 import { shiprocketProvider } from './shiprocketProvider';
 import { areAllFulfillmentGroupsDelivered } from '../../utils/fulfillmentStatus';
+import { buildShiprocketPickupLocationName, isShiprocketPickupRequired } from './shiprocketPickupService';
 
 /**
  * Provider Registry
@@ -41,6 +43,90 @@ export function getShippingProvider(providerId?: string): IThirdPartyCommercePro
     return shiprocketProvider;
   }
   return mockCommerceProvider;
+}
+
+export class ForwardShipmentValidationError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = 'ForwardShipmentValidationError';
+  }
+}
+
+/** Reject every Shiprocket fallback path unless this exact seller owns an active pickup. */
+export function getActiveSellerShiprocketPickupName(
+  seller: Pick<ISeller, '_id' | 'vendorType' | 'shippingConfig'> | null
+): string {
+  if (!seller) {
+    throw new ForwardShipmentValidationError(
+      'SELLER_UNAVAILABLE',
+      'Courier shipment cannot be created because the vendor no longer exists'
+    );
+  }
+  const expectedPickupName = buildShiprocketPickupLocationName(seller._id.toString());
+  if (!isShiprocketPickupRequired(seller.vendorType)) {
+    throw new ForwardShipmentValidationError(
+      'SELLER_CHANNEL_INVALID',
+      'Courier shipment requires an Ecommerce or Hybrid vendor'
+    );
+  }
+  if (seller.shippingConfig?.shiprocketPickupStatus !== 'ACTIVE') {
+    throw new ForwardShipmentValidationError(
+      'SELLER_PICKUP_NOT_ACTIVE',
+      'Courier shipment cannot be created until the vendor Shiprocket pickup location is ACTIVE and verified'
+    );
+  }
+  if (!seller.shippingConfig?.shiprocketPickupLocationId) {
+    throw new ForwardShipmentValidationError(
+      'SELLER_PICKUP_ID_MISSING',
+      'Courier shipment cannot be created because the vendor Shiprocket pickup ID is missing'
+    );
+  }
+  if (seller.shippingConfig?.shiprocketPickupLocationName !== expectedPickupName) {
+    throw new ForwardShipmentValidationError(
+      'SELLER_PICKUP_NAME_MISMATCH',
+      'Courier shipment cannot be created because the vendor Shiprocket pickup identity is invalid'
+    );
+  }
+  return expectedPickupName;
+}
+
+/**
+ * Single provider-agnostic boundary for every forward Ecommerce shipment.
+ * Normal orders and post-QC exchange replacements both pass through here.
+ */
+export async function dispatchForwardEcommerceShipment(
+  request: Omit<ShipmentRequest, 'pickupDetails'>,
+  seller: Pick<ISeller, '_id' | 'vendorType' | 'storeName' | 'shippingConfig'> | null,
+  provider: IThirdPartyCommerceProvider = getShippingProvider()
+) {
+  if (!seller) {
+    throw new ForwardShipmentValidationError('SELLER_UNAVAILABLE', 'Forward shipment vendor is unavailable');
+  }
+
+  let pickupLocationName = seller.shippingConfig?.shiprocketPickupLocationName;
+  if (provider.providerId === 'shiprocket') {
+    pickupLocationName = getActiveSellerShiprocketPickupName(seller);
+  }
+
+  const shipmentRequest: ShipmentRequest = {
+    ...request,
+    pickupDetails: {
+      sellerId: seller._id.toString(),
+      sellerName: seller.storeName,
+      pickupAddress: seller.shippingConfig?.pickupAddress || '',
+      pickupPincode: seller.shippingConfig?.pickupPincode || '',
+      pickupLocationId: seller.shippingConfig?.shiprocketPickupLocationId
+        ? String(seller.shippingConfig.shiprocketPickupLocationId)
+        : undefined,
+      pickupLocationName,
+    },
+  };
+
+  const result = await provider.createShipment(shipmentRequest);
+  if (!result || !result.awbNumber || !result.externalOrderId) {
+    throw new Error('Provider returned malformed shipment response: missing awbNumber or externalOrderId');
+  }
+  return { shipmentRequest, shipmentResult: result };
 }
 
 /**
@@ -114,32 +200,14 @@ export async function createEcommerceShipment(
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     weightKg: item.product?.packageDetails?.weightKg || 0.5,
+    variationId: item.variationId?.toString(),
+    hsnCode: item.hsnCode,
+    taxRate: item.taxRate,
   }));
 
-  // Fetch seller pickup details if available
-  let pickupDetails;
-  if (group.seller) {
-    const seller = await Seller.findById(group.seller).select('storeName address vendorType shippingConfig');
-    if (seller) {
-      if (
-        provider.providerId === 'shiprocket' &&
-        (seller.vendorType === 'ECOMMERCE' || seller.vendorType === 'HYBRID') &&
-        (
-          seller.shippingConfig?.shiprocketPickupStatus !== 'ACTIVE' ||
-          !seller.shippingConfig?.shiprocketPickupLocationName
-        )
-      ) {
-        throw new Error('Courier shipment cannot be created until the vendor Shiprocket pickup location is ACTIVE');
-      }
-      pickupDetails = {
-        sellerId: seller._id.toString(),
-        sellerName: seller.storeName,
-        pickupAddress: seller.shippingConfig?.pickupAddress || '',
-        pickupPincode: seller.shippingConfig?.pickupPincode || '',
-        pickupLocationName: seller.shippingConfig?.shiprocketPickupLocationName,
-      };
-    }
-  }
+  const seller = group.seller
+    ? await Seller.findById(group.seller).select('storeName address vendorType shippingConfig')
+    : null;
 
   // Strict pre-dispatch validation (Section 9)
   if (!order.deliveryAddress?.pincode || !/^[1-9][0-9]{5}$/.test(order.deliveryAddress.pincode.trim())) {
@@ -165,6 +233,7 @@ export async function createEcommerceShipment(
   const dimensionsCm = maxLen > 0 && maxWid > 0 && maxHgt > 0 ? { length: maxLen, width: maxWid, height: maxHgt } : undefined;
 
   const shipmentRequest: ShipmentRequest = {
+    source: 'CUSTOMER_ORDER',
     idempotencyKey,
     orderId: order._id.toString(),
     fulfillmentGroupId: group.groupId,
@@ -178,18 +247,15 @@ export async function createEcommerceShipment(
       pincode: order.deliveryAddress.pincode,
       landmark: order.deliveryAddress.landmark,
     },
-    pickupDetails,
     items: shipmentItems,
     subtotal: group.subtotal,
+    shippingCharges: group.shippingFee,
+    paymentMethod: order.paymentMethod,
     totalWeightKg,
     dimensionsCm,
   };
 
-  const shipmentResult = await provider.createShipment(shipmentRequest);
-
-  if (!shipmentResult || !shipmentResult.awbNumber || !shipmentResult.externalOrderId) {
-    throw new Error('Provider returned malformed shipment response: missing awbNumber or externalOrderId');
-  }
+  const { shipmentResult } = await dispatchForwardEcommerceShipment(shipmentRequest, seller, provider);
 
   // Update fulfillment group state
   group.shippingDetails = {
@@ -325,6 +391,49 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
   };
 
   try {
+
+  // Reverse and exchange-replacement shipments are independent from the original
+  // fulfillment group. Route their AWBs first so they can never mutate the forward leg.
+  const returnRequest: any = await Return.findOne({
+    $or: [
+      { returnAwbNumber: result.awbNumber },
+      { 'replacement.awbNumber': result.awbNumber },
+    ],
+  });
+  if (returnRequest) {
+    const isReplacement = returnRequest.replacement?.awbNumber === result.awbNumber;
+    if (isReplacement) {
+      if (result.statusUpdate === 'Delivered') {
+        returnRequest.replacement.status = 'DELIVERED';
+        returnRequest.status = 'Completed';
+        returnRequest.completedAt = new Date();
+      } else if (['Picked Up', 'In Transit', 'Out for Delivery'].includes(result.statusUpdate || '')) {
+        returnRequest.replacement.status = 'SHIPPED';
+        returnRequest.status = 'Replacement Shipped';
+      }
+      if (result.trackingUrl) returnRequest.replacement.trackingUrl = result.trackingUrl;
+      if (result.courierName) returnRequest.replacement.carrier = result.courierName;
+    } else {
+      if (result.statusUpdate === 'Delivered' || result.statusUpdate === 'Returned') {
+        returnRequest.reverseLogisticsStatus = 'RECEIVED';
+        returnRequest.status = 'Handed To Seller';
+        returnRequest.handedToSellerAt = new Date();
+      } else if (result.statusUpdate === 'In Transit') {
+        returnRequest.reverseLogisticsStatus = 'IN_TRANSIT';
+        returnRequest.status = 'In Transit';
+        returnRequest.inTransitAt = new Date();
+      } else if (result.statusUpdate === 'Picked Up' || result.statusUpdate === 'Out for Delivery') {
+        returnRequest.reverseLogisticsStatus = 'PICKED_UP';
+        returnRequest.status = 'Picked Up';
+        returnRequest.pickedUpAt = returnRequest.pickedUpAt || new Date();
+      }
+      if (result.trackingUrl) returnRequest.reverseTrackingUrl = result.trackingUrl;
+      if (result.courierName) returnRequest.courierName = result.courierName;
+    }
+    await returnRequest.save();
+    await completeEvent();
+    return result;
+  }
 
   // Match only courier fulfillment groups. A QC/local AWB-shaped value must never
   // allow a carrier callback to mutate local-delivery state.

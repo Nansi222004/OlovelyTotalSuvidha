@@ -83,6 +83,12 @@ export type ReturnLifecycleStatus =
   | 'Picked Up'
   | 'In Transit'
   | 'Handed To Seller'
+  | 'QC Pending'
+  | 'QC Rejected'
+  | 'Reverse Shipment Created'
+  | 'Replacement Ready'
+  | 'Forward Shipment Created'
+  | 'Replacement Shipped'
   | 'Completed';
 
 export interface GetReturnRequestsParams {
@@ -132,8 +138,8 @@ export const updateReturnStatus = async (id: string, data: UpdateReturnStatusDat
 };
 
 /**
- * Seller: Confirm physical receipt of returned item.
- * This is the ONLY action that triggers financial settlement.
+ * Seller: approve product verification after physical receipt.
+ * This triggers refund settlement for returns or replacement fulfillment for exchanges.
  * Return status must be 'Handed To Seller' for this to succeed.
  */
 export const confirmSellerReceipt = async (
@@ -142,6 +148,17 @@ export const confirmSellerReceipt = async (
   const response = await api.post<ApiResponse<{ id: string; status: string; financialSettlementStatus: string }>>(
     `/returns/${returnId}/confirm-receipt`,
     {}
+  );
+  return response.data;
+};
+
+export const rejectSellerReturnQc = async (
+  returnId: string,
+  reason: string
+): Promise<ApiResponse<ReturnRequestDetail>> => {
+  const response = await api.post<ApiResponse<ReturnRequestDetail>>(
+    `/returns/${returnId}/qc-reject`,
+    { reason }
   );
   return response.data;
 };

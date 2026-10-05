@@ -11,6 +11,7 @@ import {
 import { generateToken } from "../../../services/jwtService";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { isVendorTypeAllowed } from "../../../services/commerceChannelService";
+import { cleanupSellerShiprocketPickup } from "../../../services/shipping/shiprocketPickupService";
 
 /**
  * Safe boolean parser to avoid JavaScript `Boolean("false") === true` trap.
@@ -582,7 +583,10 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response) =>
     });
   }
 
-  // 5. Deactivate / unpublish seller's active products
+  // 5. Retire and audit the seller-owned courier pickup before removing its owner record.
+  await cleanupSellerShiprocketPickup(seller);
+
+  // 6. Deactivate / unpublish seller's active products
   try {
     await Product.updateMany(
       { seller: sellerId },
@@ -592,7 +596,7 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response) =>
     console.warn("[DELETE_SELLER_ACCOUNT] Product deactivation warning:", prodErr);
   }
 
-  // 6. Delete seller document
+  // 7. Delete seller document
   const deleted = await Seller.findByIdAndDelete(sellerId);
   if (!deleted) {
     return res.status(404).json({

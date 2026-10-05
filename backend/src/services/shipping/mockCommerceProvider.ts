@@ -323,6 +323,8 @@ export class MockCommerceProvider implements IThirdPartyCommerceProvider {
 
     const result: ExternalReturnResult = {
       returnId: request.returnId,
+      externalOrderId: `MOCK-RETURN-${request.returnId}`,
+      shipmentId: `MOCK-RETURN-SHIP-${request.returnId}`,
       returnAwbNumber,
       carrier: 'MockCourier Reverse Logistics',
       status: 'Return Initiated',

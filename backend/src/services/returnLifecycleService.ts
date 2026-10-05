@@ -30,6 +30,12 @@ const ALLOWED_TRANSITIONS: Record<string, ReturnStatus[]> = {
   "Picked Up": ["In Transit"],
   "In Transit": ["Handed To Seller"],
   "Handed To Seller": ["Completed"],
+  "QC Pending": ["Completed", "QC Rejected", "Replacement Ready"],
+  "QC Rejected": [],
+  "Reverse Shipment Created": ["Picked Up", "In Transit", "Handed To Seller"],
+  "Replacement Ready": ["Forward Shipment Created"],
+  "Forward Shipment Created": ["Replacement Shipped", "Completed"],
+  "Replacement Shipped": ["Completed"],
   Completed: [], // Terminal — no further transitions
   Rejected: [], // Terminal — no further transitions
 };
@@ -346,6 +352,42 @@ export function getReturnLifecycleSummary(status: ReturnStatus): {
       label: "Delivered to Seller",
       description: "Delivery partner has handed the item to the seller.",
       nextActions: ["Seller: Confirm Receipt → triggers refund"],
+    },
+    "QC Pending": {
+      stage: 8,
+      label: "Product Verification",
+      description: "The returned product is awaiting quality verification.",
+      nextActions: ["Seller: Approve or reject product verification"],
+    },
+    "QC Rejected": {
+      stage: 0,
+      label: "Product Verification Rejected",
+      description: "The returned product failed verification; no refund or replacement was released.",
+      nextActions: [],
+    },
+    "Reverse Shipment Created": {
+      stage: 3,
+      label: "Reverse Shipment Created",
+      description: "Courier reverse logistics was created and is awaiting pickup.",
+      nextActions: ["Courier: Pick up returned product"],
+    },
+    "Replacement Ready": {
+      stage: 9,
+      label: "Replacement Ready",
+      description: "Product verification passed and replacement fulfillment can be retried.",
+      nextActions: ["Retry replacement shipment"],
+    },
+    "Forward Shipment Created": {
+      stage: 10,
+      label: "Replacement Shipment Created",
+      description: "The replacement forward shipment was created.",
+      nextActions: ["Courier: Pick up replacement"],
+    },
+    "Replacement Shipped": {
+      stage: 11,
+      label: "Replacement Shipped",
+      description: "The replacement is in transit to the customer.",
+      nextActions: ["Courier: Deliver replacement"],
     },
     Completed: {
       stage: 8,

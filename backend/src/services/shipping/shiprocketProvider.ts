@@ -20,7 +20,11 @@ import {
   TrackingMilestone,
 } from '../../types/thirdPartyCommerce';
 import { shiprocketHttpClient } from './shiprocketHttpClient';
+import { buildShiprocketPickupLocationName, shiprocketPickupApi } from './shiprocketPickupService';
 import crypto from 'node:crypto';
+
+export const SHIPROCKET_RETURN_ENDPOINT = '/v1/external/orders/create/return';
+export const SHIPROCKET_EXCHANGE_ENDPOINT = '/v1/external/orders/create/exchange';
 
 /**
  * Shiprocket Status Code Mapping to Olovely Internal Lifecycle
@@ -30,6 +34,8 @@ const SHIPROCKET_STATUS_MAP: Record<string, string> = {
   PICKUP_GENERATED: 'Manifested',
   PICKUP_QUEUED: 'Manifested',
   MANIFEST_GENERATED: 'Manifested',
+  PICKED_UP: 'Picked Up',
+  'PICKED UP': 'Picked Up',
   SHIPPED: 'In Transit',
   'IN TRANSIT': 'In Transit',
   OUT_FOR_DELIVERY: 'Out for Delivery',
@@ -53,6 +59,102 @@ const STATUS_HIERARCHY: Record<string, number> = {
   Cancelled: 99,
   Returned: 99,
 };
+
+/** Maps Olovely reverse-logistics data to Shiprocket's documented return-order schema. */
+export function buildShiprocketReturnPayload(request: ReturnRequest) {
+  const dimensions = request.item.dimensionsCm || {};
+  const now = new Date();
+  const orderDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  return {
+    order_id: request.idempotencyKey,
+    order_date: orderDate,
+    channel_id: '',
+    pickup_customer_name: request.pickupAddress.customerName,
+    pickup_last_name: '',
+    pickup_address: request.pickupAddress.address,
+    pickup_address_2: request.pickupAddress.address2 || '',
+    pickup_city: request.pickupAddress.city,
+    pickup_state: request.pickupAddress.state || '',
+    pickup_country: request.pickupAddress.country || 'India',
+    pickup_pincode: request.pickupAddress.pincode,
+    pickup_email: request.pickupAddress.email || '',
+    pickup_phone: request.pickupAddress.phone,
+    shipping_customer_name: request.destinationAddress.name,
+    shipping_last_name: '',
+    shipping_address: request.destinationAddress.address,
+    shipping_address_2: request.destinationAddress.address2 || '',
+    shipping_city: request.destinationAddress.city,
+    shipping_state: request.destinationAddress.state,
+    shipping_country: request.destinationAddress.country || 'India',
+    shipping_pincode: request.destinationAddress.pincode,
+    shipping_email: request.destinationAddress.email,
+    shipping_phone: request.destinationAddress.phone,
+    order_items: [{
+      name: request.item.productName,
+      sku: request.item.sku,
+      units: request.item.quantity,
+      selling_price: request.item.unitPrice,
+      discount: 0,
+      hsn: request.item.hsnCode || '',
+    }],
+    payment_method: request.paymentMethod,
+    total_discount: 0,
+    sub_total: request.subtotal,
+    length: Math.max(dimensions.length || 10, 0.5),
+    breadth: Math.max(dimensions.width || 10, 0.5),
+    height: Math.max(dimensions.height || 10, 0.5),
+    weight: Math.max((request.item.weightKg || 0.5) * request.item.quantity, 0.01),
+    return_reason: request.reason,
+  };
+}
+
+/** One payload mapper for normal orders and post-QC exchange replacements. */
+export function buildShiprocketForwardPayload(request: ShipmentRequest) {
+  const now = new Date();
+  const orderDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dimensions = request.dimensionsCm || { length: 20, width: 15, height: 10 };
+  const totalWeight = request.totalWeightKg || request.items.reduce(
+    (sum, item) => sum + (item.weightKg || 0.5) * item.quantity,
+    0
+  ) || 0.5;
+
+  return {
+    order_id: request.idempotencyKey,
+    order_date: orderDate,
+    pickup_location: request.pickupDetails!.pickupLocationName!,
+    channel_id: '',
+    comment: request.source === 'EXCHANGE_REPLACEMENT'
+      ? 'Olovely Exchange Replacement'
+      : 'Olovely Total Suvidha Order',
+    billing_customer_name: request.customerName,
+    billing_last_name: '',
+    billing_address: request.shippingAddress.address,
+    billing_city: request.shippingAddress.city,
+    billing_pincode: request.shippingAddress.pincode,
+    billing_state: request.shippingAddress.state || '',
+    billing_country: 'India',
+    billing_email: request.customerEmail || 'orders@olovely.com',
+    billing_phone: request.customerPhone,
+    shipping_is_billing: true,
+    order_items: request.items.map((item) => ({
+      name: item.productName || 'Ecommerce Product',
+      sku: item.sku || `SKU-${item.productId.slice(-6)}`,
+      units: item.quantity,
+      selling_price: item.unitPrice,
+      discount: item.discount || 0,
+      tax: item.taxRate || 0,
+      hsn: item.hsnCode || '',
+    })),
+    payment_method: request.paymentMethod === 'COD' ? 'COD' : 'Prepaid',
+    sub_total: request.subtotal,
+    shipping_charges: request.shippingCharges || 0,
+    total_discount: request.totalDiscount || 0,
+    length: dimensions.length || 20,
+    breadth: dimensions.width || 15,
+    height: dimensions.height || 10,
+    weight: totalWeight,
+  };
+}
 
 export class ShiprocketProvider implements IThirdPartyCommerceProvider {
   public readonly providerId = 'shiprocket';
@@ -149,7 +251,7 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
    * 5. Request Pickup: POST /v1/external/courier/generate/pickup
    */
   async createShipment(request: ShipmentRequest): Promise<ExternalOrderResult> {
-    const { idempotencyKey, shippingAddress, pickupDetails, items, customerName, customerPhone } = request;
+    const { idempotencyKey, pickupDetails } = request;
 
     if (!idempotencyKey) {
       throw new Error('Idempotency key is required for Shiprocket shipment creation');
@@ -178,58 +280,51 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
     }
 
     // 3. Query existing Shiprocket order before create (Query-Before-Create Idempotency, Section 11)
-    try {
-      const existingOrder = await this.findExistingOrderByChannelId(idempotencyKey);
-      if (existingOrder) {
-        console.log(`✓ [Shiprocket] Found existing order in Shiprocket for key ${idempotencyKey}. Reusing.`);
-        return existingOrder;
+    // A lookup failure must block creation; otherwise an uncertain retry could duplicate an order/AWB.
+    const existingOrder = await this.findExistingOrderByChannelId(idempotencyKey);
+    if (existingOrder) {
+      if (!existingOrder.awbNumber && existingOrder.shipmentId) {
+        const awbRes: any = await shiprocketHttpClient.request({
+          method: 'POST',
+          url: '/v1/external/courier/assign/awb',
+          data: { shipment_id: existingOrder.shipmentId },
+        });
+        existingOrder.awbNumber = awbRes?.response?.data?.awb_code || awbRes?.awb_code;
+        existingOrder.trackingNumber = existingOrder.awbNumber;
+        existingOrder.carrier = awbRes?.response?.data?.courier_name || awbRes?.courier_name || existingOrder.carrier;
+        if (existingOrder.awbNumber) {
+          await shiprocketHttpClient.request({
+            method: 'POST',
+            url: '/v1/external/courier/generate/pickup',
+            data: { shipment_id: [existingOrder.shipmentId] },
+          });
+        }
       }
-    } catch (checkErr: any) {
-      console.warn('[Shiprocket] Pre-creation duplicate query error (proceeding safely):', checkErr.message);
+      return existingOrder;
     }
 
-    // 4. Construct Shiprocket Adhoc Order Request Body
-    const now = new Date();
-    const orderDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // Read-only remote identity guard. The API accepts pickup_location by name,
+    // so verify the seller-owned stored ID resolves to that exact name before POST.
+    const pickupLocations = await shiprocketPickupApi.listPickupLocations();
+    const pickupId = String(pickupDetails!.pickupLocationId);
+    const remotePickup = pickupLocations.find((location: any) => String(
+      location.id ?? location.pickup_location_id ?? location.pickup_id ?? location.pickup_code ?? ''
+    ) === pickupId);
+    const remoteName = String(remotePickup?.pickup_location || '').trim();
+    const protectedName = ['home', 'primary', 'default', 'admin', 'admin warehouse', 'main warehouse']
+      .includes(remoteName.toLowerCase());
+    if (
+      !remotePickup ||
+      remoteName !== pickupDetails!.pickupLocationName ||
+      remotePickup.is_primary === true || remotePickup.is_primary === 1 ||
+      remotePickup.is_primary_location === true || remotePickup.is_primary_location === 1 ||
+      protectedName
+    ) {
+      throw new Error('Package validation failed: stored seller pickup ID did not resolve to the verified vendor pickup location');
+    }
 
-    const orderItems = items.map((item) => ({
-      name: item.productName || 'Ecommerce Product',
-      sku: item.sku || `SKU-${item.productId.slice(-6)}`,
-      units: item.quantity,
-      selling_price: item.unitPrice,
-      discount: 0,
-      tax: 0,
-    }));
-
-    const totalWeight = request.totalWeightKg || items.reduce((sum, i) => sum + (i.weightKg || 0.5) * i.quantity, 0) || 0.5;
-    const dimensions = request.dimensionsCm || { length: 20, width: 15, height: 10 };
-
-    const pickupLocation = pickupDetails?.pickupLocationName || pickupDetails?.sellerName || 'Primary';
-
-    const orderPayload = {
-      order_id: idempotencyKey,
-      order_date: orderDateStr,
-      pickup_location: pickupLocation,
-      channel_id: '',
-      comment: 'Olovely Total Suvidha Order',
-      billing_customer_name: customerName,
-      billing_last_name: '',
-      billing_address: shippingAddress.address,
-      billing_city: shippingAddress.city,
-      billing_pincode: shippingAddress.pincode,
-      billing_state: shippingAddress.state || '',
-      billing_country: 'India',
-      billing_email: request.customerEmail || 'orders@olovely.com',
-      billing_phone: customerPhone,
-      shipping_is_billing: true,
-      order_items: orderItems,
-      payment_method: request.paymentMethod === 'COD' ? 'COD' : 'Prepaid',
-      sub_total: request.subtotal,
-      length: dimensions.length || 20,
-      breadth: dimensions.width || 15,
-      height: dimensions.height || 10,
-      weight: totalWeight,
-    };
+    // 4. Construct the shared normal/replacement Shiprocket forward-order payload.
+    const orderPayload = buildShiprocketForwardPayload(request);
 
     // Step A: Create Order
     const createRes = await shiprocketHttpClient.request({
@@ -416,6 +511,8 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
       pickupDate.setDate(pickupDate.getDate() + 2);
       return {
         returnId: request.returnId,
+        externalOrderId: `LOCAL-${request.returnId}`,
+        shipmentId: `LOCAL-SHIP-${request.returnId}`,
         returnAwbNumber: retAwb,
         carrier: 'Shiprocket Reverse Logistics',
         status: 'Return Initiated',
@@ -424,39 +521,56 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
     }
 
     try {
-      const response = await shiprocketHttpClient.request({
+      // Query-before-create recovers if the remote create succeeded before the local save.
+      const listed = await shiprocketHttpClient.request<any>({
+        method: 'GET',
+        url: '/v1/external/orders/processing/return',
+      });
+      const returnOrders = Array.isArray(listed?.data?.data)
+        ? listed.data.data
+        : listed?.data || listed?.orders || [];
+      const existing = Array.isArray(returnOrders)
+        ? returnOrders.find((item: any) => String(item.channel_order_id || item.order_id) === request.idempotencyKey)
+        : undefined;
+      const response: any = existing || await shiprocketHttpClient.request({
         method: 'POST',
-        url: '/v1/external/orders/create/return',
-        data: {
-          order_id: `RET_${request.orderId}_${request.item.productId}`,
-          order_date: new Date().toISOString().slice(0, 10),
-          channel_id: '',
-          pickup_customer_name: 'Customer',
-          pickup_address: request.pickupAddress.address,
-          pickup_city: request.pickupAddress.city,
-          pickup_state: request.pickupAddress.state || '',
-          pickup_pincode: request.pickupAddress.pincode,
-          order_items: [
-            {
-              name: request.item.productName,
-              sku: `SKU-${request.item.productId.slice(-6)}`,
-              units: request.item.quantity,
-              selling_price: 1,
-            },
-          ],
-        },
+        url: SHIPROCKET_RETURN_ENDPOINT,
+        data: buildShiprocketReturnPayload(request),
       });
 
-      const retAwb = response?.awb_code || `SR-RET-${response?.order_id || Date.now()}`;
+      const externalOrderId = String(response?.order_id || response?.id || response?.data?.order_id || '');
+      const shipmentId = String(response?.shipment_id || response?.data?.shipment_id || response?.shipments?.[0]?.id || '');
+      if (!externalOrderId || !shipmentId) throw new Error('Shiprocket return order response was incomplete');
+
+      let retAwb = response?.awb_code || response?.shipments?.[0]?.awb;
+      let courierName = response?.courier_name || response?.shipments?.[0]?.courier_name;
+      if (!retAwb) {
+        const awbResponse: any = await shiprocketHttpClient.request({
+          method: 'POST',
+          url: '/v1/external/courier/assign/awb',
+          data: { shipment_id: shipmentId, is_return: 1 },
+        });
+        retAwb = awbResponse?.response?.data?.awb_code || awbResponse?.awb_code;
+        courierName = courierName || awbResponse?.response?.data?.courier_name || awbResponse?.courier_name;
+      }
+      if (retAwb) {
+        await shiprocketHttpClient.request({
+          method: 'POST',
+          url: '/v1/external/courier/generate/pickup',
+          data: { shipment_id: [shipmentId] },
+        });
+      }
       return {
         returnId: request.returnId,
+        externalOrderId,
+        shipmentId,
         returnAwbNumber: retAwb,
-        carrier: response?.courier_name || 'Shiprocket Reverse Logistics',
+        carrier: courierName || 'Shiprocket Reverse Logistics',
         status: 'Return Initiated',
       };
     } catch (err: any) {
-      console.warn('[Shiprocket] Return creation API call failed:', err.message);
-      throw new Error(`Failed to create Shiprocket reverse pickup: ${err.message}`);
+      const status = err?.statusCode;
+      throw new Error(`Shiprocket reverse logistics failed${status ? ` (HTTP ${status})` : ''}`);
     }
   }
 
@@ -551,28 +665,27 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
    * Helper to query existing Shiprocket order by channel order ID (Idempotency)
    */
   private async findExistingOrderByChannelId(channelOrderId: string): Promise<ExternalOrderResult | null> {
-    try {
-      const response = await shiprocketHttpClient.request({
-        method: 'GET',
-        url: `/v1/external/orders/show/${channelOrderId}`,
-      });
+    const response = await shiprocketHttpClient.request({
+      method: 'GET',
+      url: '/v1/external/orders',
+      params: { filter_by: 'channel_order_id', filter: channelOrderId, per_page: 1 },
+    });
 
-      const orderData = response?.data;
-      if (orderData && orderData.id) {
-        const shipment = orderData.shipments?.[0] || {};
-        return {
-          externalOrderId: String(orderData.id),
-          shipmentId: String(shipment.id || orderData.id),
-          awbNumber: shipment.awb || orderData.awb_code,
-          carrier: shipment.courier_name || 'Shiprocket Courier',
-          trackingNumber: shipment.awb || orderData.awb_code,
-          trackingUrl: shipment.awb ? `https://shiprocket.co/tracking/${shipment.awb}` : undefined,
-          status: SHIPROCKET_STATUS_MAP[orderData.status?.toUpperCase() || ''] || 'Manifested',
-          rawResponse: { orderData, cached: true },
-        };
-      }
-    } catch (err) {
-      // Order doesn't exist yet, safe to proceed
+    const orderData = Array.isArray(response?.data)
+      ? response.data.find((item: any) => String(item.channel_order_id) === channelOrderId)
+      : undefined;
+    if (orderData && orderData.id) {
+      const shipment = orderData.shipments?.[0] || {};
+      return {
+        externalOrderId: String(orderData.id),
+        shipmentId: String(shipment.id || orderData.id),
+        awbNumber: shipment.awb || orderData.awb_code,
+        carrier: shipment.courier_name || shipment.courier || 'Shiprocket Courier',
+        trackingNumber: shipment.awb || orderData.awb_code,
+        trackingUrl: shipment.awb ? `https://shiprocket.co/tracking/${shipment.awb}` : undefined,
+        status: SHIPROCKET_STATUS_MAP[orderData.status?.toUpperCase() || ''] || 'Manifested',
+        rawResponse: { orderData, cached: true },
+      };
     }
     return null;
   }
@@ -601,6 +714,15 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
 
     if (!pickupDetails) {
       throw new Error('Package validation failed: pickupDetails are required for Ecommerce fulfillment');
+    }
+    if (!pickupDetails.pickupLocationId) {
+      throw new Error('Package validation failed: verified seller Shiprocket pickup location ID is required');
+    }
+    if (
+      !pickupDetails.pickupLocationName ||
+      pickupDetails.pickupLocationName !== buildShiprocketPickupLocationName(pickupDetails.sellerId)
+    ) {
+      throw new Error('Package validation failed: a verified seller Shiprocket pickup location is required');
     }
     if (!pickupDetails.pickupPincode || !/^[1-9][0-9]{5}$/.test(pickupDetails.pickupPincode.trim())) {
       throw new Error(`Package validation failed: valid 6-digit pickup pincode is required (got '${pickupDetails?.pickupPincode}')`);

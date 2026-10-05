@@ -4,6 +4,7 @@ import { asyncHandler } from "../../../utils/asyncHandler";
 import { parseSafeBoolean } from "./sellerAuthController";
 import {
   isShiprocketPickupRequired,
+  cleanupSellerShiprocketPickup,
   provisionShiprocketPickupLocation,
 } from "../../../services/shipping/shiprocketPickupService";
 
@@ -177,6 +178,8 @@ export const updateSeller = asyncHandler(
         "shiprocketPickupAddressFingerprint",
         "shiprocketPickupLastSyncedAt",
         "shiprocketPickupSyncStartedAt",
+        "shiprocketPickupCleanupStartedAt",
+        "shiprocketPickupRetiredAt",
       ]) {
         delete incomingConfig[key];
       }
@@ -189,7 +192,8 @@ export const updateSeller = asyncHandler(
       if (
         addressChanged &&
         isShiprocketPickupRequired(existingSeller.vendorType) &&
-        oldConfig.shiprocketPickupLocationId
+        oldConfig.shiprocketPickupLocationId &&
+        !["RETIRING", "RETRY_PENDING", "RETIRED"].includes(oldConfig.shiprocketPickupStatus || "")
       ) {
         mergedConfig.shiprocketPickupStatus = "PENDING";
         mergedConfig.shiprocketPickupLastError =
@@ -274,7 +278,7 @@ export const deleteSeller = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
 
-    const seller = await Seller.findByIdAndDelete(id);
+    const seller = await Seller.findById(id);
 
     if (!seller) {
       return res.status(404).json({
@@ -282,6 +286,9 @@ export const deleteSeller = asyncHandler(
         message: "Seller not found",
       });
     }
+
+    await cleanupSellerShiprocketPickup(seller);
+    await Seller.findByIdAndDelete(id);
 
     return res.status(200).json({
       success: true,
