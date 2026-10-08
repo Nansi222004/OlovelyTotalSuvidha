@@ -15,6 +15,7 @@ import {
 } from "../../../services/commissionService";
 import Seller from "../../../models/Seller";
 import { createApprovedReturnLogistics, ReturnLogisticsError } from "../../../services/returnShippingService";
+import { recordReturn } from "../../../services/inventoryService";
 
 /**
  * Get all orders with filters
@@ -314,7 +315,7 @@ export const markOrderCODPaid = asyncHandler(
 export const updateOrderStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { status, adminNotes } = req.body;
+    const { status, adminNotes, fulfillmentScope } = req.body;
 
     const validStatuses = [
       "Received",
@@ -331,14 +332,96 @@ export const updateOrderStatus = asyncHandler(
       "Returned",
     ];
 
+    const normalizedStatus = typeof status === "string" ? status.toLowerCase() : "";
     const matchedStatus = validStatuses.find(
-      (s) => s.toLowerCase() === status.toLowerCase()
+      (s) => s.toLowerCase() === normalizedStatus
     );
 
     if (!matchedStatus) {
       return res.status(400).json({
         success: false,
         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      });
+    }
+
+    if (fulfillmentScope === "PLATFORM_QC") {
+      if (matchedStatus !== "Accepted" && matchedStatus !== "Rejected") {
+        return res.status(400).json({
+          success: false,
+          message: "Platform QC alerts can only be accepted or rejected",
+        });
+      }
+
+      const existingOrder = await Order.findById(id);
+      if (!existingOrder) {
+        return res.status(404).json({ success: false, message: "Order not found" });
+      }
+      if (["Cancelled", "Rejected", "Delivered", "Returned"].includes(existingOrder.status)) {
+        return res.status(409).json({
+          success: false,
+          message: `Order cannot be changed because it is already ${existingOrder.status}`,
+        });
+      }
+
+      const platformQcFilter = {
+        order: existingOrder._id,
+        ownerType: "PLATFORM",
+        productType: "QUICK_COMMERCE",
+        sellerStatus: "Pending",
+        status: { $ne: "Cancelled" },
+      };
+
+      if (matchedStatus === "Accepted") {
+        await OrderItem.updateMany(platformQcFilter, {
+          $set: { sellerStatus: "Accepted" },
+        });
+      } else {
+        const pendingPlatformItems = await OrderItem.find(platformQcFilter);
+
+        for (const pendingItem of pendingPlatformItems) {
+          // Claim this item atomically so concurrent/repeated rejection requests
+          // cannot restore its inventory more than once.
+          const claimedItem = await OrderItem.findOneAndUpdate(
+            { _id: pendingItem._id, sellerStatus: "Pending", status: { $ne: "Cancelled" } },
+            { $set: { sellerStatus: "Rejected", status: "Cancelled" } },
+            { new: false },
+          );
+          if (!claimedItem) continue;
+
+          try {
+            await recordReturn(
+              claimedItem.product.toString(),
+              claimedItem.variationId?.toString() || null,
+              claimedItem.quantity,
+              existingOrder._id.toString(),
+              claimedItem._id.toString(),
+              req.user?.userId,
+            );
+          } catch (inventoryError) {
+            // Leave the item actionable if restoration failed so an Admin can
+            // retry safely; recordReturn itself is idempotent by order item.
+            await OrderItem.updateOne(
+              { _id: claimedItem._id, sellerStatus: "Rejected", status: "Cancelled" },
+              { $set: { sellerStatus: "Pending", status: "Pending" } },
+            );
+            throw inventoryError;
+          }
+        }
+      }
+
+      const io: SocketIOServer = req.app.get("io");
+      const { recomputeOrderFulfillment } = await import("../../../services/orderFulfillmentOrchestrator");
+      await recomputeOrderFulfillment(existingOrder._id.toString(), io);
+
+      const updatedOrder = await Order.findById(existingOrder._id)
+        .populate("customer", "name email phone")
+        .populate("deliveryBoy", "name mobile")
+        .populate("items");
+
+      return res.status(200).json({
+        success: true,
+        message: `Platform Quick Commerce items ${matchedStatus.toLowerCase()} successfully`,
+        data: updatedOrder,
       });
     }
 
@@ -909,4 +992,18 @@ export const exportOrders = asyncHandler(
     );
     res.send(csvContent);
   },
+);
+
+/**
+ * Get pending order alerts for Admin (Platform QC orders)
+ */
+export const getPendingOrderAlerts = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const { getAdminPendingOrderAlerts } = await import("../../../services/orderAlertService");
+    const alerts = await getAdminPendingOrderAlerts();
+    return res.status(200).json({
+      success: true,
+      data: alerts,
+    });
+  }
 );

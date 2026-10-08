@@ -33,8 +33,9 @@ async function validateSellerHeaderCategory(
   const seller = await Seller.findById(sellerId).select("categories vendorType");
   if (!seller) return "Seller not found";
 
-  // If seller is HYBRID or has no categories set (empty array), allow all published categories
-  if (seller.vendorType === "HYBRID" || !seller.categories || seller.categories.length === 0) return null;
+  // Empty categories are retained as a legacy fallback. New registrations always
+  // persist a validated selection, including HYBRID sellers.
+  if (!seller.categories || seller.categories.length === 0) return null;
 
   const headerCategory = await HeaderCategory.findById(headerCategoryId);
   if (!headerCategory) return "Header category not found";
@@ -1157,9 +1158,10 @@ export const getAllowedHeaderCategories = asyncHandler(
       });
     }
 
-    // If seller is HYBRID or has no categories set, return all published header categories
+    // Empty categories are retained as a legacy fallback. Otherwise every seller,
+    // including HYBRID, receives the categories selected during registration.
     let query: any = { status: "Published" };
-    if (seller.vendorType !== "HYBRID" && seller.categories && seller.categories.length > 0) {
+    if (seller.categories && seller.categories.length > 0) {
       const allowedCategories = [...seller.categories];
       if (allowedCategories.includes("Grocery")) {
         allowedCategories.push("Dairy & Milk", "Bakery & Biscuits", "Snacks & Drinks", "Fruits & Vegetables");

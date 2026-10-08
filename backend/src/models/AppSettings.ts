@@ -20,6 +20,19 @@ export interface IAppSettings extends Document {
   companyPincode?: string;
   companyCountry?: string;
 
+  // Canonical server-authoritative origin for Platform-owned Quick Commerce.
+  // Ecommerce intentionally does not use this radius.
+  platformQuickCommerceFulfillment?: {
+    warehouseName: string;
+    warehouseAddress: string;
+    city: string;
+    state: string;
+    pincode: string;
+    latitude: number;
+    longitude: number;
+    serviceRadiusKm: number;
+  };
+
   // Payment Settings
   paymentMethods: {
     cod: boolean;
@@ -256,6 +269,23 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: String,
       default: "India",
       trim: true,
+    },
+    platformQuickCommerceFulfillment: {
+      warehouseName: { type: String, trim: true },
+      warehouseAddress: { type: String, trim: true },
+      city: { type: String, trim: true },
+      state: { type: String, trim: true },
+      pincode: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: (value?: string) => !value || /^[1-9][0-9]{5}$/.test(value),
+          message: "Platform warehouse pincode must be a valid 6-digit Indian pincode",
+        },
+      },
+      latitude: { type: Number, min: -90, max: 90 },
+      longitude: { type: Number, min: -180, max: 180 },
+      serviceRadiusKm: { type: Number, min: 0.1, max: 300 },
     },
 
     // Payment Settings

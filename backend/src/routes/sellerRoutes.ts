@@ -7,6 +7,7 @@ import {
   deleteSeller,
   updateSellerCategoryCommissions,
   retrySellerPickupProvisioning,
+  getSellerSuggestions,
 } from "../modules/seller/controllers/sellerController";
 import { authenticate, requireUserType } from "../middleware/auth";
 
@@ -18,6 +19,9 @@ router.use(requireUserType("Admin"));
 
 // Get all sellers
 router.get("/", getAllSellers);
+
+// Read-only, ranked autocomplete (must precede the dynamic :id route)
+router.get("/suggestions", getSellerSuggestions);
 
 // Get seller by ID
 router.get("/:id", getSellerById);

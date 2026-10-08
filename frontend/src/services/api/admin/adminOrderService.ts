@@ -98,6 +98,7 @@ export interface GetOrdersParams {
 export interface UpdateOrderStatusData {
   status: string;
   adminNotes?: string;
+  fulfillmentScope?: "PLATFORM_QC";
 }
 
 export interface AssignDeliveryBoyData {
@@ -324,5 +325,13 @@ export const exportOrders = async (
     params,
     responseType: "blob",
   });
+  return response.data;
+};
+
+/**
+ * Get pending order alerts for Admin (Platform QC orders requiring action)
+ */
+export const getPendingOrderAlerts = async (): Promise<ApiResponse<any[]>> => {
+  const response = await api.get<ApiResponse<any[]>>("/admin/orders/pending-alerts");
   return response.data;
 };

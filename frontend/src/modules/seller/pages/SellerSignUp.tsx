@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { register, sendOTP, verifyOTP } from '../../../services/api/auth/sellerAuthService';
 import { removeAuthToken } from '../../../services/api/config';
@@ -7,9 +7,15 @@ import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
 import { useAuth } from '../../../context/AuthContext';
 import { getHeaderCategoriesPublic, HeaderCategory } from '../../../services/api/headerCategoryService';
 import LocationPickerMap from '../../../components/LocationPickerMap';
-import { useEffect } from 'react';
 import { useAppSettings } from '../../../context/AppSettingsContext';
 import sellerLogo from '@assets/seller_logo.jpg';
+import {
+  buildSellerLocationFields,
+  getBrowserStoreCoordinates,
+  hasValidStoreCoordinates,
+  reverseGeocodeStoreCoordinates,
+} from '../../../utils/sellerLocation';
+import { filterCategoriesForVendorType } from '../../../utils/sellerCategoryCompatibility';
 
 export default function SellerSignUp() {
   const navigate = useNavigate();
@@ -36,7 +42,11 @@ export default function SellerSignUp() {
   const [showOTP, setShowOTP] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [locationError, setLocationError] = useState('');
+  const [locationLoading, setLocationLoading] = useState(false);
+  const locationRequestRef = useRef(0);
   const [categories, setCategories] = useState<HeaderCategory[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
   const { settings } = useAppSettings();
   const qcEnabled = settings.commerceChannels?.quickCommerceEnabled !== false;
@@ -62,6 +72,8 @@ export default function SellerSignUp() {
         }
       } catch (err) {
         console.error('Error fetching categories:', err);
+      } finally {
+        setCategoriesLoaded(true);
       }
     };
     fetchCats();
@@ -108,6 +120,88 @@ export default function SellerSignUp() {
     });
   };
 
+  const applyResolvedStoreLocation = useCallback(async (latitude: number, longitude: number) => {
+    const requestId = ++locationRequestRef.current;
+    setLocationLoading(true);
+    setLocationError('');
+    setFormData(prev => ({
+      ...prev,
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      address: '',
+      searchLocation: '',
+    }));
+
+    try {
+      const resolved = await reverseGeocodeStoreCoordinates(latitude, longitude);
+      if (requestId !== locationRequestRef.current) return;
+      const fields = buildSellerLocationFields(
+        resolved.formattedAddress,
+        latitude,
+        longitude,
+        { city: resolved.city, state: resolved.state, pincode: resolved.pincode }
+      );
+      setFormData(prev => ({
+        ...prev,
+        ...fields,
+        city: fields.city || prev.city,
+        pickupState: fields.pickupState || prev.pickupState,
+        pickupPincode: fields.pickupPincode || prev.pickupPincode,
+      }));
+    } catch (locationLookupError: any) {
+      if (requestId !== locationRequestRef.current) return;
+      setLocationError(locationLookupError?.message || 'Unable to determine the address. Please move the pin or try again.');
+    } finally {
+      if (requestId === locationRequestRef.current) setLocationLoading(false);
+    }
+  }, []);
+
+  const compatibleCategories = useMemo(
+    () => filterCategoriesForVendorType(categories, formData.vendorType),
+    [categories, formData.vendorType]
+  );
+
+  useEffect(() => {
+    if (!categoriesLoaded) return;
+    const compatibleNames = new Set(compatibleCategories.map((category) => category.name));
+    setFormData((previous) => {
+      const nextCategories = previous.categories.filter((name) => compatibleNames.has(name));
+      if (
+        nextCategories.length === previous.categories.length
+        && nextCategories.every((name, index) => name === previous.categories[index])
+      ) {
+        return previous;
+      }
+      return { ...previous, categories: nextCategories, category: nextCategories[0] || '' };
+    });
+  }, [categoriesLoaded, compatibleCategories]);
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    setLocationLoading(true);
+    setLocationError('');
+    try {
+      const coords = await getBrowserStoreCoordinates();
+      await applyResolvedStoreLocation(coords.latitude, coords.longitude);
+    } catch (geolocationError: any) {
+      setLocationError(geolocationError?.message || 'Unable to get your current location. Search for your store address or try again.');
+      setLocationLoading(false);
+    }
+  }, [applyResolvedStoreLocation]);
+
+  const handleMapLocationSelect = useCallback((latitude: number, longitude: number) => {
+    const previousLatitude = Number(formData.latitude);
+    const previousLongitude = Number(formData.longitude);
+    if (
+      Number.isFinite(previousLatitude)
+      && Number.isFinite(previousLongitude)
+      && Math.abs(previousLatitude - latitude) < 0.000001
+      && Math.abs(previousLongitude - longitude) < 0.000001
+    ) {
+      return;
+    }
+    void applyResolvedStoreLocation(latitude, longitude);
+  }, [applyResolvedStoreLocation, formData.latitude, formData.longitude]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -132,12 +226,13 @@ export default function SellerSignUp() {
       setError('Please select at least one category');
       return;
     }
-    if (formData.vendorType !== 'ECOMMERCE' && !formData.address && !formData.searchLocation) {
-      setError('Please select your store location');
+    const compatibleNames = new Set(compatibleCategories.map((item) => item.name));
+    if (formData.categories.some((name) => !compatibleNames.has(name))) {
+      setError('One or more selected categories are not compatible with the selected vendor business type');
       return;
     }
-    if (formData.vendorType === 'ECOMMERCE' && !formData.address) {
-      setError('Please enter your store address');
+    if (!formData.address.trim()) {
+      setError('Please select a valid store address');
       return;
     }
     if (!formData.city) {
@@ -154,13 +249,12 @@ export default function SellerSignUp() {
     setError('');
 
     try {
-      if (formData.vendorType !== 'ECOMMERCE') {
-        // Validate location is selected for QC and HYBRID
-        if (!formData.searchLocation || !formData.latitude || !formData.longitude) {
-          setError('Please select your store location using the location search');
-          return;
-        }
+      if (!hasValidStoreCoordinates(formData.latitude, formData.longitude)) {
+        setError('Please search for your store address or select a valid location on the map');
+        return;
+      }
 
+      if (formData.vendorType !== 'ECOMMERCE') {
         // Validate service radius
         const radius = parseFloat(formData.serviceRadiusKm);
         if (isNaN(radius) || radius < 0.1 || radius > 300) {
@@ -464,13 +558,17 @@ export default function SellerSignUp() {
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Categories <span className="text-red-500">*</span>
                   </label>
-                  {categories.length === 0 ? (
+                  {!categoriesLoaded ? (
                     <div className="text-sm text-neutral-500 py-2">
                       Loading categories...
                     </div>
+                  ) : compatibleCategories.length === 0 ? (
+                    <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      No published categories currently support this commerce capability.
+                    </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-2 border border-neutral-200 rounded-lg">
-                      {categories.map((cat) => {
+                      {compatibleCategories.map((cat) => {
                         const checked = formData.categories.includes(cat.name);
                         return (
                           <label key={cat._id} className="flex items-center gap-2 text-sm text-neutral-700">
@@ -487,76 +585,73 @@ export default function SellerSignUp() {
                       })}
                     </div>
                   )}
-                  {formData.categories.length === 0 && categories.length > 0 && (
-                    <p className="text-xs text-red-600 mt-1">Select at least one category</p>
+                  {formData.categories.length === 0 && compatibleCategories.length > 0 && (
+                    <p className="text-xs text-red-600 mt-1">Select at least one compatible category</p>
                   )}
                 </div>
 
-                {/* Quick Commerce & Hybrid Location Configuration */}
-                {formData.vendorType !== 'ECOMMERCE' && (
-                  <>
+                {/* Store address and internal coordinates for every seller channel */}
+                <>
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-2">
-                        Store Location (GPS) <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex gap-2 items-start">
-                        <div className="flex-1">
-                          <GoogleMapsAutocomplete
-                            value={formData.searchLocation}
-                            onChange={(address: string, lat: number, lng: number, placeName: string, components?: { city?: string; state?: string }) => {
-                              setFormData(prev => ({
-                                ...prev,
-                                searchLocation: address,
-                                latitude: lat.toString(),
-                                longitude: lng.toString(),
-                                address: address,
-                                city: components?.city || prev.city,
-                                pickupState: components?.state || prev.pickupState,
-                              }));
-                            }}
-                            placeholder="Search your store location..."
-                            disabled={loading}
-                            required
-                          />
-                        </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <label className="block text-sm font-medium text-neutral-700">
+                          Store Location <span className="text-red-500">*</span>
+                        </label>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (navigator.geolocation) {
-                              setLoading(true);
-                              navigator.geolocation.getCurrentPosition(
-                                (position) => {
-                                  const lat = position.coords.latitude;
-                                  const lng = position.coords.longitude;
-                                  const locationStr = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    latitude: lat.toString(),
-                                    longitude: lng.toString(),
-                                    searchLocation: locationStr,
-                                    address: prev.address || locationStr
-                                  }));
-                                  setLoading(false);
-                                },
-                                (error) => {
-                                  console.error(error);
-                                  setError('Unable to retrieve your location');
-                                  setLoading(false);
-                                }
-                              );
-                            } else {
-                              setError('Geolocation is not supported by your browser');
-                            }
-                          }}
-                          className="p-2.5 bg-teal-50 text-teal-600 rounded-lg border border-teal-200 hover:bg-teal-100 transition-colors"
-                          title="Use Current Location"
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 2a10 10 0 1 0 10 10 10 10 0 0 0-10-10zm0 16a6 6 0 1 1 6-6 6 6 0 0 1-6 6z" />
-                            <path d="M12 8v8" />
-                            <path d="M8 12h8" />
-                          </svg>
+                          onClick={handleUseCurrentLocation}
+                          disabled={loading || locationLoading}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-wait disabled:opacity-60">
+                          <span aria-hidden="true">📍</span>
+                          {locationLoading ? 'Finding Address...' : 'Use Current Location'}
                         </button>
+                      </div>
+
+                      <label className="mb-1 block text-xs font-medium text-neutral-600">
+                        Search your store address
+                      </label>
+                      <div className="min-w-0">
+                          <GoogleMapsAutocomplete
+                            value={formData.searchLocation}
+                            onChange={(address, lat, lng, _placeName, components) => {
+                              if (!hasValidStoreCoordinates(lat, lng) || (lat === 0 && lng === 0)) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  searchLocation: address,
+                                  address: '',
+                                  latitude: '',
+                                  longitude: '',
+                                }));
+                                return;
+                              }
+                              const formattedAddress = components?.formattedAddress || address;
+                              const fields = buildSellerLocationFields(formattedAddress, lat, lng, components);
+                              setFormData(prev => ({
+                                ...prev,
+                                ...fields,
+                                city: fields.city || prev.city,
+                                pickupState: fields.pickupState || prev.pickupState,
+                                pickupPincode: fields.pickupPincode || prev.pickupPincode,
+                              }));
+                              setLocationError('');
+                            }}
+                            placeholder="Search and select your store address..."
+                            disabled={loading || locationLoading}
+                            required
+                          />
+                      </div>
+
+                      {locationError && (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800" role="alert">
+                          {locationError}
+                        </p>
+                      )}
+
+                      <div className="mt-3">
+                        <label className="mb-1 block text-xs font-medium text-neutral-600">Store Address</label>
+                        <div className="min-h-[64px] w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm leading-5 text-neutral-700 break-words">
+                          {formData.address || 'Select an address result or use your current location.'}
+                        </div>
                       </div>
 
                       {formData.latitude && formData.longitude ? (
@@ -567,16 +662,11 @@ export default function SellerSignUp() {
                           <LocationPickerMap
                             initialLat={parseFloat(formData.latitude)}
                             initialLng={parseFloat(formData.longitude)}
-                            onLocationSelect={(lat, lng) => {
-                              setFormData(prev => ({
-                                ...prev,
-                                latitude: lat.toString(),
-                                longitude: lng.toString()
-                              }));
-                            }}
+                            onLocationSelect={handleMapLocationSelect}
+                            height="260px"
                           />
                           <p className="mt-1 text-xs text-neutral-500 text-center">
-                            Selected Coordinates: {formData.latitude}, {formData.longitude}
+                            Move the map to place the pin on your store's exact entrance.
                           </p>
                         </div>
                       ) : (
@@ -586,6 +676,7 @@ export default function SellerSignUp() {
                       )}
                     </div>
 
+                  {formData.vendorType !== 'ECOMMERCE' && (
                     <div>
                       <label className="block text-sm font-medium text-neutral-700 mb-2">
                         Delivery/Service Radius (KM) <span className="text-red-500">*</span>
@@ -613,8 +704,8 @@ export default function SellerSignUp() {
                         Only customers within this radius can see and order your Quick Commerce products
                       </p>
                     </div>
-                  </>
-                )}
+                  )}
+                </>
 
                 {/* Ecommerce & Hybrid Courier Shipping Configuration */}
                 {formData.vendorType !== 'QUICK_COMMERCE' && (
@@ -653,21 +744,9 @@ export default function SellerSignUp() {
                         disabled={loading}
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-700 mb-1">
-                        Pickup Warehouse / Store Address <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleInputChange}
-                        placeholder="Enter full physical address for courier pickup"
-                        required
-                        className="w-full px-3 py-2 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                        disabled={loading}
-                      />
-                    </div>
+                    <p className="text-xs leading-5 text-amber-800">
+                      Courier pickup will use the Store Address selected above. Pickup creation remains part of the existing approval workflow.
+                    </p>
                   </div>
                 )}
 

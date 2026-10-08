@@ -8,6 +8,14 @@ import {
   SuggestionProduct,
   SuggestionBrand,
 } from '../services/api/customerProductService';
+import { useDebouncedSuggestions } from '../hooks/useDebouncedSuggestions';
+
+const EMPTY_SEARCH_SUGGESTIONS: SearchSuggestionsData = {
+  categories: [],
+  subcategories: [],
+  products: [],
+  brands: [],
+};
 
 export interface SearchSuggestionsDropdownProps {
   query: string;
@@ -35,57 +43,20 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
   inputRef,
 }) => {
   const navigate = useNavigate();
-  const [data, setData] = useState<SearchSuggestionsData>({
-    categories: [],
-    subcategories: [],
-    products: [],
-    brands: [],
-  });
-  const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchSuggestions = useCallback(async (trimmed: string) => {
+    const response = await getSearchSuggestions(trimmed, channel, isWholesale);
+    return response.success && response.data ? response.data : EMPTY_SEARCH_SUGGESTIONS;
+  }, [channel, isWholesale]);
+  const { data, loading } = useDebouncedSuggestions({
+    query,
+    isOpen,
+    emptyValue: EMPTY_SEARCH_SUGGESTIONS,
+    fetchSuggestions,
+  });
 
-  // Debounced fetch of suggestions (250ms debounce)
-  useEffect(() => {
-    const trimmed = query.trim();
-
-    if (!isOpen || trimmed.length < 2) {
-      setData({ categories: [], subcategories: [], products: [], brands: [] });
-      setLoading(false);
-      setSelectedIndex(-1);
-      return;
-    }
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    setLoading(true);
-
-    debounceTimerRef.current = setTimeout(async () => {
-      try {
-        const response = await getSearchSuggestions(trimmed, channel, isWholesale);
-        if (response.success && response.data) {
-          setData(response.data);
-        } else {
-          setData({ categories: [], subcategories: [], products: [], brands: [] });
-        }
-      } catch (err) {
-        console.error('Error fetching search suggestions:', err);
-        setData({ categories: [], subcategories: [], products: [], brands: [] });
-      } finally {
-        setLoading(false);
-        setSelectedIndex(-1);
-      }
-    }, 250);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [query, isOpen, channel, isWholesale]);
+  useEffect(() => setSelectedIndex(-1), [data]);
 
   // Click outside listener
   useEffect(() => {

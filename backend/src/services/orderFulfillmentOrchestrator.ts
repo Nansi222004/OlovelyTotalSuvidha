@@ -23,14 +23,26 @@ interface FulfillmentComputation {
   outcome: FulfillmentOutcome;
 }
 
-function computeFulfillment(order: any, items: any[]): FulfillmentComputation {
+export function computeFulfillment(order: any, items: any[]): FulfillmentComputation {
+  const sellerItems = items.filter(
+    (item: any) => item.ownerType !== "PLATFORM" && Boolean(item.seller),
+  );
+  const platformItems = items.filter(
+    (item: any) =>
+      item.ownerType === "PLATFORM" && item.productType === "QUICK_COMMERCE",
+  );
+  const platformEcommerceItems = items.filter(
+    (item: any) =>
+      item.ownerType === "PLATFORM" && item.productType === "ECOMMERCE",
+  );
+
   const uniqueSellerIds = [
-    ...new Set(items.map((item: any) => item.seller?.toString()).filter(Boolean)),
+    ...new Set(sellerItems.map((item: any) => item.seller.toString())),
   ];
 
   const acceptedSellerIds = [
     ...new Set(
-      items
+      sellerItems
         .filter((item: any) => item.sellerStatus === "Accepted")
         .map((item: any) => item.seller.toString()),
     ),
@@ -38,7 +50,7 @@ function computeFulfillment(order: any, items: any[]): FulfillmentComputation {
 
   const rejectedSellerIds = [
     ...new Set(
-      items
+      sellerItems
         .filter((item: any) => item.sellerStatus === "Rejected")
         .map((item: any) => item.seller.toString()),
     ),
@@ -49,13 +61,41 @@ function computeFulfillment(order: any, items: any[]): FulfillmentComputation {
       !acceptedSellerIds.includes(sellerId) && !rejectedSellerIds.includes(sellerId),
   );
 
+  // Platform fulfillment status evaluation
+  let platformResponded = true;
+  let platformAccepted = false;
+  let platformRejected = false;
+
+  if (platformItems.length > 0) {
+    const allPlatAccepted = platformItems.every((it: any) => it.sellerStatus === "Accepted");
+    const allPlatRejected = platformItems.every((it: any) => it.sellerStatus === "Rejected" || it.status === "Cancelled");
+    if (allPlatAccepted) {
+      platformAccepted = true;
+      platformResponded = true;
+    } else if (allPlatRejected) {
+      platformRejected = true;
+      platformResponded = true;
+    } else {
+      platformResponded = false;
+    }
+  }
+
   const fulfillableItemIds = items
-    .filter((item: any) => item.sellerStatus === "Accepted" && item.status !== "Cancelled")
+    .filter(
+      (item: any) =>
+        item.status !== "Cancelled" &&
+        (item.sellerStatus === "Accepted" ||
+          (item.ownerType === "PLATFORM" && item.productType === "ECOMMERCE")),
+    )
     .map((item: any) => item._id as mongoose.Types.ObjectId);
 
-  const allHaveResponded = pendingSellerIds.length === 0;
-  const anyAccepted = acceptedSellerIds.length > 0;
-  const allRejected = allHaveResponded && rejectedSellerIds.length === uniqueSellerIds.length;
+  const allHaveResponded = pendingSellerIds.length === 0 && platformResponded;
+  const anyAccepted = acceptedSellerIds.length > 0 || platformAccepted || platformEcommerceItems.length > 0;
+  const hasResponseParticipants = uniqueSellerIds.length > 0 || platformItems.length > 0;
+  const allRejected = hasResponseParticipants && allHaveResponded &&
+    platformEcommerceItems.length === 0 &&
+    (uniqueSellerIds.length === 0 || rejectedSellerIds.length === uniqueSellerIds.length) &&
+    (platformItems.length === 0 || platformRejected);
 
   let outcome: FulfillmentOutcome = "waiting_for_sellers";
   if (allRejected) {
@@ -111,7 +151,7 @@ export async function recomputeOrderFulfillment(
   }
 
   const items = await OrderItem.find({ order: order._id }).select(
-    "_id seller sellerStatus status",
+    "_id seller sellerStatus status ownerType productType",
   );
 
   const state = computeFulfillment(order, items);

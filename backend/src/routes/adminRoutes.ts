@@ -137,6 +137,8 @@ router.delete("/brands/:id", productController.deleteBrand);
 // ==================== Product Routes ====================
 router.post("/products", productController.createProduct);
 router.get("/products", productController.getProducts);
+router.get("/products/barcode/generate", productController.generateCandidateBarcode);
+router.post("/products/barcode/generate", productController.generateCandidateBarcode);
 // Product order functionality removed
 // router.put("/products/order", productController.updateProductOrder);
 router.get("/products/:id", productController.getProductById);
@@ -152,6 +154,7 @@ router.put("/products/bulk-update", productController.bulkUpdateProducts);
 router.get("/orders", orderController.getAllOrders);
 router.get("/orders/status/:status", orderController.getOrdersByStatus);
 router.get("/settlement", orderController.getSettlementOrders);
+router.get("/orders/pending-alerts", orderController.getPendingOrderAlerts);
 router.get("/orders/:id", orderController.getOrderById);
 router.get("/orders/:id/cod-breakdown", orderController.getOrderCODBreakdown);
 router.get("/orders/:id/earning-breakdown", orderController.getOrderEarningBreakdown);

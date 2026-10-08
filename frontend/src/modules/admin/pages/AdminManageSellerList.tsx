@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getAllSellers, updateSellerStatus, deleteSeller, Seller as SellerType, updateSeller, updateSellerCategoryCommissions, retrySellerPickupProvisioning } from '../../../services/api/sellerService';
 import { getHeaderCategoriesAdmin, HeaderCategory } from '../../../services/api/headerCategoryService';
 import SellerServiceMap from '../components/SellerServiceMap';
 import ConfirmationModal from '../../../components/ConfirmationModal';
+import AdminSellerSuggestionsDropdown from '../components/AdminSellerSuggestionsDropdown';
+import { SellerSuggestion } from '../../../services/api/sellerService';
 
 interface Seller {
     _id: string;
@@ -188,9 +190,12 @@ export default function AdminManageSellerList() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>('');
     const [successMessage, setSuccessMessage] = useState<string>('');
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const initialSearch = searchParams.get('search') || '';
     const [searchTerm, setSearchTerm] = useState(initialSearch);
+    const [selectedSellerSuggestionId, setSelectedSellerSuggestionId] = useState<string | null>(null);
+    const [showSellerSuggestions, setShowSellerSuggestions] = useState(false);
+    const sellerSearchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const queryParam = searchParams.get('search');
@@ -212,6 +217,18 @@ export default function AdminManageSellerList() {
     const [editError, setEditError] = useState<string>('');
     const [isUpdatingRadius, setIsUpdatingRadius] = useState(false);
     const [newRadius, setNewRadius] = useState<number>(10);
+
+    const closeSellerSuggestions = useCallback(() => setShowSellerSuggestions(false), []);
+    const handleSellerSuggestionSelect = useCallback((seller: SellerSuggestion) => {
+        const selectedSearch = seller.sellerName || seller.storeName;
+        setSearchTerm(selectedSearch);
+        setSelectedSellerSuggestionId(seller._id);
+        setCurrentPage(1);
+        setShowSellerSuggestions(false);
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('search', selectedSearch);
+        setSearchParams(nextParams, { replace: true });
+    }, [searchParams, setSearchParams]);
 
     // Category Commission Modal state
     const [commissionModalSeller, setCommissionModalSeller] = useState<Seller | null>(null);
@@ -269,6 +286,7 @@ export default function AdminManageSellerList() {
 
     // Filter sellers
     let filteredSellers = sellers.filter(seller => {
+        if (selectedSellerSuggestionId && seller._id !== selectedSellerSuggestionId) return false;
         const q = String(searchTerm || "").toLowerCase();
         const matchesSearch = (
             String(seller.name || "").toLowerCase().includes(q) ||
@@ -812,17 +830,31 @@ export default function AdminManageSellerList() {
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
                             </button>
-                            <div className="relative">
+                            <div className="relative w-full sm:w-72">
                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 text-xs">Search:</span>
                                 <input
+                                    ref={sellerSearchInputRef}
                                     type="text"
-                                    className="pl-14 pr-3 py-1.5 bg-neutral-100 border-none rounded text-sm focus:ring-1 focus:ring-teal-500 w-48"
+                                    className="w-full rounded border-none bg-neutral-100 py-1.5 pl-14 pr-3 text-sm focus:ring-1 focus:ring-teal-500"
                                     value={searchTerm}
                                     onChange={(e) => {
                                         setSearchTerm(e.target.value);
+                                        setSelectedSellerSuggestionId(null);
                                         setCurrentPage(1);
+                                        setShowSellerSuggestions(e.target.value.trim().length >= 2);
                                     }}
-                                    placeholder=""
+                                    onFocus={() => setShowSellerSuggestions(searchTerm.trim().length >= 2)}
+                                    placeholder="Name, store, phone or email"
+                                    role="combobox"
+                                    aria-autocomplete="list"
+                                    aria-expanded={showSellerSuggestions}
+                                />
+                                <AdminSellerSuggestionsDropdown
+                                    query={searchTerm}
+                                    isOpen={showSellerSuggestions}
+                                    inputRef={sellerSearchInputRef}
+                                    onClose={closeSellerSuggestions}
+                                    onSelect={handleSellerSuggestionSelect}
                                 />
                             </div>
                         </div>

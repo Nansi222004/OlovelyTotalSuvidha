@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import HeaderCategory from "../../../models/HeaderCategory";
+import Category from "../../../models/Category";
 
 // @desc    Get all header categories (Admin)
 // @route   GET /api/v1/header-categories/admin
@@ -27,8 +28,27 @@ export const getHeaderCategories = async (_req: Request, res: Response) => {
     const categories = await HeaderCategory.find({ status: "Published" }).sort({
       order: 1,
       createdAt: -1,
-    });
-    return res.json(categories);
+    }).lean();
+    const categoryRows = await Category.find({
+      status: "Active",
+      headerCategoryId: { $in: categories.map((category) => category._id) },
+    }).select("headerCategoryId commerceChannels").lean();
+
+    const channelsByHeader = new Map<string, Set<string>>();
+    for (const row of categoryRows) {
+      if (!row.headerCategoryId) continue;
+      const key = row.headerCategoryId.toString();
+      const channels = channelsByHeader.get(key) || new Set<string>();
+      for (const channel of row.commerceChannels || []) channels.add(channel);
+      channelsByHeader.set(key, channels);
+    }
+
+    return res.json(categories.map((category) => ({
+      ...category,
+      commerceChannels: ["QUICK_COMMERCE", "ECOMMERCE"].filter((channel) =>
+        channelsByHeader.get(category._id.toString())?.has(channel)
+      ),
+    })));
   } catch (error) {
     return res.status(500).json({ message: "Server Error", error });
   }

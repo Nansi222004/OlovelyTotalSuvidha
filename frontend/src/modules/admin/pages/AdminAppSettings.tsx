@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getAppSettings, updateAppSettings, AppSettings } from '../../../services/api/admin/adminSettingsService';
 import api from '../../../services/api/config';
 import { notifyAppSettingsUpdated } from '../../../context/AppSettingsContext';
+import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
+import LocationPickerMap from '../../../components/LocationPickerMap';
+import {
+  getBrowserStoreCoordinates,
+  hasValidStoreCoordinates,
+  reverseGeocodeStoreCoordinates,
+} from '../../../utils/sellerLocation';
 
 export default function AdminAppSettings() {
   const [loading, setLoading] = useState(true);
@@ -9,6 +16,9 @@ export default function AdminAppSettings() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [platformLocationLoading, setPlatformLocationLoading] = useState(false);
+  const [platformLocationError, setPlatformLocationError] = useState('');
+  const platformLocationRequestRef = useRef(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +83,124 @@ export default function AdminAppSettings() {
     }));
     setSuccessMessage('');
     setErrorMessage('');
+  };
+
+  const handlePlatformQcChange = (
+    field: keyof NonNullable<AppSettings['platformQuickCommerceFulfillment']>,
+    value: string
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      platformQuickCommerceFulfillment: {
+        warehouseName: '',
+        warehouseAddress: '',
+        city: '',
+        state: '',
+        pincode: '',
+        latitude: '',
+        longitude: '',
+        serviceRadiusKm: '',
+        ...prev.platformQuickCommerceFulfillment,
+        [field]: value,
+      },
+    }));
+    setSuccessMessage('');
+    setErrorMessage('');
+  };
+
+  const setPlatformLocation = (
+    address: string,
+    latitude: number,
+    longitude: number,
+    components?: { city?: string; state?: string; pincode?: string }
+  ) => {
+    setFormData((previous) => {
+      const prevFulfillment = previous.platformQuickCommerceFulfillment;
+      return {
+        ...previous,
+        platformQuickCommerceFulfillment: {
+          warehouseName: prevFulfillment?.warehouseName || '',
+          serviceRadiusKm: prevFulfillment?.serviceRadiusKm || '',
+          warehouseAddress: address.trim(),
+          latitude: latitude.toString(),
+          longitude: longitude.toString(),
+          city: components?.city?.trim() || prevFulfillment?.city || '',
+          state: components?.state?.trim() || prevFulfillment?.state || '',
+          pincode: components?.pincode?.trim() || prevFulfillment?.pincode || '',
+        },
+      };
+    });
+    setPlatformLocationError('');
+    setSuccessMessage('');
+    setErrorMessage('');
+  };
+
+  const applyResolvedPlatformLocation = async (latitude: number, longitude: number) => {
+    const requestId = ++platformLocationRequestRef.current;
+    setPlatformLocationLoading(true);
+    setPlatformLocationError('');
+    try {
+      const result = await reverseGeocodeStoreCoordinates(latitude, longitude);
+      if (requestId !== platformLocationRequestRef.current) return;
+      setPlatformLocation(result.formattedAddress, latitude, longitude, result);
+    } catch (error: any) {
+      if (requestId !== platformLocationRequestRef.current) return;
+      setPlatformLocationError(error?.message || 'Unable to determine the warehouse address. Please move the pin or try again.');
+    } finally {
+      if (requestId === platformLocationRequestRef.current) setPlatformLocationLoading(false);
+    }
+  };
+
+  const handlePlatformAddressChange = (
+    address: string,
+    latitude: number,
+    longitude: number,
+    _placeName: string,
+    components?: { city?: string; state?: string; pincode?: string; formattedAddress?: string }
+  ) => {
+    if (hasValidStoreCoordinates(latitude, longitude) && (latitude !== 0 || longitude !== 0)) {
+      setPlatformLocation(components?.formattedAddress || address, latitude, longitude, components);
+      return;
+    }
+    setFormData((previous) => {
+      const prevFulfillment = previous.platformQuickCommerceFulfillment;
+      return {
+        ...previous,
+        platformQuickCommerceFulfillment: {
+          warehouseName: prevFulfillment?.warehouseName || '',
+          city: prevFulfillment?.city || '',
+          state: prevFulfillment?.state || '',
+          pincode: prevFulfillment?.pincode || '',
+          serviceRadiusKm: prevFulfillment?.serviceRadiusKm || '',
+          warehouseAddress: address,
+          latitude: '',
+          longitude: '',
+        },
+      };
+    });
+  };
+
+  const handleUseCurrentPlatformLocation = async () => {
+    setPlatformLocationLoading(true);
+    setPlatformLocationError('');
+    try {
+      const coordinates = await getBrowserStoreCoordinates();
+      await applyResolvedPlatformLocation(coordinates.latitude, coordinates.longitude);
+    } catch (error: any) {
+      setPlatformLocationError(error?.message || 'Unable to get the current location. Search for the warehouse address or try again.');
+      setPlatformLocationLoading(false);
+    }
+  };
+
+  const handlePlatformMapLocationSelect = (latitude: number, longitude: number) => {
+    const currentLatitude = Number(formData.platformQuickCommerceFulfillment?.latitude);
+    const currentLongitude = Number(formData.platformQuickCommerceFulfillment?.longitude);
+    if (
+      Number.isFinite(currentLatitude) && Number.isFinite(currentLongitude)
+      && Math.abs(currentLatitude - latitude) < 0.000001
+      && Math.abs(currentLongitude - longitude) < 0.000001
+    ) return;
+    void applyResolvedPlatformLocation(latitude, longitude);
   };
 
   const handleToggleCommerceChannel = async (channelKey: 'quickCommerceEnabled' | 'ecommerceEnabled') => {
@@ -205,6 +333,48 @@ export default function AdminAppSettings() {
         setErrorMessage('At least one commerce channel must remain enabled.');
         setSaving(false);
         return;
+      }
+
+      if (formData.platformQuickCommerceFulfillment) {
+        const config = formData.platformQuickCommerceFulfillment;
+        const latitude = Number(config.latitude);
+        const longitude = Number(config.longitude);
+        const radius = Number(config.serviceRadiusKm);
+        if (!config.warehouseName?.trim()) {
+          setErrorMessage('Warehouse Name is required.');
+          setSaving(false);
+          return;
+        }
+        if (!config.warehouseAddress?.trim()) {
+          setErrorMessage('Warehouse Address is required. Search for an address or use current location.');
+          setSaving(false);
+          return;
+        }
+        if (!config.city?.trim()) {
+          setErrorMessage('Warehouse City is required.');
+          setSaving(false);
+          return;
+        }
+        if (!config.state?.trim()) {
+          setErrorMessage('Warehouse State is required.');
+          setSaving(false);
+          return;
+        }
+        if (!config.pincode?.trim() || !/^[1-9][0-9]{5}$/.test(config.pincode.trim())) {
+          setErrorMessage('A valid 6-digit Indian pincode is required for the warehouse.');
+          setSaving(false);
+          return;
+        }
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+          setErrorMessage('Please select a valid warehouse location on the map to determine coordinates.');
+          setSaving(false);
+          return;
+        }
+        if (!Number.isFinite(radius) || radius < 0.1 || radius > 300) {
+          setErrorMessage('Quick Commerce Service Radius must be between 0.1 and 300 KM.');
+          setSaving(false);
+          return;
+        }
       }
 
       const res = await updateAppSettings(formData);
@@ -380,6 +550,156 @@ export default function AdminAppSettings() {
                 />
                 <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
               </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Canonical platform origin used only by Platform-owned Quick Commerce */}
+        <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6 space-y-4">
+          <div className="border-b border-neutral-100 pb-3">
+            <h2 className="text-lg font-semibold text-neutral-800">Platform Quick Commerce Fulfillment</h2>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Server-authoritative warehouse origin and delivery radius for Admin / Platform Quick Commerce products. Ecommerce uses pincode/courier serviceability instead.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Warehouse Name */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Warehouse Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={String(formData.platformQuickCommerceFulfillment?.warehouseName ?? '')}
+                onChange={(event) => handlePlatformQcChange('warehouseName', event.target.value)}
+                placeholder="e.g. Indore Central Warehouse"
+                className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            {/* Warehouse Address */}
+            <div className="md:col-span-2">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-neutral-700">
+                  Warehouse Address <span className="text-red-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentPlatformLocation}
+                  disabled={saving || platformLocationLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-wait disabled:opacity-60 cursor-pointer"
+                >
+                  <span aria-hidden="true">📍</span>
+                  {platformLocationLoading ? 'Finding Address...' : 'Use Current Location'}
+                </button>
+              </div>
+              <GoogleMapsAutocomplete
+                value={String(formData.platformQuickCommerceFulfillment?.warehouseAddress ?? '')}
+                onChange={handlePlatformAddressChange}
+                placeholder="Search/select warehouse address"
+                disabled={saving || platformLocationLoading}
+                required
+              />
+              {platformLocationError && (
+                <p role="alert" className="mt-1 text-xs text-red-600">{platformLocationError}</p>
+              )}
+              {formData.platformQuickCommerceFulfillment?.warehouseAddress && (
+                <div className="mt-2 text-xs text-neutral-600 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200">
+                  <span className="font-semibold text-neutral-700">Selected Address: </span>
+                  {formData.platformQuickCommerceFulfillment.warehouseAddress}
+                </div>
+              )}
+            </div>
+
+            {/* City */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={String(formData.platformQuickCommerceFulfillment?.city ?? '')}
+                onChange={(event) => handlePlatformQcChange('city', event.target.value)}
+                placeholder="City"
+                className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            {/* State */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                State <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={String(formData.platformQuickCommerceFulfillment?.state ?? '')}
+                onChange={(event) => handlePlatformQcChange('state', event.target.value)}
+                placeholder="State"
+                className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            {/* Pincode */}
+            <div className="md:col-span-2 md:max-w-xs">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Pincode <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={String(formData.platformQuickCommerceFulfillment?.pincode ?? '')}
+                onChange={(event) => handlePlatformQcChange('pincode', event.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="6-digit pincode"
+                maxLength={6}
+                className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            {/* Warehouse Location Map */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Warehouse Location</label>
+              {hasValidStoreCoordinates(
+                formData.platformQuickCommerceFulfillment?.latitude,
+                formData.platformQuickCommerceFulfillment?.longitude
+              ) ? (
+                <div className="space-y-1">
+                  <LocationPickerMap
+                    initialLat={Number(formData.platformQuickCommerceFulfillment?.latitude)}
+                    initialLng={Number(formData.platformQuickCommerceFulfillment?.longitude)}
+                    onLocationSelect={handlePlatformMapLocationSelect}
+                    height="280px"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Move the map marker to place the pin on the warehouse entrance.
+                  </p>
+                </div>
+              ) : (
+                <div className="text-xs text-neutral-500 bg-neutral-50 p-4 rounded-lg border border-neutral-200 text-center">
+                  Search for a warehouse address or click Use Current Location to view the map and set exact coordinates.
+                </div>
+              )}
+            </div>
+
+            {/* Quick Commerce Service Radius */}
+            <div className="md:col-span-2 md:max-w-sm">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Quick Commerce Service Radius (KM) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="300"
+                value={formData.platformQuickCommerceFulfillment?.serviceRadiusKm ?? ''}
+                onChange={(event) => handlePlatformQcChange('serviceRadiusKm', event.target.value)}
+                placeholder="e.g. 15"
+                className="w-full px-3.5 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                required
+              />
+              <p className="text-xs text-neutral-400 mt-1">Allowed range: 0.1–300 KM.</p>
             </div>
           </div>
         </div>

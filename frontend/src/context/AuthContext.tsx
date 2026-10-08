@@ -350,7 +350,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Prevent redundant state updates and re-renders if user object is unchanged
     if (JSON.stringify(currentUser) !== JSON.stringify(fullUser)) {
       setUser(fullUser);
-      setAuthToken(tokenRef.current || getAuthToken(userType) || '', userType, fullUser);
+      const effectiveToken = tokenRef.current || getAuthToken(userType);
+      if (effectiveToken) {
+        setAuthToken(effectiveToken, userType, fullUser);
+      }
     }
   }, []);
 

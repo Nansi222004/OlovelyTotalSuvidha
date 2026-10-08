@@ -1,4 +1,5 @@
 import api from "./config";
+import { apiCache } from "../../utils/apiCache";
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -75,6 +76,11 @@ export interface GetAllSellersParams {
   search?: string;
 }
 
+export type SellerSuggestion = Pick<
+  Seller,
+  "_id" | "sellerName" | "storeName" | "email" | "mobile" | "profile" | "logo" | "status" | "vendorType"
+>;
+
 export interface CreateSellerData {
   sellerName: string;
   storeName: string;
@@ -123,6 +129,28 @@ export const getAllSellers = async (
 ): Promise<ApiResponse<Seller[]>> => {
   const response = await api.get<ApiResponse<Seller[]>>("/sellers", { params });
   return response.data;
+};
+
+export const getSellerSuggestions = async (
+  query: string,
+  limit = 8
+): Promise<ApiResponse<SellerSuggestion[]>> => {
+  const cleanQuery = query.trim().toLowerCase();
+  if (cleanQuery.length < 2) {
+    return { success: true, message: "", data: [] };
+  }
+
+  const safeLimit = Math.min(Math.max(limit, 1), 10);
+  return apiCache.getOrFetch(
+    `seller-sugg-v1-${cleanQuery}-${safeLimit}`,
+    async () => {
+      const response = await api.get<ApiResponse<SellerSuggestion[]>>("/sellers/suggestions", {
+        params: { q: query.trim(), limit: safeLimit },
+      });
+      return response.data;
+    },
+    30 * 1000
+  );
 };
 
 /**

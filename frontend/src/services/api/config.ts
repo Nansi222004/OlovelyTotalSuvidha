@@ -199,12 +199,54 @@ api.interceptors.response.use(
         else if (panel === 'seller') redirectPath = "/seller/login";
         else if (panel === 'delivery') redirectPath = "/delivery/login";
 
-        // Clean up role-specific session
+        // Customer panel protection:
+        // Do NOT treat every 401 as proof that customer must be logged out.
+        // Background/optional requests, public endpoints, tracking, notifications, or serviceability
+        // MUST NOT destroy the customer session or force redirect to /login.
         if (panel === 'customer') {
-          clearCustomerSession({
-            sessionExpiredMessage: 'Your session has expired. Please log in again.',
-          });
-        } else if (panel === 'delivery') {
+          const isCoreProtectedCustomerRoute =
+            apiUrl.includes('/customer/profile') ||
+            apiUrl.includes('/customer/orders') ||
+            apiUrl.includes('/customer/cart') ||
+            apiUrl.includes('/customer/addresses') ||
+            apiUrl.includes('/customer/wallet');
+
+          const isOptionalOrTrackingSubRoute =
+            apiUrl.includes('/seller-locations') ||
+            apiUrl.includes('/tracking') ||
+            apiUrl.includes('/notifications') ||
+            apiUrl.includes('/fcm-tokens');
+
+          const responseData = error.response?.data;
+          const isExplicitTokenInvalidity =
+            responseData?.code === 'CUSTOMER_DELETED' ||
+            responseData?.code === 'TOKEN_EXPIRED' ||
+            (typeof responseData?.message === 'string' &&
+              (responseData.message.toLowerCase().includes('jwt expired') ||
+               responseData.message.toLowerCase().includes('token has expired') ||
+               responseData.message.toLowerCase().includes('invalid token') ||
+               responseData.message.toLowerCase().includes('no token provided')));
+
+          const shouldLogoutCustomer =
+            isCoreProtectedCustomerRoute &&
+            !isOptionalOrTrackingSubRoute &&
+            isExplicitTokenInvalidity;
+
+          if (shouldLogoutCustomer) {
+            clearCustomerSession({
+              sessionExpiredMessage: 'Your session has expired. Please log in again.',
+            });
+            window.location.href = '/login';
+          } else {
+            if (import.meta.env.DEV) {
+              console.warn(`[AUTH] Non-terminal 401 on ${apiUrl} - preserving customer session.`);
+            }
+          }
+          return Promise.reject(error);
+        }
+
+        // Clean up role-specific session
+        if (panel === 'delivery') {
           clearDeliverySession({
             sessionExpiredMessage: 'Your session has expired. Please log in again.',
           });
@@ -230,7 +272,10 @@ export const setAuthToken = (token: string, userType?: string, userData?: any) =
   const tokenKey = `${panel}_authToken`;
   const userKey = `${panel}_userData`;
 
-  localStorage.setItem(tokenKey, token);
+  // CRITICAL: Never overwrite a valid session token with empty string or whitespace
+  if (token && typeof token === 'string' && token.trim()) {
+    localStorage.setItem(tokenKey, token);
+  }
 
   if (userData) {
     localStorage.setItem(userKey, typeof userData === 'string' ? userData : JSON.stringify(userData));

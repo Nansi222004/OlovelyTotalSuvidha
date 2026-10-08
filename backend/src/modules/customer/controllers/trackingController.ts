@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import DeliveryTracking from "../../../models/DeliveryTracking";
 import Order from "../../../models/Order";
@@ -275,20 +276,38 @@ export const getActiveOrdersTracking = asyncHandler(
 export const getSellerLocationsForOrder = asyncHandler(
   async (req: Request, res: Response) => {
     const { orderId } = req.params;
-    const customerId = (req as any).user.userId;
+    const customerId = (req as any).user?.userId;
 
-    // Verify order exists and belongs to this customer
-    const order = await Order.findOne({ _id: orderId, customer: customerId });
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
+    if (!orderId || !customerId) {
+      return res.status(200).json({
+        success: true,
+        data: [],
       });
     }
 
-    // Get all unique seller IDs from order items
-    const orderItems = await OrderItem.find({ order: orderId });
-    const sellerIds = [...new Set(orderItems.map((item) => item.seller.toString()))];
+    // Verify order exists and belongs to this customer (support both _id and orderNumber)
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(orderId);
+    const orderQuery = isObjectId
+      ? { $or: [{ _id: orderId }, { orderNumber: orderId }], customer: customerId }
+      : { orderNumber: orderId, customer: customerId };
+
+    const order = await Order.findOne(orderQuery);
+    if (!order) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // Get all unique seller IDs from order items (safely handle platform/null seller items)
+    const orderItems = await OrderItem.find({ order: order._id });
+    const sellerIds = [
+      ...new Set(
+        orderItems
+          .map((item) => (item.seller ? item.seller.toString() : ''))
+          .filter(Boolean)
+      ),
+    ];
 
     // Get seller details including locations
     const sellers = await Seller.find({ _id: { $in: sellerIds } }).select(
@@ -306,6 +325,28 @@ export const getSellerLocationsForOrder = asyncHandler(
         latitude: parseFloat(seller.latitude || "0"),
         longitude: parseFloat(seller.longitude || "0"),
       }));
+
+    // If order has Platform-owned items, include Platform warehouse location if configured
+    const hasPlatformItems = orderItems.some((item) => item.ownerType === 'PLATFORM' || !item.seller);
+    if (hasPlatformItems) {
+      try {
+        const AppSettings = (await import("../../../models/AppSettings")).default;
+        const settings = await AppSettings.findOne().select("platformQuickCommerceFulfillment");
+        const platformLoc = settings?.platformQuickCommerceFulfillment;
+        if (platformLoc && platformLoc.latitude && platformLoc.longitude) {
+          sellerLocations.unshift({
+            sellerId: 'PLATFORM',
+            storeName: platformLoc.warehouseName || 'Platform Central Warehouse',
+            address: platformLoc.warehouseAddress || '',
+            city: platformLoc.city || '',
+            latitude: parseFloat(String(platformLoc.latitude || '0')),
+            longitude: parseFloat(String(platformLoc.longitude || '0')),
+          });
+        }
+      } catch (err) {
+        // Continue with seller locations if AppSettings fetch fails
+      }
+    }
 
     return res.status(200).json({
       success: true,

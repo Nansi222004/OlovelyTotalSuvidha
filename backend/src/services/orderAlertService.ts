@@ -409,3 +409,133 @@ export async function getPendingDeliveryOfferState(orderId: string) {
     acceptedBy: null as string | null,
   };
 }
+
+export interface AdminOrderAlert {
+  type: "NEW_ORDER";
+  orderId: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  customer: {
+    name: string;
+    email: string;
+    phone: string;
+    address: {
+      address: string;
+      city: string;
+      state?: string;
+      pincode: string;
+      landmark?: string;
+    };
+  };
+  items: Array<{
+    productName: string;
+    quantity: number;
+    price: number;
+    total: number;
+    variation?: string;
+    productType?: string;
+    fulfillmentType?: string;
+    isWholesale?: boolean;
+    wholesalePrice?: number;
+    wholesaleMinimumQuantity?: number;
+    ownerType: "PLATFORM";
+  }>;
+  totalAmount: number;
+  deliveryOption?: string;
+  deliveryType: string;
+  timestamp: Date;
+  hasQcItems?: boolean;
+  hasEcomItems?: boolean;
+  requiresLocalDelivery?: boolean;
+  fulfillmentType?: "LOCAL_DELIVERY" | "COURIER_SHIPPING" | "MIXED";
+  ownerType: "PLATFORM";
+}
+
+export function isPlatformQuickCommerceItem(item: any): boolean {
+  return item?.ownerType === "PLATFORM" && item?.productType === "QUICK_COMMERCE";
+}
+
+export function isVendorOwnedOrderItem(item: any): boolean {
+  return item?.ownerType !== "PLATFORM" && Boolean(item?.seller);
+}
+
+export function buildAdminOrderAlert(order: any, items: any[]): AdminOrderAlert {
+  const platformQcItems = items.filter(isPlatformQuickCommerceItem);
+
+  return {
+    type: "NEW_ORDER",
+    orderId: order._id.toString(),
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    customer: {
+      name: order.customerName || "",
+      email: order.customerEmail || "",
+      phone: order.customerPhone || "",
+      address: {
+        address: order.deliveryAddress?.address || order.deliveryAddress?.street || "",
+        city: order.deliveryAddress?.city || "",
+        state: order.deliveryAddress?.state || "",
+        pincode: order.deliveryAddress?.pincode || "",
+        landmark: order.deliveryAddress?.landmark || "",
+      },
+    },
+    items: platformQcItems.map((item) => ({
+      productName: item.productName,
+      quantity: item.quantity,
+      price: item.unitPrice,
+      total: item.total,
+      variation: item.variation,
+      productType: "QUICK_COMMERCE",
+      fulfillmentType: "LOCAL_DELIVERY",
+      ownerType: "PLATFORM",
+      isWholesale: Boolean(item.isWholesale),
+      wholesalePrice: item.wholesalePrice,
+      wholesaleMinimumQuantity: item.wholesaleMinimumQuantity,
+    })),
+    totalAmount: platformQcItems.reduce((sum, item) => sum + (item.total || 0), 0),
+    deliveryOption: order.deliveryOption || "Standard",
+    deliveryType: order.deliveryOption || "Standard",
+    timestamp: order.createdAt || new Date(),
+    hasQcItems: true,
+    hasEcomItems: false,
+    requiresLocalDelivery: true,
+    fulfillmentType: "LOCAL_DELIVERY",
+    ownerType: "PLATFORM",
+  };
+}
+
+export async function getAdminPendingOrderAlerts(): Promise<AdminOrderAlert[]> {
+  // Order-level status may be Accepted in a mixed order while the Platform QC
+  // items are still pending, so item state is the source of truth here.
+  const orders = await Order.find({
+    status: { $nin: ["Cancelled", "Rejected", "Delivered", "Returned"] },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (orders.length === 0) return [];
+
+  const alerts: AdminOrderAlert[] = [];
+
+  for (const order of orders) {
+    if (!isSellerNotifiableOrder(order)) continue;
+
+    // Strictly Platform-owned Quick Commerce items. A populated seller field is
+    // valid for Platform inventory and must not change this ownership decision.
+    const platformItems = await OrderItem.find({
+      order: order._id,
+      ownerType: "PLATFORM",
+      productType: "QUICK_COMMERCE",
+      sellerStatus: "Pending",
+      status: { $ne: "Cancelled" },
+    }).lean();
+
+    if (platformItems.length === 0) continue;
+
+    alerts.push(buildAdminOrderAlert(order, platformItems));
+  }
+
+  return alerts;
+}

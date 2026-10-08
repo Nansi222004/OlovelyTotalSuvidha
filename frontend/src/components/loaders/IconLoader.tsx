@@ -11,13 +11,13 @@ interface IconLoaderProps {
 const IconLoader: React.FC<IconLoaderProps> = ({ forceShow = false }) => {
   const { isRouteLoading } = useLoading();
   
-  // Completely disable loadify / icon loader from user side
-  const isUserSide = typeof window !== 'undefined' && 
-    !window.location.pathname.startsWith('/admin') && 
-    !window.location.pathname.startsWith('/seller') && 
-    !window.location.pathname.startsWith('/delivery');
+  // Completely disable loadify / icon loader from user and admin portals
+  const shouldDisableLoader = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/admin') ||
+    (!window.location.pathname.startsWith('/seller') && !window.location.pathname.startsWith('/delivery'))
+  );
 
-  if (isUserSide) {
+  if (shouldDisableLoader) {
     return null;
   }
 

@@ -29,6 +29,11 @@ import { useCustomerChannel } from '../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../utils/priceUtils';
 import { getProductImage, getProductFallback, resolveProductImage } from '../../utils/productImageHelper';
+import {
+  getCustomerServiceabilityMessage,
+  getCustomerServiceabilityTitle,
+  shouldShowQuickDelivery,
+} from '../../utils/productServiceabilityUi';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -126,7 +131,8 @@ export default function ProductDetail() {
           id,
           location?.latitude,
           location?.longitude,
-          effectiveIsWholesale
+          effectiveIsWholesale,
+          location?.pincode
         );
         if (response.success && response.data) {
           const productData = response.data as any;
@@ -182,7 +188,7 @@ export default function ProductDetail() {
 
 
     fetchProduct();
-  }, [id, location?.latitude, location?.longitude, effectiveIsWholesale]);
+  }, [id, location?.latitude, location?.longitude, location?.pincode, effectiveIsWholesale]);
 
   useEffect(() => {
     const fetchReviews = async () => {
@@ -385,10 +391,16 @@ export default function ProductDetail() {
       : null;
 
   const isEcommerce = product?.productType === 'ECOMMERCE';
+  const serviceability = product?.serviceability;
+  const ecommercePincodeUnavailable = isEcommerce && pincodeResult?.serviceable === false;
+  const isServiceAvailable = serviceability?.isServiceable !== false && !ecommercePincodeUnavailable && isAvailableAtLocation;
+  const serviceabilityMessage = getCustomerServiceabilityMessage(product?.productType);
+  const serviceabilityTitle = getCustomerServiceabilityTitle(product?.productType);
+  const showQuickDelivery = shouldShowQuickDelivery(product?.productType, serviceability);
 
   const handleAddToCart = () => {
-    if (!isEcommerce && !isAvailableAtLocation) {
-      showToast("This service is not available in your location yet.", "info");
+    if (!isServiceAvailable) {
+      showToast(serviceabilityMessage, "info");
       return;
     }
     if (!isVariantAvailable) {
@@ -417,8 +429,8 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = async () => {
-    if (!isEcommerce && !isAvailableAtLocation) {
-      showToast("This service is not available in your location yet.", "info");
+    if (!isServiceAvailable) {
+      showToast(serviceabilityMessage, "info");
       return;
     }
     if (!isVariantAvailable) {
@@ -490,37 +502,6 @@ export default function ProductDetail() {
 
       {/* Scrollable content */}
       <div className="pt-16">
-        {/* Location Availability Banner */}
-        {!isEcommerce && !isAvailableAtLocation && (
-          <div className="bg-amber-50 border-l-4 border-amber-500 px-4 py-3 mx-4 mt-4 rounded-r-lg">
-            <div className="flex items-start gap-2">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="flex-shrink-0 mt-0.5">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#f59e0b" />
-                <path
-                  d="M2 17l10 5 10-5M2 12l10 5 10-5"
-                  stroke="#f59e0b"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-900">
-                  Service not available at your location
-                </p>
-                <p className="text-xs text-amber-800 mt-1">
-                  This service is not available in your location yet. You can browse all details and save items to your wishlist.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Product Image Gallery */}
         <div className="relative w-full bg-gradient-to-br from-neutral-100 to-neutral-200 overflow-hidden">
           {/* Main Product Image - Swipeable on mobile */}
@@ -742,14 +723,14 @@ export default function ProductDetail() {
                 📦 Courier Delivery
               </span>
             </div>
-          ) : (
+          ) : showQuickDelivery ? (
             <div className="flex items-center gap-1.5 mb-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full w-fit border border-emerald-200">
               <span className="text-sm">⚡</span>
               <span className="text-xs font-bold tracking-wide">
                 ⚡ Quick Delivery • {appSettings?.estimatedDeliveryTime || '12–15 mins'}
               </span>
             </div>
-          )}
+          ) : null}
 
           {/* Product name */}
           <h2 className="text-lg md:text-2xl font-bold text-neutral-900 mb-0 leading-tight">
@@ -873,6 +854,28 @@ export default function ProductDetail() {
             </p>
           )}
 
+          {/* Compact fulfillment state: normal flow, never overlays the image. */}
+          {!isServiceAvailable && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="my-2.5 flex min-w-0 items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-amber-950">
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-amber-400 text-xs font-bold">
+                i
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-5 break-words">
+                  {serviceabilityTitle}
+                </p>
+                <p className="text-xs leading-4 text-amber-800 break-words">
+                  You can still browse product details and save this item to your wishlist.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Delivery Information Card */}
           {isEcommerce ? (
             <div className="my-3 p-3.5 bg-neutral-50 rounded-xl border border-neutral-200">
@@ -947,7 +950,7 @@ export default function ProductDetail() {
                 )}
               </div>
             </div>
-          ) : (
+          ) : showQuickDelivery ? (
             <div className="my-3 p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 text-lg">
@@ -969,7 +972,7 @@ export default function ProductDetail() {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Divider line */}
           <div className="border-t border-neutral-200 mb-1.5"></div>
@@ -1579,17 +1582,19 @@ export default function ProductDetail() {
 
       {/* Sticky Footer */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-neutral-200 shadow-lg">
-        <div className="px-4 py-2.5 flex items-center justify-between">
+        <div
+          className="px-3 sm:px-4 pt-2.5 flex items-center justify-between gap-2"
+          style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
           {/* Left side - Product details */}
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             {/* First line - Pack size */}
             <div>
-              <span className="text-sm text-neutral-900 font-medium">
+              <span className="block truncate text-sm text-neutral-900 font-medium">
                 {variantTitle}
               </span>
             </div>
             {/* Second line - Price, MRP, and OFF */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <span className="text-base font-bold text-neutral-900">
                 ₹{effectiveDisplayPrice.toLocaleString('en-IN')}
               </span>
@@ -1619,8 +1624,25 @@ export default function ProductDetail() {
           </div>
 
           {/* Right side - Action Buttons (Add to Cart / Stepper AND Buy Now) */}
-          <div className="ml-3 flex items-center gap-2">
-            {!isVariantAvailable || isWholesaleMoqUnavailable ? (
+          <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-2">
+            {!isServiceAvailable ? (
+              <div className="flex items-center gap-1.5 sm:gap-2" aria-label="Purchase currently unavailable">
+                <Button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  className="h-[38px] cursor-not-allowed whitespace-nowrap rounded-lg border border-neutral-300 bg-neutral-100 px-3 text-xs font-semibold text-neutral-500 opacity-100 sm:px-4 sm:text-sm">
+                  {t("customer.addToCart", "Add to Cart")}
+                </Button>
+                <Button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  className="h-[38px] cursor-not-allowed whitespace-nowrap rounded-lg border border-neutral-300 bg-neutral-200 px-3 text-xs font-semibold text-neutral-500 opacity-100 sm:px-5 sm:text-sm">
+                  {t("customer.buyNow", "Buy Now")}
+                </Button>
+              </div>
+            ) : !isVariantAvailable || isWholesaleMoqUnavailable ? (
               <div className="flex items-center gap-2">
                 <Button
                   disabled

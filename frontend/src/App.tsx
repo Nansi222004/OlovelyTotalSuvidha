@@ -521,7 +521,7 @@ function App() {
                             path="/admin/login"
                             element={
                               <PublicRoute userType="Admin">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <AdminLogin />
                                 </Suspense>
                               </PublicRoute>
@@ -802,7 +802,7 @@ function App() {
                               <ProtectedRoute
                                 requiredUserType="Admin"
                                 redirectTo="/admin/login">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <AdminLayout>
                                     <Routes>
                                       <Route

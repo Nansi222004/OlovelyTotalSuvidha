@@ -90,7 +90,7 @@ export const getCategories = asyncHandler(
         query.commerceChannels = { $in: [activeChannel] };
       }
 
-      if (seller?.vendorType !== "HYBRID" && seller?.categories && seller.categories.length > 0) {
+      if (seller?.categories && seller.categories.length > 0) {
         const allowedCategories = [...seller.categories];
         if (allowedCategories.includes("Grocery")) {
           allowedCategories.push(

@@ -47,9 +47,15 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
     });
 
     const isHybrid = qcItems.length > 0 && ecomItems.length > 0;
+    const isPlatformOwner = (orderDetail.items || []).some(
+      (it) => it.ownerType === 'PLATFORM' || (!it.soldBy || it.soldBy === 'N/A')
+    );
+    const defaultStoreName = isPlatformOwner
+      ? 'Olovely Total Suvidha (Platform Central)'
+      : 'Olovely Partner Store';
     const sellerStoreName = orderDetail.items?.[0]?.soldBy && orderDetail.items[0].soldBy !== 'N/A'
       ? orderDetail.items[0].soldBy
-      : 'Olovely Partner Store';
+      : defaultStoreName;
     const billingEntityName = orderDetail.items?.[0]?.billingEntityName || sellerStoreName;
     const billingEntityGstin = orderDetail.items?.[0]?.billingEntityGstin;
 

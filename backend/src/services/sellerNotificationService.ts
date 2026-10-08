@@ -2,6 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import OrderItem from '../models/OrderItem';
 import mongoose from 'mongoose';
 import { sendNotification } from './notificationService';
+import { buildAdminOrderAlert, isPlatformQuickCommerceItem, isVendorOwnedOrderItem } from './orderAlertService';
 
 /**
  * Notify all sellers involved in an order about a new order or status change
@@ -22,7 +23,7 @@ export async function notifySellersOfOrderUpdate(
         let orderItems = order.items;
 
         // If items are just IDs, fetch the full OrderItem details to get seller IDs
-        if (orderItems.length > 0 && typeof orderItems[0] === 'string' || orderItems[0] instanceof mongoose.Types.ObjectId) {
+        if (orderItems.length > 0 && (typeof orderItems[0] === 'string' || orderItems[0] instanceof mongoose.Types.ObjectId)) {
             orderItems = await OrderItem.find({ order: order._id });
         }
 
@@ -34,13 +35,38 @@ export async function notifySellersOfOrderUpdate(
             return item.seller.toString();
         };
 
-        const sellerIds = Array.from(new Set(orderItems.map(extractSellerId).filter(Boolean))) as string[];
+        // A Platform product can still carry the canonical platform Seller ObjectId for
+        // inventory/accounting. ownerType, not seller presence, is the ownership boundary.
+        const vendorItems = orderItems.filter(isVendorOwnedOrderItem);
+        const sellerIds = Array.from(new Set(vendorItems.map(extractSellerId).filter(Boolean))) as string[];
 
         console.log(`🔔 Notifying ${sellerIds.length} sellers about ${type} for order ${order.orderNumber}`);
 
+        // The Admin incoming-order popup is exclusively for new Platform QC items.
+        // Ecommerce continues through its courier flow and never enters this channel.
+        const platformQcItems = orderItems.filter(isPlatformQuickCommerceItem);
+        if (type === 'NEW_ORDER' && platformQcItems.length > 0) {
+            const adminNotificationData = buildAdminOrderAlert(order, platformQcItems);
+            io.to('admin').emit('admin-notification', adminNotificationData);
+            console.log(`📤 Emitted admin-notification to admin room for Platform QC order ${order.orderNumber}`);
+
+            sendNotification('Admin', 'admin', 'New Platform Order Received', `Platform received a new QC order #${order.orderNumber}`, {
+                type: 'Order',
+                link: `/admin/orders/${order._id}`,
+                priority: 'High',
+                data: {
+                    orderId: order._id.toString(),
+                    orderNumber: order.orderNumber,
+                    role: 'admin',
+                    panel: 'admin',
+                    type: 'NEW_ORDER',
+                },
+            }).catch(err => console.error(`❌ [Admin Notification Error]:`, err?.message));
+        }
+
         for (const sellerId of sellerIds) {
             // Get only items belonging to this seller
-            const sellerSpecificItems = orderItems.filter((item: any) => extractSellerId(item) === sellerId);
+            const sellerSpecificItems = vendorItems.filter((item: any) => extractSellerId(item) === sellerId);
 
             let sellerHasQc = false;
             let sellerHasEcom = false;

@@ -1150,9 +1150,11 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     seller,
     status,
     publish,
+    productType,
   } = req.query;
 
   const query: any = {};
+  if (productType) query.productType = productType;
 
   if (search) {
     query.$or = [
@@ -1613,7 +1615,7 @@ export const generateProductBarcode = asyncHandler(
     }
 
     try {
-      await product.save();
+      await product.save({ validateModifiedOnly: true });
     } catch (error: any) {
       if (error?.code === 11000) {
         return res.status(409).json({
@@ -1628,6 +1630,21 @@ export const generateProductBarcode = asyncHandler(
       success: true,
       message: variationId ? "Variation barcode generated and saved" : "Product barcode generated and saved",
       data: { productId: product._id, variationId: variationId || null, barcode },
+    });
+  }
+);
+
+/**
+ * Generate a standalone unique EAN-13 barcode without persisting it to a product.
+ * Used during product creation (Add mode) or new variation creation in admin portal.
+ */
+export const generateCandidateBarcode = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const barcode = await generateUniqueBarcode();
+    return res.status(200).json({
+      success: true,
+      message: "Unique barcode generated successfully",
+      data: { barcode },
     });
   }
 );

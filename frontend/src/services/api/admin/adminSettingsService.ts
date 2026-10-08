@@ -70,6 +70,16 @@ export interface AppSettings {
   companyState?: string;
   companyPincode?: string;
   companyCountry?: string;
+  platformQuickCommerceFulfillment?: {
+    warehouseName: string;
+    warehouseAddress: string;
+    city: string;
+    state: string;
+    pincode: string;
+    latitude: number | string;
+    longitude: number | string;
+    serviceRadiusKm: number | string;
+  };
   paymentMethods: PaymentMethods;
   paymentGateways?: PaymentGateways;
   smsGateway?: SMSGatewaySettings;

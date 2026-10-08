@@ -6,12 +6,12 @@ import Seller from '../models/Seller';
 import Order from '../models/Order';
 import InventoryTransaction from '../models/InventoryTransaction';
 import {
-  generateUniqueBarcode,
   lookupByBarcode,
   validateBarcodeFormat,
   validateBarcodeUniqueness,
 } from '../utils/barcodeHelper';
 import {
+  generateCandidateBarcode,
   generateProductBarcode,
 } from '../modules/admin/controllers/adminProductController';
 import {
@@ -150,9 +150,18 @@ async function main() {
     });
 
     await test('unique generator produces a valid unassigned EAN-13 candidate', async () => {
-      const generated = await generateUniqueBarcode();
+      const beforeCount = await Product.countDocuments();
+      const response = await invoke(generateCandidateBarcode, { params: {}, body: {} });
+      const generated = response.body.data.barcode;
       assert.match(generated, /^29\d{11}$/);
+      const digits = generated.split('').map(Number);
+      const weightedTotal = digits.slice(0, 12).reduce(
+        (sum: number, digit: number, index: number) => sum + digit * (index % 2 === 0 ? 1 : 3),
+        0
+      );
+      assert.equal(digits[12], (10 - (weightedTotal % 10)) % 10, 'generated EAN-13 check digit must be valid');
       assert.equal((await validateBarcodeUniqueness({ barcode: generated })).valid, true);
+      assert.equal(await Product.countDocuments(), beforeCount, 'candidate generation must not create or mutate a product');
     });
 
     console.log(`\n${passed} barcode lifecycle tests passed.`);

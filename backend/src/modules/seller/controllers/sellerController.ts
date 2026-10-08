@@ -7,6 +7,68 @@ import {
   cleanupSellerShiprocketPickup,
   provisionShiprocketPickupLocation,
 } from "../../../services/shipping/shiprocketPickupService";
+import {
+  buildFlexibleRegex,
+  buildFuzzyCandidateRegex,
+  DEFAULT_SUGGESTION_LIMIT,
+  MIN_SUGGESTION_QUERY_LENGTH,
+  rankSearchSuggestions,
+} from "../../../utils/searchSuggestions";
+
+export const getSellerSuggestions = asyncHandler(
+  async (req: Request, res: Response) => {
+    const query = String(req.query.q || "").trim();
+    const requestedLimit = Number.parseInt(String(req.query.limit || ""), 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 10)
+      : DEFAULT_SUGGESTION_LIMIT;
+
+    if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
+      return res.status(200).json({
+        success: true,
+        message: "Seller suggestions fetched successfully",
+        data: [],
+      });
+    }
+
+    const searchableFields = ["sellerName", "storeName", "email", "mobile"] as const;
+    const directRegex = buildFlexibleRegex(query);
+    const directConditions = searchableFields.map((field) => ({ [field]: directRegex }));
+    const projection = "sellerName storeName email mobile profile logo status vendorType";
+
+    const directMatches = await Seller.find({ $or: directConditions })
+      .select(projection)
+      .limit(30)
+      .lean();
+
+    const candidates = [...directMatches];
+    const fuzzyRegex = buildFuzzyCandidateRegex(query);
+    if (fuzzyRegex && candidates.length < 30) {
+      const fuzzyConditions = searchableFields.slice(0, 2).map((field) => ({ [field]: fuzzyRegex }));
+      const fuzzyMatches = await Seller.find({
+        _id: { $nin: directMatches.map((seller) => seller._id) },
+        $or: fuzzyConditions,
+      })
+        .select(projection)
+        .limit(30 - candidates.length)
+        .lean();
+      candidates.push(...fuzzyMatches);
+    }
+
+    const suggestions = rankSearchSuggestions(
+      candidates,
+      query,
+      (seller) => [seller.sellerName, seller.storeName, seller.email, seller.mobile],
+      limit
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Seller suggestions fetched successfully",
+      data: suggestions,
+    });
+  }
+);
 
 /**
  * Get all sellers (Admin only)

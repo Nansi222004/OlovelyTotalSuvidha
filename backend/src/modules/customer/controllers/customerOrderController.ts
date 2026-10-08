@@ -34,6 +34,11 @@ import {
 import { getCommerceChannels } from "../../../services/commerceChannelService";
 import Tax from "../../../models/Tax";
 import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
+import {
+  evaluatePlatformQuickCommerce,
+  evaluateSellerQuickCommerce,
+  PLATFORM_QC_NOT_CONFIGURED,
+} from "../../../services/productServiceabilityService";
 import { buildExchangeReplacement, ReturnLogisticsError } from "../../../services/returnShippingService";
 
 // Create a new order
@@ -260,7 +265,13 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
     } else {
-      // Ecommerce-only order: Verify delivery pincode serviceability
+      if (deliveryLat == null || isNaN(deliveryLat)) deliveryLat = 0;
+      if (deliveryLng == null || isNaN(deliveryLng)) deliveryLng = 0;
+    }
+
+    // Ecommerce is independently authoritative for Ecommerce-only and mixed orders.
+    // It never inherits or reuses Quick Commerce distance/radius decisions.
+    if (hasEcom) {
       const pincodeCheck = await checkPincode(address.pincode);
       if (!pincodeCheck.isServiceable) {
         if (session) await session.abortTransaction();
@@ -269,8 +280,6 @@ export const createOrder = async (req: Request, res: Response) => {
           message: `Delivery is not serviceable for pincode ${address.pincode}`,
         });
       }
-      if (deliveryLat == null || isNaN(deliveryLat)) deliveryLat = 0;
-      if (deliveryLng == null || isNaN(deliveryLng)) deliveryLng = 0;
     }
 
     // Initialize Order first to get an ID
@@ -590,7 +599,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const itemTotal = itemPrice * qty;
 
       const sellerDoc = await Seller.findById(product.seller).select(
-        "sellerName storeName taxNumber taxName isPlatform category email"
+        "sellerName storeName taxNumber taxName isPlatform category email location latitude longitude serviceRadiusKm isShopOpen"
       );
       if (!sellerDoc) {
         const err: any = new Error(`Seller not found for product "${product.productName}"`);
@@ -598,6 +607,27 @@ export const createOrder = async (req: Request, res: Response) => {
         throw err;
       }
       const resolvedOwner = resolveInventoryOwner(sellerDoc, product);
+
+      if (product.productType !== 'ECOMMERCE') {
+        const qcServiceability = resolvedOwner.isPlatform
+          ? evaluatePlatformQuickCommerce(
+              settings.platformQuickCommerceFulfillment,
+              deliveryLat,
+              deliveryLng
+            )
+          : evaluateSellerQuickCommerce(sellerDoc, deliveryLat, deliveryLng);
+        if (qcServiceability.isServiceable === false) {
+          const err: any = new Error(
+            qcServiceability.code === PLATFORM_QC_NOT_CONFIGURED
+              ? 'This service is not available in your location yet.'
+              : `Quick Commerce delivery is unavailable for "${product.productName}" at this address.`
+          );
+          err.statusCode = qcServiceability.code === PLATFORM_QC_NOT_CONFIGURED ? 503 : 403;
+          err.errorCode = qcServiceability.code;
+          err.serviceability = qcServiceability;
+          throw err;
+        }
+      }
 
       // Product tax is authoritative when configured. AppSettings GST is the
       // existing fallback for products without a product-specific tax record.
@@ -803,49 +833,7 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // Validate Quick Commerce sellers can deliver to user's location (Radius calculation)
-    // Ecommerce sellers do NOT use radius checks (they use postal shipping serviceability)
-    if (qcSellerIds.size > 0) {
-      const uniqueQcSellerIds = Array.from(qcSellerIds).map(
-        (id) => new mongoose.Types.ObjectId(id),
-      );
-
-      // Find QC sellers and check if user is within their service radius
-      const sellers = await Seller.find({
-        _id: { $in: uniqueQcSellerIds },
-        status: "Approved",
-        location: { $exists: true, $ne: null },
-      });
-
-      // Check each QC seller can deliver to user's location
-      for (const seller of sellers) {
-        if (!seller.location || !seller.location.coordinates) {
-          if (session) await session.abortTransaction();
-          return res.status(403).json({
-            success: false,
-            message: `Seller ${seller.storeName} does not have a valid location. Order cannot be placed.`,
-          });
-        }
-
-        const sellerLng = seller.location.coordinates[0];
-        const sellerLat = seller.location.coordinates[1];
-        const distance = calculateDistance(
-          deliveryLat,
-          deliveryLng,
-          sellerLat,
-          sellerLng,
-        );
-        const serviceRadius = seller.serviceRadiusKm || 10;
-
-        if (distance > serviceRadius) {
-          if (session) await session.abortTransaction();
-          return res.status(403).json({
-            success: false,
-            message: `Your delivery address is ${distance.toFixed(2)} km away from ${seller.storeName}. They only deliver within ${serviceRadius} km. Please select products from sellers in your area.`,
-          });
-        }
-      }
-    }
+    // Channel serviceability was validated per item before inventory mutation.
 
     // Apply fees - backend configuration is authoritative (protects against client tampering)
     let platformFee = Number.isFinite(settings?.platformFee)
@@ -1386,11 +1374,24 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       errorMessage = `Validation failed for fields: ${fields}. ${error.message}`;
     }
 
+    if (error.errorCode === PLATFORM_QC_NOT_CONFIGURED) {
+      console.warn(PLATFORM_QC_NOT_CONFIGURED, {
+        userId,
+        endpoint: 'customer-order-create',
+      });
+      return res.status(503).json({
+        success: false,
+        message: 'This service is not available in your location yet.',
+      });
+    }
+
     const statusCode = error.statusCode || (error.name === "ValidationError" ? 400 : 500);
     return res.status(statusCode).json({
       success: false,
+      code: error.errorCode,
       message: errorMessage,
       error: error.message,
+      serviceability: error.serviceability,
       details: error.errors,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });

@@ -161,6 +161,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const response = await getCart({
         latitude: queryLat,
         longitude: queryLng,
+        pincode: location?.pincode,
         deliveryOption: deliveryOption
       });
       if (response && response.data && response.data.items) {
@@ -225,7 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, user?.userType]);
+  }, [isAuthenticated, user?.userType, location?.latitude, location?.longitude, location?.pincode]);
 
   // Clean up cart state on customer logout
   useEffect(() => {
@@ -281,7 +282,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   Math.max(1, item.quantity || 1),
                   variation,
                   location?.latitude,
-                  location?.longitude
+                  location?.longitude,
+                  undefined,
+                  undefined,
+                  location?.pincode
                 );
               } catch (itemErr) {
                 // Silently skip stale/unserviceable local items during initial auth sync
@@ -486,7 +490,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
           location?.latitude,
           location?.longitude,
           undefined,
-          isWholesaleMode
+          isWholesaleMode,
+          location?.pincode
         );
         if (response && response.data && response.data.items) {
           // Atomic update from server response
@@ -557,7 +562,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const response = await apiRemoveFromCart(
           itemToRemove.id as string,
           location?.latitude,
-          location?.longitude
+          location?.longitude,
+          undefined,
+          location?.pincode
         );
         if (response && response.data) {
           if (Array.isArray(response.data.items)) {
@@ -667,7 +674,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           itemToUpdate.id as string,
           intQty,
           location?.latitude,
-          location?.longitude
+          location?.longitude,
+          undefined,
+          location?.pincode
         );
         if (response && response.data && response.data.items) {
           setItems(mapApiItemsToState(response.data.items));

@@ -14,6 +14,31 @@ import { checkWholesaleEligibility, validateWholesalePrice } from '../../../util
 import { resolveAvailableStock } from '../../../utils/stockHelper';
 import { evaluateFirstOrderFreeShipping } from '../../../services/shipping/shippingPromotionService';
 import { getCommerceChannels } from '../../../services/commerceChannelService';
+import { resolveInventoryOwner } from '../../../utils/inventoryHelper';
+import {
+    evaluateEcommerce,
+    evaluatePlatformQuickCommerce,
+    evaluateSellerQuickCommerce,
+    PLATFORM_QC_NOT_CONFIGURED,
+    toCustomerProductServiceability,
+} from '../../../services/productServiceabilityService';
+import { checkPincode } from '../../../services/shipping/shippingService';
+
+const evaluateQuickCommerceProduct = async (
+    product: any,
+    userLat: number | null,
+    userLng: number | null
+) => {
+    const isPlatform = product.ownerType === 'PLATFORM' || resolveInventoryOwner(product.seller, product).isPlatform;
+    if (isPlatform) {
+        const settings = await AppSettings.findOne().select('platformQuickCommerceFulfillment').lean();
+        return evaluatePlatformQuickCommerce(settings?.platformQuickCommerceFulfillment, userLat, userLng);
+    }
+    const seller = product.seller && typeof product.seller === 'object' && product.seller.location
+        ? product.seller
+        : await Seller.findById(product.seller).select('location latitude longitude serviceRadiusKm').lean();
+    return evaluateSellerQuickCommerce(seller, userLat, userLng);
+};
 
 // Helper to calculate item price matching frontend logic
 const calculateItemPrice = (product: any, variationSelector: any) => {
@@ -131,7 +156,8 @@ const buildUnifiedCartResponse = async (
     userLat: number | null,
     userLng: number | null,
     deliveryOption: string = 'Instant',
-    customerId?: string | mongoose.Types.ObjectId
+    customerId?: string | mongoose.Types.ObjectId,
+    pincode?: string
 ) => {
     const qcItems: any[] = [];
     const ecomItems: any[] = [];
@@ -207,9 +233,20 @@ const buildUnifiedCartResponse = async (
                 });
                 continue;
             }
-            // Ecommerce items: NOT subject to local seller radius filtering!
-            ecomItems.push(itemWithStock);
-            ecomSubtotal += itemTotal;
+            const serviceability = await evaluateEcommerce(pincode, checkPincode);
+            if (serviceability.isServiceable === false) {
+                unavailableItems.push({
+                    ...itemWithStock,
+                    unavailableReason: 'Courier delivery is not available for this pincode.',
+                    serviceability: toCustomerProductServiceability(serviceability),
+                });
+            } else {
+                ecomItems.push({
+                    ...itemWithStock,
+                    serviceability: toCustomerProductServiceability(serviceability),
+                });
+                ecomSubtotal += itemTotal;
+            }
         } else {
             if (!channelAvailability.quickCommerceEnabled) {
                 unavailableItems.push({
@@ -218,20 +255,16 @@ const buildUnifiedCartResponse = async (
                 });
                 continue;
             }
-            // Quick Commerce items: requires seller range check if location is known
-            if (!hasValidLocation) {
+            const serviceability = await evaluateQuickCommerceProduct(product, userLat, userLng);
+            if (serviceability.isServiceable === false) {
+                unavailableItems.push({
+                    ...itemWithStock,
+                    unavailableReason: 'This service is not available in your location yet.',
+                    serviceability: toCustomerProductServiceability(serviceability),
+                });
+            } else if (!hasValidLocation || serviceability.isServiceable === true) {
                 qcItems.push(itemWithStock);
                 qcSubtotal += itemTotal;
-            } else {
-                const isAvailable = nearbySellerIds.some(
-                    (id) => id.toString() === (product.seller?._id || product.seller)?.toString()
-                );
-                if (isAvailable) {
-                    qcItems.push(itemWithStock);
-                    qcSubtotal += itemTotal;
-                } else {
-                    unavailableItems.push(itemWithStock);
-                }
             }
         }
     }
@@ -349,7 +382,7 @@ const buildUnifiedCartResponse = async (
 export const getCart = async (req: Request, res: Response) => {
     try {
         const userId = req.user?.userId;
-        const { latitude, longitude } = req.query;
+        const { latitude, longitude, pincode } = req.query;
 
         // Parse location
         const userLat = latitude ? parseFloat(latitude as string) : null;
@@ -366,7 +399,7 @@ export const getCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -413,7 +446,9 @@ export const getCart = async (req: Request, res: Response) => {
             hasValidLocation,
             userLat,
             userLng,
-            deliveryOption
+            deliveryOption,
+            userId,
+            typeof pincode === 'string' ? pincode : undefined
         );
 
         return res.status(200).json({
@@ -435,7 +470,7 @@ export const addToCart = async (req: Request, res: Response) => {
         const userId = req.user?.userId;
         const { productId, quantity = 1, variation, variationId, isWholesale: clientRequestsWholesale = false } = req.body;
         const targetVariation = variation || variationId;
-        const { latitude, longitude } = req.query;
+        const { latitude, longitude, pincode } = req.query;
 
         if (!productId) {
             return res.status(400).json({ success: false, message: 'Product ID is required' });
@@ -512,12 +547,23 @@ export const addToCart = async (req: Request, res: Response) => {
         // ──────────────────────────────────────────────────────────────────────
 
         const isEcommerceProduct = product.productType === 'ECOMMERCE';
-
-        // Location verification is ONLY required for Quick Commerce products
+        const seller = product.seller as any;
+        // Quick Commerce is always checked against its owner-specific authoritative origin.
         let nearbySellerIds: mongoose.Types.ObjectId[] = [];
         let hasValidLocation = false;
         const userLat = latitude ? parseFloat(latitude as string) : null;
         const userLng = longitude ? parseFloat(longitude as string) : null;
+
+        if (isEcommerceProduct && typeof pincode === 'string' && pincode.trim()) {
+            const ecommerceServiceability = await evaluateEcommerce(pincode, checkPincode);
+            if (ecommerceServiceability.isServiceable === false) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Courier delivery is not available for this pincode.',
+                    data: { serviceability: toCustomerProductServiceability(ecommerceServiceability) },
+                });
+            }
+        }
 
         if (!isEcommerceProduct) {
             if (userLat === null || userLng === null || isNaN(userLat) || isNaN(userLng)) {
@@ -527,24 +573,29 @@ export const addToCart = async (req: Request, res: Response) => {
                 });
             }
 
-            // Check if seller's shop is open
-            const seller = product.seller as any;
-            if (seller && seller.isShopOpen === false) {
+            const isPlatformProduct = product.ownerType === 'PLATFORM' || resolveInventoryOwner(seller, product).isPlatform;
+            if (!isPlatformProduct && seller && seller.isShopOpen === false) {
                 return res.status(400).json({
                     success: false,
                     message: 'Seller is not available at this moment'
                 });
             }
 
-            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-            const isAvailable = nearbySellerIds.some(id => id.toString() === (seller._id || seller).toString());
-
-            if (!isAvailable) {
-                return res.status(403).json({
+            const serviceability = await evaluateQuickCommerceProduct(product, userLat, userLng);
+            if (serviceability.isServiceable === false) {
+                if (serviceability.code === PLATFORM_QC_NOT_CONFIGURED) {
+                    console.warn(PLATFORM_QC_NOT_CONFIGURED, {
+                        productId: product._id.toString(),
+                        endpoint: 'customer-cart-add',
+                    });
+                }
+                return res.status(serviceability.code === PLATFORM_QC_NOT_CONFIGURED ? 503 : 403).json({
                     success: false,
-                    message: 'This service is not available in your location yet.'
+                    message: 'This service is not available in your location yet.',
+                    data: { serviceability: toCustomerProductServiceability(serviceability) },
                 });
             }
+            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
             hasValidLocation = true;
         } else if (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng)) {
             nearbySellerIds = await findSellersWithinRange(userLat, userLng);
@@ -743,7 +794,7 @@ export const addToCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -754,7 +805,9 @@ export const addToCart = async (req: Request, res: Response) => {
             hasValidLocation,
             userLat,
             userLng,
-            deliveryOption
+            deliveryOption,
+            userId,
+            typeof pincode === 'string' ? pincode : undefined
         );
 
         return res.status(200).json({
@@ -777,7 +830,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
         const userId = req.user?.userId;
         const { itemId } = req.params;
         const { quantity } = req.body;
-        const { latitude, longitude } = req.query;
+        const { latitude, longitude, pincode } = req.query;
 
         if (quantity < 1) {
             return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
@@ -820,13 +873,30 @@ export const updateCartItem = async (req: Request, res: Response) => {
             nearbySellerIds = await findSellersWithinRange(userLat, userLng);
         }
 
-        // Quick Commerce items must remain serviceable
-        if (!isEcommerceProduct && hasValidLocation && product?.seller) {
-            const isAvailable = nearbySellerIds.some(id => id.toString() === product.seller.toString());
-            if (!isAvailable) {
+        if (isEcommerceProduct && typeof pincode === 'string' && pincode.trim()) {
+            const ecommerceServiceability = await evaluateEcommerce(pincode, checkPincode);
+            if (ecommerceServiceability.isServiceable === false) {
                 return res.status(403).json({
                     success: false,
-                    message: 'This service is not available in your location yet.'
+                    message: 'Courier delivery is not available for this pincode.',
+                    data: { serviceability: toCustomerProductServiceability(ecommerceServiceability) },
+                });
+            }
+        }
+
+        if (!isEcommerceProduct && hasValidLocation) {
+            const serviceability = await evaluateQuickCommerceProduct(product, userLat, userLng);
+            if (serviceability.isServiceable === false) {
+                if (serviceability.code === PLATFORM_QC_NOT_CONFIGURED) {
+                    console.warn(PLATFORM_QC_NOT_CONFIGURED, {
+                        productId: product._id.toString(),
+                        endpoint: 'customer-cart-update',
+                    });
+                }
+                return res.status(serviceability.code === PLATFORM_QC_NOT_CONFIGURED ? 503 : 403).json({
+                    success: false,
+                    message: 'This service is not available in your location yet.',
+                    data: { serviceability: toCustomerProductServiceability(serviceability) },
                 });
             }
         }
@@ -956,7 +1026,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -967,7 +1037,9 @@ export const updateCartItem = async (req: Request, res: Response) => {
             hasValidLocation,
             userLat,
             userLng,
-            deliveryOption
+            deliveryOption,
+            userId,
+            typeof pincode === 'string' ? pincode : undefined
         );
 
         return res.status(200).json({
@@ -989,7 +1061,7 @@ export const removeFromCart = async (req: Request, res: Response) => {
     try {
         const userId = req.user?.userId;
         const { itemId } = req.params;
-        const { latitude, longitude } = req.query;
+        const { latitude, longitude, pincode } = req.query;
 
         const cart = await Cart.findOne({ customer: userId });
         if (!cart) {
@@ -1013,7 +1085,7 @@ export const removeFromCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
             }
         });
 
@@ -1024,7 +1096,9 @@ export const removeFromCart = async (req: Request, res: Response) => {
             hasValidLocation,
             userLat,
             userLng,
-            deliveryOption
+            deliveryOption,
+            userId,
+            typeof pincode === 'string' ? pincode : undefined
         );
 
         return res.status(200).json({

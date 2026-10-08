@@ -1,0 +1,298 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { AdminOrderAlertNotification } from '../hooks/useAdminSocket';
+import { updateOrderStatus } from '../../../services/api/admin/adminOrderService';
+import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../../context/ToastContext';
+import ConfirmationModal from '../../../components/ConfirmationModal';
+
+/** Frontend address formatter — mirrors backend addressUtils.ts */
+function formatOrderAddress(addr: any): string {
+  if (!addr) return 'N/A';
+  const rawAddress = (addr.address || addr.street || '').trim();
+  let clean = rawAddress.replace(/^Current Location,?\s*/i, '').trim();
+  if (!clean) clean = rawAddress;
+  const city = (addr.city || '').trim();
+  const pincode = (addr.pincode || '').trim();
+  const lowerClean = clean.toLowerCase();
+  const extras: string[] = [];
+  if (city && !lowerClean.includes(city.toLowerCase())) extras.push(city);
+  if (pincode && !lowerClean.includes(pincode)) extras.push(pincode);
+  return [clean, ...extras].filter(Boolean).join(', ') || 'N/A';
+}
+
+interface AdminNotificationAlertProps {
+  notification: AdminOrderAlertNotification | null;
+  onClose: () => void;
+  onResolved?: () => void;
+}
+
+const AdminNotificationAlert: React.FC<AdminNotificationAlertProps> = ({
+  notification,
+  onClose,
+  onResolved,
+}) => {
+  const { showToast } = useToast();
+  const [volume, setVolume] = useState(0.8);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+
+  const requiresLocalDelivery = Boolean(
+    notification?.requiresLocalDelivery !== undefined
+      ? notification.requiresLocalDelivery
+      : notification?.hasQcItems !== undefined
+        ? notification.hasQcItems
+        : (notification?.fulfillmentType === 'LOCAL_DELIVERY' ||
+           notification?.fulfillmentType === 'MIXED')
+  );
+
+  const handleStatusUpdate = async (status: string) => {
+    if (!notification) return;
+    setLoading(true);
+    try {
+      await updateOrderStatus(notification.orderId, {
+        status,
+        fulfillmentScope: 'PLATFORM_QC',
+      });
+      showToast(`Platform Order #${notification.orderNumber} ${status.toLowerCase()} successfully`, 'success');
+      if (onResolved) {
+        onResolved();
+      } else {
+        onClose();
+      }
+      if (status === 'Accepted') {
+        navigate(`/admin/orders/${notification.orderId}`);
+      }
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      showToast(error.response?.data?.message || 'Failed to update order status', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (notification) {
+      if (audioRef.current) {
+        audioRef.current.volume = volume;
+        audioRef.current.play().catch((err) => console.error('Error playing sound:', err));
+      }
+    }
+  }, [notification]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  if (!notification) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black bg-opacity-60 backdrop-blur-sm">
+      <audio ref={audioRef} src="/assets/sound/seller_alert.mp3" preload="auto" />
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-300">
+        {/* Header */}
+        <div className={`px-6 py-4 flex items-center justify-between ${notification.type === 'NEW_ORDER' ? 'bg-emerald-700' : 'bg-blue-700'} text-white`}>
+          <div className="flex items-center gap-3">
+            <div className="bg-white bg-opacity-20 p-2 rounded-full">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold">
+                  {notification.type === 'NEW_ORDER' ? 'New Order Received!' : 'Platform Order Updated'}
+                </h2>
+                <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-amber-400 text-amber-950 rounded">
+                  Admin Action
+                </span>
+              </div>
+              <p className="text-sm opacity-90">#{notification.orderNumber}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white hover:bg-white hover:bg-opacity-10 p-1 rounded-full transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
+          {/* Volume Control */}
+          <div className="mb-6 bg-neutral-50 p-3 rounded-lg flex items-center gap-4">
+            <span className="text-neutral-500">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              </svg>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              className="flex-1 accent-emerald-600"
+            />
+          </div>
+
+          {/* Customer Info */}
+          <section className="mb-6">
+            <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">Customer Information</h3>
+            <div className="bg-neutral-50 rounded-lg p-4">
+              <p className="font-bold text-neutral-800 text-lg">{notification.customer.name}</p>
+              <p className="text-neutral-600 flex items-center gap-2 mt-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                </svg>
+                {notification.customer.phone}
+              </p>
+              <div className="text-neutral-600 flex items-start gap-2 mt-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-1 flex-shrink-0">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                <span>
+                  {formatOrderAddress(notification.customer.address)}
+                  {notification.customer.address.landmark && (
+                    <span className="block text-sm text-neutral-400 mt-0.5">
+                      Landmark: {notification.customer.address.landmark}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Delivery & Channel Details */}
+          <section className="mb-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">Fulfillment Channel</h3>
+              {(!requiresLocalDelivery || notification.fulfillmentType === 'COURIER_SHIPPING') ? (
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm bg-blue-100 text-blue-700 border border-blue-200">
+                  📦 Courier Shipping (Ecommerce)
+                </span>
+              ) : notification.deliveryOption ? (
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  ⚡ {notification.deliveryOption} Delivery (Platform QC)
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  ⚡ Local Delivery (Platform QC)
+                </span>
+              )}
+            </div>
+            {notification.paymentStatus && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-neutral-500">Payment Status:</span>
+                <span className={`font-semibold ${notification.paymentStatus === 'Paid' ? 'text-green-600' : 'text-amber-600'}`}>
+                  {notification.paymentStatus}
+                </span>
+              </div>
+            )}
+          </section>
+
+          {/* Platform Order Items */}
+          <section>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">Platform-Owned Items</h3>
+              <span className="text-xs text-neutral-500 font-medium">
+                {notification.items.length} item{notification.items.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {notification.items.map((item, index) => (
+                <div key={index} className="flex justify-between items-start py-2 border-b border-neutral-100 last:border-0">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium text-neutral-800">{item.productName}</p>
+                      {item.isWholesale && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">
+                          Wholesale{item.wholesaleMinimumQuantity ? ` (MOQ ${item.wholesaleMinimumQuantity})` : ''}
+                        </span>
+                      )}
+                      {item.fulfillmentType === 'COURIER_SHIPPING' || item.productType === 'ECOMMERCE' ? (
+                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-semibold border border-blue-200">
+                          📦 Courier
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[10px] font-semibold border border-emerald-200">
+                          ⚡ Platform QC
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-neutral-500 mt-0.5">
+                      Qty: {item.quantity} × ₹{item.price.toFixed(2)}
+                      {item.variation && <span className="ml-2 px-1.5 py-0.5 bg-neutral-100 rounded text-[10px]">{item.variation}</span>}
+                    </p>
+                  </div>
+                  <p className="font-bold text-neutral-800">₹{item.total.toFixed(2)}</p>
+                </div>
+              ))}
+
+              <div className="flex justify-between items-center pt-4 mt-2 border-t-2 border-neutral-100">
+                <span className="text-lg font-bold text-neutral-800">Total (Platform Items)</span>
+                <span className="text-2xl font-black text-emerald-700">₹{notification.totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 bg-neutral-50 border-t border-neutral-200">
+          {notification.type === 'NEW_ORDER' ? (
+            <div className="flex gap-4">
+              <button
+                onClick={() => handleStatusUpdate('Accepted')}
+                disabled={loading}
+                className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg bg-emerald-700 hover:bg-emerald-800 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Please wait...' : 'Accept Order'}
+              </button>
+              <button
+                onClick={() => setShowRejectModal(true)}
+                disabled={loading}
+                className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg bg-red-600 hover:bg-red-700 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Please wait...' : 'Reject Order'}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onClose}
+              className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 bg-blue-600 hover:bg-blue-700"
+            >
+              Acknowledge & Dismiss
+            </button>
+          )}
+        </div>
+      </div>
+
+      <ConfirmationModal
+        isOpen={showRejectModal}
+        title="Reject Platform Order"
+        message="Are you sure you want to reject this Platform order? Stock for platform items will be restored automatically."
+        confirmText="Reject Order"
+        variant="danger"
+        isLoading={loading}
+        onConfirm={async () => {
+          setShowRejectModal(false);
+          await handleStatusUpdate('Rejected');
+        }}
+        onCancel={() => setShowRejectModal(false)}
+      />
+    </div>
+  );
+};
+
+export default AdminNotificationAlert;

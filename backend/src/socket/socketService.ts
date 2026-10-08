@@ -195,6 +195,28 @@ export const initializeSocket = (httpServer: HttpServer) => {
             socket.join(`delivery-${deliveryPartnerId}`);
         });
 
+        // Admin joins their notification room
+        socket.on('join-admin-room', () => {
+            const user = (socket as any).user;
+            if (!user || user.userType !== 'Admin') {
+                console.warn(`⚠️ Non-admin socket ${socket.id} attempted to join the admin room`);
+                socket.emit('joined-admin-room', {
+                    success: false,
+                    message: 'Admin authentication required',
+                });
+                return;
+            }
+
+            socket.join('admin');
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`🛡️ Admin ${user.userId} joined notifications room: socket ${socket.id}`);
+            }
+            socket.emit('joined-admin-room', {
+                success: true,
+                message: 'Successfully joined admin notifications room',
+            });
+        });
+
         // Seller joins their notification room
         socket.on('join-seller-room', (sellerId: string) => {
             const normalizedSellerId = String(sellerId).trim();

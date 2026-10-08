@@ -3,7 +3,12 @@ import { useJsApiLoader } from '@react-google-maps/api';
 
 interface GoogleMapsAutocompleteProps {
   value: string;
-  onChange: (address: string, lat: number, lng: number, placeName: string, components?: { city?: string; state?: string }) => void;
+  onChange: (address: string, lat: number, lng: number, placeName: string, components?: {
+    city?: string;
+    state?: string;
+    pincode?: string;
+    formattedAddress?: string;
+  }) => void;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -126,6 +131,7 @@ export default function GoogleMapsAutocomplete({
 
         let city = '';
         let state = '';
+        let pincode = '';
 
         if (place.address_components) {
           for (const component of place.address_components) {
@@ -135,13 +141,20 @@ export default function GoogleMapsAutocomplete({
               city = component.long_name;
             } else if (component.types.includes('administrative_area_level_1')) {
               state = component.long_name;
+            } else if (component.types.includes('postal_code')) {
+              pincode = component.long_name;
             }
           }
         }
 
         setInputValue(address);
         if (onChangeRef.current) {
-          onChangeRef.current(address, lat, lng, placeName, { city, state });
+          onChangeRef.current(address, lat, lng, placeName, {
+            city,
+            state,
+            pincode,
+            formattedAddress: place.formatted_address || address,
+          });
         }
         setError('');
       });

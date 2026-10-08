@@ -10,6 +10,15 @@ import AppSettings from "../../../models/AppSettings";
 import { checkWholesaleEligibility } from "../../../utils/categoryChannelHelper";
 import { SLUG_ALIASES } from "./customerCategoryController";
 import { getCommerceChannels } from "../../../services/commerceChannelService";
+import { resolveInventoryOwner, getPlatformSellerIds } from "../../../utils/inventoryHelper";
+import { checkPincode } from "../../../services/shipping/shippingService";
+import {
+  evaluateEcommerce,
+  evaluatePlatformQuickCommerce,
+  evaluateSellerQuickCommerce,
+  PLATFORM_QC_NOT_CONFIGURED,
+  toCustomerProductServiceability,
+} from "../../../services/productServiceabilityService";
 
 // Get products with filtering options (public)
 export const getProducts = async (req: Request, res: Response) => {
@@ -410,32 +419,35 @@ export const getProducts = async (req: Request, res: Response) => {
     if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng)) {
       // Find sellers within user's location range
       nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+      const platformSettings = await AppSettings.findOne().select('platformQuickCommerceFulfillment').lean();
+      const platformQcServiceability = evaluatePlatformQuickCommerce(
+        platformSettings?.platformQuickCommerceFulfillment,
+        userLat,
+        userLng
+      );
 
       if (targetChannel === 'QUICK_COMMERCE') {
-        // Quick Commerce strictly requires nearby sellers
-        if (nearbySellerIds.length > 0) {
-          if (query.seller && query.seller.$in) {
-            const intersection = query.seller.$in.filter((id: any) =>
-              nearbySellerIds.some((nid) => nid.toString() === id.toString())
-            );
-            query.seller = { $in: intersection };
-          } else {
-            query.seller = { $in: nearbySellerIds };
-          }
-        }
+        const permittedSellerIds = query.seller?.$in
+          ? query.seller.$in.filter((id: any) => nearbySellerIds.some((nearby) => nearby.toString() === id.toString()))
+          : nearbySellerIds;
+        const branches: any[] = [];
+        if (permittedSellerIds.length > 0) branches.push({ seller: { $in: permittedSellerIds }, ownerType: { $ne: 'PLATFORM' } });
+        if (platformQcServiceability.isServiceable) branches.push({ ownerType: 'PLATFORM' });
+        query.$and = query.$and || [];
+        query.$and.push({ $or: branches.length > 0 ? branches : [{ _id: new mongoose.Types.ObjectId() }] });
       } else if (targetChannel === 'ECOMMERCE') {
         // Ecommerce products ship nationwide by courier; do NOT filter query.seller by nearbySellerIds
       } else {
         // Channel is ALL or Wholesale (which can be Quick Commerce or Ecommerce)
+        const branches: any[] = [{ productType: 'ECOMMERCE' }];
         if (nearbySellerIds.length > 0) {
-          query.$and = query.$and || [];
-          query.$and.push({
-            $or: [
-              { productType: 'ECOMMERCE' },
-              { seller: { $in: nearbySellerIds } }
-            ]
-          });
+          branches.push({ productType: { $ne: 'ECOMMERCE' }, seller: { $in: nearbySellerIds }, ownerType: { $ne: 'PLATFORM' } });
         }
+        if (platformQcServiceability.isServiceable) {
+          branches.push({ productType: { $ne: 'ECOMMERCE' }, ownerType: 'PLATFORM' });
+        }
+        query.$and = query.$and || [];
+        query.$and.push({ $or: branches });
       }
     }
 
@@ -525,7 +537,7 @@ export const getProducts = async (req: Request, res: Response) => {
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { latitude, longitude, channel, productType: queryProductType } = req.query; // User location & channel
+    const { latitude, longitude, pincode, channel, productType: queryProductType } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -544,7 +556,7 @@ export const getProductById = async (req: Request, res: Response) => {
       .populate("brand", "name")
       .populate(
         "seller",
-        "sellerName storeName city fssaiLicNo address location serviceRadiusKm viewCustomerDetails wholesaleEnabled"
+        "sellerName storeName city fssaiLicNo address location serviceRadiusKm viewCustomerDetails wholesaleEnabled isPlatform"
       );
 
     if (!product) {
@@ -666,38 +678,21 @@ export const getProductById = async (req: Request, res: Response) => {
     const userLat = latitude ? parseFloat(latitude as string) : null;
     const userLng = longitude ? parseFloat(longitude as string) : null;
     const seller = product.seller as any;
+    const resolvedOwner = resolveInventoryOwner(seller, product);
+    const isPlatformOwner = resolvedOwner.isPlatform;
 
-    // Initialize availability flag
-    let isAvailableAtLocation = false;
-
-    // Safely get seller ID - handle both populated and unpopulated cases
-    let sellerId: mongoose.Types.ObjectId | null = null;
-    if (seller) {
-      if (typeof seller === "object" && seller._id) {
-        // Seller is populated
-        sellerId = seller._id;
-      } else if (seller instanceof mongoose.Types.ObjectId) {
-        // Seller is an ObjectId (not populated)
-        sellerId = seller;
-      } else if (typeof seller === "string") {
-        // Seller is a string ID
-        sellerId = new mongoose.Types.ObjectId(seller);
-      }
-    }
-
-    // Check location availability if coordinates are provided
-    if (
-      userLat &&
-      userLng &&
-      !isNaN(userLat) &&
-      !isNaN(userLng) &&
-      sellerId &&
-      seller?.location
-    ) {
-      const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-      isAvailableAtLocation = nearbySellerIds.some(
-        (id) => id.toString() === sellerId!.toString()
-      );
+    const settings = await AppSettings.getSettings();
+    const serviceability = prodType === 'ECOMMERCE'
+      ? await evaluateEcommerce(typeof pincode === 'string' ? pincode : undefined, checkPincode)
+      : isPlatformOwner
+        ? evaluatePlatformQuickCommerce(settings.platformQuickCommerceFulfillment, userLat, userLng)
+        : evaluateSellerQuickCommerce(seller, userLat, userLng);
+    const isAvailableAtLocation = serviceability.isServiceable !== false;
+    if (serviceability.code === PLATFORM_QC_NOT_CONFIGURED) {
+      console.warn(PLATFORM_QC_NOT_CONFIGURED, {
+        productId: product._id.toString(),
+        endpoint: 'customer-product-detail',
+      });
     }
 
     // Find similar products (by category)
@@ -740,7 +735,11 @@ export const getProductById = async (req: Request, res: Response) => {
     if (userLat && userLng && !isNaN(userLat) && !isNaN(userLng) && product.productType !== 'ECOMMERCE') {
       const nearbySellerIds = await findSellersWithinRange(userLat, userLng);
       if (nearbySellerIds.length > 0) {
-        similarProductsQuery.seller = { $in: nearbySellerIds };
+        const platformSellerIds = await getPlatformSellerIds();
+        similarProductsQuery.$or = [
+          { ownerType: 'PLATFORM' },
+          { seller: { $in: [...nearbySellerIds, ...platformSellerIds] } }
+        ];
       }
     }
 
@@ -750,7 +749,6 @@ export const getProductById = async (req: Request, res: Response) => {
         "productName price discPrice compareAtPrice mrp variations mainImage pack discount _id rating reviewsCount wholesaleEnabled wholesalePrice wholesaleMinimumQuantity productType"
       );
 
-    const settings = await AppSettings.getSettings();
     let showSellerDetails = settings?.features?.showSellerDetails !== false;
 
     const prodObj = product.toObject();
@@ -767,8 +765,11 @@ export const getProductById = async (req: Request, res: Response) => {
       success: true,
       data: {
         ...prodObj,
+        isPlatform: isPlatformOwner,
+        ownerType: resolvedOwner.ownerType,
         similarProducts,
-        isAvailableAtLocation, // Add availability flag to response
+        isAvailableAtLocation,
+        serviceability: toCustomerProductServiceability(serviceability),
         showSellerDetails, // Add seller visibility flag
       },
     });

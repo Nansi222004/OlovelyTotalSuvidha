@@ -8,6 +8,11 @@ const useRouteLoader = () => {
   const isInitialMount = useRef(true);
 
   useEffect(() => {
+    // Skip route loader for admin routes
+    if (location.pathname.startsWith('/admin')) {
+      return;
+    }
+
     // Start loader on navigation
     // On initial mount, the LoadingProvider already started it (count=1)
     if (!isInitialMount.current) {

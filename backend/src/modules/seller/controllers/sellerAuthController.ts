@@ -12,6 +12,15 @@ import { generateToken } from "../../../services/jwtService";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { isVendorTypeAllowed } from "../../../services/commerceChannelService";
 import { cleanupSellerShiprocketPickup } from "../../../services/shipping/shiprocketPickupService";
+import { validateSellerRegistrationLocation } from "../../../utils/sellerLocationValidation";
+import HeaderCategory from "../../../models/HeaderCategory";
+import Category from "../../../models/Category";
+import {
+  normalizeSelectedCategoryNames,
+  validateSellerCategorySelection,
+  type CommerceChannel,
+  type SellerVendorType,
+} from "../../../utils/sellerCategoryCompatibility";
 
 /**
  * Safe boolean parser to avoid JavaScript `Boolean("false") === true` trap.
@@ -196,35 +205,50 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  // Location validation: for QUICK_COMMERCE and HYBRID, store GPS coordinates are required
-  const latitude = req.body.latitude ? parseFloat(req.body.latitude) : null;
-  const longitude = req.body.longitude ? parseFloat(req.body.longitude) : null;
-
-  if (vendorType === "QUICK_COMMERCE" || vendorType === "HYBRID") {
-    if (latitude === null || longitude === null || isNaN(latitude) || isNaN(longitude)) {
-      return res.status(400).json({
-        success: false,
-        message: "Store location GPS coordinates (latitude and longitude) are required for Quick Commerce",
-      });
-    }
-  }
-
-  if (
-    latitude !== null &&
-    longitude !== null &&
-    !isNaN(latitude) &&
-    !isNaN(longitude) &&
-    (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
-  ) {
+  // Every seller channel needs one canonical human-readable store/pickup
+  // address and map point. QC uses it for radius serviceability; Ecommerce
+  // retains it as business/pickup data without applying the QC radius.
+  const sellerLocation = validateSellerRegistrationLocation(req.body);
+  if (!sellerLocation.valid) {
     return res.status(400).json({
       success: false,
-      message: "Invalid location coordinates",
+      message: sellerLocation.message,
     });
   }
 
+  const selectedCategories = normalizeSelectedCategoryNames(category, req.body.categories);
+  const selectedHeaderCategories = await HeaderCategory.find({
+    status: "Published",
+    name: { $in: selectedCategories },
+  }).select("name").lean();
+  const childCategoryRows = await Category.find({
+    status: "Active",
+    headerCategoryId: { $in: selectedHeaderCategories.map((entry) => entry._id) },
+  }).select("headerCategoryId commerceChannels").lean();
+  const channelsByHeader = new Map<string, Set<CommerceChannel>>();
+  for (const child of childCategoryRows) {
+    if (!child.headerCategoryId) continue;
+    const key = child.headerCategoryId.toString();
+    const channels = channelsByHeader.get(key) || new Set<CommerceChannel>();
+    for (const channel of child.commerceChannels || []) channels.add(channel as CommerceChannel);
+    channelsByHeader.set(key, channels);
+  }
+  const categorySelection = validateSellerCategorySelection(
+    vendorType as SellerVendorType,
+    selectedCategories,
+    selectedHeaderCategories.map((entry) => ({
+      name: entry.name,
+      commerceChannels: Array.from(channelsByHeader.get(entry._id.toString()) || []),
+    }))
+  );
+  if (!categorySelection.valid) {
+    return res.status(400).json({ success: false, message: categorySelection.message });
+  }
+  const { latitude, longitude, location } = sellerLocation.data;
+
   // Shipping configuration for Ecommerce / Hybrid
   const rawPincode = req.body.shippingConfig?.pickupPincode || req.body.pickupPincode;
-  const rawPickupAddress = req.body.shippingConfig?.pickupAddress || req.body.pickupAddress || address;
+  const rawPickupAddress = req.body.shippingConfig?.pickupAddress || req.body.pickupAddress || sellerLocation.data.address;
   const rawPickupCity = req.body.shippingConfig?.pickupCity || req.body.pickupCity || city;
   const rawPickupState = req.body.shippingConfig?.pickupState || req.body.pickupState;
 
@@ -283,28 +307,19 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Create GeoJSON location point [longitude, latitude] if provided
-  const location =
-    longitude !== null && latitude !== null && !isNaN(longitude) && !isNaN(latitude)
-      ? {
-          type: "Point" as const,
-          coordinates: [longitude, latitude],
-        }
-      : undefined;
-
   // Create new seller with GeoJSON location
   const seller = await Seller.create({
     sellerName,
     mobile,
     email,
     storeName,
-    category,
-    address,
+    category: selectedCategories[0],
+    address: sellerLocation.data.address,
     city,
     ...(serviceableArea && { serviceableArea }),
     searchLocation: req.body.searchLocation,
-    latitude: req.body.latitude,
-    longitude: req.body.longitude,
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
     location, // GeoJSON location for geospatial queries
     serviceRadiusKm, // Service radius in kilometers
     vendorType,
@@ -314,10 +329,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     viewCustomerDetails: false,
     commission: 0,
     balance: 0,
-    categories:
-      Array.isArray(req.body.categories) && req.body.categories.length > 0
-        ? req.body.categories
-        : [category],
+    categories: selectedCategories,
     wholesaleEnabled: parseSafeBoolean(req.body.wholesaleEnabled, false),
   });
 
@@ -426,6 +438,44 @@ export const updateProfile = asyncHandler(
     ) {
       // If empty string or null is sent, remove it from updates to keep existing value
       delete updates.serviceRadiusKm;
+    }
+
+    // Handle category compatibility validation if categories are being updated
+    if (updates.categories !== undefined || updates.category !== undefined) {
+      const existingSeller = await Seller.findById(sellerId).select("vendorType");
+      const effectiveVendorType = (updates.vendorType || existingSeller?.vendorType || "QUICK_COMMERCE") as SellerVendorType;
+      const selectedCategories = normalizeSelectedCategoryNames(updates.category, updates.categories);
+      if (selectedCategories.length > 0) {
+        const selectedHeaderCategories = await HeaderCategory.find({
+          status: "Published",
+          name: { $in: selectedCategories },
+        }).select("name").lean();
+        const childCategoryRows = await Category.find({
+          status: "Active",
+          headerCategoryId: { $in: selectedHeaderCategories.map((entry) => entry._id) },
+        }).select("headerCategoryId commerceChannels").lean();
+        const channelsByHeader = new Map<string, Set<CommerceChannel>>();
+        for (const child of childCategoryRows) {
+          if (!child.headerCategoryId) continue;
+          const key = child.headerCategoryId.toString();
+          const channels = channelsByHeader.get(key) || new Set<CommerceChannel>();
+          for (const channel of child.commerceChannels || []) channels.add(channel as CommerceChannel);
+          channelsByHeader.set(key, channels);
+        }
+        const categorySelection = validateSellerCategorySelection(
+          effectiveVendorType,
+          selectedCategories,
+          selectedHeaderCategories.map((entry) => ({
+            name: entry.name,
+            commerceChannels: Array.from(channelsByHeader.get(entry._id.toString()) || []),
+          }))
+        );
+        if (!categorySelection.valid) {
+          return res.status(400).json({ success: false, message: categorySelection.message });
+        }
+        updates.categories = selectedCategories;
+        updates.category = selectedCategories[0];
+      }
     }
 
     const seller = await Seller.findByIdAndUpdate(sellerId, updates, {

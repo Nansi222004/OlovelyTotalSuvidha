@@ -77,7 +77,8 @@ export const getProductById = async (
     id: string,
     latitude?: number,
     longitude?: number,
-    isWholesale?: boolean
+    isWholesale?: boolean,
+    pincode?: string
 ): Promise<ProductDetailResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
@@ -86,6 +87,9 @@ export const getProductById = async (
     }
     if (isWholesale) {
         params.isWholesale = 'true';
+    }
+    if (pincode) {
+        params.pincode = pincode;
     }
     const response = await api.get<ProductDetailResponse>(`/customer/products/${id}`, { params });
     return response.data;

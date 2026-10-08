@@ -9,6 +9,7 @@ import {
 } from "../../../services/commerceChannelService";
 import { cache } from "../../../utils/cache";
 import { GSTIN_PATTERN, normalizeStateCode, validateStateIdentity } from "../../../utils/indianStates";
+import { validatePlatformQuickCommerceFulfillment } from "../../../services/productServiceabilityService";
 
 /**
  * Get app settings
@@ -49,6 +50,28 @@ export const updateAppSettings = asyncHandler(
     updateData.updatedBy = (req as any).user?.userId;
 
     let settings = await AppSettings.findOne();
+
+    if (Object.prototype.hasOwnProperty.call(updateData, "platformQuickCommerceFulfillment")) {
+      const incoming = updateData.platformQuickCommerceFulfillment;
+      const validation = validatePlatformQuickCommerceFulfillment(incoming);
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          code: "PLATFORM_QC_FULFILLMENT_NOT_CONFIGURED",
+          message: validation.message,
+        });
+      }
+      updateData.platformQuickCommerceFulfillment = {
+        warehouseName: String(incoming.warehouseName).trim(),
+        warehouseAddress: String(incoming.warehouseAddress).trim(),
+        city: String(incoming.city).trim(),
+        state: String(incoming.state).trim(),
+        pincode: String(incoming.pincode).trim(),
+        latitude: Number(incoming.latitude),
+        longitude: Number(incoming.longitude),
+        serviceRadiusKm: Number(incoming.serviceRadiusKm),
+      };
+    }
 
     const billingKeys = [
       "businessName", "companyAddress", "companyCity", "companyState",

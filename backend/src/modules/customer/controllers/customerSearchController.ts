@@ -7,32 +7,11 @@ import Brand from "../../../models/Brand";
 import Seller from "../../../models/Seller";
 import AppSettings from "../../../models/AppSettings";
 import { getCommerceChannels } from "../../../services/commerceChannelService";
-
-/**
- * Builds a flexible regex that allows optional spaces/hyphens between characters.
- * This dynamically matches compound words (e.g. "footwear" matches "Foot Wear", "icecream" matches "Ice cream")
- * without requiring any hardcoded vocabulary or mappings.
- */
-function buildFlexibleRegex(query: string): RegExp {
-  const clean = query.trim();
-  const escapedChars = Array.from(clean).map((ch) => {
-    if (/\s/.test(ch)) return "\\s+";
-    return ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  });
-
-  let pattern = "";
-  for (let i = 0; i < escapedChars.length; i++) {
-    pattern += escapedChars[i];
-    if (
-      i < escapedChars.length - 1 &&
-      escapedChars[i] !== "\\s+" &&
-      escapedChars[i + 1] !== "\\s+"
-    ) {
-      pattern += "[\\s\\-]*";
-    }
-  }
-  return new RegExp(pattern, "i");
-}
+import {
+  buildFlexibleRegex,
+  buildFuzzyCandidateRegex,
+  rankSearchSuggestions,
+} from "../../../utils/searchSuggestions";
 
 export const getSearchSuggestions = async (req: Request, res: Response) => {
   try {
@@ -92,14 +71,15 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     }
 
     const rx = buildFlexibleRegex(q);
-    const prefixRx = new RegExp(`^${rx.source}`, "i");
+    const fuzzyRx = buildFuzzyCandidateRegex(q);
+    const matchRegexes = fuzzyRx ? [rx, fuzzyRx] : [rx];
 
     // ─────────────────────────────────────────────────────────────
     // 1. CATEGORIES
     // ─────────────────────────────────────────────────────────────
     const catQuery: any = {
       status: "Active",
-      name: rx,
+      name: { $in: matchRegexes },
     };
 
     // Filter categories based on global commerce channels and requested channel
@@ -128,14 +108,9 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
       .lean();
 
     // Sort categories: prefix match first, then alphabetical
-    rawCategories.sort((a, b) => {
-      const aPrefix = prefixRx.test(a.name) ? 0 : 1;
-      const bPrefix = prefixRx.test(b.name) ? 0 : 1;
-      if (aPrefix !== bPrefix) return aPrefix - bPrefix;
-      return a.name.localeCompare(b.name);
-    });
+    const rankedCategories = rankSearchSuggestions(rawCategories, q, (category) => [category.name], 5);
 
-    const categories = rawCategories.slice(0, 5).map((c: any) => ({
+    const categories = rankedCategories.map((c: any) => ({
       _id: c._id,
       name: c.name,
       slug: c.slug,
@@ -157,7 +132,7 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     let subcategories: any[] = [];
     if (eligibleCatIds.length > 0) {
       const rawSubcategories = await SubCategory.find({
-        name: rx,
+        name: { $in: matchRegexes },
         category: { $in: eligibleCatIds },
       })
         .populate("category", "name slug")
@@ -165,14 +140,14 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
         .limit(10)
         .lean();
 
-      rawSubcategories.sort((a, b) => {
-        const aPrefix = prefixRx.test(a.name) ? 0 : 1;
-        const bPrefix = prefixRx.test(b.name) ? 0 : 1;
-        if (aPrefix !== bPrefix) return aPrefix - bPrefix;
-        return a.name.localeCompare(b.name);
-      });
+      const rankedSubcategories = rankSearchSuggestions(
+        rawSubcategories,
+        q,
+        (subcategory) => [subcategory.name],
+        5
+      );
 
-      subcategories = rawSubcategories.slice(0, 5).map((s: any) => ({
+      subcategories = rankedSubcategories.map((s: any) => ({
         _id: s._id,
         name: s.name,
         category: s.category?._id || s.category,
@@ -298,11 +273,11 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     }
 
     // Product search conditions: matching name, tags, smallDescription, or matching category
-    const searchConditions: any[] = [
-      { productName: rx },
-      { tags: rx },
-      { smallDescription: rx },
-    ];
+    const searchConditions: any[] = matchRegexes.flatMap((searchRegex) => [
+      { productName: searchRegex },
+      { tags: searchRegex },
+      { smallDescription: searchRegex },
+    ]);
     if (matchedCategoryIds.length > 0) {
       searchConditions.push({ category: { $in: matchedCategoryIds } });
     }
@@ -312,7 +287,7 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
 
     const rawProducts = await Product.find(prodQuery)
       .select(
-        "_id productName mainImage price discPrice productType category wholesaleEnabled wholesalePrice wholesaleMinQty"
+        "_id productName mainImage price discPrice productType category tags smallDescription wholesaleEnabled wholesalePrice wholesaleMinQty"
       )
       .populate("category", "name slug")
       .limit(16)
@@ -322,19 +297,19 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     // 1. Prefix match on productName
     // 2. Contains match on productName
     // 3. Other matches (tags, category)
-    rawProducts.sort((a, b) => {
-      const aNamePrefix = prefixRx.test(a.productName) ? 0 : 1;
-      const bNamePrefix = prefixRx.test(b.productName) ? 0 : 1;
-      if (aNamePrefix !== bNamePrefix) return aNamePrefix - bNamePrefix;
+    const rankedProducts = rankSearchSuggestions(
+      rawProducts,
+      q,
+      (product) => [
+        product.productName,
+        ...(Array.isArray(product.tags) ? product.tags : []),
+        product.smallDescription,
+        (product.category as any)?.name,
+      ],
+      8
+    );
 
-      const aNameContains = rx.test(a.productName) ? 0 : 1;
-      const bNameContains = rx.test(b.productName) ? 0 : 1;
-      if (aNameContains !== bNameContains) return aNameContains - bNameContains;
-
-      return a.productName.localeCompare(b.productName);
-    });
-
-    const products = rawProducts.slice(0, 8).map((p: any) => ({
+    const products = rankedProducts.map((p: any) => ({
       _id: p._id,
       productName: p.productName,
       mainImage: p.mainImage || null,
@@ -351,19 +326,14 @@ export const getSearchSuggestions = async (req: Request, res: Response) => {
     // ─────────────────────────────────────────────────────────────
     // 4. BRANDS
     // ─────────────────────────────────────────────────────────────
-    const rawBrands = await Brand.find({ name: rx })
+    const rawBrands = await Brand.find({ name: { $in: matchRegexes } })
       .select("_id name image")
       .limit(10)
       .lean();
 
-    rawBrands.sort((a, b) => {
-      const aPrefix = prefixRx.test(a.name) ? 0 : 1;
-      const bPrefix = prefixRx.test(b.name) ? 0 : 1;
-      if (aPrefix !== bPrefix) return aPrefix - bPrefix;
-      return a.name.localeCompare(b.name);
-    });
+    const rankedBrands = rankSearchSuggestions(rawBrands, q, (brand) => [brand.name], 5);
 
-    const brands = rawBrands.slice(0, 5).map((b) => ({
+    const brands = rankedBrands.map((b) => ({
       _id: b._id,
       name: b.name,
       image: b.image || null,

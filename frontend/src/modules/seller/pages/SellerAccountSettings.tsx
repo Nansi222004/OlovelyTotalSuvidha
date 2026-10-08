@@ -10,6 +10,12 @@ import GoogleMapsAutocomplete from '../../../components/GoogleMapsAutocomplete';
 import LocationPickerMap from '../../../components/LocationPickerMap';
 import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import { useSellerChannel } from '../../../context/SellerChannelContext';
+import {
+    buildSellerLocationFields,
+    hasValidStoreCoordinates,
+    reverseGeocodeStoreCoordinates,
+} from '../../../utils/sellerLocation';
+import { filterCategoriesForVendorType } from '../../../utils/sellerCategoryCompatibility';
 
 const SellerAccountSettings = () => {
     const navigate = useNavigate();
@@ -24,6 +30,8 @@ const SellerAccountSettings = () => {
     const [saveLoading, setSaveLoading] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+
+
 
     // Initial state with empty values
     const [sellerData, setSellerData] = useState({
@@ -97,6 +105,31 @@ const SellerAccountSettings = () => {
             setLoading(false);
         }
     };
+
+    const sellerVendorType = (user as any)?.vendorType || (user as any)?.storeType || (isHybrid ? 'HYBRID' : isEcommerceOnly ? 'ECOMMERCE' : 'QUICK_COMMERCE');
+
+    const compatibleHeaderCategories = React.useMemo(() => {
+        return filterCategoriesForVendorType(headerCategories, sellerVendorType as any);
+    }, [headerCategories, sellerVendorType]);
+
+    useEffect(() => {
+        if (!headerCategories.length) return;
+        const compatibleNames = new Set(compatibleHeaderCategories.map((c: HeaderCategory) => c.name));
+        setSellerData(prev => {
+            const nextCategories = prev.categories.filter(name => compatibleNames.has(name));
+            if (
+                nextCategories.length === prev.categories.length &&
+                nextCategories.every((name, idx) => name === prev.categories[idx])
+            ) {
+                return prev;
+            }
+            return {
+                ...prev,
+                categories: nextCategories,
+                category: compatibleNames.has(prev.category) ? prev.category : (nextCategories[0] || '')
+            };
+        });
+    }, [compatibleHeaderCategories, headerCategories.length]);
 
     const toggleAllowedCategory = (categoryName: string) => {
         if (!isEditing) return;
@@ -469,7 +502,7 @@ const SellerAccountSettings = () => {
                                                                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none disabled:bg-gray-50/50 disabled:text-gray-500 transition-all appearance-none bg-white"
                                                             >
                                                                 <option value="">Select Primary Category</option>
-                                                                {headerCategories.map(cat => (
+                                                                {compatibleHeaderCategories.map((cat: HeaderCategory) => (
                                                                     <option key={cat._id} value={cat.name}>{cat.name}</option>
                                                                 ))}
                                                             </select>
@@ -483,7 +516,7 @@ const SellerAccountSettings = () => {
                                                         <label className="text-sm font-semibold text-gray-700 ml-1">Allowed Selling Categories</label>
                                                         <p className="text-xs text-gray-500 ml-1">Categories your store is authorized to list products in when adding new items:</p>
                                                         <div className="flex flex-wrap gap-2 pt-1">
-                                                            {headerCategories.map(cat => {
+                                                            {compatibleHeaderCategories.map((cat: HeaderCategory) => {
                                                                 const isSelected = sellerData.categories.includes(cat.name);
                                                                 return (
                                                                     <button
@@ -543,39 +576,82 @@ const SellerAccountSettings = () => {
                                                                     <>
                                                                         <GoogleMapsAutocomplete
                                                                             value={sellerData.searchLocation || sellerData.address || ''}
-                                                                            onChange={(address: string, lat: number, lng: number, placeName: string, components?: { city?: string; state?: string }) => {
+                                                                            onChange={(address, lat, lng, _placeName, components) => {
+                                                                                if (!hasValidStoreCoordinates(lat, lng) || (lat === 0 && lng === 0)) {
+                                                                                    setSellerData(prev => ({
+                                                                                        ...prev,
+                                                                                        searchLocation: address,
+                                                                                        address: '',
+                                                                                        latitude: '',
+                                                                                        longitude: '',
+                                                                                    }));
+                                                                                    return;
+                                                                                }
+                                                                                const fields = buildSellerLocationFields(
+                                                                                    components?.formattedAddress || address,
+                                                                                    lat,
+                                                                                    lng,
+                                                                                    components
+                                                                                );
                                                                                 setSellerData(prev => ({
                                                                                     ...prev,
-                                                                                    searchLocation: address,
-                                                                                    latitude: lat.toString(),
-                                                                                    longitude: lng.toString(),
-                                                                                    address: address,
-                                                                                    city: components?.city || prev.city,
+                                                                                    ...fields,
+                                                                                    city: fields.city || prev.city,
                                                                                 }));
                                                                             }}
                                                                             placeholder="Search and select your store location..."
                                                                             disabled={!isEditing}
                                                                             required
                                                                         />
+                                                                        {hasValidStoreCoordinates(sellerData.latitude, sellerData.longitude) ? (
                                                                         <div className="mt-4 animate-fadeIn">
                                                                             <p className="text-sm font-medium text-neutral-700 mb-2">
                                                                                 Exact Location <span className="text-teal-600 text-xs font-normal">(Move the map to place the pin on your store's entrance)</span>
                                                                             </p>
                                                                             <LocationPickerMap
-                                                                                initialLat={parseFloat(sellerData.latitude) || 26.9124}
-                                                                                initialLng={parseFloat(sellerData.longitude) || 75.7873}
+                                                                                initialLat={parseFloat(sellerData.latitude)}
+                                                                                initialLng={parseFloat(sellerData.longitude)}
                                                                                 onLocationSelect={(lat, lng) => {
+                                                                                    if (
+                                                                                        Math.abs(Number(sellerData.latitude) - lat) < 0.000001
+                                                                                        && Math.abs(Number(sellerData.longitude) - lng) < 0.000001
+                                                                                    ) return;
                                                                                     setSellerData(prev => ({
                                                                                         ...prev,
                                                                                         latitude: lat.toString(),
-                                                                                        longitude: lng.toString()
+                                                                                        longitude: lng.toString(),
+                                                                                        address: '',
+                                                                                        searchLocation: '',
                                                                                     }));
+                                                                                    void reverseGeocodeStoreCoordinates(lat, lng)
+                                                                                        .then((resolved) => {
+                                                                                            const fields = buildSellerLocationFields(
+                                                                                                resolved.formattedAddress,
+                                                                                                lat,
+                                                                                                lng,
+                                                                                                resolved
+                                                                                            );
+                                                                                            setSellerData(prev => ({
+                                                                                                ...prev,
+                                                                                                ...fields,
+                                                                                                city: fields.city || prev.city,
+                                                                                            }));
+                                                                                            setError(null);
+                                                                                        })
+                                                                                        .catch((mapError: any) => {
+                                                                                            setError(mapError?.message || 'Unable to determine the address. Please move the pin or try again.');
+                                                                                        });
                                                                                 }}
                                                                             />
                                                                             <p className="mt-1 text-xs text-neutral-500 text-center">
-                                                                                Selected Coordinates: {sellerData.latitude || 'Not selected'}, {sellerData.longitude || 'Not selected'}
+                                                                                Move the map to place the pin on your store's exact entrance. The address updates automatically.
                                                                             </p>
                                                                         </div>
+                                                                        ) : (
+                                                                            <p className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                                                                                Search and select your store address to place the map pin.
+                                                                            </p>
+                                                                        )}
                                                                     </>
                                                                 ) : (
                                                                     <textarea

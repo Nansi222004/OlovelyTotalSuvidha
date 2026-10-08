@@ -1,8 +1,19 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { getOrderById, updateOrderStatus, getOrderEarningBreakdown, markOrderCODPaid, Order, type EarningBreakdown } from '../../../services/api/admin/adminOrderService';
+import { useState, useEffect, useRef } from 'react';
+import {
+  getOrderById,
+  updateOrderStatus,
+  getOrderEarningBreakdown,
+  markOrderCODPaid,
+  Order,
+  type EarningBreakdown,
+} from '../../../services/api/admin/adminOrderService';
 import { useToast } from '../../../context/ToastContext';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
+import ConfirmationModal from '../../../components/ConfirmationModal';
+import { SellerInvoice } from '../../seller/components/SellerInvoice';
+import { exportElementToPdf } from '../../../utils/invoicePdfExport';
+import type { OrderDetail } from '../../../services/api/orderService';
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +25,10 @@ export default function AdminOrderDetail() {
   const [error, setError] = useState<string>('');
   const [updating, setUpdating] = useState(false);
   const [markingCodPaid, setMarkingCodPaid] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   // Fetch order detail from API
   useEffect(() => {
@@ -39,7 +54,7 @@ export default function AdminOrderDetail() {
     fetchOrderDetail();
   }, [id]);
 
-  // Fetch earning breakdown for any order (COD or Online): admin/seller/delivery split
+  // Fetch earning breakdown for any order (COD or Online)
   useEffect(() => {
     const fetchEarningBreakdown = async () => {
       if (!id || !order) return;
@@ -71,7 +86,7 @@ export default function AdminOrderDetail() {
     }
   };
 
-  // Handle status update
+  // Handle status update (e.g. Accepted, Rejected, Processed, Shipped, Delivered)
   const handleStatusUpdate = async (newStatus: string) => {
     if (!order) return;
 
@@ -80,7 +95,7 @@ export default function AdminOrderDetail() {
       const response = await updateOrderStatus(order._id, { status: newStatus });
       if (response.success && response.data) {
         setOrder(response.data);
-        showToast('Order status updated successfully', 'success');
+        showToast(`Order status updated to ${newStatus} successfully`, 'success');
       } else {
         showToast('Failed to update order status', 'error');
       }
@@ -91,41 +106,45 @@ export default function AdminOrderDetail() {
     }
   };
 
+  const handleExportPDF = async () => {
+    if (!invoicePrintRef.current || !order) return;
+    setIsExporting(true);
+    try {
+      const fileName = `Invoice_${order.orderNumber || order._id}.pdf`;
+      await exportElementToPdf(invoicePrintRef.current, { fileName });
+      showToast('Invoice PDF exported successfully!', 'success');
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      showToast('Failed to export invoice PDF. Please try Print instead.', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="text-neutral-500">Loading order details...</div>
+          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <div className="text-neutral-500 font-medium">Loading order details...</div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !order) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-neutral-900 mb-4">Error</h2>
-          <p className="text-red-600 mb-4">{error}</p>
+        <div className="text-center max-w-md p-6 bg-white rounded-xl shadow-sm border border-neutral-200">
+          <h2 className="text-xl font-bold text-neutral-900 mb-2">{error ? 'Error' : 'Order Not Found'}</h2>
+          <p className="text-red-600 mb-6 text-sm">{error || 'The requested order could not be located.'}</p>
           <button
             onClick={() => navigate('/admin/orders/all')}
-            className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Back to Orders
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-neutral-900 mb-4">Order Not Found</h2>
-          <button
-            onClick={() => navigate('/admin/orders/all')}
-            className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg transition-colors"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
           >
             Back to Orders
           </button>
@@ -137,7 +156,7 @@ export default function AdminOrderDetail() {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -148,13 +167,16 @@ export default function AdminOrderDetail() {
 
   const customer = typeof order.customer === 'object' ? order.customer : null;
   const deliveryBoy = typeof order.deliveryBoy === 'object' ? order.deliveryBoy : null;
-  const items = Array.isArray(order.items) ? order.items : [];
+  const items: any[] = Array.isArray(order.items) ? order.items : [];
 
   const statusOptions = [
     'Received',
+    'Accepted',
     'Pending',
     'Processed',
     'Shipped',
+    'Picked up',
+    'On the way',
     'Out for Delivery',
     'Delivered',
     'Cancelled',
@@ -162,90 +184,333 @@ export default function AdminOrderDetail() {
     'Returned',
   ];
 
+  // Map order snapshot into authoritative OrderDetail for customer/order invoice rendering
+  const invoiceOrderDetail: OrderDetail = {
+    id: order._id,
+    invoiceNumber: (order as any).invoiceNumber || `INV-${order.orderNumber || order._id.slice(-8).toUpperCase()}`,
+    orderDate: order.orderDate || (order as any).createdAt,
+    deliveryDate: (order as any).deliveryDate || (order as any).estimatedDeliveryDate || '',
+    timeSlot: (order as any).deliverySlot || 'Standard Delivery',
+    status: order.status,
+    customerName: order.customerName || (customer as any)?.name || 'Valued Customer',
+    customerEmail: order.customerEmail || (customer as any)?.email || '',
+    customerPhone: order.customerPhone || (customer as any)?.phone || '',
+    deliveryBoyName: (deliveryBoy as any)?.name || (order.deliveryPreference === 'Self' ? 'Self Assigned' : ''),
+    deliveryBoyPhone: (deliveryBoy as any)?.mobile || '',
+    items: items.map((it: any, idx: number) => {
+      const isPlat = it.ownerType === 'PLATFORM' || !it.seller;
+      const sellerObj = typeof it.seller === 'object' ? it.seller : null;
+      return {
+        id: it._id,
+        srNo: String(idx + 1),
+        product: it.productName || it.product?.productName || 'Product',
+        soldBy: isPlat
+          ? 'Olovely Total Suvidha (Platform Central)'
+          : (sellerObj?.storeName || sellerObj?.sellerName || 'Olovely Partner Store'),
+        unit: 'Unit',
+        price: it.unitPrice || 0,
+        tax: it.taxAmount || 0,
+        taxPercent: it.taxRate || 0,
+        qty: it.quantity || 1,
+        subtotal: it.total || (it.unitPrice * (it.quantity || 1)),
+        productType: it.productType || 'QUICK_COMMERCE',
+        fulfillmentType: it.fulfillmentType || 'LOCAL_DELIVERY',
+        isWholesale: Boolean(it.isWholesale),
+        wholesalePrice: it.wholesalePrice,
+        wholesaleMinimumQuantity: it.wholesaleMinimumQuantity,
+        ownerType: isPlat ? 'PLATFORM' : 'VENDOR',
+        billingEntityName: isPlat
+          ? 'Olovely Total Suvidha (Platform Central)'
+          : (it.billingEntityName || sellerObj?.storeName || 'Olovely Partner Store'),
+        billingEntityGstin: it.billingEntityGstin,
+        variation: it.variation || it.variantTitle,
+      };
+    }),
+    subtotal: order.subtotal || 0,
+    tax: order.tax || 0,
+    shipping: order.shipping || 0,
+    discount: order.discount || 0,
+    platformFee: (order as any).platformFee || 0,
+    couponCode: order.couponCode,
+    grandTotal: order.total || 0,
+    orderGrandTotal: order.total || 0,
+    orderSubtotal: order.subtotal || 0,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    deliveryAddress: {
+      name: order.customerName,
+      phone: order.customerPhone,
+      address: order.deliveryAddress?.address || '',
+      city: order.deliveryAddress?.city || '',
+      state: order.deliveryAddress?.state || '',
+      pincode: order.deliveryAddress?.pincode || '',
+      latitude: order.deliveryAddress?.latitude,
+      longitude: order.deliveryAddress?.longitude,
+    },
+    deliveryOption: (order as any).deliveryOption || 'Standard',
+  };
+
+  const hasPlatformItems = items.some((it) => it.ownerType === 'PLATFORM' || !it.seller);
+  const isPurePlatform = items.every((it) => it.ownerType === 'PLATFORM' || !it.seller);
+  const isActionable = ['Received', 'Pending'].includes(order.status);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
-        <button
-          onClick={() => navigate('/admin/orders/all')}
-          className="text-teal-600 hover:text-teal-700 mb-4 flex items-center gap-2"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-          Back to Orders
-        </button>
-        <h1 className="text-2xl font-bold text-neutral-900">Order Details</h1>
-        <p className="text-neutral-600 mt-1">Order #{order.orderNumber}</p>
+      {/* Hidden Invoice Component for Direct PDF Export */}
+      <div className="absolute left-[-9999px] top-[-9999px]">
+        <SellerInvoice
+          ref={invoicePrintRef}
+          orderDetail={invoiceOrderDetail}
+        />
+      </div>
+
+      {/* Top Header & Actions Bar */}
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <button
+            onClick={() => navigate('/admin/orders/all')}
+            className="text-emerald-700 hover:text-emerald-800 mb-2 flex items-center gap-2 text-sm font-semibold transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Back to Orders
+          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-neutral-900">Order #{order.orderNumber}</h1>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${
+              order.status === 'Delivered'
+                ? 'bg-green-100 text-green-800 border border-green-200'
+                : order.status === 'Cancelled' || order.status === 'Rejected'
+                ? 'bg-red-100 text-red-800 border border-red-200'
+                : 'bg-amber-100 text-amber-800 border border-amber-200'
+            }`}>
+              {order.status}
+            </span>
+            {hasPlatformItems && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-200">
+                🏢 Platform Fulfillment
+              </span>
+            )}
+          </div>
+          <p className="text-neutral-500 text-xs mt-1">Placed on {formatDate(order.orderDate)}</p>
+        </div>
+
+        {/* Invoice & Print Actions */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowInvoiceModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            View Invoice
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            disabled={isExporting}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            {isExporting ? 'Exporting PDF...' : 'Download Invoice'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-800 hover:bg-black text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Print
+          </button>
+        </div>
+      </div>
+
+      {/* Main Order Action Section (For Platform Orders) */}
+      <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-6">
+        <div className="bg-emerald-800 text-white px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold">Admin Order Action Control</span>
+            {hasPlatformItems && (
+              <span className="text-[10px] bg-amber-400 text-amber-950 font-black px-2 py-0.5 rounded uppercase">
+                Platform Actionable
+              </span>
+            )}
+          </div>
+          <span className="text-xs opacity-90">Status: {order.status}</span>
+        </div>
+
+        <div className="p-4 sm:p-6 bg-neutral-50 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {isActionable ? (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleStatusUpdate('Accepted')}
+                  disabled={updating}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {updating ? 'Updating...' : 'Accept Order'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={updating}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  Reject Order
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-bold text-neutral-600 uppercase">Change Status:</label>
+                <select
+                  value={order.status}
+                  onChange={(e) => handleStatusUpdate(e.target.value)}
+                  disabled={updating || ['Cancelled', 'Rejected', 'Delivered'].includes(order.status)}
+                  className="px-3 py-2 border border-neutral-300 rounded-lg text-sm bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  {statusOptions.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4 text-xs text-neutral-600 font-medium">
+            <div>
+              <span>Payment: </span>
+              <span className={`font-bold ${order.paymentStatus === 'Paid' ? 'text-green-600' : 'text-amber-600'}`}>
+                {order.paymentMethod} ({order.paymentStatus})
+              </span>
+            </div>
+            <div>
+              <span>Items Total: </span>
+              <span className="font-bold text-neutral-900">₹{order.total?.toFixed(2) || '0.00'}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
+        {/* Main Left Content: Items & Address */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Order Status */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Order Status</h2>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Current Status
-              </label>
-              <select
-                value={order.status}
-                onChange={(e) => handleStatusUpdate(e.target.value)}
-                disabled={updating}
-                className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
+          {/* Order Items Table matching Seller Rich Experience */}
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+              <h2 className="text-base font-bold text-neutral-800">Order Items ({items.length})</h2>
+              <span className="text-xs text-neutral-500 font-medium">Authoritative Snapshot</span>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-neutral-600">Order Date:</span>
-                <span className="ml-2 font-medium">{formatDate(order.orderDate)}</span>
-              </div>
-              <div>
-                <span className="text-neutral-600">Payment Status:</span>
-                <span className="ml-2 font-medium capitalize">{order.paymentStatus}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Order Items */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Order Items</h2>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-2">Product</th>
-                    <th className="text-right py-2 px-2">Price</th>
-                    <th className="text-right py-2 px-2">Qty</th>
-                    <th className="text-right py-2 px-2">Total</th>
+                  <tr className="bg-neutral-50 border-b border-neutral-200 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
+                    <th className="py-3 px-4">Item Details</th>
+                    <th className="py-3 px-3 text-center">Channel / Type</th>
+                    <th className="py-3 px-3 text-right">Price</th>
+                    <th className="py-3 px-3 text-center">Qty</th>
+                    <th className="py-3 px-4 text-right">Total</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-neutral-100 text-sm">
                   {items.map((item: any, index: number) => {
                     const product = typeof item.product === 'object' ? item.product : null;
                     const seller = typeof item.seller === 'object' ? item.seller : null;
+                    const isPlat = item.ownerType === 'PLATFORM' || !item.seller;
+                    const isCourier = item.productType === 'ECOMMERCE' || item.fulfillmentType === 'COURIER_SHIPPING';
+
                     return (
-                      <tr key={item._id || index} className="border-b">
-                        <td className="py-3 px-2">
-                          <div>
-                            <div className="font-medium">{item.productName || product?.productName || 'N/A'}</div>
-                            {seller && (
-                              <div className="text-sm text-neutral-500">
-                                Seller: {seller.storeName || seller.sellerName}
+                      <tr key={item._id || index} className="hover:bg-neutral-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            {(item.productImage || product?.mainImage) ? (
+                              <img
+                                src={item.productImage || product?.mainImage}
+                                alt={item.productName}
+                                className="w-12 h-12 object-cover rounded-lg border border-neutral-200 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-400 text-xs font-bold">
+                                IMG
                               </div>
                             )}
+                            <div>
+                              <div className="font-bold text-neutral-900">
+                                {item.productName || product?.productName || 'Product'}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                {isPlat ? (
+                                  <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold border border-emerald-200">
+                                    🏢 Platform Central
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 bg-neutral-100 text-neutral-700 rounded text-[10px] font-medium border border-neutral-200">
+                                    🏪 Seller: {seller?.storeName || seller?.sellerName || 'Vendor'}
+                                  </span>
+                                )}
+
+                                {item.isWholesale && (
+                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">
+                                    Wholesale{item.wholesaleMinimumQuantity ? ` (MOQ ${item.wholesaleMinimumQuantity})` : ''}
+                                  </span>
+                                )}
+
+                                {item.variation && (
+                                  <span className="px-1.5 py-0.5 bg-neutral-100 text-neutral-600 rounded text-[10px]">
+                                    {item.variation}
+                                  </span>
+                                )}
+
+                                {item.sku && (
+                                  <span className="text-[10px] text-neutral-400 font-mono">
+                                    SKU: {item.sku}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
-                        <td className="text-right py-3 px-2">₹{item.unitPrice?.toFixed(2) || '0.00'}</td>
-                        <td className="text-right py-3 px-2">{item.quantity || 0}</td>
-                        <td className="text-right py-3 px-2 font-medium">
-                          ₹{item.total?.toFixed(2) || '0.00'}
+
+                        <td className="py-3.5 px-3 text-center">
+                          {isCourier ? (
+                            <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold">
+                              📦 Courier
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-xs font-semibold">
+                              ⚡ Local QC
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-3 text-right font-medium text-neutral-700">
+                          ₹{(item.unitPrice || 0).toFixed(2)}
+                        </td>
+
+                        <td className="py-3.5 px-3 text-center font-bold text-neutral-800">
+                          {item.quantity || 1}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right font-bold text-neutral-900">
+                          ₹{(item.total || (item.unitPrice * (item.quantity || 1))).toFixed(2)}
                         </td>
                       </tr>
                     );
@@ -253,258 +518,198 @@ export default function AdminOrderDetail() {
                 </tbody>
               </table>
             </div>
+
+            {/* Financial Summary inside items section */}
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <span className="text-xs text-neutral-500">
+                GST / Tax is included in items prices snapshot. No double-taxation applied.
+              </span>
+              <div className="text-right">
+                <span className="text-xs text-neutral-600 mr-2">Subtotal:</span>
+                <span className="font-bold text-neutral-900 text-base">₹{(order.subtotal || 0).toFixed(2)}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Delivery Address */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Delivery Address</h2>
-            <div className="text-neutral-700 space-y-1">
-              <p className="font-bold text-neutral-900">{order.customerName}</p>
-              <p className="text-sm font-medium">{formatDeliveryAddress(order.deliveryAddress).formatted}</p>
-              {order.deliveryAddress?.landmark && (
-                <p className="text-xs text-neutral-500">Landmark: {order.deliveryAddress.landmark}</p>
-              )}
-              {formatDeliveryAddress(order.deliveryAddress).mapsUrl && (
-                <div className="pt-2">
-                  <a
-                    href={formatDeliveryAddress(order.deliveryAddress).mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 text-white rounded text-xs font-medium hover:bg-teal-700 transition-colors"
-                  >
-                    <span>Open in Maps</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </a>
-                </div>
-              )}
+          {/* Delivery & Address Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+            <h2 className="text-base font-bold text-neutral-900 mb-4 flex items-center gap-2">
+              <span>📍</span> Delivery Information
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-neutral-500 uppercase">Customer & Recipient</p>
+                <p className="font-bold text-neutral-900 text-base">{order.customerName}</p>
+                <p className="text-neutral-700">{order.customerPhone}</p>
+                <p className="text-neutral-600 text-xs">{order.customerEmail}</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-neutral-500 uppercase">Delivery Address</p>
+                <p className="text-neutral-800 font-medium">
+                  {formatDeliveryAddress(order.deliveryAddress).formatted}
+                </p>
+                {order.deliveryAddress?.landmark && (
+                  <p className="text-xs text-neutral-500">Landmark: {order.deliveryAddress.landmark}</p>
+                )}
+                {formatDeliveryAddress(order.deliveryAddress).mapsUrl && (
+                  <div className="pt-2">
+                    <a
+                      href={formatDeliveryAddress(order.deliveryAddress).mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-medium transition-colors"
+                    >
+                      <span>Open in Maps</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Right Sidebar: Summary, Payment & Financial Breakdown */}
         <div className="space-y-6">
-          {/* Customer Info */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Customer Information</h2>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-neutral-600">Name:</span>
-                <span className="ml-2 font-medium">{order.customerName}</span>
+          {/* Order Summary Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+            <h2 className="text-base font-bold text-neutral-900 mb-4 border-b pb-2">Order Snapshot</h2>
+            <div className="space-y-2.5 text-sm">
+              <div className="flex justify-between text-neutral-700">
+                <span>Items Subtotal:</span>
+                <span className="font-semibold text-neutral-900">₹{(order.subtotal || 0).toFixed(2)}</span>
               </div>
-              <div>
-                <span className="text-neutral-600">Email:</span>
-                <span className="ml-2 font-medium">{order.customerEmail}</span>
+              <div className="flex justify-between text-neutral-700">
+                <span>Delivery / Shipping:</span>
+                <span className="font-semibold text-neutral-900">₹{(order.shipping || 0).toFixed(2)}</span>
               </div>
-              <div>
-                <span className="text-neutral-600">Phone:</span>
-                <span className="ml-2 font-medium">{order.customerPhone}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Order Summary */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Order Summary</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Subtotal:</span>
-                <span className="font-medium">₹{order.subtotal?.toFixed(2) || '0.00'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Tax:</span>
-                <span className="font-medium">₹{order.tax?.toFixed(2) || '0.00'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Shipping:</span>
-                <span className="font-medium">₹{order.shipping?.toFixed(2) || '0.00'}</span>
-              </div>
-              {order.discount > 0 && (
-                <div className="flex justify-between text-red-600">
-                  <span>Discount:</span>
-                  <span className="font-medium">-₹{order.discount.toFixed(2)}</span>
+              {(order as any).platformFee > 0 && (
+                <div className="flex justify-between text-neutral-700">
+                  <span>Platform Fee:</span>
+                  <span className="font-semibold text-neutral-900">₹{((order as any).platformFee || 0).toFixed(2)}</span>
                 </div>
               )}
-              <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
-                <span>Total:</span>
-                <span>₹{order.total?.toFixed(2) || '0.00'}</span>
+              {order.discount > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>Discount {order.couponCode ? `(${order.couponCode})` : ''}:</span>
+                  <span className="font-semibold">-₹{order.discount.toFixed(2)}</span>
+                </div>
+              )}
+              {order.tax > 0 && (
+                <div className="flex justify-between text-neutral-500 text-xs">
+                  <span>GST (Included in prices):</span>
+                  <span>₹{order.tax.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="border-t border-neutral-200 pt-3 mt-2 flex justify-between font-black text-base text-neutral-900">
+                <span>Total Amount:</span>
+                <span className="text-emerald-700">₹{(order.total || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
 
-          {/* Delivery Information */}
+          {/* Delivery Boy Details if assigned */}
           {(deliveryBoy || order.deliveryPreference === 'Self') && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold mb-4">Delivery Information</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+              <h2 className="text-base font-bold text-neutral-900 mb-3">Delivery Partner</h2>
               <div className="space-y-2 text-sm">
                 <div>
-                  <span className="text-neutral-600">Delivery Boy:</span>
-                  <span className="ml-2 font-medium">
-                    {order.deliveryPreference === 'Self' ? 'Self Assigned' : deliveryBoy?.name}
+                  <span className="text-neutral-500">Partner: </span>
+                  <span className="font-bold text-neutral-900">
+                    {order.deliveryPreference === 'Self' ? 'Self Assigned' : (deliveryBoy as any)?.name}
                   </span>
                 </div>
-                {deliveryBoy?.mobile && order.deliveryPreference !== 'Self' && (
+                {(deliveryBoy as any)?.mobile && order.deliveryPreference !== 'Self' && (
                   <div>
-                    <span className="text-neutral-600">Mobile:</span>
-                    <span className="ml-2 font-medium">{deliveryBoy.mobile}</span>
+                    <span className="text-neutral-500">Mobile: </span>
+                    <span className="font-medium text-neutral-800">{(deliveryBoy as any)?.mobile}</span>
                   </div>
                 )}
                 {order.deliveryBoyStatus && order.deliveryPreference !== 'Self' && (
                   <div>
-                    <span className="text-neutral-600">Status:</span>
-                    <span className="ml-2 font-medium capitalize">{order.deliveryBoyStatus}</span>
+                    <span className="text-neutral-500">Delivery Status: </span>
+                    <span className="font-semibold text-emerald-700 capitalize">{order.deliveryBoyStatus}</span>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Payment Information */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Payment Information</h2>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-neutral-600">Method:</span>
-                <span className="ml-2 font-medium">{order.paymentMethod}</span>
-              </div>
-              <div>
-                <span className="text-neutral-600">Status:</span>
-                <span className="ml-2 font-medium capitalize">{order.paymentStatus}</span>
-              </div>
-              {order.paymentId && (
-                <div>
-                  <span className="text-neutral-600">Payment ID:</span>
-                  <span className="ml-2 font-medium text-xs">{order.paymentId}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Earning breakdown: admin, sellers, delivery (COD and Online) */}
+          {/* Earning breakdown for Admin (COD & Online) */}
           {earningBreakdown && (
-            <div className="bg-white rounded-lg shadow p-6 border border-teal-100 space-y-4">
-              <h2 className="text-lg font-bold text-neutral-900 border-b pb-2 flex items-center gap-2">
-                <span>💰</span> Order Financial Breakdown
+            <div className="bg-white rounded-xl shadow-sm border border-teal-100 p-6 space-y-4">
+              <h2 className="text-base font-bold text-neutral-900 border-b pb-2 flex items-center gap-2">
+                <span>💰</span> Financial Settlement Breakdown
               </h2>
 
-              {/* 1. Customer Paid */}
-              <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200">
-                <p className="font-semibold text-xs text-neutral-500 uppercase tracking-wider mb-2">Customer Paid</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Product Amount:</span>
-                    <span className="font-medium">₹{(order.subtotal || earningBreakdown.productCost || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Platform / Handling Fee:</span>
-                    <span className="font-medium">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Delivery Charge:</span>
-                    <span className="font-medium">₹{(earningBreakdown.totalDeliveryCharge || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-neutral-300 pt-1.5 mt-1.5 flex justify-between font-semibold text-neutral-900">
-                    <span>Total Paid by Customer:</span>
-                    <span>₹{(order.total || earningBreakdown.totalOrderAmount || 0).toFixed(2)}</span>
-                  </div>
+              <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200 text-xs space-y-1.5">
+                <p className="font-bold text-neutral-600 uppercase tracking-wider mb-1">Customer Collected</p>
+                <div className="flex justify-between text-neutral-700">
+                  <span>Product Amount:</span>
+                  <span className="font-semibold">₹{(order.subtotal || earningBreakdown.productCost || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-neutral-700">
+                  <span>Handling / Platform Fee:</span>
+                  <span className="font-semibold">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-neutral-700">
+                  <span>Delivery Charge:</span>
+                  <span className="font-semibold">₹{(earningBreakdown.totalDeliveryCharge || 0).toFixed(2)}</span>
+                </div>
+                <div className="border-t border-neutral-300 pt-1 flex justify-between font-bold text-neutral-900">
+                  <span>Total Paid:</span>
+                  <span>₹{(order.total || earningBreakdown.totalOrderAmount || 0).toFixed(2)}</span>
                 </div>
               </div>
 
-              {/* 2. Seller */}
-              <div className="bg-blue-50/60 p-3 rounded-lg border border-blue-200">
-                <p className="font-semibold text-xs text-blue-800 uppercase tracking-wider mb-2">Seller</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Product Sale:</span>
-                    <span className="font-medium">₹{(earningBreakdown.productCost || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Admin Commission:</span>
-                    <span className="font-medium">-₹{(earningBreakdown.adminProductCommission || 0).toFixed(2)}</span>
-                  </div>
-                  {earningBreakdown.sellerEarningsList?.map((s) => (
-                    <div key={s.sellerId} className="flex justify-between pt-1 font-semibold text-blue-900 border-t border-blue-200 mt-1">
-                      <span>Seller Net Earning ({s.sellerName || 'Seller'}):</span>
-                      <span>₹{(s.amount || 0).toFixed(2)}</span>
-                    </div>
-                  ))}
+              {/* Admin Net Earnings */}
+              <div className="bg-emerald-50 p-3.5 rounded-lg border border-emerald-200 text-xs space-y-1.5">
+                <p className="font-bold text-emerald-900 uppercase tracking-wider mb-1">Platform Admin Net</p>
+                <div className="flex justify-between text-emerald-800">
+                  <span>Product Commission:</span>
+                  <span className="font-semibold">₹{(earningBreakdown.adminProductCommission || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-800">
+                  <span>Platform Fee:</span>
+                  <span className="font-semibold">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-800">
+                  <span>Retained Delivery Share:</span>
+                  <span className="font-semibold">₹{(earningBreakdown.adminDeliveryCommission || 0).toFixed(2)}</span>
+                </div>
+                <div className="border-t border-emerald-300 pt-1.5 flex justify-between font-black text-sm text-emerald-900">
+                  <span>Total Admin Earning:</span>
+                  <span>₹{(earningBreakdown.totalAdminEarning || 0).toFixed(2)}</span>
                 </div>
               </div>
-
-              {/* 3. Delivery Partner */}
-              <div className="bg-purple-50/60 p-3 rounded-lg border border-purple-200">
-                <p className="font-semibold text-xs text-purple-800 uppercase tracking-wider mb-2">Delivery Partner</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Delivery Charge Collected:</span>
-                    <span className="font-medium">₹{(earningBreakdown.totalDeliveryCharge || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-purple-700">
-                    <span>Delivery Partner Earning (Paid by Admin):</span>
-                    <span className="font-medium">
-                      {earningBreakdown.isSelfAssign
-                        ? '₹0.00 (Self Delivery — goes to seller)'
-                        : `-₹${(earningBreakdown.deliveryBoyCommission || 0).toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="border-t border-purple-200 pt-1.5 mt-1.5 flex justify-between font-semibold text-purple-950">
-                    <span>Delivery Amount Retained by Admin:</span>
-                    <span>₹{(earningBreakdown.adminDeliveryCommission || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Admin Net Earning */}
-              <div className="bg-teal-50 p-3 rounded-lg border border-teal-200">
-                <p className="font-semibold text-xs text-teal-800 uppercase tracking-wider mb-2">Admin Net Earning</p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Product Commission:</span>
-                    <span className="font-medium">₹{(earningBreakdown.adminProductCommission || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Platform Fee:</span>
-                    <span className="font-medium">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">Delivery Amount Retained:</span>
-                    <span className="font-medium">₹{(earningBreakdown.adminDeliveryCommission || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-teal-300 pt-2 mt-2 flex justify-between font-bold text-teal-800 text-base">
-                    <span>Admin Net Earning:</span>
-                    <span>₹{(earningBreakdown.totalAdminEarning || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-neutral-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-start gap-1.5">
-                <span className="shrink-0">ℹ️</span>
-                <span>Delivery partner earning is paid from Admin's collected amount. Admin retains net ₹{(earningBreakdown.totalAdminEarning || 0).toFixed(2)}.</span>
-              </p>
             </div>
           )}
 
-          {/* COD: Mark as received so it leaves seller settlement pending list */}
+          {/* COD Settlement action */}
           {order.paymentMethod === 'COD' && (
-            <div className="bg-white rounded-lg shadow p-6 border border-teal-100">
-              <h2 className="text-lg font-semibold mb-2">COD settlement</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+              <h2 className="text-base font-bold text-neutral-900 mb-2">COD Settlement</h2>
               {order.codPaidToAdminAt ? (
-                <p className="text-sm text-green-700">
-                  COD received on {new Date(order.codPaidToAdminAt).toLocaleString('en-IN')}. This order no longer appears in seller pending settlement.
+                <p className="text-xs text-green-700 font-semibold bg-green-50 p-2.5 rounded-lg border border-green-200">
+                  ✓ COD received on {new Date(order.codPaidToAdminAt).toLocaleString('en-IN')}.
                 </p>
               ) : (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-neutral-600">When seller/delivery boy pays you, mark as received. The order will then be removed from seller’s pending settlement list.</p>
+                <div className="space-y-3">
+                  <p className="text-xs text-neutral-600">
+                    When COD cash is remitted to platform, mark as received to clear pending settlements.
+                  </p>
                   <button
                     type="button"
                     onClick={handleMarkCodPaid}
                     disabled={markingCodPaid}
-                    className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
                   >
-                    {markingCodPaid ? 'Marking…' : 'Mark COD received'}
+                    {markingCodPaid ? 'Marking...' : 'Mark COD as Received'}
                   </button>
                 </div>
               )}
@@ -512,7 +717,58 @@ export default function AdminOrderDetail() {
           )}
         </div>
       </div>
+
+      {/* Invoice Preview Modal */}
+      {showInvoiceModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 bg-neutral-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg">Order Tax Invoice</span>
+                <span className="text-xs text-neutral-400">#{invoiceOrderDetail.invoiceNumber}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportPDF}
+                  disabled={isExporting}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors"
+                >
+                  {isExporting ? 'Exporting...' : 'Download PDF'}
+                </button>
+                <button
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors text-white"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 bg-neutral-100 flex justify-center">
+              <div className="bg-white shadow-md rounded-lg max-w-3xl w-full">
+                <SellerInvoice orderDetail={invoiceOrderDetail} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Order Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showRejectModal}
+        title="Reject Order"
+        message="Are you sure you want to reject this order? Platform inventory for rejected items will be restored automatically."
+        confirmText="Reject Order"
+        variant="danger"
+        isLoading={updating}
+        onConfirm={async () => {
+          setShowRejectModal(false);
+          await handleStatusUpdate('Rejected');
+        }}
+        onCancel={() => setShowRejectModal(false)}
+      />
     </div>
   );
 }
-

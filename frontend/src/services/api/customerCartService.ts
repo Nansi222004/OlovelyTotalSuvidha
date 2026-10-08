@@ -53,6 +53,7 @@ export interface CartResponse {
 export interface CartLocationParams {
     latitude?: number;
     longitude?: number;
+    pincode?: string;
     deliveryOption?: string;
 }
 
@@ -74,7 +75,8 @@ export const addToCart = async (
     latitude?: number,
     longitude?: number,
     deliveryOption?: string,
-    isWholesale?: boolean
+    isWholesale?: boolean,
+    pincode?: string
 ): Promise<CartResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
@@ -84,6 +86,7 @@ export const addToCart = async (
     if (deliveryOption) {
         params.deliveryOption = deliveryOption;
     }
+    if (pincode) params.pincode = pincode;
     const response = await api.post<CartResponse>('/customer/cart/add', {
         productId,
         quantity,
@@ -97,7 +100,7 @@ export const addToCart = async (
 /**
  * Update cart item quantity
  */
-export const updateCartItem = async (itemId: string, quantity: number, latitude?: number, longitude?: number, deliveryOption?: string): Promise<CartResponse> => {
+export const updateCartItem = async (itemId: string, quantity: number, latitude?: number, longitude?: number, deliveryOption?: string, pincode?: string): Promise<CartResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
         params.latitude = latitude;
@@ -106,6 +109,7 @@ export const updateCartItem = async (itemId: string, quantity: number, latitude?
     if (deliveryOption) {
         params.deliveryOption = deliveryOption;
     }
+    if (pincode) params.pincode = pincode;
     const response = await api.put<CartResponse>(`/customer/cart/item/${itemId}`, { quantity, deliveryOption }, { params });
     return response.data;
 };
@@ -113,7 +117,7 @@ export const updateCartItem = async (itemId: string, quantity: number, latitude?
 /**
  * Remove item from cart
  */
-export const removeFromCart = async (itemId: string, latitude?: number, longitude?: number, deliveryOption?: string): Promise<CartResponse> => {
+export const removeFromCart = async (itemId: string, latitude?: number, longitude?: number, deliveryOption?: string, pincode?: string): Promise<CartResponse> => {
     const params: any = {};
     if (latitude !== undefined && longitude !== undefined) {
         params.latitude = latitude;
@@ -122,6 +126,7 @@ export const removeFromCart = async (itemId: string, latitude?: number, longitud
     if (deliveryOption) {
         params.deliveryOption = deliveryOption;
     }
+    if (pincode) params.pincode = pincode;
     const response = await api.delete<CartResponse>(`/customer/cart/item/${itemId}`, { params });
     return response.data;
 };

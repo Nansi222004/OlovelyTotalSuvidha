@@ -538,6 +538,13 @@ export const generateProductBarcode = async (
   return response.data;
 };
 
+export const generateCandidateBarcode = async (): Promise<
+  ApiResponse<{ barcode: string }>
+> => {
+  const response = await api.get("/admin/products/barcode/generate");
+  return response.data;
+};
+
 /**
  * Delete product
  */

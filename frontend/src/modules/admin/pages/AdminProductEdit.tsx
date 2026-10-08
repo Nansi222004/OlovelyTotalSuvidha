@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { uploadImage, uploadImages } from "../../../services/api/uploadService";
 import {
@@ -13,7 +13,7 @@ import {
   getCategories,
   getBrands,
   getSellers,
-  generateProductBarcode,
+  generateCandidateBarcode,
   type Category,
   type Brand,
   type Seller,
@@ -26,6 +26,11 @@ import { getShopByStores, type ShopByStore } from "../../../services/api/admin/a
 import { useToast } from "../../../context/ToastContext";
 import { useAppSettings } from "../../../context/AppSettingsContext";
 import { BarcodeGraphic, printBarcodeLabel } from "../components/BarcodeLabel";
+import { getAppSettings } from "../../../services/api/admin/adminSettingsService";
+import {
+  isPlatformQuickCommerceConfigured,
+  shouldShowPlatformQcAdminWarning,
+} from "../../../utils/productServiceabilityUi";
 
 interface VariationItem {
   _id?: string;
@@ -46,17 +51,17 @@ export default function AdminProductEdit() {
   const isAddMode = !id || id === "add" || id === "new";
   const { showToast } = useToast();
   const { settings: appSettings } = useAppSettings();
-  const productFormRef = useRef<HTMLFormElement>(null);
-  const generateAfterCreateRef = useRef<"product" | number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
   const [sellerInfo, setSellerInfo] = useState<{ name: string; store: string; isPlatform?: boolean } | null>(null);
   const [sellers, setSellers] = useState<Seller[]>([]);
+  const [platformQcConfigured, setPlatformQcConfigured] = useState<boolean | null>(null);
 
   const [formData, setFormData] = useState({
     sellerId: "admin",
+    productType: "QUICK_COMMERCE" as "QUICK_COMMERCE" | "ECOMMERCE",
     productName: "",
     headerCategory: "",
     category: "",
@@ -166,6 +171,24 @@ export default function AdminProductEdit() {
     fetchMasterData();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    getAppSettings()
+      .then((response) => {
+        if (active) {
+          setPlatformQcConfigured(
+            isPlatformQuickCommerceConfigured(response.data?.platformQuickCommerceFulfillment)
+          );
+        }
+      })
+      .catch((error) => {
+        console.error('Unable to load Platform Quick Commerce configuration status:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // 2. Load product details by ID (in edit mode)
   useEffect(() => {
     if (isAddMode) {
@@ -247,6 +270,7 @@ export default function AdminProductEdit() {
 
           setFormData({
             sellerId: isPlatform ? "admin" : (product.seller?._id || product.seller || ""),
+            productType: product.productType === "ECOMMERCE" ? "ECOMMERCE" : "QUICK_COMMERCE",
             productName: product.productName || "",
             headerCategory: headerCatId,
             category: categoryId,
@@ -357,26 +381,48 @@ export default function AdminProductEdit() {
     fetchProduct();
   }, [id]);
 
-  // Dynamic filter for Categories based on selected Header Category
-  const filteredCategories = useMemo(() => {
-    // Only consider root categories (categories without a parentId)
-    const rootCategories = categories.filter((cat) => !cat.parentId);
+  // Root categories compatible with the selected productType (QUICK_COMMERCE or ECOMMERCE)
+  const channelCompatibleRootCategories = useMemo(() => {
+    return categories.filter((cat) => {
+      if (cat.parentId) return false;
+      const channels = cat.commerceChannels || [];
+      return channels.includes(formData.productType);
+    });
+  }, [categories, formData.productType]);
 
+  // Header categories that contain at least one compatible category for this productType
+  const filteredHeaderCategories = useMemo(() => {
+    const compatibleHeaderIds = new Set(
+      channelCompatibleRootCategories
+        .map((cat: any) =>
+          typeof cat.headerCategoryId === "string"
+            ? cat.headerCategoryId
+            : cat.headerCategoryId?._id || (cat as any).headerCategory?._id
+        )
+        .filter(Boolean)
+    );
+    return headerCategories.filter((hc) =>
+      compatibleHeaderIds.has(hc._id || (hc as any).id)
+    );
+  }, [headerCategories, channelCompatibleRootCategories]);
+
+  // Dynamic filter for Categories based on selected Header Category AND Product Type
+  const filteredCategories = useMemo(() => {
     if (!formData.headerCategory) {
-      return rootCategories;
+      return channelCompatibleRootCategories;
     }
 
     const selectedHeaderCat = headerCategories.find(
       (hc) => hc._id === formData.headerCategory || (hc as any).id === formData.headerCategory
     );
 
-    // If "All" is selected as header category, show all root categories
+    // If "All" is selected as header category, show all channel-compatible root categories
     if (selectedHeaderCat && selectedHeaderCat.name.toLowerCase() === "all") {
-      return rootCategories;
+      return channelCompatibleRootCategories;
     }
 
     // Filter categories that match the selected header category
-    const matching = rootCategories.filter((cat: any) => {
+    const matching = channelCompatibleRootCategories.filter((cat: any) => {
       const hcId =
         typeof cat.headerCategoryId === "string"
           ? cat.headerCategoryId
@@ -384,15 +430,19 @@ export default function AdminProductEdit() {
       return hcId === formData.headerCategory;
     });
 
-    // If categories match the specific header category, return them
-    if (matching.length > 0) {
-      return matching;
-    }
+    return matching;
+  }, [channelCompatibleRootCategories, headerCategories, formData.headerCategory]);
 
-    // Fallback: If no categories are tagged specifically to this header category,
-    // show all root categories so admin is never blocked
-    return rootCategories;
-  }, [categories, headerCategories, formData.headerCategory]);
+  // Check if currently selected category is incompatible with the selected productType
+  const selectedCategoryObj = useMemo(() => {
+    if (!formData.category) return null;
+    return categories.find((c) => c._id === formData.category) || null;
+  }, [categories, formData.category]);
+
+  const isCategoryIncompatible = useMemo(() => {
+    if (!selectedCategoryObj || !selectedCategoryObj.commerceChannels) return false;
+    return !selectedCategoryObj.commerceChannels.includes(formData.productType);
+  }, [selectedCategoryObj, formData.productType]);
 
   // Load subcategories when category changes
   useEffect(() => {
@@ -558,10 +608,6 @@ export default function AdminProductEdit() {
     return prices.length > 0 ? Math.min(...prices) : 0;
   }, [variations]);
 
-  const selectedCategoryObj = useMemo(() => {
-    return categories.find((c) => c._id === formData.category);
-  }, [categories, formData.category]);
-
   const addVariation = () => {
     if (!variationForm.title || !variationForm.price) {
       setUploadError("Please fill in variation title and price");
@@ -605,35 +651,63 @@ export default function AdminProductEdit() {
     setVariations((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const generateAndSaveBarcode = async (variationIndex?: number) => {
-    if (isAddMode || !id) {
-      generateAfterCreateRef.current = variationIndex === undefined ? "product" : variationIndex;
-      setUploadError("Complete the required product fields. Generate Barcode will create the product and persist the generated code.");
-      productFormRef.current?.requestSubmit();
+  const generateBarcode = async (target?: number | "variationForm") => {
+    const isProductBarcode = target === undefined;
+    const variation = typeof target === "number" ? variations[target] : undefined;
+    const existingBarcode = isProductBarcode
+      ? formData.barcode
+      : target === "variationForm"
+        ? variationForm.barcode
+        : variation?.barcode;
+
+    if (
+      existingBarcode &&
+      !window.confirm(
+        `Replace current barcode "${existingBarcode}" with a newly generated barcode?`
+      )
+    ) {
       return;
     }
-    const variation = variationIndex === undefined ? undefined : variations[variationIndex];
-    if (variationIndex !== undefined && !variation?._id) {
-      setUploadError("Save this new variation first, then generate its persisted barcode.");
-      return;
-    }
-    const existingBarcode = variationIndex === undefined ? formData.barcode : variation?.barcode;
-    if (existingBarcode && !window.confirm(`Replace saved barcode ${existingBarcode} with a newly generated barcode?`)) {
-      return;
-    }
+
     try {
-      const response = await generateProductBarcode(id, variation?._id);
-      const barcode = response.data?.barcode;
-      if (!barcode) throw new Error("Barcode generation returned no value");
-      if (variationIndex === undefined) {
-        setFormData((previous) => ({ ...previous, barcode }));
-      } else {
-        setVariations((previous) => previous.map((item, index) => index === variationIndex ? { ...item, barcode } : item));
-      }
       setUploadError("");
-      showToast("Barcode generated and saved.", "success");
+      let barcode: string | undefined;
+      const localBarcodes = new Set([
+        formData.barcode.trim(),
+        variationForm.barcode.trim(),
+        ...variations.map((item) => item.barcode?.trim() || ""),
+      ].filter(Boolean));
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const candidateRes = await generateCandidateBarcode();
+        barcode = candidateRes.data?.barcode;
+        if (barcode && !localBarcodes.has(barcode)) break;
+      }
+
+      if (!barcode) {
+        throw new Error("Barcode generation returned no value");
+      }
+
+      if (isProductBarcode) {
+        setFormData((prev) => ({ ...prev, barcode }));
+      } else if (target === "variationForm") {
+        setVariationForm((prev) => ({ ...prev, barcode }));
+      } else {
+        setVariations((prev) =>
+          prev.map((item, idx) =>
+            idx === target ? { ...item, barcode } : item
+          )
+        );
+      }
+
+      setUploadError("");
+      showToast("Barcode generated. Save the product to persist it.", "success");
     } catch (error: any) {
-      setUploadError(error?.response?.data?.message || error?.message || "Unable to generate barcode");
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to generate barcode";
+      setUploadError(msg);
+      showToast(msg, "error");
     }
   };
 
@@ -660,6 +734,14 @@ export default function AdminProductEdit() {
       }
       if (!formData.category) {
         setUploadError("Please select a category.");
+        return;
+      }
+      if (isCategoryIncompatible && selectedCategoryObj) {
+        setUploadError(
+          `Selected category "${selectedCategoryObj.name}" is not compatible with ${
+            formData.productType === "QUICK_COMMERCE" ? "Quick Commerce" : "Ecommerce"
+          }. Please select a compatible category.`
+        );
         return;
       }
     }
@@ -758,6 +840,7 @@ export default function AdminProductEdit() {
         isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
         shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : null,
         sellerId: formData.sellerId === "admin" || !formData.sellerId ? "admin" : formData.sellerId,
+        productType: formData.productType,
       };
 
       const res = isAddMode
@@ -765,22 +848,6 @@ export default function AdminProductEdit() {
         : await updateProduct(id!, productPayload);
 
       if (res.success) {
-        if (isAddMode && generateAfterCreateRef.current !== null && res.data?._id) {
-          const target = generateAfterCreateRef.current;
-          const variationId = typeof target === "number" ? res.data.variations?.[target]?._id : undefined;
-          if (typeof target !== "number" || variationId) {
-            try {
-              await generateProductBarcode(res.data._id, variationId);
-              showToast("Product created and barcode generated and saved.", "success");
-            } catch (generationError: any) {
-              showToast(generationError?.response?.data?.message || "Product was created, but barcode generation failed. Retry from the edit screen.", "error");
-            } finally {
-              generateAfterCreateRef.current = null;
-              navigate(`/admin/product/edit/${res.data._id}`);
-            }
-            return;
-          }
-        }
         showToast(
           isAddMode
             ? "Product and images created successfully!"
@@ -878,7 +945,7 @@ export default function AdminProductEdit() {
         </div>
       )}
 
-      <form ref={productFormRef} onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Product Info */}
         <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
           <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
@@ -926,6 +993,41 @@ export default function AdminProductEdit() {
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Fulfillment Channel <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="productType"
+                  value={formData.productType}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
+                  <option value="QUICK_COMMERCE">Quick Commerce — local radius delivery</option>
+                  <option value="ECOMMERCE">Ecommerce — pincode / courier shipping</option>
+                </select>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Ecommerce never uses the Platform Quick Commerce radius. Wholesale remains a selling mode on the selected channel.
+                </p>
+              </div>
+
+              {shouldShowPlatformQcAdminWarning(
+                formData.sellerId,
+                formData.productType,
+                platformQcConfigured
+              ) && (
+                <div className="md:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                  <p className="text-sm font-semibold">Platform Quick Commerce fulfillment is not configured.</p>
+                  <p className="mt-1 text-xs">
+                    Customer purchase will remain unavailable until the platform warehouse location and service radius are configured.
+                  </p>
+                  <Link
+                    to="/admin/app-settings"
+                    className="mt-2 inline-flex text-sm font-semibold text-teal-700 hover:text-teal-800 hover:underline">
+                    Configure Platform Quick Commerce
+                  </Link>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Select Header Category <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -934,7 +1036,7 @@ export default function AdminProductEdit() {
                   onChange={(e) => handleHeaderCategoryChange(e.target.value)}
                   className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
                   <option value="">All Header Categories</option>
-                  {headerCategories.map((hc) => (
+                  {filteredHeaderCategories.map((hc) => (
                     <option key={hc._id || (hc as any).id} value={hc._id || (hc as any).id}>
                       {hc.name}
                     </option>
@@ -955,7 +1057,9 @@ export default function AdminProductEdit() {
                   name="category"
                   value={formData.category}
                   onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white ${
+                    isCategoryIncompatible ? "border-red-500 bg-red-50/40 text-red-900" : "border-neutral-300"
+                  }`}>
                   <option value="">Select Category</option>
                   {filteredCategories.map((cat) => (
                     <option key={cat._id} value={cat._id}>
@@ -963,6 +1067,11 @@ export default function AdminProductEdit() {
                     </option>
                   ))}
                 </select>
+                {isCategoryIncompatible && selectedCategoryObj && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium">
+                    ⚠️ Selected category "{selectedCategoryObj.name}" only supports {selectedCategoryObj.commerceChannels?.join(", ")}. Please select a category compatible with {formData.productType === "QUICK_COMMERCE" ? "Quick Commerce" : "Ecommerce"}.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1100,7 +1209,7 @@ export default function AdminProductEdit() {
                     placeholder="e.g. 8901234567890"
                     className="min-w-0 flex-1 px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-mono text-sm"
                   />
-                  <button type="button" onClick={() => generateAndSaveBarcode()} className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700">
+                  <button type="button" onClick={() => generateBarcode()} className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700">
                     Generate Barcode
                   </button>
                 </div>
@@ -1326,13 +1435,18 @@ export default function AdminProductEdit() {
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
                   Barcode (Optional)
                 </label>
-                <input
-                  type="text"
-                  value={variationForm.barcode}
-                  onChange={(e) => setVariationForm({ ...variationForm, barcode: e.target.value })}
-                  placeholder="Variation Barcode"
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={variationForm.barcode}
+                    onChange={(e) => setVariationForm({ ...variationForm, barcode: e.target.value })}
+                    placeholder="Variation Barcode"
+                    className="min-w-0 flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <button type="button" onClick={() => generateBarcode("variationForm")} className="px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700">
+                    Generate
+                  </button>
+                </div>
               </div>
               <div className="flex items-end">
                 <button
@@ -1377,7 +1491,7 @@ export default function AdminProductEdit() {
                           <span className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Barcode</span>
                           <input value={variation.barcode || ""} onChange={(event) => setVariations((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, barcode: event.target.value } : item))} className="w-40 px-2 py-1.5 border rounded font-mono" placeholder="Barcode" />
                         </label>
-                        <button type="button" onClick={() => generateAndSaveBarcode(index)} className="px-2 py-1.5 rounded bg-teal-600 text-white font-semibold">Generate</button>
+                        <button type="button" onClick={() => generateBarcode(index)} className="px-2 py-1.5 rounded bg-teal-600 text-white font-semibold">Generate</button>
                         {variation.barcode && <button type="button" onClick={() => copyBarcode(variation.barcode!)} className="px-2 py-1.5 text-teal-700 font-semibold">Copy</button>}
                         {variation.barcode && <button type="button" onClick={() => printBarcodeLabel({ productName: formData.productName || "Product", variantName: variation.title || variation.value, sku: variation.sku, barcode: variation.barcode! })} className="px-2 py-1.5 text-teal-700 font-semibold">Print Label</button>}
                         <span>

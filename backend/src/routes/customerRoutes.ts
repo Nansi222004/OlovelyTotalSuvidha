@@ -8,7 +8,7 @@ const router = Router();
 // Get public app settings (app name, logo, delivery time, etc.)
 router.get("/app-settings", async (_req, res) => {
   try {
-    let settings = await AppSettings.findOne();
+    let settings = await AppSettings.findOne().select("-platformQuickCommerceFulfillment");
     if (!settings) {
       settings = await AppSettings.create({
         appName: "Olovely Total Suvidha",
