@@ -566,12 +566,17 @@ export const addToCart = async (req: Request, res: Response) => {
         }
 
         if (!isEcommerceProduct) {
-            if (userLat === null || userLng === null || isNaN(userLat) || isNaN(userLng)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Location is required to add Quick Commerce items to cart'
-                });
-            }
+            const hasQuickCommerceLocation = userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng);
+
+            // Temporarily allow Quick Commerce items into the cart before the
+            // customer selects an address. Checkout and order creation still
+            // require coordinates and perform authoritative serviceability checks.
+            // if (!hasQuickCommerceLocation) {
+            //     return res.status(400).json({
+            //         success: false,
+            //         message: 'Location is required to add Quick Commerce items to cart'
+            //     });
+            // }
 
             const isPlatformProduct = product.ownerType === 'PLATFORM' || resolveInventoryOwner(seller, product).isPlatform;
             if (!isPlatformProduct && seller && seller.isShopOpen === false) {
@@ -581,22 +586,26 @@ export const addToCart = async (req: Request, res: Response) => {
                 });
             }
 
-            const serviceability = await evaluateQuickCommerceProduct(product, userLat, userLng);
-            if (serviceability.isServiceable === false) {
-                if (serviceability.code === PLATFORM_QC_NOT_CONFIGURED) {
-                    console.warn(PLATFORM_QC_NOT_CONFIGURED, {
-                        productId: product._id.toString(),
-                        endpoint: 'customer-cart-add',
+            // If coordinates are already available, preserve the existing
+            // cart-stage serviceability rejection for a known unserviceable area.
+            if (hasQuickCommerceLocation) {
+                const serviceability = await evaluateQuickCommerceProduct(product, userLat, userLng);
+                if (serviceability.isServiceable === false) {
+                    if (serviceability.code === PLATFORM_QC_NOT_CONFIGURED) {
+                        console.warn(PLATFORM_QC_NOT_CONFIGURED, {
+                            productId: product._id.toString(),
+                            endpoint: 'customer-cart-add',
+                        });
+                    }
+                    return res.status(serviceability.code === PLATFORM_QC_NOT_CONFIGURED ? 503 : 403).json({
+                        success: false,
+                        message: 'This service is not available in your location yet.',
+                        data: { serviceability: toCustomerProductServiceability(serviceability) },
                     });
                 }
-                return res.status(serviceability.code === PLATFORM_QC_NOT_CONFIGURED ? 503 : 403).json({
-                    success: false,
-                    message: 'This service is not available in your location yet.',
-                    data: { serviceability: toCustomerProductServiceability(serviceability) },
-                });
+                nearbySellerIds = await findSellersWithinRange(userLat, userLng);
+                hasValidLocation = true;
             }
-            nearbySellerIds = await findSellersWithinRange(userLat, userLng);
-            hasValidLocation = true;
         } else if (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng)) {
             nearbySellerIds = await findSellersWithinRange(userLat, userLng);
             hasValidLocation = true;
