@@ -4,9 +4,9 @@
   "description": "Olovely Backend API Server",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts",
+    "build": "node api.js && tsc",
+    "start": "node api.js && node dist/server.js",
+    "dev": "node api.js && tsx watch src/server.ts",
     "test": "tsx test-auth.ts",
     "test:auth": "tsx src/scripts/testAuth.ts",
     "test:integration": "tsx src/scripts/test-frontend-backend-auth.ts",

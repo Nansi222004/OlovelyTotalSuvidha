@@ -11,27 +11,25 @@ interface IconLoaderProps {
 const IconLoader: React.FC<IconLoaderProps> = ({ forceShow = false }) => {
   const { isRouteLoading } = useLoading();
   
-  // Completely disable loadify / icon loader from user and admin portals
-  const shouldDisableLoader = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/admin') ||
-    (!window.location.pathname.startsWith('/seller') && !window.location.pathname.startsWith('/delivery'))
-  );
-
-  if (shouldDisableLoader) {
-    return null;
-  }
-
+  // The branded full-screen loader is only used by the Seller portal.
+  // Delivery routes render their page directly, including during lazy loading.
+  const shouldDisableLoader = typeof window !== 'undefined' &&
+    !window.location.pathname.startsWith('/seller');
   const show = isRouteLoading || forceShow;
   const [animationData, setAnimationData] = useState<any>(null);
 
   useEffect(() => {
-    if (show && !animationData) {
+    if (!shouldDisableLoader && show && !animationData) {
       fetch('/animations/loading.json')
         .then(res => res.json())
         .then(data => setAnimationData(data))
         .catch(err => console.error('Failed to load animation:', err));
     }
-  }, [show, animationData]);
+  }, [shouldDisableLoader, show, animationData]);
+
+  if (shouldDisableLoader) {
+    return null;
+  }
 
   return (
     <AnimatePresence>

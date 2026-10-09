@@ -40,15 +40,50 @@ const defaultFaqData: FAQItem[] = [
   },
 ];
 
-export default function FAQ() {
+const sellerFaqData: FAQItem[] = [
+  {
+    id: 'seller-1',
+    question: 'How do I manage products and stock?',
+    answer: 'Use the Products and Stock sections in the Seller dashboard to add products, update variants, prices, availability, and inventory quantities.',
+  },
+  {
+    id: 'seller-2',
+    question: 'How do I process a new order?',
+    answer: 'Open the Orders section, review the order details, and use the available order actions to accept and process it. The dashboard will show each order’s current fulfillment status.',
+  },
+  {
+    id: 'seller-3',
+    question: 'Where can I review settlements and earnings?',
+    answer: 'Open Settlement, Wallet, or Sales Reports from the Seller dashboard to review applicable order earnings, deductions, and settlement information.',
+  },
+  {
+    id: 'seller-4',
+    question: 'How do I update my store or account details?',
+    answer: 'Use Profile and Account Settings in the Seller dashboard. Some approval-sensitive details may require review before they become active.',
+  },
+  {
+    id: 'seller-5',
+    question: 'How can I contact Seller Support?',
+    answer: 'Open Seller Support to call, email, or submit the support form with details about your catalog, orders, settlements, or account.',
+  },
+];
+
+interface FAQProps {
+  audience?: 'customer' | 'seller';
+}
+
+export default function FAQ({ audience = 'customer' }: FAQProps) {
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
   const { settings: appSettings } = useAppSettings();
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
-  const [faqs, setFaqs] = useState<FAQItem[]>(defaultFaqData);
+  const isSellerFaq = audience === 'seller';
+  const [faqs, setFaqs] = useState<FAQItem[]>(isSellerFaq ? sellerFaqData : defaultFaqData);
 
   useEffect(() => {
+    if (isSellerFaq) return;
+
     const fetchFaqs = async () => {
       try {
         const response = await api.get('/customer/faqs');
@@ -66,7 +101,7 @@ export default function FAQ() {
       }
     };
     fetchFaqs();
-  }, []);
+  }, [isSellerFaq]);
 
   const toggleItem = (id: string) => {
     const newOpenItems = new Set(openItems);
@@ -120,7 +155,9 @@ export default function FAQ() {
               Frequently Asked Questions
             </h1>
             <p className="text-sm md:text-base text-neutral-600 text-center px-4">
-              Find answers to common questions about our services
+              {isSellerFaq
+                ? 'Find answers to common questions about selling on Olovely'
+                : 'Find answers to common questions about our services'}
             </p>
           </div>
         </div>
@@ -202,12 +239,20 @@ export default function FAQ() {
                 Still have questions?
               </h3>
               <p className="text-sm text-neutral-600 mb-4">
-                Our customer support team is here to help you 24/7
+                {isSellerFaq
+                  ? 'Our seller support team is here to help you'
+                  : 'Our customer support team is here to help you 24/7'}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
                   type="button"
-                  onClick={() => setIsSupportModalOpen(true)}
+                  onClick={() => {
+                    if (isSellerFaq) {
+                      navigate('/seller/support');
+                    } else {
+                      setIsSupportModalOpen(true);
+                    }
+                  }}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 active:scale-[0.98] transition-all text-sm cursor-pointer shadow-xs"
                 >
                   <svg
@@ -231,7 +276,7 @@ export default function FAQ() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Contact Support
+                  {isSellerFaq ? 'Seller Support' : 'Contact Support'}
                 </button>
                 <a
                   href={`tel:${appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}`}
@@ -260,10 +305,12 @@ export default function FAQ() {
       </div>
       
       {/* Contact Support Modal */}
-      <SupportModal
-        isOpen={isSupportModalOpen}
-        onClose={() => setIsSupportModalOpen(false)}
-      />
+      {!isSellerFaq && (
+        <SupportModal
+          isOpen={isSupportModalOpen}
+          onClose={() => setIsSupportModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
