@@ -503,7 +503,7 @@ function App() {
                             path="/delivery/login"
                             element={
                               <PublicRoute userType="Delivery">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <DeliveryLogin />
                                 </Suspense>
                               </PublicRoute>
@@ -513,7 +513,7 @@ function App() {
                             path="/delivery/signup"
                             element={
                               <PublicRoute userType="Delivery">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <DeliverySignUp />
                                 </Suspense>
                               </PublicRoute>
@@ -523,7 +523,7 @@ function App() {
                             path="/delivery/under-review"
                             element={
                               <ProtectedRoute requiredUserType="Delivery" allowUnapproved redirectTo="/delivery/login">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <DeliveryUnderReview />
                                 </Suspense>
                               </ProtectedRoute>
@@ -544,7 +544,7 @@ function App() {
                           <Route
                             path="/delivery/privacy-policy"
                             element={
-                              <Suspense fallback={<IconLoader forceShow />}>
+                              <Suspense fallback={null}>
                                 <DeliveryPolicy />
                               </Suspense>
                             }
@@ -552,7 +552,7 @@ function App() {
                           <Route
                             path="/delivery/terms-and-conditions"
                             element={
-                              <Suspense fallback={<IconLoader forceShow />}>
+                              <Suspense fallback={null}>
                                 <DeliveryPolicy />
                               </Suspense>
                             }
@@ -560,7 +560,7 @@ function App() {
                           <Route
                             path="/delivery/support"
                             element={
-                              <Suspense fallback={<IconLoader forceShow />}>
+                              <Suspense fallback={null}>
                                 <DeliveryHelp />
                               </Suspense>
                             }
@@ -568,7 +568,7 @@ function App() {
                           <Route
                             path="/delivery/help"
                             element={
-                              <Suspense fallback={<IconLoader forceShow />}>
+                              <Suspense fallback={null}>
                                 <DeliveryHelp />
                               </Suspense>
                             }
@@ -581,7 +581,7 @@ function App() {
                               <ProtectedRoute
                                 requiredUserType="Delivery"
                                 redirectTo="/delivery/login">
-                                <Suspense fallback={<IconLoader forceShow />}>
+                                <Suspense fallback={null}>
                                   <DeliveryLayout>
                                     <Routes>
                                       <Route
@@ -641,25 +641,9 @@ function App() {
                                         path="settings"
                                         element={<DeliverySettings />}
                                       />
-                                      <Route
-                                        path="help"
-                                        element={<DeliveryHelp />}
-                                      />
-                                      <Route
-                                        path="support"
-                                        element={<DeliveryHelp />}
-                                      />
                                        <Route
                                          path="about"
                                          element={<DeliveryAbout />}
-                                       />
-                                       <Route
-                                         path="privacy-policy"
-                                         element={<DeliveryPolicy />}
-                                       />
-                                       <Route
-                                         path="terms-and-conditions"
-                                         element={<DeliveryPolicy />}
                                        />
                                       <Route
                                         path="sellers-in-range"
@@ -694,6 +678,14 @@ function App() {
                             element={
                               <Suspense fallback={<IconLoader forceShow />}>
                                 <Support />
+                              </Suspense>
+                            }
+                          />
+                          <Route
+                            path="/seller/faq"
+                            element={
+                              <Suspense fallback={<IconLoader forceShow />}>
+                                <FAQ audience="seller" />
                               </Suspense>
                             }
                           />
@@ -791,14 +783,6 @@ function App() {
                                       <Route
                                         path="profile"
                                         element={<SellerProfile />}
-                                      />
-                                      <Route
-                                        path="privacy-policy"
-                                        element={<SellerPolicy />}
-                                      />
-                                      <Route
-                                        path="support"
-                                        element={<Support />}
                                       />
                                     </Routes>
                                   </SellerLayout>

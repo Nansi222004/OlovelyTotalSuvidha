@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useAppSettings } from '../../context/AppSettingsContext';
@@ -7,6 +7,7 @@ import { submitCustomerSupport } from '../../services/api/customerService';
 
 export default function Support() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { settings: appSettings } = useAppSettings();
@@ -18,6 +19,9 @@ export default function Support() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const isSellerSupport = location.pathname.startsWith('/seller/');
+  const faqPath = isSellerSupport ? '/seller/faq' : '/faq';
+  const policyPath = isSellerSupport ? '/seller/privacy-policy' : '/privacy-policy';
 
   // Auto-populate customer info if logged in
   useEffect(() => {
@@ -125,29 +129,35 @@ export default function Support() {
 
       {/* Main Content */}
       <div className="px-4 md:px-6 lg:px-8 py-6 max-w-4xl mx-auto space-y-6">
-        {/* Support Tickets Banner */}
+        {/* Support Desk Banner */}
         <div className="bg-gradient-to-r from-teal-900 to-emerald-900 text-white rounded-2xl p-5 md:p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 bg-teal-800/60 px-2.5 py-0.5 rounded-full">
-              Customer Support Desk
+              {isSellerSupport ? 'Seller Support Desk' : 'Customer Support Desk'}
             </span>
-            <h2 className="text-base md:text-lg font-bold mt-1 text-white">Have an Order Issue or Active Ticket?</h2>
+            <h2 className="text-base md:text-lg font-bold mt-1 text-white">
+              {isSellerSupport ? 'Need Help With Your Seller Account?' : 'Have an Order Issue or Active Ticket?'}
+            </h2>
             <p className="text-xs text-teal-100/90 mt-0.5 max-w-lg">
-              View your existing inquiries, reply directly to support executives, or raise an order-linked support ticket.
+              {isSellerSupport
+                ? 'Get help with seller onboarding, catalog management, orders, settlements, or your seller account.'
+                : 'View your existing inquiries, reply directly to support executives, or raise an order-linked support ticket.'}
             </p>
           </div>
-          <Link
-            to="/support/tickets"
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-teal-950 bg-teal-300 hover:bg-white rounded-xl shadow-xs transition-all flex-shrink-0"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-            </svg>
-            My Support Tickets
-          </Link>
+          {!isSellerSupport && (
+            <Link
+              to="/support/tickets"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-teal-950 bg-teal-300 hover:bg-white rounded-xl shadow-xs transition-all flex-shrink-0"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              My Support Tickets
+            </Link>
+          )}
         </div>
 
         {/* Quick Contact Cards */}
@@ -331,7 +341,7 @@ export default function Support() {
         {/* Helpful Links */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Link
-            to="/faq"
+            to={faqPath}
             className="bg-white p-4 rounded-xl border border-neutral-200 hover:border-teal-400 hover:shadow-xs transition-all flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
@@ -351,7 +361,7 @@ export default function Support() {
           </Link>
 
           <Link
-            to="/privacy-policy"
+            to={policyPath}
             className="bg-white p-4 rounded-xl border border-neutral-200 hover:border-teal-400 hover:shadow-xs transition-all flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
@@ -362,7 +372,9 @@ export default function Support() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-neutral-900">Privacy & Terms Policy</h3>
-                <p className="text-xs text-neutral-500">Read our customer terms and policies</p>
+                <p className="text-xs text-neutral-500">
+                  {isSellerSupport ? 'Read our seller terms and policies' : 'Read our customer terms and policies'}
+                </p>
               </div>
             </div>
             <span className="text-neutral-400 group-hover:text-emerald-600 transition-colors">›</span>
