@@ -50,6 +50,8 @@ const LanguageSelection = lazyWithRetry(() => import("./modules/user/pages/Langu
 
 const AboutUs = lazyWithRetry(() => import("./modules/user/AboutUs"), "AboutUs");
 const Support = lazyWithRetry(() => import("./modules/user/Support"), "Support");
+const MyTickets = lazyWithRetry(() => import("./modules/user/MyTickets"), "MyTickets");
+const TicketDetail = lazyWithRetry(() => import("./modules/user/TicketDetail"), "TicketDetail");
 const CustomerPolicy = lazyWithRetry(() => import("./modules/user/CustomerPolicy"), "CustomerPolicy");
 const FAQ = lazyWithRetry(() => import("./modules/user/FAQ"), "FAQ");
 const Wishlist = lazyWithRetry(() => import("./modules/user/Wishlist"), "Wishlist");
@@ -253,6 +255,14 @@ const AdminSystemUser = lazyWithRetry(
 );
 const AdminUsers = lazyWithRetry(() => import("./modules/admin/pages/AdminUsers"), "AdminUsers");
 const AdminFAQ = lazyWithRetry(() => import("./modules/admin/pages/AdminFAQ"), "AdminFAQ");
+const AdminSupportTickets = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminSupportTickets"),
+  "AdminSupportTickets"
+);
+const AdminTicketDetail = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminTicketDetail"),
+  "AdminTicketDetail"
+);
 const AdminHomeSection = lazyWithRetry(
   () => import("./modules/admin/pages/AdminHomeSection"), "AdminHomeSection"
 );
@@ -933,6 +943,14 @@ function App() {
                                       <Route
                                         path="faq"
                                         element={<AdminFAQ />}
+                                       />
+                                       <Route
+                                         path="support/tickets"
+                                         element={<AdminSupportTickets />}
+                                       />
+                                       <Route
+                                         path="support/tickets/:id"
+                                         element={<AdminTicketDetail />}
                                       />
                                       <Route
                                         path="home-section"
@@ -1075,7 +1093,11 @@ function App() {
                                     />
                                     <Route
                                       path="/account"
-                                      element={<Account />}
+                                      element={
+                                        <ProtectedRoute requiredUserType="Customer" redirectTo="/login">
+                                          <Account />
+                                        </ProtectedRoute>
+                                      }
                                     />
                                     {/* Customer Wallet - Temporarily Commented Out
                                     <Route
@@ -1094,6 +1116,22 @@ function App() {
                                     <Route
                                       path="/support"
                                       element={<Support />}
+                                     />
+                                     <Route
+                                       path="/support/tickets"
+                                       element={
+                                         <ProtectedRoute requiredUserType="Customer" redirectTo="/login">
+                                           <MyTickets />
+                                         </ProtectedRoute>
+                                       }
+                                     />
+                                     <Route
+                                       path="/support/tickets/:ticketNumber"
+                                       element={
+                                         <ProtectedRoute requiredUserType="Customer" redirectTo="/login">
+                                           <TicketDetail />
+                                         </ProtectedRoute>
+                                       }
                                     />
                                     <Route
                                       path="/privacy-policy"

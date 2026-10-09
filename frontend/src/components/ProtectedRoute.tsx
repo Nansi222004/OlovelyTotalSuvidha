@@ -29,8 +29,12 @@ export default function ProtectedRoute({
   redirectTo = "/login",
   allowUnapproved = false,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, user, token } = useAuth();
+  const { isAuthReady, isAuthenticated, user, token } = useAuth();
   const location = useLocation();
+
+  if (!isAuthReady) {
+    return null;
+  }
 
   // Check authentication
   if (!isAuthenticated || !token) {

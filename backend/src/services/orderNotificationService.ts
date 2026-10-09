@@ -454,7 +454,8 @@ export async function notifyDeliveryBoysOfNewOrder(
             io.to(roomName).emit('new-order', orderData);
             console.log(`📤 [Socket] Emitted 'new-order' to ${idString}`);
 
-            // 2. Database Notification & FCM Push
+            // 2. Database Notification & FCM Push (idempotent with stable eventId)
+            const offerEventId = `order:${order._id}:delivery_offer:${idString}`;
             await sendNotification(
                 'Delivery',
                 idString,
@@ -464,12 +465,14 @@ export async function notifyDeliveryBoysOfNewOrder(
                     type: 'Order',
                     link: '/delivery',
                     priority: 'High',
+                    eventId: offerEventId,
                     data: {
                         orderId: order._id.toString(),
                         orderNumber: order.orderNumber,
                         role: 'delivery',
                         panel: 'delivery',
                         type: 'NEW_ORDER',
+                        eventId: offerEventId,
                     },
                 }
             ).catch(err => console.error(`❌ [DB Notif Error] ${idString}:`, err.message));
@@ -777,7 +780,8 @@ export async function notifyDeliveryBoyOfAssignment(
         io.to(roomName).emit('new-order', orderData);
         console.log(`📤 Emitted manual assignment (new-order) to delivery boy: ${deliveryBoyIdString}`);
 
-        // 2. Send Notification (Database + FCM Push)
+        // 2. Send Notification (Database + FCM Push with stable eventId)
+        const assignmentEventId = `order:${order._id}:delivery_assigned:${deliveryBoyIdString}`;
         await sendNotification(
             'Delivery',
             deliveryBoyIdString,
@@ -786,7 +790,16 @@ export async function notifyDeliveryBoyOfAssignment(
             {
                 type: 'Order',
                 link: '/delivery',
-                priority: 'High'
+                priority: 'High',
+                eventId: assignmentEventId,
+                data: {
+                    orderId: order._id.toString(),
+                    orderNumber: order.orderNumber,
+                    role: 'delivery',
+                    panel: 'delivery',
+                    type: 'ORDER_ASSIGNED',
+                    eventId: assignmentEventId,
+                },
             }
         ).catch(err => console.error(`❌ [Delivery Assignment Notif Error] ${deliveryBoyIdString}:`, err.message));
 

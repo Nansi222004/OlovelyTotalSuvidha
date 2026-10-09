@@ -43,7 +43,7 @@ export function verifyToken(token: string): TokenPayload {
     const decoded = jwt.verify(token, getJwtSecret()) as TokenPayload;
     return decoded;
   } catch (error: any) {
-    console.error('JWT verify error:', error.message, 'token:', token.substring(0, 20) + '...');
+    console.error('JWT verify error:', error.message);
     if (error.name === 'TokenExpiredError') {
       throw new Error('Token has expired');
     }

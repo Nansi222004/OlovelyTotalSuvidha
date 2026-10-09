@@ -1,6 +1,8 @@
 import api from "../config";
 
 import { ApiResponse } from "./types";
+import type { AvailableDeliveryPartner } from "../orderService";
+export type { AvailableDeliveryPartner };
 
 export interface OrderItem {
   _id: string;
@@ -333,5 +335,31 @@ export const exportOrders = async (
  */
 export const getPendingOrderAlerts = async (): Promise<ApiResponse<any[]>> => {
   const response = await api.get<ApiResponse<any[]>>("/admin/orders/pending-alerts");
+  return response.data;
+};
+
+/**
+ * Get available delivery partners for Admin (Platform QC orders)
+ */
+export const getAvailableDeliveryPartners = async (
+  orderId: string,
+): Promise<ApiResponse<AvailableDeliveryPartner[]>> => {
+  const response = await api.get<ApiResponse<AvailableDeliveryPartner[]>>(
+    `/admin/orders/${orderId}/available-delivery-partners`,
+  );
+  return response.data;
+};
+
+/**
+ * Assign delivery boy to order (Admin manual assignment)
+ */
+export const assignDeliveryBoyAdmin = async (
+  orderId: string,
+  deliveryBoyId: string,
+): Promise<ApiResponse<any>> => {
+  const response = await api.patch<ApiResponse<any>>(
+    `/admin/orders/${orderId}/assign-delivery`,
+    { deliveryBoyId },
+  );
   return response.data;
 };

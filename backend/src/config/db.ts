@@ -5,6 +5,7 @@ import PosCheckoutAttempt from '../models/PosCheckoutAttempt';
 import Product from '../models/Product';
 import Notification from '../models/Notification';
 import ProcessedWebhookEvent from '../models/ProcessedWebhookEvent';
+import CustomerSupportRequest from '../models/CustomerSupportRequest';
 
 dotenv.config();
 
@@ -31,6 +32,19 @@ const connectDB = async (): Promise<void> => {
     // Historical notifications do not have eventId. The partial unique index
     // applies only to new logical events and makes concurrent retries safe.
     await Notification.createIndexes();
+    // Support ticket retries use a customer-scoped client request ID. This
+    // additive partial index leaves historical tickets without an ID untouched.
+    await CustomerSupportRequest.collection.createIndex(
+      { customer: 1, clientRequestId: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          customer: { $exists: true },
+          clientRequestId: { $type: 'string' },
+        },
+        name: 'uniq_customer_support_request_id',
+      }
+    );
     // Carrier callbacks are retried; this unique key makes processing idempotent
     // across restarts and concurrent webhook deliveries. Never attempt the unique
     // index blindly if historical duplicate event IDs are present.

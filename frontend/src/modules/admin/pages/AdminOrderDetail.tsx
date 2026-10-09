@@ -7,13 +7,47 @@ import {
   markOrderCODPaid,
   Order,
   type EarningBreakdown,
+  getAvailableDeliveryPartners,
+  assignDeliveryBoyAdmin,
+  type AvailableDeliveryPartner,
 } from '../../../services/api/admin/adminOrderService';
+import SellerAssignDeliveryBoyModal from '../../seller/components/SellerAssignDeliveryBoyModal';
 import { useToast } from '../../../context/ToastContext';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 import { SellerInvoice } from '../../seller/components/SellerInvoice';
 import { exportElementToPdf } from '../../../utils/invoicePdfExport';
 import type { OrderDetail } from '../../../services/api/orderService';
+
+const ALLOWED_ORDER_TRANSITIONS: Record<string, string[]> = {
+  Received: ['Accepted', 'Cancelled', 'Rejected'],
+  Pending: ['Accepted', 'Cancelled', 'Rejected'],
+  Accepted: [
+    'Processed',
+    'Picked up',
+    'Shipped',
+    'On the way',
+    'Out for Delivery',
+    'Cancelled',
+    'Rejected',
+  ],
+  Processed: [
+    'Picked up',
+    'Shipped',
+    'On the way',
+    'Out for Delivery',
+    'Delivered',
+    'Cancelled',
+  ],
+  'Picked up': ['On the way', 'Out for Delivery', 'Delivered', 'Cancelled'],
+  Shipped: ['Out for Delivery', 'On the way', 'Delivered', 'Cancelled'],
+  'On the way': ['Delivered', 'Cancelled'],
+  'Out for Delivery': ['Delivered', 'Cancelled'],
+  Delivered: ['Returned'],
+  Cancelled: [],
+  Rejected: [],
+  Returned: [],
+};
 
 export default function AdminOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +62,7 @@ export default function AdminOrderDetail() {
   const [isExporting, setIsExporting] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
   const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   // Fetch order detail from API
@@ -169,20 +204,26 @@ export default function AdminOrderDetail() {
   const deliveryBoy = typeof order.deliveryBoy === 'object' ? order.deliveryBoy : null;
   const items: any[] = Array.isArray(order.items) ? order.items : [];
 
-  const statusOptions = [
-    'Received',
-    'Accepted',
-    'Pending',
-    'Processed',
-    'Shipped',
-    'Picked up',
-    'On the way',
-    'Out for Delivery',
-    'Delivered',
-    'Cancelled',
-    'Rejected',
-    'Returned',
-  ];
+  const isTerminal = ['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(order.status);
+  const rawAllowed = ALLOWED_ORDER_TRANSITIONS[order.status] || [];
+  const orderChannel = (order as any).orderType || (items.some((it: any) => it.productType === 'QUICK_COMMERCE') ? 'QUICK_COMMERCE' : 'ECOMMERCE');
+  const allowedNextStatuses = rawAllowed.filter((st) => {
+    if (orderChannel === 'QUICK_COMMERCE' && st === 'Shipped') return false;
+    if (orderChannel === 'ECOMMERCE' && (st === 'Picked up' || st === 'On the way')) return false;
+    return true;
+  });
+
+  const hasLocalQcItems = items.some(
+    (it: any) =>
+      it.productType === 'QUICK_COMMERCE' ||
+      it.fulfillmentType === 'LOCAL_DELIVERY' ||
+      it.ownerType === 'PLATFORM' ||
+      !it.seller
+  );
+  const canAssignDeliveryPartner =
+    hasLocalQcItems &&
+    !isTerminal &&
+    ['Accepted', 'Processed', 'Received', 'Pending'].includes(order.status);
 
   // Map order snapshot into authoritative OrderDetail for customer/order invoice rendering
   const invoiceOrderDetail: OrderDetail = {
@@ -377,20 +418,44 @@ export default function AdminOrderDetail() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-bold text-neutral-600 uppercase">Change Status:</label>
-                <select
-                  value={order.status}
-                  onChange={(e) => handleStatusUpdate(e.target.value)}
-                  disabled={updating || ['Cancelled', 'Rejected', 'Delivered'].includes(order.status)}
-                  className="px-3 py-2 border border-neutral-300 rounded-lg text-sm bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  {statusOptions.map((st) => (
-                    <option key={st} value={st}>
-                      {st}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex flex-wrap items-center gap-3">
+                {canAssignDeliveryPartner && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAssignModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>🛵</span>
+                    <span>{deliveryBoy ? 'Reassign QC Delivery Partner' : 'Assign QC Delivery Partner'}</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-neutral-600 uppercase">Next Status:</label>
+                  {isTerminal || allowedNextStatuses.length === 0 ? (
+                    <span className="text-xs font-semibold px-2.5 py-1.5 bg-neutral-200 text-neutral-700 rounded-lg">
+                      Terminal ({order.status}) — Completed
+                    </span>
+                  ) : (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleStatusUpdate(e.target.value);
+                      }}
+                      disabled={updating}
+                      className="px-3 py-2 border border-neutral-300 rounded-lg text-xs bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        Advance from {order.status}...
+                      </option>
+                      {allowedNextStatuses.map((st) => (
+                        <option key={st} value={st}>
+                          → {st}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -413,6 +478,105 @@ export default function AdminOrderDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Left Content: Items & Address */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Multi-Channel Fulfillment & Logistics (Parity with Vendor Flow) */}
+          <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-5">
+            <h3 className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>🚚</span>
+              <span>Fulfillment & Logistics Channel</span>
+              {orderChannel === 'MIXED' ? (
+                <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
+                  Dual Channels (QC + Ecommerce)
+                </span>
+              ) : orderChannel === 'QUICK_COMMERCE' ? (
+                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                  ⚡ Local Quick Commerce
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full border border-blue-200">
+                  📦 Courier Shipping
+                </span>
+              )}
+            </h3>
+
+            {hasLocalQcItems && (
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 shadow-2xs mb-3">
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-emerald-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⚡</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                        Quick Commerce (Local Delivery)
+                      </h4>
+                      <span className="text-[10px] text-emerald-700 font-medium">
+                        Platform Origin Warehouse / Hyperlocal Local Rider
+                      </span>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                    {order.deliveryOption === 'Instant' ? '⚡ Instant Express' : '⚡ Local Express'}
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs text-neutral-700">
+                  <div className="bg-white p-3 rounded-lg border border-emerald-150 flex items-center justify-between">
+                    <div>
+                      <span className="text-neutral-500 font-medium block">Delivery Partner:</span>
+                      {deliveryBoy ? (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="font-bold text-neutral-900 text-sm">🛵 {deliveryBoy.name}</span>
+                          <span className="text-neutral-500 font-mono text-xs">({deliveryBoy.mobile})</span>
+                          {order.deliveryBoyStatus && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase">
+                              {order.deliveryBoyStatus}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-amber-700 font-medium italic">Not Assigned</span>
+                      )}
+                    </div>
+
+                    {!isTerminal && ['Accepted', 'Processed', 'Received', 'Pending'].includes(order.status) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAssignModal(true)}
+                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        {deliveryBoy ? 'Change Partner' : 'Assign Partner'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {items.some((it) => it.productType === 'ECOMMERCE' || it.fulfillmentType === 'COURIER_SHIPPING') && (
+              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 shadow-2xs">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📦</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                        Ecommerce (Courier Shipping)
+                      </h4>
+                      <span className="text-[10px] text-blue-700 font-medium">
+                        Standard Courier / Shiprocket Logistics
+                      </span>
+                    </div>
+                  </div>
+                  {order.trackingNumber && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-100 text-blue-800">
+                      AWB: {order.trackingNumber}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-600">
+                  Fulfilled via seller courier dispatch. Quick Commerce local riders do not deliver these parcels.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Order Items Table matching Seller Rich Experience */}
           <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
@@ -769,6 +933,39 @@ export default function AdminOrderDetail() {
         }}
         onCancel={() => setShowRejectModal(false)}
       />
+
+      {/* Delivery Partner Selection Modal (Reused Vendor QC Modal with Admin endpoints) */}
+      {order && (
+        <SellerAssignDeliveryBoyModal
+          isOpen={showAssignModal}
+          onClose={() => setShowAssignModal(false)}
+          orderId={order._id}
+          orderNumber={order.orderNumber}
+          currentDeliveryBoyId={deliveryBoy?._id}
+          fetchPartners={getAvailableDeliveryPartners}
+          assignPartner={assignDeliveryBoyAdmin}
+          onAssignSuccess={(rider) => {
+            if (rider) {
+              setOrder((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      deliveryBoy: {
+                        _id: rider._id,
+                        name: rider.name,
+                        mobile: rider.mobile,
+                        email: rider.email,
+                      },
+                      deliveryBoyStatus: 'Assigned',
+                      status: ['Pending', 'Received', 'Accepted'].includes(prev.status) ? 'Processed' : prev.status,
+                    }
+                  : null
+              );
+              showToast(`Assigned ${rider.name} to order`, 'success');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

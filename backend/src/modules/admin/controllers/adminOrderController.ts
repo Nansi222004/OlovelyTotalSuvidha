@@ -16,6 +16,14 @@ import {
 import Seller from "../../../models/Seller";
 import { createApprovedReturnLogistics, ReturnLogisticsError } from "../../../services/returnShippingService";
 import { recordReturn } from "../../../services/inventoryService";
+import {
+  canonicalizeOrderStatus,
+  validateOrderStatusTransition,
+} from "../../../services/orderStatusTransitionService";
+import {
+  assignDeliveryPartnerToOrder,
+  getAvailableDeliveryPartnersForOrder,
+} from "../../../services/orderDeliveryAssignmentService";
 
 /**
  * Get all orders with filters
@@ -310,55 +318,52 @@ export const markOrderCODPaid = asyncHandler(
 );
 
 /**
- * Update order status
+ * Update order status with authoritative state transition validation
  */
 export const updateOrderStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { status, adminNotes, fulfillmentScope } = req.body;
+    const { status, adminNotes, fulfillmentScope, deliveryPreference } = req.body;
 
-    const validStatuses = [
-      "Received",
-      "Accepted",
-      "Pending",
-      "Processed",
-      "Shipped",
-      "Picked up",
-      "On the way",
-      "Out for Delivery",
-      "Delivered",
-      "Cancelled",
-      "Rejected",
-      "Returned",
-    ];
-
-    const normalizedStatus = typeof status === "string" ? status.toLowerCase() : "";
-    const matchedStatus = validStatuses.find(
-      (s) => s.toLowerCase() === normalizedStatus
-    );
-
-    if (!matchedStatus) {
+    const canonicalStatus = canonicalizeOrderStatus(status);
+    if (!canonicalStatus) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        code: "INVALID_STATUS",
+        message: `Invalid status: "${status}"`,
       });
     }
 
-    if (fulfillmentScope === "PLATFORM_QC") {
-      if (matchedStatus !== "Accepted" && matchedStatus !== "Rejected") {
-        return res.status(400).json({
-          success: false,
-          message: "Platform QC alerts can only be accepted or rejected",
-        });
-      }
+    const existingOrder = await Order.findById(id).populate("items");
+    if (!existingOrder) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
 
-      const existingOrder = await Order.findById(id);
-      if (!existingOrder) {
-        return res.status(404).json({ success: false, message: "Order not found" });
-      }
+    const channel = existingOrder.orderType as any;
+
+    // Check transition validity from existingOrder.status to canonicalStatus
+    const transitionCheck = validateOrderStatusTransition(existingOrder.status, canonicalStatus, channel);
+    if (!transitionCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        code: transitionCheck.code || "INVALID_STATUS_TRANSITION",
+        message: transitionCheck.message,
+      });
+    }
+
+    // Platform QC items acceptance/rejection
+    const hasPlatformQcItems = (existingOrder.items as any[])?.some(
+      (it: any) => it.ownerType === "PLATFORM" && it.productType === "QUICK_COMMERCE"
+    );
+
+    if (
+      (fulfillmentScope === "PLATFORM_QC" || (hasPlatformQcItems && (existingOrder.status === "Received" || existingOrder.status === "Pending"))) &&
+      (canonicalStatus === "Accepted" || canonicalStatus === "Rejected")
+    ) {
       if (["Cancelled", "Rejected", "Delivered", "Returned"].includes(existingOrder.status)) {
         return res.status(409).json({
           success: false,
+          code: "INVALID_STATUS_TRANSITION",
           message: `Order cannot be changed because it is already ${existingOrder.status}`,
         });
       }
@@ -371,16 +376,22 @@ export const updateOrderStatus = asyncHandler(
         status: { $ne: "Cancelled" },
       };
 
-      if (matchedStatus === "Accepted") {
+      if (canonicalStatus === "Accepted") {
         await OrderItem.updateMany(platformQcFilter, {
           $set: { sellerStatus: "Accepted" },
         });
+
+        if (deliveryPreference) {
+          existingOrder.deliveryPreference = deliveryPreference as "Self" | "Admin";
+          if (deliveryPreference === "Self") {
+            existingOrder.deliveryBoy = undefined;
+          }
+          await existingOrder.save();
+        }
       } else {
         const pendingPlatformItems = await OrderItem.find(platformQcFilter);
 
         for (const pendingItem of pendingPlatformItems) {
-          // Claim this item atomically so concurrent/repeated rejection requests
-          // cannot restore its inventory more than once.
           const claimedItem = await OrderItem.findOneAndUpdate(
             { _id: pendingItem._id, sellerStatus: "Pending", status: { $ne: "Cancelled" } },
             { $set: { sellerStatus: "Rejected", status: "Cancelled" } },
@@ -395,11 +406,9 @@ export const updateOrderStatus = asyncHandler(
               claimedItem.quantity,
               existingOrder._id.toString(),
               claimedItem._id.toString(),
-              req.user?.userId,
+              (req as any).user?.userId,
             );
           } catch (inventoryError) {
-            // Leave the item actionable if restoration failed so an Admin can
-            // retry safely; recordReturn itself is idempotent by order item.
             await OrderItem.updateOne(
               { _id: claimedItem._id, sellerStatus: "Rejected", status: "Cancelled" },
               { $set: { sellerStatus: "Pending", status: "Pending" } },
@@ -420,30 +429,25 @@ export const updateOrderStatus = asyncHandler(
 
       return res.status(200).json({
         success: true,
-        message: `Platform Quick Commerce items ${matchedStatus.toLowerCase()} successfully`,
+        message: `Platform Quick Commerce items ${canonicalStatus.toLowerCase()} successfully`,
         data: updatedOrder,
       });
     }
 
-    const updateData: any = { status: matchedStatus };
+    // Normal valid transitions (Processed, Shipped, Picked up, On the way, Out for Delivery, Delivered, Cancelled)
+    const updateData: any = { status: canonicalStatus };
     if (adminNotes) updateData.adminNotes = adminNotes;
 
-    if (status === "Delivered") {
+    if (canonicalStatus === "Delivered") {
       updateData.deliveredAt = new Date();
+      updateData.deliveryBoyStatus = "Delivered";
     }
 
-    if (status === "Cancelled") {
-      const existingOrder = await Order.findById(id);
-      if (!existingOrder) {
-        return res.status(404).json({
-          success: false,
-          message: "Order not found",
-        });
-      }
-
+    if (canonicalStatus === "Cancelled") {
       if (["Delivered", "Cancelled", "Returned"].includes(existingOrder.status)) {
         return res.status(400).json({
           success: false,
+          code: "INVALID_STATUS_TRANSITION",
           message: `Order cannot be cancelled as it is already ${existingOrder.status}`,
         });
       }
@@ -464,7 +468,28 @@ export const updateOrderStatus = asyncHandler(
       }
 
       updateData.cancelledAt = new Date();
-      updateData.cancelledBy = req.user?.userId;
+      updateData.cancelledBy = (req as any).user?.userId;
+    }
+
+    // Update LOCAL_DELIVERY fulfillment groups if any
+    if (existingOrder.fulfillmentGroups && existingOrder.fulfillmentGroups.length > 0) {
+      updateData.fulfillmentGroups = existingOrder.fulfillmentGroups.map((fg: any) => {
+        const fgObj = fg.toObject ? fg.toObject() : { ...fg };
+        if (fgObj.fulfillmentType === "LOCAL_DELIVERY") {
+          if (canonicalStatus === "Processed" && fgObj.status === "Pending") {
+            fgObj.status = "Processing";
+          } else if (canonicalStatus === "Picked up" || canonicalStatus === "Shipped") {
+            fgObj.status = "Shipped";
+          } else if (canonicalStatus === "Out for Delivery" || canonicalStatus === "On the way") {
+            fgObj.status = "OutForDelivery";
+          } else if (canonicalStatus === "Delivered") {
+            fgObj.status = "Delivered";
+          } else if (canonicalStatus === "Cancelled") {
+            fgObj.status = "Cancelled";
+          }
+        }
+        return fgObj;
+      });
     }
 
     const order = await Order.findByIdAndUpdate(id, updateData, {
@@ -483,7 +508,7 @@ export const updateOrderStatus = asyncHandler(
     }
 
     // Release first-order free shipping claim if order is Cancelled or Rejected
-    if ((matchedStatus === "Cancelled" || matchedStatus === "Rejected") && order.firstOrderFreeShippingApplied) {
+    if ((canonicalStatus === "Cancelled" || canonicalStatus === "Rejected") && order.firstOrderFreeShippingApplied) {
       try {
         const { releaseFirstOrderFreeShippingClaim } = await import("../../../services/shipping/shippingPromotionService");
         const custId = (order.customer as any)?._id || order.customer;
@@ -493,34 +518,41 @@ export const updateOrderStatus = asyncHandler(
       }
     }
 
-    // Trigger notification if status is "Processed" (Confirmed) or if paymentStatus changed to "Paid"
-    if (status === "Processed" || order.paymentStatus === "Paid") {
-      const io: SocketIOServer = req.app.get("io");
-      if (io) {
-        notifySellersOfOrderUpdate(io, order, "STATUS_UPDATE");
-      }
-    }
+    const io: SocketIOServer = req.app.get("io");
 
     // Distribute commissions if order is delivered
-    if (status === "Delivered") {
-      const { distributeCommissions } =
-        await import("../../../services/commissionService");
+    if (canonicalStatus === "Delivered" && existingOrder.status !== "Delivered") {
       try {
-        await distributeCommissions(id);
+        if (order.paymentMethod && order.paymentMethod.toUpperCase() === "COD") {
+          const { processCODOrderDelivery } = await import("../../../services/commissionService");
+          await processCODOrderDelivery(id, undefined, order.deliveryBoy?.toString());
+        } else {
+          const { distributeCommissions } = await import("../../../services/commissionService");
+          await distributeCommissions(id);
+        }
       } catch (error) {
         console.error("Error distributing commissions:", error);
       }
     }
 
-    // Notify customer of order status change
-    if (order.customer) {
+    // Real-time broadcast
+    if (io) {
+      io.to(`order-${order._id}`).emit("order-updated", {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        deliveryBoyStatus: order.deliveryBoyStatus,
+      });
+    }
+
+    // Notify customer of order status change (idempotently with eventId)
+    if (order.customer && existingOrder.status !== canonicalStatus) {
       try {
         const { sendOrderStatusNotification } = await import(
           "../../../services/notificationService"
         );
-        const io: SocketIOServer = req.app.get("io");
         const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
-        sendOrderStatusNotification(order._id.toString(), customerId, status, io).catch((e) =>
+        sendOrderStatusNotification(order._id.toString(), customerId, canonicalStatus, io).catch((e) =>
           console.error("Error sending customer order status notification:", e)
         );
       } catch (notifErr) {
@@ -537,88 +569,34 @@ export const updateOrderStatus = asyncHandler(
 );
 
 /**
- * Assign delivery boy to order
+ * Get available delivery partners for order (Admin manual assignment)
+ */
+export const getAvailableDeliveryPartners = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const result = await getAvailableDeliveryPartnersForOrder(id, {
+      role: "Admin",
+      userId: (req as any).user?.userId || "admin",
+    });
+    return res.status(result.statusCode || 200).json(result);
+  },
+);
+
+/**
+ * Assign delivery boy to order (Admin manual assignment)
  */
 export const assignDeliveryBoy = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const { deliveryBoyId } = req.body;
-
-    if (!deliveryBoyId) {
-      return res.status(400).json({
-        success: false,
-        message: "Delivery boy ID is required",
-      });
-    }
-
-    // Verify delivery boy exists and is active
-    const deliveryBoy = await Delivery.findById(deliveryBoyId);
-    if (!deliveryBoy) {
-      return res.status(404).json({
-        success: false,
-        message: "Delivery boy not found",
-      });
-    }
-
-    if (deliveryBoy.status !== "Active") {
-      return res.status(400).json({
-        success: false,
-        message: "Delivery boy is not active",
-      });
-    }
-
-    const order = await Order.findById(id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    if (order.deliveryPreference === "Self") {
-      return res.status(400).json({
-        success: false,
-        message: "This order is self-delivery (seller delivers). Cannot assign a delivery boy.",
-      });
-    }
-
-    // Update order
-    order.deliveryBoy = deliveryBoyId as any;
-    order.deliveryBoyStatus = "Assigned";
-    order.assignedAt = new Date();
-    order.deliveryAssignmentStatus = "Assigned" as any;
-    order.deliveryAssignmentResolvedAt = new Date();
-    await order.save();
-
-    // Create or update delivery assignment
-    await DeliveryAssignment.findOneAndUpdate(
-      { order: id },
-      {
-        order: id,
-        deliveryBoy: deliveryBoyId,
-        assignedAt: new Date(),
-        assignedBy: req.user?.userId,
-        status: "Assigned",
-      },
-      { upsert: true, new: true },
-    );
-
-    const updatedOrder = await Order.findById(id)
-      .populate("customer", "name email phone")
-      .populate("deliveryBoy", "name mobile email")
-      .populate("items");
-
-    // Trigger notification to delivery boy
     const io: SocketIOServer = req.app.get("io");
-    if (io) {
-      notifyDeliveryBoyOfAssignment(io, updatedOrder, deliveryBoyId);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Delivery boy assigned successfully",
-      data: updatedOrder,
-    });
+    const result = await assignDeliveryPartnerToOrder(
+      id,
+      deliveryBoyId,
+      { role: "Admin", userId: (req as any).user?.userId || "admin" },
+      io
+    );
+    return res.status(result.statusCode || 200).json(result);
   },
 );
 
@@ -880,7 +858,7 @@ export const processReturnRequest = asyncHandler(
     }
 
     const updateData: any = {
-      processedBy: req.user?.userId,
+      processedBy: (req as any).user?.userId,
       processedAt: new Date(),
     };
 
@@ -902,7 +880,7 @@ export const processReturnRequest = asyncHandler(
     let updatedReturn: any;
     if (status === "Approved") {
       try {
-        updatedReturn = await createApprovedReturnLogistics(id, undefined, req.user?.userId);
+        updatedReturn = await createApprovedReturnLogistics(id, undefined, (req as any).user?.userId);
       } catch (error) {
         if (error instanceof ReturnLogisticsError) {
           return res.status(error.statusCode).json({ success: false, code: error.apiCode, message: error.message });

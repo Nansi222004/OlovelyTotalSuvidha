@@ -46,22 +46,37 @@ export async function notifySellersOfOrderUpdate(
         // Ecommerce continues through its courier flow and never enters this channel.
         const platformQcItems = orderItems.filter(isPlatformQuickCommerceItem);
         if (type === 'NEW_ORDER' && platformQcItems.length > 0) {
-            const adminNotificationData = buildAdminOrderAlert(order, platformQcItems);
+            const adminEventId = `order:${order._id}:platform_qc:new_order`;
+            const adminNotificationData = {
+                ...buildAdminOrderAlert(order, platformQcItems),
+                eventId: adminEventId,
+            };
             io.to('admin').emit('admin-notification', adminNotificationData);
             console.log(`📤 Emitted admin-notification to admin room for Platform QC order ${order.orderNumber}`);
 
-            sendNotification('Admin', 'admin', 'New Platform Order Received', `Platform received a new QC order #${order.orderNumber}`, {
-                type: 'Order',
-                link: `/admin/orders/${order._id}`,
-                priority: 'High',
-                data: {
-                    orderId: order._id.toString(),
-                    orderNumber: order.orderNumber,
-                    role: 'admin',
-                    panel: 'admin',
-                    type: 'NEW_ORDER',
-                },
-            }).catch(err => console.error(`❌ [Admin Notification Error]:`, err?.message));
+            try {
+                const Admin = (await import('../models/Admin')).default;
+                const admins = await Admin.find().select('_id').lean();
+                for (const admin of admins) {
+                    const scopedEventId = `order:${order._id}:admin:${admin._id}:platform_qc:new_order`;
+                    sendNotification('Admin', admin._id.toString(), 'New Platform Order Received', `Platform received a new QC order #${order.orderNumber}`, {
+                        type: 'Order',
+                        link: `/admin/orders/${order._id}`,
+                        priority: 'High',
+                        eventId: scopedEventId,
+                        data: {
+                            orderId: order._id.toString(),
+                            orderNumber: order.orderNumber,
+                            role: 'admin',
+                            panel: 'admin',
+                            type: 'NEW_ORDER',
+                            eventId: scopedEventId,
+                        },
+                    }).catch(err => console.error(`❌ [Admin Notification Error] ${admin._id}:`, err?.message));
+                }
+            } catch (adminQueryErr: any) {
+                console.error(`❌ [Admin Notification Query Error]:`, adminQueryErr?.message);
+            }
         }
 
         for (const sellerId of sellerIds) {
@@ -106,8 +121,10 @@ export async function notifySellersOfOrderUpdate(
                     ? 'LOCAL_DELIVERY'
                     : 'COURIER_SHIPPING';
 
+            const sellerEventId = `order:${order._id}:seller:${sellerId}:${type.toLowerCase()}`;
             const notificationData = {
                 type,
+                eventId: sellerEventId,
                 orderId: order._id,
                 orderNumber: order.orderNumber,
                 status: order.status,
@@ -132,7 +149,7 @@ export async function notifySellersOfOrderUpdate(
             io.to(`seller-${sellerId}`).emit('seller-notification', notificationData);
             console.log(`📤 Emitted notification to seller-${sellerId}`);
 
-            // Send Notification (Database + Push)
+            // Send Notification (Database + Push) with stable eventId
             const title = type === 'NEW_ORDER' ? 'New Order Received' : 
                          type === 'ORDER_CANCELLED' ? 'Order Cancelled' : 'Order Status Update';
             
@@ -144,12 +161,14 @@ export async function notifySellersOfOrderUpdate(
                 type: 'Order',
                 link: `/seller/orders/${order._id}`,
                 priority: type === 'NEW_ORDER' ? 'High' : 'Medium',
+                eventId: sellerEventId,
                 data: {
                     orderId: order._id.toString(),
                     orderNumber: order.orderNumber,
                     role: 'seller',
                     panel: 'seller',
                     type: type || 'NEW_ORDER',
+                    eventId: sellerEventId,
                 },
             }).catch(err => console.error(`❌ [Seller Notification Error] ${sellerId}:`, err?.message));
         }

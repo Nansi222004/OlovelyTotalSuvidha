@@ -13,6 +13,8 @@ interface SellerAssignDeliveryBoyModalProps {
   orderNumber: string;
   currentDeliveryBoyId?: string;
   onAssignSuccess: (assignedRider?: AvailableDeliveryPartner) => void;
+  fetchPartners?: (orderId: string) => Promise<{ success: boolean; data?: AvailableDeliveryPartner[]; message?: string }>;
+  assignPartner?: (orderId: string, deliveryBoyId: string) => Promise<{ success: boolean; message?: string }>;
 }
 
 export default function SellerAssignDeliveryBoyModal({
@@ -22,6 +24,8 @@ export default function SellerAssignDeliveryBoyModal({
   orderNumber,
   currentDeliveryBoyId,
   onAssignSuccess,
+  fetchPartners,
+  assignPartner,
 }: SellerAssignDeliveryBoyModalProps) {
   const { showToast } = useToast();
   const [deliveryBoys, setDeliveryBoys] = useState<AvailableDeliveryPartner[]>([]);
@@ -44,7 +48,7 @@ export default function SellerAssignDeliveryBoyModal({
     try {
       setLoading(true);
       setError(null);
-      const res = await getAvailableDeliveryPartners(orderId);
+      const res = fetchPartners ? await fetchPartners(orderId) : await getAvailableDeliveryPartners(orderId);
       if (res.success && Array.isArray(res.data)) {
         setDeliveryBoys(res.data);
       } else {
@@ -67,7 +71,7 @@ export default function SellerAssignDeliveryBoyModal({
     try {
       setSubmitting(true);
       setError(null);
-      const res = await assignDeliveryBoySeller(orderId, selectedRiderId);
+      const res = assignPartner ? await assignPartner(orderId, selectedRiderId) : await assignDeliveryBoySeller(orderId, selectedRiderId);
       if (res.success) {
         showToast('Delivery partner assigned successfully', 'success');
         const assignedRider = deliveryBoys.find((r) => r._id === selectedRiderId);

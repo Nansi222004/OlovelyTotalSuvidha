@@ -18,6 +18,7 @@ import {
   clearDeliverySession,
   clearSellerSession,
 } from "../services/api/config";
+import { shouldTerminateCustomerSession } from "../services/api/authSessionPolicy";
 
 interface User {
   id: string;
@@ -26,6 +27,7 @@ interface User {
 }
 
 interface AuthContextType {
+  isAuthReady: boolean;
   isAuthenticated: boolean;
   user: User | null;
   token: string | null;
@@ -99,6 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => {
     return getAuthToken(currentPanel);
   });
+
+  // Storage restoration is deliberately synchronous. Protected customer
+  // routes can use this flag to avoid starting requests during initialization.
+  const isAuthReady = true;
 
   // Effect to sync state if localStorage changes externally or on mount validation
   useEffect(() => {
@@ -210,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!isMounted) return;
             const status = err.response?.status;
             const code = err.response?.data?.code;
-            if (status === 401 || code === "CUSTOMER_DELETED") {
+            if (shouldTerminateCustomerSession(status, code)) {
               clearCustomerSession({
                 sessionExpiredMessage: "Your account is no longer available. Please log in again.",
               });
@@ -359,6 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo(
     () => ({
+      isAuthReady,
       isAuthenticated,
       user,
       token,
@@ -366,7 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateUser,
     }),
-    [isAuthenticated, user, token, login, logout, updateUser]
+    [isAuthReady, isAuthenticated, user, token, login, logout, updateUser]
   );
 
   return (
@@ -383,4 +390,3 @@ export function useAuth() {
   }
   return context;
 }
-

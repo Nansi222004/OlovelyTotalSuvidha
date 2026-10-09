@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, ReactNode, Suspense } from 'react';
 import AdminSidebar from './AdminSidebar';
 import AdminHeader from './AdminHeader';
-import { useAdminSocket, AdminOrderAlertNotification } from '../hooks/useAdminSocket';
+import { useAdminSocket, AdminOrderAlertNotification, AdminSupportEvent, ADMIN_SUPPORT_BROWSER_EVENT } from '../hooks/useAdminSocket';
 import AdminNotificationAlert from './AdminNotificationAlert';
 import { getPendingOrderAlerts } from '../../../services/api/admin/adminOrderService';
 import { useRingtoneAlert } from '../../../hooks/useRingtoneAlert';
@@ -101,6 +101,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     enqueueNotification(notification);
   }, [enqueueNotification]);
 
+  const handleSupportEvent = useCallback((event: AdminSupportEvent) => {
+    window.dispatchEvent(new CustomEvent<AdminSupportEvent>(ADMIN_SUPPORT_BROWSER_EVENT, { detail: event }));
+  }, []);
+
   const rehydratePendingAlerts = useCallback(async () => {
     try {
       const response = await getPendingOrderAlerts();
@@ -127,7 +131,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   // Rehydrate after every successful room join. This closes the short gap between
   // a disconnect and Socket.IO's automatic reconnect without replacing realtime.
-  useAdminSocket(handleNotificationReceived, rehydratePendingAlerts);
+  useAdminSocket(handleNotificationReceived, rehydratePendingAlerts, handleSupportEvent);
 
   useEffect(() => {
     if (hasRehydratedRef.current) {

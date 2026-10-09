@@ -125,6 +125,31 @@ export default function Support() {
 
       {/* Main Content */}
       <div className="px-4 md:px-6 lg:px-8 py-6 max-w-4xl mx-auto space-y-6">
+        {/* Support Tickets Banner */}
+        <div className="bg-gradient-to-r from-teal-900 to-emerald-900 text-white rounded-2xl p-5 md:p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 bg-teal-800/60 px-2.5 py-0.5 rounded-full">
+              Customer Support Desk
+            </span>
+            <h2 className="text-base md:text-lg font-bold mt-1 text-white">Have an Order Issue or Active Ticket?</h2>
+            <p className="text-xs text-teal-100/90 mt-0.5 max-w-lg">
+              View your existing inquiries, reply directly to support executives, or raise an order-linked support ticket.
+            </p>
+          </div>
+          <Link
+            to="/support/tickets"
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-teal-950 bg-teal-300 hover:bg-white rounded-xl shadow-xs transition-all flex-shrink-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            My Support Tickets
+          </Link>
+        </div>
+
         {/* Quick Contact Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Phone */}

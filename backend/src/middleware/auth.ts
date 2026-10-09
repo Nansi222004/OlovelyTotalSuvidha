@@ -23,6 +23,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
+        code: 'TOKEN_MISSING',
         message: 'No token provided. Authorization header must be in format: Bearer <token>',
       });
       return;
@@ -114,9 +115,15 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
       next();
     } catch (error: any) {
+      const errorMessage = error.message || 'Invalid or expired token';
+      const normalizedMessage = errorMessage.toLowerCase();
+      const code = normalizedMessage.includes('expired')
+        ? 'TOKEN_EXPIRED'
+        : 'TOKEN_INVALID';
       res.status(401).json({
         success: false,
-        message: error.message || 'Invalid or expired token',
+        code,
+        message: errorMessage,
       });
       return;
     }

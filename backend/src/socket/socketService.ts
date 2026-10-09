@@ -133,6 +133,14 @@ export const initializeSocket = (httpServer: HttpServer) => {
     });
 
     io.on('connection', (socket) => {
+        const authenticatedUser = (socket as any).user;
+        if (authenticatedUser?.userType === 'Customer' && authenticatedUser.userId) {
+            // The room name is derived exclusively from the verified JWT. Clients
+            // cannot subscribe to another customer's private support events.
+            socket.join(`customer-${String(authenticatedUser.userId)}`);
+            socket.emit('customer-support-ready', { success: true });
+        }
+
         if (process.env.NODE_ENV !== 'production') {
             console.log('✅ Socket connected:', socket.id, 'User:', (socket as any).user?.userId || 'Unauthenticated');
         }

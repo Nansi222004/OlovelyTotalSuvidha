@@ -3,6 +3,8 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../../../context/AuthContext';
 import { getSocketBaseURL } from '../../../services/api/config';
 
+export const ADMIN_SUPPORT_BROWSER_EVENT = 'olovely:admin-support-event';
+
 export interface AdminOrderAlertNotification {
   type: 'NEW_ORDER' | 'STATUS_UPDATE';
   orderId: string;
@@ -45,20 +47,39 @@ export interface AdminOrderAlertNotification {
   timestamp: Date;
 }
 
+export interface AdminSupportEvent {
+  eventType: 'CREATED' | 'REPLIED';
+  ticketId: string;
+  ticketNumber?: string;
+  messageId?: string;
+  message?: {
+    _id?: string;
+    clientMessageId?: string;
+    senderType: 'CUSTOMER' | 'ADMIN';
+    senderId?: string;
+    senderName?: string;
+    message: string;
+    createdAt: string;
+  };
+}
+
 export const useAdminSocket = (
   onNotificationReceived?: (notification: AdminOrderAlertNotification) => void,
   onAdminRoomJoined?: () => void,
+  onSupportEvent?: (event: AdminSupportEvent) => void,
 ) => {
   const { user, token, isAuthenticated } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const notificationHandlerRef = useRef(onNotificationReceived);
   const joinedHandlerRef = useRef(onAdminRoomJoined);
+  const supportHandlerRef = useRef(onSupportEvent);
 
   useEffect(() => {
     notificationHandlerRef.current = onNotificationReceived;
     joinedHandlerRef.current = onAdminRoomJoined;
-  }, [onNotificationReceived, onAdminRoomJoined]);
+    supportHandlerRef.current = onSupportEvent;
+  }, [onNotificationReceived, onAdminRoomJoined, onSupportEvent]);
 
   useEffect(() => {
     if (!isAuthenticated || !token || !user || user.userType !== 'Admin') {
@@ -95,6 +116,10 @@ export const useAdminSocket = (
     newSocket.on('admin-notification', (notification: AdminOrderAlertNotification) => {
       console.log('🔔 New admin notification received:', notification);
       notificationHandlerRef.current?.(notification);
+    });
+
+    newSocket.on('admin-support-event', (event: AdminSupportEvent) => {
+      supportHandlerRef.current?.(event);
     });
 
     newSocket.on('disconnect', () => {

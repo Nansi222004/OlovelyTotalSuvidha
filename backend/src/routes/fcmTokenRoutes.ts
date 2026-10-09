@@ -71,6 +71,14 @@ router.post("/save", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Disassociate this device token from any other users/roles so only the active session receives notifications
+    await Promise.all([
+      Customer.updateMany({ $or: [{ _id: { $ne: userId } }, { $expr: { $ne: [userType, "Customer"] } }] }, { $pull: { [tokenField]: token } }),
+      Seller.updateMany({ $or: [{ _id: { $ne: userId } }, { $expr: { $ne: [userType, "Seller"] } }] }, { $pull: { [tokenField]: token } }),
+      Delivery.updateMany({ $or: [{ _id: { $ne: userId } }, { $expr: { $ne: [userType, "Delivery"] } }] }, { $pull: { [tokenField]: token } }),
+      Admin.updateMany({ $or: [{ _id: { $ne: userId } }, { $expr: { $ne: [userType, "Admin"] } }] }, { $pull: { [tokenField]: token } }),
+    ]);
+
     // Pipeline update is atomic, removes any historical duplicates, and stays
     // idempotent when StrictMode/login initialization submits the same token.
     const user = await UserModel.findByIdAndUpdate(
@@ -188,6 +196,15 @@ router.delete("/remove", async (req: Request, res: Response): Promise<void> => {
     }
 
     await user.save();
+
+    // Also ensure token is removed from all models on logout
+    const removeField = platform === "web" ? "fcmTokens" : "fcmTokenMobile";
+    await Promise.all([
+      Customer.updateMany({}, { $pull: { [removeField]: token } }),
+      Seller.updateMany({}, { $pull: { [removeField]: token } }),
+      Delivery.updateMany({}, { $pull: { [removeField]: token } }),
+      Admin.updateMany({}, { $pull: { [removeField]: token } }),
+    ]);
 
     console.log(
       `✅ FCM token removed for ${userType} user ${userId} (${platform})`,

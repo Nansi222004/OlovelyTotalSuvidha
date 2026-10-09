@@ -12,11 +12,13 @@ import {
   getOrderEarningBreakdown,
 } from "../../../services/commissionService";
 import { getSellerPendingOrderAlerts } from "../../../services/orderAlertService";
-import {
-  buildSellerInvoiceScope,
-  isSellerInvoiceChannel,
-} from "../../../utils/sellerInvoiceScoping";
+import { buildSellerInvoiceScope, isSellerInvoiceChannel } from "../../../utils/sellerInvoiceScoping";
 import { getChannelFulfillmentStatus } from "../../../utils/fulfillmentStatus";
+import { validateOrderStatusTransition } from "../../../services/orderStatusTransitionService";
+import {
+  getAvailableDeliveryPartnersForOrder,
+  assignDeliveryPartnerToOrder,
+} from "../../../services/orderDeliveryAssignmentService";
 
 /**
  * Get pending order alerts that require seller action (survives page refresh).
@@ -724,6 +726,20 @@ export const updateOrderStatus = asyncHandler(
       });
     }
 
+    // Authoritative state machine transition validation
+    const transitionValidation = validateOrderStatusTransition(
+      order.status,
+      status,
+      order.orderType as any
+    );
+    if (!transitionValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        code: transitionValidation.code,
+        message: transitionValidation.message,
+      });
+    }
+
     const previousStatus = order.status;
 
     // Allow same status only when updating deliveryPreference or in multi-seller acceptance phase
@@ -925,7 +941,7 @@ export const updateOrderStatus = asyncHandler(
     }
 
     // Send status update notification to customer
-    if (order.customer && previousStatus !== order.status) {
+    if (order.customer && previousStatus !== order.status && order.status !== "Accepted") {
       try {
         const { sendOrderStatusNotification } = await import(
           "../../../services/notificationService"
@@ -960,143 +976,11 @@ export const getAvailableDeliveryPartners = asyncHandler(
   async (req: Request, res: Response) => {
     const sellerId = (req as any).user?.userId;
     const { id } = req.params;
-
-    // Verify order exists and seller has items in it
-    const order = await findOrderByIdOrNumber(id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    const sellerItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
-    if (!sellerItems) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to view delivery partners for this order",
-      });
-    }
-
-    // Channel guard: Local delivery assignment is only applicable for Quick Commerce orders
-    if (order.orderType === "ECOMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "Local delivery assignment is only applicable for Quick Commerce orders. Ecommerce orders are fulfilled via courier shipping.",
-      });
-    }
-
-    // Check if seller is ECOMMERCE only
-    const Seller = (await import("../../../models/Seller")).default;
-    const seller = await Seller.findById(sellerId).select("latitude longitude serviceRadiusKm vendorType");
-    if (seller?.vendorType === "ECOMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "ECOMMERCE-only vendors cannot assign local delivery partners. Use courier shipping.",
-      });
-    }
-
-    // In a MIXED or multi-group order, verify order has a LOCAL_DELIVERY fulfillment group
-    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
-      const qcGroup = order.fulfillmentGroups.find(
-        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY"
-      );
-      if (!qcGroup) {
-        return res.status(400).json({
-          success: false,
-          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
-        });
-      }
-
-      // Verify seller owns items in the QC group
-      const sellerHasQcItem = await OrderItem.exists({
-        order: order._id,
-        seller: sellerId,
-        _id: { $in: qcGroup.items },
-      });
-      if (!sellerHasQcItem) {
-        return res.status(400).json({
-          success: false,
-          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
-        });
-      }
-    }
-
-    // Get seller location for proximity calculation
-    const sellerLat = seller?.latitude ? parseFloat(seller.latitude) : null;
-    const sellerLng = seller?.longitude ? parseFloat(seller.longitude) : null;
-
-    // Fetch active & online delivery partners
-    const Delivery = (await import("../../../models/Delivery")).default;
-    const deliveryBoys = await Delivery.find({
-      status: "Active",
-      isOnline: true,
-      available: "Available",
-    }).select("name mobile email vehicleNumber vehicleType isOnline available status location profileImage");
-
-    // Count active in-progress orders for each delivery boy
-    const busyOrders = await Order.find({
-      deliveryBoy: { $in: deliveryBoys.map((d) => d._id) },
-      deliveryBoyStatus: { $in: ["Assigned", "Picked Up", "In Transit"] },
-      status: { $nin: ["Delivered", "Cancelled", "Rejected", "Returned"] },
-    }).select("deliveryBoy");
-
-    const riderOrderCounts: Record<string, number> = {};
-    busyOrders.forEach((o) => {
-      const id = o.deliveryBoy?.toString();
-      if (id) {
-        riderOrderCounts[id] = (riderOrderCounts[id] || 0) + 1;
-      }
+    const result = await getAvailableDeliveryPartnersForOrder(id, {
+      role: "Seller",
+      userId: sellerId,
     });
-
-    const { calculateDistance } = await import("../../../utils/locationHelper");
-
-    const formattedRiders = deliveryBoys.map((rider) => {
-      let distanceKm: number | null = null;
-      if (
-        sellerLat !== null &&
-        sellerLng !== null &&
-        rider.location?.coordinates &&
-        rider.location.coordinates.length === 2
-      ) {
-        const [riderLng, riderLat] = rider.location.coordinates;
-        distanceKm = Math.round(calculateDistance(sellerLat, sellerLng, riderLat, riderLng) * 10) / 10;
-      }
-
-      const activeOrdersCount = riderOrderCounts[rider._id.toString()] || 0;
-      const isBusy = activeOrdersCount > 0;
-
-      return {
-        _id: rider._id,
-        name: rider.name,
-        mobile: rider.mobile,
-        email: rider.email,
-        vehicleNumber: rider.vehicleNumber || "",
-        vehicleType: rider.vehicleType || "Bike",
-        profileImage: rider.profileImage || "",
-        isOnline: rider.isOnline,
-        available: rider.available,
-        status: rider.status,
-        distanceKm,
-        isBusy,
-        activeOrdersCount,
-      };
-    });
-
-    // Sort: Available non-busy riders first, then by distance ascending
-    formattedRiders.sort((a, b) => {
-      if (a.isBusy !== b.isBusy) return a.isBusy ? 1 : -1;
-      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
-      if (a.distanceKm !== null) return -1;
-      if (b.distanceKm !== null) return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Available delivery partners fetched successfully",
-      data: formattedRiders,
-    });
+    return res.status(result.statusCode || 200).json(result);
   },
 );
 
@@ -1108,208 +992,13 @@ export const assignDeliveryBoySeller = asyncHandler(
     const sellerId = (req as any).user?.userId;
     const { id } = req.params;
     const { deliveryBoyId } = req.body;
-
-    if (!deliveryBoyId) {
-      return res.status(400).json({
-        success: false,
-        message: "Delivery partner ID is required",
-      });
-    }
-
-    // Verify order exists and seller has items in it
-    const order = await findOrderByIdOrNumber(id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    const sellerItems = await OrderItem.findOne({ order: order._id, seller: sellerId });
-    if (!sellerItems) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to assign delivery for this order",
-      });
-    }
-
-    // Channel guard: Local delivery assignment is only applicable for Quick Commerce orders
-    if (order.orderType === "ECOMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "Local delivery assignment is only applicable for Quick Commerce orders. Ecommerce orders are fulfilled via courier shipping.",
-      });
-    }
-
-    // Check if seller is ECOMMERCE only
-    const Seller = (await import("../../../models/Seller")).default;
-    const seller = await Seller.findById(sellerId).select("vendorType");
-    if (seller?.vendorType === "ECOMMERCE") {
-      return res.status(400).json({
-        success: false,
-        message: "ECOMMERCE-only vendors cannot assign local delivery partners. Use courier shipping.",
-      });
-    }
-
-    // In a MIXED or multi-group order, verify order has a LOCAL_DELIVERY fulfillment group
-    if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
-      const qcGroup = order.fulfillmentGroups.find(
-        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY"
-      );
-      if (!qcGroup) {
-        return res.status(400).json({
-          success: false,
-          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
-        });
-      }
-
-      // Verify seller owns items in the QC group
-      const sellerHasQcItem = await OrderItem.exists({
-        order: order._id,
-        seller: sellerId,
-        _id: { $in: qcGroup.items },
-      });
-      if (!sellerHasQcItem) {
-        return res.status(400).json({
-          success: false,
-          message: "Your items in this order are fulfilled via Courier Shipping. Local delivery partners cannot be assigned.",
-        });
-      }
-    }
-
-    if (["Delivered", "Cancelled", "Rejected", "Returned"].includes(order.status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot assign delivery partner to order with status ${order.status}`,
-      });
-    }
-
-    // Verify delivery boy exists and is active
-    const Delivery = (await import("../../../models/Delivery")).default;
-    const deliveryBoy = await Delivery.findById(deliveryBoyId);
-    if (!deliveryBoy) {
-      return res.status(404).json({
-        success: false,
-        message: "Delivery partner not found",
-      });
-    }
-
-    if (deliveryBoy.status !== "Active") {
-      return res.status(400).json({
-        success: false,
-        message: "Delivery partner is not active",
-      });
-    }
-
-    // Check if order is already assigned to a different rider
-    if (order.deliveryBoy && order.deliveryBoy.toString() !== deliveryBoyId.toString()) {
-      return res.status(409).json({
-        success: false,
-        message: "Order is already assigned to another delivery partner",
-      });
-    }
-
-    // Atomic update on order
-    const nextStatus = (order.status === "Pending" || order.status === "Received" || order.status === "Accepted")
-      ? "Processed"
-      : order.status;
-
-    // Update LOCAL_DELIVERY group with assigned rider while keeping COURIER_SHIPPING groups untouched
-    const updatedFulfillmentGroups = (order.fulfillmentGroups || []).map((fg: any) => {
-      const fgObj = fg.toObject ? fg.toObject() : { ...fg };
-      if (fgObj.fulfillmentType === "LOCAL_DELIVERY") {
-        return {
-          ...fgObj,
-          deliveryBoy: deliveryBoyId,
-          status: fgObj.status === "Pending" ? "Processing" : fgObj.status,
-        };
-      }
-      return fgObj;
-    });
-
-    const updatedOrder = await Order.findOneAndUpdate(
-      {
-        _id: order._id,
-        $or: [
-          { deliveryBoy: null },
-          { deliveryBoy: { $exists: false } },
-          { deliveryBoy: deliveryBoyId },
-        ],
-        status: { $nin: ["Delivered", "Cancelled", "Rejected", "Returned"] },
-      },
-      {
-        $set: {
-          deliveryBoy: deliveryBoyId,
-          deliveryBoyStatus: "Assigned",
-          assignedAt: new Date(),
-          deliveryPreference: "Self",
-          deliveryAssignmentStatus: "Assigned",
-          deliveryAssignmentResolvedAt: new Date(),
-          status: nextStatus,
-          fulfillmentGroups: updatedFulfillmentGroups,
-        },
-      },
-      { new: true },
-    )
-      .populate("customer", "name email phone")
-      .populate("deliveryBoy", "name mobile email vehicleNumber vehicleType")
-      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType")
-      .populate("items");
-
-    if (!updatedOrder) {
-      const currentOrder = await Order.findById(order._id);
-      if (currentOrder?.deliveryBoy && currentOrder.deliveryBoy.toString() !== deliveryBoyId.toString()) {
-        return res.status(409).json({
-          success: false,
-          message: "Order was already assigned to another delivery partner",
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        message: "Failed to assign delivery partner",
-      });
-    }
-
-    // Create or update delivery assignment record
-    const DeliveryAssignment = (await import("../../../models/DeliveryAssignment")).default;
-    await DeliveryAssignment.findOneAndUpdate(
-      { order: order._id },
-      {
-        order: order._id,
-        deliveryBoy: deliveryBoyId,
-        assignedAt: new Date(),
-        assignedBy: sellerId,
-        status: "Assigned",
-      },
-      { upsert: true, new: true },
+    const io: SocketIOServer = req.app?.get ? (req.app.get("io") as SocketIOServer) : (null as any);
+    const result = await assignDeliveryPartnerToOrder(
+      id,
+      deliveryBoyId,
+      { role: "Seller", userId: sellerId },
+      io
     );
-
-    // Trigger notification to delivery boy & broadcast order update
-    const io: SocketIOServer = req.app.get("io");
-    if (io) {
-      const { notifyDeliveryBoyOfAssignment } = await import(
-        "../../../services/orderNotificationService"
-      );
-      notifyDeliveryBoyOfAssignment(io, updatedOrder, deliveryBoyId);
-
-      io.to(`order-${order._id}`).emit("order-updated", {
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        deliveryBoy: deliveryBoyId,
-        deliveryBoyName: deliveryBoy.name,
-        deliveryBoyPhone: deliveryBoy.mobile,
-        status: updatedOrder.status,
-        deliveryBoyStatus: "Assigned",
-        deliveryAssignmentStatus: "Assigned",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Delivery partner assigned successfully",
-      data: updatedOrder,
-    });
+    return res.status(result.statusCode || 200).json(result);
   },
 );
-
-

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { submitCustomerSupport } from '../services/api/customerService';
+import { createCustomerTicket, createSupportClientId, SupportCategory } from '../services/api/supportService';
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -10,6 +12,9 @@ interface SupportModalProps {
 }
 
 export default function SupportModal({ isOpen, onClose, orderId }: SupportModalProps) {
+  const createAttemptRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  const submissionInFlightRef = useRef(false);
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -63,13 +68,60 @@ export default function SupportModal({ isOpen, onClose, orderId }: SupportModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submissionInFlightRef.current) return;
 
     if (!validateForm()) {
       return;
     }
 
+    submissionInFlightRef.current = true;
     setLoading(true);
     try {
+      if (user) {
+        // Authenticated customer: Create an official support ticket linked to order
+        const catMap: Record<string, SupportCategory> = {
+          'Order Issue': 'Order',
+          'Delivery Status': 'Delivery',
+          'Payment / Refund': 'Payment',
+          'Product Quality': 'Product',
+          'Return / Exchange': 'Return',
+          'General Inquiry': 'General',
+          'Other': 'Other',
+        };
+        const category: SupportCategory = catMap[issueCategory] || (orderId ? 'Order' : 'General');
+        const fingerprint = JSON.stringify([category, subject.trim(), message.trim(), orderId || '']);
+        const attempt =
+          createAttemptRef.current?.fingerprint === fingerprint
+            ? createAttemptRef.current
+            : { fingerprint, id: createSupportClientId('ticket') };
+        createAttemptRef.current = attempt;
+
+        const response = await createCustomerTicket({
+          category,
+          subject: subject.trim(),
+          message: message.trim(),
+          orderId: orderId || undefined,
+          clientRequestId: attempt.id,
+        });
+
+        if (response.success && response.data) {
+          showToast(
+            `Support Ticket #${response.data.ticketNumber || response.data._id} created successfully!`,
+            'success'
+          );
+          setSubject('');
+          setMessage('');
+          setErrors({});
+          createAttemptRef.current = null;
+          onClose();
+          if (response.data.ticketNumber) {
+            navigate(`/support/tickets/${response.data.ticketNumber}`);
+          }
+          return;
+        }
+      }
+
+      // Guest customer fallback
       const response = await submitCustomerSupport({
         name: name.trim(),
         email: email.trim(),
@@ -95,6 +147,7 @@ export default function SupportModal({ isOpen, onClose, orderId }: SupportModalP
       const msg = err.response?.data?.message || err.message || 'Unable to send your message right now. Please try again later.';
       showToast(msg, 'error');
     } finally {
+      submissionInFlightRef.current = false;
       setLoading(false);
     }
   };

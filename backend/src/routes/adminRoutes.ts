@@ -43,6 +43,9 @@ import * as cashCollectionController from "../modules/admin/controllers/adminCas
 // FAQ Controllers
 import * as faqController from "../modules/admin/controllers/adminFAQController";
 
+// Support Ticket Controllers
+import * as supportController from "../modules/admin/controllers/adminSupportController";
+
 // Role Controllers - Manage Roles functionality removed
 // import * as roleController from "../modules/admin/controllers/adminRoleController";
 
@@ -160,6 +163,10 @@ router.get("/orders/:id/cod-breakdown", orderController.getOrderCODBreakdown);
 router.get("/orders/:id/earning-breakdown", orderController.getOrderEarningBreakdown);
 router.patch("/orders/:id/mark-cod-paid", orderController.markOrderCODPaid);
 router.patch("/orders/:id/status", orderController.updateOrderStatus);
+router.get(
+  "/orders/:id/available-delivery-partners",
+  orderController.getAvailableDeliveryPartners
+);
 router.patch("/orders/:id/assign-delivery", orderController.assignDeliveryBoy);
 router.get("/orders/export/csv", orderController.exportOrders);
 
@@ -284,6 +291,13 @@ router.put("/faqs/:id", faqController.updateFAQ);
 router.patch("/faqs/:id/status", faqController.updateFAQStatus);
 router.delete("/faqs/:id", faqController.deleteFAQ);
 router.put("/faqs/order", faqController.updateFAQOrder);
+
+// ==================== Support Ticket Routes ====================
+router.get("/support/tickets", supportController.getAllTickets);
+router.get("/support/tickets/:id", supportController.getTicketById);
+router.post("/support/tickets/:id/messages", supportController.sendAdminMessage);
+router.patch("/support/tickets/:id/status", supportController.updateTicketStatus);
+router.patch("/support/tickets/:id/priority", supportController.updateTicketPriority);
 
 // ==================== Role Routes ====================
 // Manage Roles functionality removed from admin panel

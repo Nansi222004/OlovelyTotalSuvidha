@@ -61,6 +61,13 @@ const optionalAuthenticate = (req: any, res: any, next: any) => {
 
 router.post("/support/contact", optionalAuthenticate, supportController.submitCustomerSupport);
 
+// Customer Support Ticket routes (authenticated)
+router.post("/support/tickets", authenticate, requireUserType("Customer"), supportController.createTicket);
+router.get("/support/tickets", authenticate, requireUserType("Customer"), supportController.getMyTickets);
+router.get("/support/tickets/:idOrNumber", authenticate, requireUserType("Customer"), supportController.getTicketDetail);
+router.post("/support/tickets/:id/messages", authenticate, requireUserType("Customer"), supportController.sendCustomerMessage);
+router.post("/support/tickets/:id/close", authenticate, requireUserType("Customer"), supportController.closeCustomerTicket);
+
 import FAQ from "../models/FAQ";
 import Policy from "../models/Policy";
 import {

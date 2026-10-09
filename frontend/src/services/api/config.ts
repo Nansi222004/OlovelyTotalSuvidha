@@ -1,4 +1,11 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
+import { shouldTerminateCustomerSession } from "./authSessionPolicy";
+import {
+  persistPanelSession,
+  readPanelToken,
+  readPanelUser,
+  removePanelSession,
+} from "./authStorage";
 
 /**
  * Accept either supported frontend setting and normalize it to the backend's
@@ -204,33 +211,8 @@ api.interceptors.response.use(
         // Background/optional requests, public endpoints, tracking, notifications, or serviceability
         // MUST NOT destroy the customer session or force redirect to /login.
         if (panel === 'customer') {
-          const isCoreProtectedCustomerRoute =
-            apiUrl.includes('/customer/profile') ||
-            apiUrl.includes('/customer/orders') ||
-            apiUrl.includes('/customer/cart') ||
-            apiUrl.includes('/customer/addresses') ||
-            apiUrl.includes('/customer/wallet');
-
-          const isOptionalOrTrackingSubRoute =
-            apiUrl.includes('/seller-locations') ||
-            apiUrl.includes('/tracking') ||
-            apiUrl.includes('/notifications') ||
-            apiUrl.includes('/fcm-tokens');
-
           const responseData = error.response?.data;
-          const isExplicitTokenInvalidity =
-            responseData?.code === 'CUSTOMER_DELETED' ||
-            responseData?.code === 'TOKEN_EXPIRED' ||
-            (typeof responseData?.message === 'string' &&
-              (responseData.message.toLowerCase().includes('jwt expired') ||
-               responseData.message.toLowerCase().includes('token has expired') ||
-               responseData.message.toLowerCase().includes('invalid token') ||
-               responseData.message.toLowerCase().includes('no token provided')));
-
-          const shouldLogoutCustomer =
-            isCoreProtectedCustomerRoute &&
-            !isOptionalOrTrackingSubRoute &&
-            isExplicitTokenInvalidity;
+          const shouldLogoutCustomer = shouldTerminateCustomerSession(status, responseData?.code);
 
           if (shouldLogoutCustomer) {
             clearCustomerSession({
@@ -269,69 +251,22 @@ api.interceptors.response.use(
 // Role-Safe Token Management Helpers
 export const setAuthToken = (token: string, userType?: string, userData?: any) => {
   const panel = getPanelFromContext(userType);
-  const tokenKey = `${panel}_authToken`;
-  const userKey = `${panel}_userData`;
-
-  // CRITICAL: Never overwrite a valid session token with empty string or whitespace
-  if (token && typeof token === 'string' && token.trim()) {
-    localStorage.setItem(tokenKey, token);
-  }
-
-  if (userData) {
-    localStorage.setItem(userKey, typeof userData === 'string' ? userData : JSON.stringify(userData));
-  }
-
-  // Purge obsolete shared legacy keys to prevent cross-panel ambiguity
-  localStorage.removeItem("authToken");
-  localStorage.removeItem("userData");
+  persistPanelSession(panel, token, userData);
 };
 
 export const getAuthToken = (panel?: UserPanel | string): string | null => {
   const activePanel = getPanelFromContext(typeof panel === 'string' ? panel : undefined);
-  const panelKey = `${activePanel}_authToken`;
-
-  const panelToken = localStorage.getItem(panelKey);
-  if (panelToken) return panelToken;
-
-  // Fallback: if customer panel and no panel-specific token, check legacy 'authToken' key
-  // This handles users who logged in before the panel-isolation system was introduced
-  if (activePanel === 'customer') {
-    const legacyToken = localStorage.getItem('authToken');
-    if (legacyToken) {
-      // Migrate legacy token to panel-specific key for future requests
-      localStorage.setItem(panelKey, legacyToken);
-      return legacyToken;
-    }
-  }
-
-  return null;
+  return readPanelToken(activePanel);
 };
 
 export const getStoredUserData = (panel?: UserPanel | string): any => {
   const activePanel = getPanelFromContext(typeof panel === 'string' ? panel : undefined);
-  const userKey = `${activePanel}_userData`;
-
-  const stored = localStorage.getItem(userKey);
-  if (!stored) return null;
-
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    return null;
-  }
+  return readPanelUser(activePanel);
 };
 
 export const removeAuthToken = (panel?: UserPanel | string) => {
   const activePanel = getPanelFromContext(typeof panel === 'string' ? panel : undefined);
-  const tokenKey = `${activePanel}_authToken`;
-  const userKey = `${activePanel}_userData`;
-
-  localStorage.removeItem(tokenKey);
-  localStorage.removeItem(userKey);
-
-  // Purge obsolete shared legacy keys
-  localStorage.removeItem("authToken");
-  localStorage.removeItem("userData");
+  removePanelSession(activePanel);
 };
 
 /**
@@ -421,4 +356,3 @@ export const clearSellerSession = (options?: { sessionExpiredMessage?: string })
 };
 
 export default api;
-
