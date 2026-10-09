@@ -29,8 +29,6 @@ export default function Search() {
   const {
     isListening,
     isProcessing,
-    startListening,
-    stopListening,
     toggleListening,
   } = useVoiceSearch({
     lang: language,
@@ -44,10 +42,8 @@ export default function Search() {
       }
     },
     onError: (errorMessage, errorCode) => {
-      if (errorCode === 'not-allowed') {
-        showToast('Microphone permission is required for voice search.', 'error');
-      } else if (errorCode === 'unsupported') {
-        showToast("Voice search isn't supported in this browser.", 'info');
+      if (errorCode === 'unsupported' || errorCode === 'recognition-unavailable') {
+        showToast(errorMessage, 'info');
       } else if (errorCode === 'no-speech') {
         showToast('No speech was detected. Please try again.', 'info');
       } else if (errorCode !== 'aborted') {
@@ -55,16 +51,6 @@ export default function Search() {
       }
     },
   });
-
-  // Auto-start voice recognition if navigated with ?voice=true parameter
-  useEffect(() => {
-    if (searchParams.get('voice') === 'true') {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete('voice');
-      setSearchParams(nextParams, { replace: true });
-      startListening();
-    }
-  }, [searchParams, setSearchParams, startListening]);
 
   // Update input when URL param changes (e.g. back button)
   useEffect(() => {

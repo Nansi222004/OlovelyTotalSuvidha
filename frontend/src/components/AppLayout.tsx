@@ -112,7 +112,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // If location is NOT enabled and route requires location, ALWAYS show modal
     // This will trigger on every app open until user explicitly confirms location
     if (!isLocationEnabled && requiresLocation()) {
-      setShowLocationRequest(true);
+      // Automatic startup/navigation popup intentionally disabled. Restore this
+      // invocation to re-enable the preserved Location Access Required modal.
+      // setShowLocationRequest(true);
     } else {
       setShowLocationRequest(false);
     }
@@ -231,6 +233,36 @@ export default function AppLayout({ children }: AppLayoutProps) {
   // Hide search bar everywhere as requested by user
   const showSearchBar = false;
   const showFooter = !isCheckoutPage && !isProductDetailPage && !isAuthPage;
+  const overscrollColor = currentTheme.primary[0];
+
+  // iOS rubber-band overscroll exposes the document canvas. Match that canvas
+  // to Home's active category theme, and restore neutral backgrounds elsewhere.
+  useEffect(() => {
+    if (!isHomePage) return;
+
+    const elements = [document.documentElement, document.body, document.getElementById('root')]
+      .filter((element): element is HTMLElement => Boolean(element));
+    const previousBackgrounds = elements.map((element) => ({
+      element,
+      backgroundColor: element.style.backgroundColor,
+    }));
+
+    elements.forEach((element) => {
+      element.classList.add('customer-home-route');
+      element.style.setProperty('--customer-overscroll-background', overscrollColor);
+      // main.tsx sets an inline white anti-flash background on html and #root.
+      // Override it while Home is active so iOS does not expose white on bounce.
+      element.style.backgroundColor = overscrollColor;
+    });
+
+    return () => {
+      previousBackgrounds.forEach(({ element, backgroundColor }) => {
+        element.classList.remove('customer-home-route');
+        element.style.removeProperty('--customer-overscroll-background');
+        element.style.backgroundColor = backgroundColor;
+      });
+    };
+  }, [isHomePage, overscrollColor]);
 
   // Standalone onboarding routes bypass AppLayout chrome completely
   if (location.pathname === "/language-selection") {
@@ -238,7 +270,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="flex flex-col min-h-screen w-full overflow-x-hidden customer-app-root">
+    <div
+      className="flex flex-col min-h-screen min-h-[100dvh] w-full overflow-x-hidden customer-app-root"
+      style={{ backgroundColor: isHomePage ? currentTheme.primary[0] : '#ffffff' }}
+    >
       {/* Foreground In-App Push Notification Banner Alert */}
       <AnimatePresence>
         {activeNotification && (

@@ -12,7 +12,7 @@ import { getIconByName } from '../../../utils/iconLibrary';
 import { useAppSettings } from '../../../context/AppSettingsContext';
 import { useTranslation } from '../../../hooks/useTranslation';
 import { useToast } from '../../../context/ToastContext';
-import { isVoiceSearchSupported } from '../../../hooks/useVoiceSearch';
+import { useVoiceSearch } from '../../../hooks/useVoiceSearch';
 import VoiceSearchMicButton from '../../../components/VoiceSearchMicButton';
 import userLogo from '@assets/user_logo.jpg';
 
@@ -57,6 +57,8 @@ const MORE_TAB: Tab = {
 export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter = 'ALL' }: HomeHeroProps) {
   const { settings: appSettings } = useAppSettings();
   const { t, getTranslatedField } = useTranslation();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const [tabs, setTabs] = useState<Tab[]>([ALL_TAB, MORE_TAB]);
 
   useEffect(() => {
@@ -83,17 +85,26 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
     };
     fetchHeaderCategories();
   }, [getTranslatedField]);
-  const navigate = useNavigate();
   const { location: userLocation } = useLocation();
-  const { showToast } = useToast();
+
+  const { isListening, isProcessing, toggleListening } = useVoiceSearch({
+    onResult: (transcript, isFinal) => {
+      if (isFinal && transcript.trim()) {
+        navigate(`/search?q=${encodeURIComponent(transcript.trim())}`);
+      }
+    },
+    onError: (errorMessage, errorCode) => {
+      showToast(
+        errorMessage,
+        errorCode === 'unsupported' || errorCode === 'recognition-unavailable' ? 'info' : 'error'
+      );
+    },
+  });
 
   const handleMicClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (!isVoiceSearchSupported()) {
-      showToast("Voice search isn't supported in this browser.", 'info');
-      return;
-    }
-    navigate('/search?voice=true');
+    toggleListening();
   };
 
   const heroRef = useRef<HTMLDivElement>(null);
@@ -352,7 +363,11 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
     >
       {/* Top section with logo on left, delivery info and name on right - NOT sticky */}
       <div>
-        <div ref={topSectionRef} className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-1">
+        <div
+          ref={topSectionRef}
+          className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-1"
+          style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
+        >
           <div className="flex items-center gap-3 mb-1.5">
             {/* Left: App Logo - Solid white background with fixed compact size */}
             <div
@@ -515,7 +530,8 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
             </div>
             {/* Microphone button inside search bar on the right side */}
             <VoiceSearchMicButton
-              isListening={false}
+              isListening={isListening}
+              isProcessing={isProcessing}
               onClick={handleMicClick}
               size="sm"
               className="flex-shrink-0"

@@ -92,27 +92,50 @@ export interface UseVoiceSearchResult {
   toggleListening: () => void;
 }
 
+type MicrophonePermissionState = PermissionState | 'unknown';
+
+const readMicrophonePermission = async (): Promise<MicrophonePermissionState> => {
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
+    return 'unknown';
+  }
+
+  try {
+    // `microphone` is implemented by some browsers but is not included in every
+    // TypeScript DOM lib version (and Safari may reject the query altogether).
+    const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+    return status.state;
+  } catch (_) {
+    return 'unknown';
+  }
+};
+
 export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSearchResult {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const isStartingRef = useRef(false);
+  const microphonePermissionRef = useRef<MicrophonePermissionState>('unknown');
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   const isSupported = isVoiceSearchSupported();
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
+    const recognition = recognitionRef.current;
+    isStartingRef.current = false;
+    if (recognition) {
       try {
-        recognitionRef.current.stop();
+        recognition.stop();
       } catch (_) {
         try {
-          recognitionRef.current.abort();
+          recognition.abort();
         } catch (_) {}
       }
-      recognitionRef.current = null;
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+      }
     }
     setIsListening(false);
     setIsProcessing(false);
@@ -129,13 +152,21 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
       return;
     }
 
-    // Abort any existing active session to prevent duplicate recognition sessions
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (_) {}
-      recognitionRef.current = null;
+    // A second rapid tap must not create a competing recognizer while the first
+    // one is still starting. The active session can be stopped with the mic toggle.
+    if (isStartingRef.current || recognitionRef.current) {
+      return;
     }
+
+    isStartingRef.current = true;
+    microphonePermissionRef.current = 'unknown';
+    void readMicrophonePermission().then((state) => {
+      // `onstart` is stronger evidence than a Permissions API query (which may
+      // resolve late or be unsupported), so do not overwrite a granted session.
+      if (microphonePermissionRef.current !== 'granted') {
+        microphonePermissionRef.current = state;
+      }
+    });
 
     try {
       const recognition = new SpeechRec();
@@ -145,6 +176,9 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
       recognition.lang = getSpeechRecognitionLocale(optionsRef.current.lang);
 
       recognition.onstart = () => {
+        if (recognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
+        microphonePermissionRef.current = 'granted';
         setIsListening(true);
         setIsProcessing(false);
         setError(null);
@@ -152,6 +186,7 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
+        if (recognitionRef.current !== recognition) return;
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -167,6 +202,7 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
 
         const recognizedText = (finalTranscript || interimTranscript).trim();
         if (recognizedText) {
+          setError(null);
           if (finalTranscript) {
             setIsProcessing(true);
           }
@@ -175,6 +211,8 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (recognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
         setIsListening(false);
         setIsProcessing(false);
         recognitionRef.current = null;
@@ -183,22 +221,40 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
           return;
         }
 
-        let friendlyMessage = 'Voice recognition error. Please try again.';
+        let friendlyMessage = 'Voice recognition failed. Please try again or continue with text search.';
+        let errorCode = event.error || 'recognition-failure';
         if (event.error === 'not-allowed') {
-          friendlyMessage = 'Microphone permission is required for voice search.';
+          if (microphonePermissionRef.current === 'denied') {
+            friendlyMessage = 'Microphone access is denied. Allow it in your browser settings to use voice search.';
+            errorCode = 'permission-denied';
+          } else if (microphonePermissionRef.current === 'granted') {
+            friendlyMessage = 'Voice recognition is unavailable even though microphone access is allowed. Please use text search.';
+            errorCode = 'recognition-unavailable';
+          } else {
+            friendlyMessage = 'Microphone access was blocked or voice recognition is unavailable. Check browser settings or use text search.';
+            errorCode = 'permission-unavailable';
+          }
+        } else if (event.error === 'service-not-allowed') {
+          friendlyMessage = 'The browser voice-recognition service is unavailable. Please use text search.';
+          errorCode = 'recognition-unavailable';
         } else if (event.error === 'no-speech') {
           friendlyMessage = 'No speech was detected. Please try again.';
         } else if (event.error === 'audio-capture') {
           friendlyMessage = 'Microphone is unavailable. Please check your audio settings.';
         } else if (event.error === 'network') {
           friendlyMessage = 'Network error during voice recognition.';
+        } else if (event.error === 'language-not-supported') {
+          friendlyMessage = 'Voice recognition does not support the selected language. Please use text search.';
+          errorCode = 'recognition-unavailable';
         }
 
         setError(friendlyMessage);
-        optionsRef.current.onError?.(friendlyMessage, event.error);
+        optionsRef.current.onError?.(friendlyMessage, errorCode);
       };
 
       recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return;
+        isStartingRef.current = false;
         setIsListening(false);
         setIsProcessing(false);
         recognitionRef.current = null;
@@ -208,12 +264,15 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err: any) {
+      isStartingRef.current = false;
       setIsListening(false);
       setIsProcessing(false);
       recognitionRef.current = null;
-      const msg = err?.message || 'Failed to start microphone.';
+      const msg = err?.name === 'NotAllowedError'
+        ? 'Microphone access was blocked or voice recognition is unavailable. Check browser settings or use text search.'
+        : 'Voice recognition could not start. Please try again or continue with text search.';
       setError(msg);
-      optionsRef.current.onError?.(msg, 'start-failed');
+      optionsRef.current.onError?.(msg, err?.name === 'NotAllowedError' ? 'permission-unavailable' : 'start-failed');
     }
   }, []);
 
@@ -228,9 +287,15 @@ export function useVoiceSearch(options: UseVoiceSearchOptions = {}): UseVoiceSea
   // Clean up recognition instance on component unmount to prevent leaks & stuck microphones
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
+      isStartingRef.current = false;
+      const recognition = recognitionRef.current;
+      if (recognition) {
+        recognition.onstart = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
         try {
-          recognitionRef.current.abort();
+          recognition.abort();
         } catch (_) {}
         recognitionRef.current = null;
       }

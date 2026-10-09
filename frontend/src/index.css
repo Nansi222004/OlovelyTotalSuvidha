@@ -11,6 +11,7 @@
     width: 100%;
     overflow-x: hidden;
     background: white;
+    min-height: 100%;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
@@ -21,6 +22,7 @@
     padding: 0;
     width: 100%;
     overflow-x: hidden;
+    min-height: 100%;
   }
 
   #root {
@@ -28,8 +30,15 @@
     padding: 0;
     width: 100%;
     min-height: 100vh;
+    min-height: 100dvh;
     background: white;
     overflow-x: hidden;
+  }
+
+  html.customer-home-route,
+  body.customer-home-route,
+  #root.customer-home-route {
+    background-color: var(--customer-overscroll-background, rgb(34, 197, 94));
   }
 
   /* Disable accidental double-tap zoom delay on interactive elements while preserving pinch zoom accessibility */
