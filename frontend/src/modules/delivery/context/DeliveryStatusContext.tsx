@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { updateStatus, getDeliveryProfile, updateGeneralLocation, getSellersInRadius } from '../../../services/api/delivery/deliveryService';
+import { getAuthToken } from '../../../services/api/config';
 
 interface SellerInRange {
   _id: string;
@@ -11,7 +12,9 @@ interface SellerInRange {
 
 interface DeliveryStatusContextType {
   isOnline: boolean;
-  setIsOnline: (status: boolean) => void;
+  isStatusLoading: boolean;
+  isUpdatingStatus: boolean;
+  setIsOnline: (status: boolean) => Promise<void>;
   toggleStatus: () => Promise<void>;
   currentLocation: { latitude: number; longitude: number } | null;
   sellersInRangeCount: number;
@@ -24,6 +27,8 @@ const DeliveryStatusContext = createContext<DeliveryStatusContextType | undefine
 
 export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnlineLocal] = useState(false);
+  const [isStatusLoading, setIsStatusLoading] = useState(true);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [sellersInRangeCount, setSellersInRangeCount] = useState(0);
   const [sellersInRange, setSellersInRange] = useState<SellerInRange[]>([]);
@@ -31,21 +36,38 @@ export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(0);
+  const statusUpdateInFlightRef = useRef(false);
 
-  // Fetch initial status
+  const fetchStatus = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsStatusLoading(true);
+    try {
+      const token = getAuthToken('delivery');
+      if (!token) return;
+      const profile = await getDeliveryProfile();
+      setIsOnlineLocal(profile?.isOnline === true);
+    } catch (error) {
+      // Keep the last known state on transient profile/network failures. A failed
+      // refresh must never be interpreted as an intentional Go Offline action.
+      console.error("Failed to fetch delivery availability", error);
+    } finally {
+      if (showLoading) setIsStatusLoading(false);
+    }
+  }, []);
+
+  // Restore the persisted backend state on app entry and when an iOS/PWA tab
+  // returns to the foreground. Socket presence is intentionally not involved.
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        const profile = await getDeliveryProfile();
-        setIsOnlineLocal(profile?.isOnline || false);
-      } catch (error) {
-        console.error("Failed to fetch initial status", error);
+    void fetchStatus(true);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !statusUpdateInFlightRef.current) {
+        void fetchStatus();
       }
     };
-    fetchStatus();
-  }, []);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchStatus]);
 
   // Cleanup location tracking and state on delivery logout
   useEffect(() => {
@@ -142,28 +164,34 @@ export function DeliveryStatusProvider({ children }: { children: ReactNode }) {
     console.error("Location error:", error);
   };
 
-  const toggleStatus = async () => {
-    const newStatus = !isOnline;
-    // Optimistic update
-    setIsOnlineLocal(newStatus);
+  const setIsOnline = async (status: boolean) => {
+    if (isStatusLoading || statusUpdateInFlightRef.current || status === isOnline) return;
+
+    statusUpdateInFlightRef.current = true;
+    setIsUpdatingStatus(true);
     try {
-      await updateStatus(newStatus);
+      const response = await updateStatus(status);
+      // The API response is authoritative; do not force the UI to the requested
+      // value if the server persisted something different.
+      setIsOnlineLocal(response?.data?.isOnline === true);
     } catch (error) {
       console.error("Failed to update status", error);
-      // Revert on failure
-      setIsOnlineLocal(!newStatus);
+      await fetchStatus();
+    } finally {
+      statusUpdateInFlightRef.current = false;
+      setIsUpdatingStatus(false);
     }
   };
 
-  const setIsOnline = (status: boolean) => {
-    // Direct setting if needed, but prefer toggleStatus for API sync
-    setIsOnlineLocal(status);
-    updateStatus(status).catch(err => console.error(err));
+  const toggleStatus = async () => {
+    await setIsOnline(!isOnline);
   };
 
   return (
     <DeliveryStatusContext.Provider value={{
       isOnline,
+      isStatusLoading,
+      isUpdatingStatus,
       setIsOnline,
       toggleStatus,
       currentLocation,
@@ -182,7 +210,9 @@ export function useDeliveryStatus() {
   if (context === undefined) {
     return {
       isOnline: false,
-      setIsOnline: () => {},
+      isStatusLoading: true,
+      isUpdatingStatus: false,
+      setIsOnline: async () => {},
       toggleStatus: async () => {},
       currentLocation: null,
       sellersInRangeCount: 0,

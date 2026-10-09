@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login as loginAdmin } from '../../../services/api/auth/adminAuthService';
 import { useAuth } from '../../../context/AuthContext';
@@ -11,6 +11,15 @@ export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const input = emailInputRef.current;
+    const activeElement = document.activeElement;
+    if (input && (!activeElement || activeElement === document.body)) {
+      input.focus({ preventScroll: true });
+    }
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -85,6 +94,7 @@ export default function AdminLogin() {
                   Email
                 </label>
                   <input
+                    ref={emailInputRef}
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

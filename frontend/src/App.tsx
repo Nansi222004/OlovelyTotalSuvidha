@@ -23,6 +23,7 @@ import PublicRoute from "./components/PublicRoute";
 import LoadingSpinner from "./components/LoadingSpinner";
 import ErrorBoundary from "./components/ErrorBoundary";
 import RouteTransition from "./components/RouteTransition";
+import DocumentAppBackground from "./components/DocumentAppBackground";
 import { useEffect } from "react";
 import lazyWithRetry from "./utils/lazyWithRetry";
 
@@ -440,6 +441,7 @@ function App() {
                               v7_startTransition: true,
                               v7_relativeSplatPath: true,
                             }}>
+                            <DocumentAppBackground />
                             <RouteLoaderTrigger />
                             <FaviconManager />
                             <Routes>

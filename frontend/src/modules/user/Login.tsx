@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../services/api/auth/customerAuthService';
 import { useAuth } from '../../context/AuthContext';
@@ -16,6 +16,7 @@ export default function Login() {
   const [sessionId, setSessionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const mobileInputRef = useRef<HTMLInputElement>(null);
   const [sessionNotice] = useState<string | null>(() => {
     if (typeof sessionStorage !== 'undefined') {
       const notice = sessionStorage.getItem('customer_session_notice');
@@ -26,6 +27,14 @@ export default function Login() {
     }
     return (location.state as any)?.sessionExpiredMessage || null;
   });
+
+  useEffect(() => {
+    const input = mobileInputRef.current;
+    const activeElement = document.activeElement;
+    if (input && (!activeElement || activeElement === document.body)) {
+      input.focus({ preventScroll: true });
+    }
+  }, []);
 
   const handleContinue = async () => {
     if (mobileNumber.length !== 10) return;
@@ -90,9 +99,8 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col justify-between relative overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 select-none bg-white customer-app-root"
+      className="min-h-screen min-h-[100dvh] w-full flex flex-col justify-between relative overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 select-none bg-white customer-app-root app-login-shell"
       style={{
-        minHeight: '100vh',
         width: '100%',
         boxSizing: 'border-box',
         backgroundColor: '#FFFFFF',
@@ -188,6 +196,7 @@ export default function Login() {
                   </div>
                   {/* Phone Input Field */}
                   <input
+                    ref={mobileInputRef}
                     type="tel"
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
@@ -195,7 +204,6 @@ export default function Login() {
                     className="flex-1 h-full px-3.5 text-sm sm:text-base font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none bg-transparent"
                     maxLength={10}
                     disabled={loading}
-                    autoFocus
                     id="customer-mobile-input"
                   />
                 </div>

@@ -18,7 +18,7 @@ interface DeliveryLayoutContentProps {
 
 function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
   const navigate = useNavigate();
-  const { isOnline } = useDeliveryStatus();
+  const { isOnline, isStatusLoading } = useDeliveryStatus();
   const { setUserName } = useDeliveryUser();
   const {
     currentNotification,
@@ -76,8 +76,16 @@ function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
     setShowPushBanner(false);
   };
 
+  if (isStatusLoading) {
+    return (
+      <div className="flex min-h-screen min-h-[100dvh] items-center justify-center bg-neutral-100 delivery-app-root">
+        <p className="text-sm font-medium text-neutral-600">Restoring availability…</p>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex flex-col min-h-screen bg-neutral-100 transition-all duration-300 delivery-app-root ${!isOnline ? 'grayscale' : ''}`}>
+    <div className={`flex flex-col min-h-screen min-h-[100dvh] bg-neutral-100 transition-all duration-300 delivery-app-root ${!isOnline ? 'grayscale' : ''}`}>
       {autoplayBlocked && (
         <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">
           <span>🔔 Incoming delivery ringtone blocked by browser. Click to enable sound!</span>
@@ -114,7 +122,7 @@ function DeliveryLayoutContent({ children }: DeliveryLayoutContentProps) {
           </div>
         </div>
       )}
-      <main className="flex-1 overflow-y-auto scrollbar-hide pb-20">
+      <main className="flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-20">
         {children}
       </main>
       <DeliveryBottomNav />

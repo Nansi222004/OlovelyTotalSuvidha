@@ -159,7 +159,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
 
   return (
     <SellerChannelProvider>
-      <div className="flex min-h-screen bg-neutral-50 flex-col seller-app-root">
+      <div className="flex min-h-screen min-h-[100dvh] bg-neutral-50 flex-col seller-app-root">
         {/* Autoplay blocked fallback banner */}
         {autoplayBlocked && (
           <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold z-[10001] shrink-0">
@@ -173,7 +173,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
           </div>
         )}
 
-        <div className="flex flex-1 min-h-screen bg-neutral-50 relative overflow-x-hidden print:bg-white print:overflow-visible print:min-h-0 print:h-auto">
+        <div className="flex flex-1 min-h-screen min-h-[100dvh] bg-neutral-50 relative overflow-x-hidden print:bg-white print:overflow-visible print:min-h-0 print:h-auto">
           {/* Real-time Notification Alert */}
           <div className="print:hidden">
             <SellerNotificationAlert
@@ -194,7 +194,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
 
           {/* Main Content */}
           <div
-            className={`flex-1 flex flex-col transition-all duration-300 min-w-0 print:m-0 print:p-0 print:block ${
+            className={`flex-1 min-h-0 flex flex-col transition-all duration-300 min-w-0 print:m-0 print:p-0 print:block ${
               isSidebarOpen ? 'lg:ml-64' : 'ml-0'
             }`}
           >
@@ -204,7 +204,7 @@ export default function SellerLayout({ children }: SellerLayoutProps) {
             </div>
 
             {/* Page Content */}
-            <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-neutral-50 min-w-0 print:bg-white print:p-0 print:m-0 print:overflow-visible print:block">
+            <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-neutral-50 min-w-0 print:bg-white print:p-0 print:m-0 print:overflow-visible print:block">
               {children}
             </main>
 

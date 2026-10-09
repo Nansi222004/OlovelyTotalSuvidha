@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DeliveryHeader from "../components/DeliveryHeader";
 import DeliveryBottomNav from "../components/DeliveryBottomNav";
-import { removeAuthToken, clearDeliverySession } from "../../../services/api/config";
+import { clearDeliverySession } from "../../../services/api/config";
 import { useLanguage } from "../../../context/LanguageContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
@@ -270,9 +270,11 @@ export default function DeliveryMenu() {
       return;
     }
     if (item.route === "/delivery/login") {
-      // Handle logout logic here
-      removeAuthToken('delivery');
-      navigate(item.route);
+      // Keep React auth state and delivery-scoped storage in sync. Clearing only
+      // the token leaves PublicRoute seeing an authenticated delivery user and
+      // redirects the login route straight back to the dashboard.
+      logout();
+      navigate(item.route, { replace: true });
     } else if (item.route) {
       // Navigate to the selected route
       navigate(item.route);

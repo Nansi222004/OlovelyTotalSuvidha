@@ -9,13 +9,13 @@ interface DeliveryHeaderProps {
 }
 
 export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
-  const { isOnline, setIsOnline } = useDeliveryStatus();
+  const { isOnline, toggleStatus, isUpdatingStatus } = useDeliveryStatus();
   const { userName: contextUserName } = useDeliveryUser();
   const { t } = useLanguage();
   const displayName = userName || contextUserName;
 
   return (
-    <div className="bg-white shadow-sm">
+    <div className="bg-white shadow-sm app-safe-area-top">
       {/* Offline Banner */}
       {!isOnline && (
         <div className="px-4 py-2 bg-neutral-500 text-white text-xs font-medium text-center">
@@ -62,10 +62,13 @@ export default function DeliveryHeader({ userName }: DeliveryHeaderProps) {
           
           {/* Toggle Switch */}
           <button
-            onClick={() => setIsOnline(!isOnline)}
+            onClick={() => void toggleStatus()}
+            disabled={isUpdatingStatus}
+            aria-label={isOnline ? 'Go Offline' : 'Go Online'}
+            aria-pressed={isOnline}
             className={`relative w-12 h-6 rounded-full transition-colors ${
               isOnline ? 'bg-green-600' : 'bg-neutral-300'
-            }`}
+            } disabled:opacity-60 disabled:cursor-wait`}
           >
             <div
               className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${

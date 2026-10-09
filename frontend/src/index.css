@@ -12,6 +12,7 @@
     overflow-x: hidden;
     background: white;
     min-height: 100%;
+    overscroll-behavior-y: none;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
@@ -33,6 +34,18 @@
     min-height: 100dvh;
     background: white;
     overflow-x: hidden;
+  }
+
+  html.seller-app-document,
+  body.seller-app-document,
+  #root.seller-app-document {
+    background-color: #fafafa;
+  }
+
+  html.delivery-app-document,
+  body.delivery-app-document,
+  #root.delivery-app-document {
+    background-color: #f5f5f5;
   }
 
   html.customer-home-route,
@@ -108,6 +121,21 @@
     touch-action: pan-x pan-y;
     max-width: 100%;
     overflow-x: hidden;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .app-safe-area-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .app-login-shell {
+    padding-top: calc(2rem + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-login-back-button {
+    top: calc(1rem + env(safe-area-inset-top, 0px));
   }
 
   /* 2. Prevent accidental text selection on mobile app chrome & interactive controls */

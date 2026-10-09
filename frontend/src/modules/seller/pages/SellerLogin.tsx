@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sendOTP, verifyOTP } from '../../../services/api/auth/sellerAuthService';
 import OTPInput from '../../../components/OTPInput';
@@ -13,6 +13,15 @@ export default function SellerLogin() {
   const [showOTP, setShowOTP] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const input = mobileInputRef.current;
+    const activeElement = document.activeElement;
+    if (input && (!activeElement || activeElement === document.body)) {
+      input.focus({ preventScroll: true });
+    }
+  }, []);
 
   const handleMobileLogin = async () => {
     if (mobileNumber.length !== 10) return;
@@ -84,11 +93,11 @@ export default function SellerLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-green-50 flex flex-col items-center justify-center px-4 py-8 seller-app-root">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-teal-50 to-green-50 flex flex-col items-center justify-center px-4 py-8 seller-app-root app-login-shell">
       {/* Back Button */}
       <button
         onClick={() => navigate(-1)}
-        className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-neutral-50 transition-colors"
+        className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-neutral-50 transition-colors app-login-back-button"
         aria-label="Back"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -125,6 +134,7 @@ export default function SellerLogin() {
                     +91
                   </div>
                   <input
+                    ref={mobileInputRef}
                     type="tel"
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}

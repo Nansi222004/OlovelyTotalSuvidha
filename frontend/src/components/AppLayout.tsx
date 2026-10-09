@@ -535,7 +535,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           )}
 
           {/* Scrollable Main Content */}
-          <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide pb-24 md:pb-8">
+          <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide pb-24 md:pb-8">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={isLocationEnabled && userLocation ? 'content' : 'location-check'}

@@ -80,7 +80,7 @@ export default function SellerHeader({ onMenuClick, isSidebarOpen }: SellerHeade
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-neutral-200 sticky top-0 z-30">
+    <header className="bg-white shadow-sm border-b border-neutral-200 sticky top-0 z-30 app-safe-area-top">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 gap-3 sm:gap-0">
         {/* Logo and Hamburger Menu */}
         <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
