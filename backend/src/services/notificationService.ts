@@ -422,6 +422,19 @@ export const sendOrderStatusNotification = async (
     });
   }
 
+  // Trigger customer order update email asynchronously without blocking order execution
+  if (result.created) {
+    import("./orderEmailService")
+      .then(({ sendCustomerOrderStatusEmail }) => {
+        sendCustomerOrderStatusEmail(orderId, normStatus).catch((emailErr) => {
+          console.error(`[OrderEmailService] Async order status email failed for ${orderId}:`, emailErr);
+        });
+      })
+      .catch((impErr) => {
+        console.error("[OrderEmailService] Failed to load orderEmailService:", impErr);
+      });
+  }
+
   return result.notification;
 };
 
@@ -579,7 +592,7 @@ export const sendReturnRequestNotificationToCustomer = async (
     });
   }
 
-  return sendNotification("Customer", customerId, title, message, {
+  const notif = await sendNotification("Customer", customerId, title, message, {
     type: "Info",
     link,
     priority: "Medium",
@@ -591,6 +604,20 @@ export const sendReturnRequestNotificationToCustomer = async (
       link,
     },
   });
+
+  if (returnId) {
+    import("./orderEmailService")
+      .then(({ sendCustomerReturnExchangeEmail }) => {
+        sendCustomerReturnExchangeEmail(returnId, "REQUEST_SUBMITTED").catch((err) => {
+          console.error(`[OrderEmailService] Async return request email failed for ${returnId}:`, err);
+        });
+      })
+      .catch((impErr) => {
+        console.error("[OrderEmailService] Failed to load orderEmailService:", impErr);
+      });
+  }
+
+  return notif;
 };
 
 /**
@@ -657,7 +684,7 @@ export const sendReturnStatusNotificationToCustomer = async (
     });
   }
 
-  return sendNotification("Customer", customerId, title, message, {
+  const notif = await sendNotification("Customer", customerId, title, message, {
     type,
     link: targetLink,
     priority: status === "Rejected" || status === "Completed" ? "High" : "Medium",
@@ -669,6 +696,20 @@ export const sendReturnStatusNotificationToCustomer = async (
       link: targetLink,
     },
   });
+
+  if (returnId) {
+    import("./orderEmailService")
+      .then(({ sendCustomerReturnExchangeEmail }) => {
+        sendCustomerReturnExchangeEmail(returnId, status, rejectionReason).catch((err) => {
+          console.error(`[OrderEmailService] Async return status email failed for ${returnId}:`, err);
+        });
+      })
+      .catch((impErr) => {
+        console.error("[OrderEmailService] Failed to load orderEmailService:", impErr);
+      });
+  }
+
+  return notif;
 };
 
 

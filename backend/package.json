@@ -13,6 +13,7 @@
     "test:invoice-scoping": "tsx src/scripts/testInvoiceChannelAndDeliveryScoping.ts",
     "test:mixed-status-sync": "tsx src/scripts/testMixedOrderStatusSynchronization.ts",
     "test:three-issues": "node scripts/runTypeScriptTest.cjs src/scripts/testThreeIssueFixes.ts",
+    "test:thermal-printing": "node scripts/runTypeScriptTest.cjs src/scripts/testThermalPrinting4x6.ts",
     "test:shiprocket-integration": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketIntegration.ts",
     "test:shiprocket-return-exchange": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketReturnExchange.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
@@ -52,7 +53,9 @@
     "sync:header-categories": "tsx src/scripts/syncHeaderCategories.ts",
     "migrate:category-images": "tsx src/scripts/migrateCategoryImagesToCloudinary.ts",
     "migrate:product-images": "tsx src/scripts/migrateProductImagesToCloudinary.ts",
-    "postinstall": "npm run build"
+    "postinstall": "npm run build",
+    "retry:failed-emails": "tsx src/scripts/retryFailedOrderEmails.ts",
+    "test:order-emails": "tsx src/scripts/testCustomerOrderUpdateEmails.ts"
   },
   "keywords": [
     "express",

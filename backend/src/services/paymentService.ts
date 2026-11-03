@@ -4,6 +4,8 @@ import Payment from '../models/Payment';
 import Order from '../models/Order';
 import mongoose from 'mongoose';
 
+let transactionsSupported: boolean | null = null;
+
 // Initialize Razorpay instance
 const getRazorpayInstance = () => {
     const keyId = process.env.RAZORPAY_KEY_ID;
@@ -171,11 +173,14 @@ export const capturePayment = async (
     while (attempt < maxRetries) {
         attempt++;
         let session: mongoose.ClientSession | null = null;
-        try {
-            session = await mongoose.startSession();
-            session.startTransaction();
-        } catch (txErr) {
-            session = null;
+        if (transactionsSupported !== false) {
+            try {
+                session = await mongoose.startSession();
+                session.startTransaction();
+            } catch (txErr) {
+                transactionsSupported = false;
+                session = null;
+            }
         }
 
         try {
@@ -287,18 +292,19 @@ export const capturePayment = async (
                 } catch (notifyError) {
                     console.error("Failed to notify sellers after payment capture:", notifyError);
                 }
+            }
 
-                try {
-                    const { sendOrderStatusNotification } = await import('./notificationService');
-                    const custId = (order.customer as any)?._id?.toString() || order.customer?.toString();
-                    if (custId) {
-                        sendOrderStatusNotification(order._id.toString(), custId, order.status, io).catch((e) =>
-                            console.error("Error sending customer notification after online payment capture:", e)
-                        );
-                    }
-                } catch (notifErr) {
-                    console.error("Error sending customer notification on capturePayment:", notifErr);
+            // Notify customer of order placement confirmation (independent of socket.io availability)
+            try {
+                const { sendOrderStatusNotification } = await import('./notificationService');
+                const custId = (order.customer as any)?._id?.toString() || order.customer?.toString();
+                if (custId) {
+                    sendOrderStatusNotification(order._id.toString(), custId, order.status, io).catch((e) =>
+                        console.error("Error sending customer notification after online payment capture:", e)
+                    );
                 }
+            } catch (notifErr) {
+                console.error("Error sending customer notification on capturePayment:", notifErr);
             }
 
             // Create Pending Commissions
@@ -332,7 +338,20 @@ export const capturePayment = async (
                 },
             };
         } catch (error: any) {
-            if (session) await session.abortTransaction();
+            if (session) {
+                try {
+                    await session.abortTransaction();
+                } catch (_) {}
+            }
+
+            const isNotReplicaSet = error?.code === 20 || error?.message?.includes('Transaction numbers are only allowed on a replica set member or mongos');
+            if (isNotReplicaSet) {
+                transactionsSupported = false;
+                console.warn('⚠️ [Payment] Transactions not supported on standalone MongoDB. Retrying without transaction.');
+                attempt--; // Retry immediately without session
+                continue;
+            }
+
             const isWriteConflict = error?.message?.includes('Write conflict') || error?.code === 112 || error?.hasErrorLabel?.('TransientTransactionError');
             if (isWriteConflict && attempt < maxRetries) {
                 console.warn(`⚠️ [Payment] Write conflict on capturePayment (attempt ${attempt}/${maxRetries}). Retrying...`);
@@ -634,6 +653,19 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
                 } catch (notifyError) {
                     console.error("Failed to notify sellers after webhook capture:", notifyError);
                 }
+            }
+
+            // Notify customer of order placement confirmation on first transition to Paid
+            try {
+                const { sendOrderStatusNotification } = await import('./notificationService');
+                const custId = (order.customer as any)?._id?.toString() || order.customer?.toString();
+                if (custId) {
+                    sendOrderStatusNotification(order._id.toString(), custId, order.status, io).catch((e) =>
+                        console.error("Error sending customer notification after webhook payment capture:", e)
+                    );
+                }
+            } catch (notifErr) {
+                console.error("Error sending customer notification on webhook capture:", notifErr);
             }
 
             // Create Pending Commissions

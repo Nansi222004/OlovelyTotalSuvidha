@@ -501,6 +501,46 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
   }
 
   /**
+   * Get Shipping Label from Shiprocket
+   * POST /v1/external/courier/generate/label
+   */
+  async getLabel(shipmentIdOrAwb: string): Promise<{ labelUrl: string }> {
+    if (!shiprocketHttpClient.hasCredentials()) {
+      return {
+        labelUrl: `https://labels.mockcourier.local/${shipmentIdOrAwb}.pdf`,
+      };
+    }
+
+    try {
+      const isNumeric = /^\d+$/.test(shipmentIdOrAwb);
+      const payload = isNumeric
+        ? { shipment_id: [Number(shipmentIdOrAwb)] }
+        : { awbs: [shipmentIdOrAwb] };
+
+      const response = await shiprocketHttpClient.request({
+        method: 'POST',
+        url: '/v1/external/courier/generate/label',
+        data: payload,
+      });
+
+      const labelUrl =
+        response?.label_url ||
+        response?.response?.label_url ||
+        response?.data?.label_url ||
+        '';
+
+      if (!labelUrl) {
+        throw new Error('Shiprocket did not return a label URL');
+      }
+
+      return { labelUrl };
+    } catch (err: any) {
+      console.warn(`[Shiprocket] Label generation failed for ${shipmentIdOrAwb}:`, err.message);
+      throw new Error(`Shiprocket label retrieval failed: ${err.message}`);
+    }
+  }
+
+  /**
    * Create Return / Reverse Logistics in Shiprocket
    * POST /v1/external/orders/create/return
    */

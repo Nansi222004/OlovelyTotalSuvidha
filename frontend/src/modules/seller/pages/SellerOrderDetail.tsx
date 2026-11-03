@@ -7,6 +7,7 @@ import { formatDeliveryAddress } from '../../../utils/addressUtils';
 import SellerAssignDeliveryBoyModal from '../components/SellerAssignDeliveryBoyModal';
 import { SellerInvoice } from '../components/SellerInvoice';
 import { exportElementToPdf } from '../../../utils/invoicePdfExport';
+import { ThermalPrintModal } from '../components/ThermalPrintModal';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,8 @@ export default function SellerOrderDetail() {
   const [deliveryPreference, setDeliveryPreference] = useState<'Self' | 'Admin'>('Self');
   const [earningBreakdown, setEarningBreakdown] = useState<SellerEarningBreakdown | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
+  const [thermalModalMode, setThermalModalMode] = useState<'INVOICE' | 'SHIPPING_LABEL'>('INVOICE');
   const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   // Fetch order detail from API
@@ -321,6 +324,42 @@ export default function SellerOrderDetail() {
                 </div>
               )}
             </div>
+
+            {/* Primary Vendor Action 1: Print 4x6 Thermal Invoice / Bill */}
+            <button
+              type="button"
+              onClick={() => {
+                setThermalModalMode('INVOICE');
+                setShowThermalModal(true);
+              }}
+              className="flex items-center gap-1.5 bg-neutral-900 hover:bg-black text-white px-3.5 py-2 rounded-lg transition-colors text-sm font-bold shadow-xs cursor-pointer"
+              title="Print 4×6 Thermal Invoice or Packing Slip"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="6 9 6 2 18 2 18 9" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" />
+              </svg>
+              Print Invoice / Bill
+            </button>
+
+            {/* Primary Vendor Action 2: Print 4x6 Shipping Label */}
+            <button
+              type="button"
+              onClick={() => {
+                setThermalModalMode('SHIPPING_LABEL');
+                setShowThermalModal(true);
+              }}
+              className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white px-3.5 py-2 rounded-lg transition-colors text-sm font-bold shadow-xs cursor-pointer"
+              title="Print 4×6 Shipping Label (QC Local or Courier)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+              Print Shipping Label
+            </button>
+
             {isMixedOrder ? (
               <>
                 <button
@@ -927,6 +966,16 @@ export default function SellerOrderDetail() {
         />
       </div>
 
+
+      {orderDetail && (
+        <ThermalPrintModal
+          isOpen={showThermalModal}
+          onClose={() => setShowThermalModal(false)}
+          orderDetail={orderDetail}
+          initialMode={thermalModalMode}
+        />
+      )}
+
       {/* Dedicated Invoice Print Root - Positioned off-screen for crisp html2canvas rendering, visible during print */}
       <div
         id="seller-invoice-print-root"
@@ -984,5 +1033,3 @@ export default function SellerOrderDetail() {
     </div>
   );
 }
-
-

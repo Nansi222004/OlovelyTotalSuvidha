@@ -1,6 +1,15 @@
 import nodemailer from "nodemailer";
 
-function getTransporter() {
+let customTransporter: nodemailer.Transporter | null = null;
+
+export function setCustomTransporter(transporter: nodemailer.Transporter | null): void {
+  customTransporter = transporter;
+}
+
+export function getTransporter(): nodemailer.Transporter {
+  if (customTransporter) {
+    return customTransporter;
+  }
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port: Number(process.env.SMTP_PORT) || 587,
@@ -10,6 +19,41 @@ function getTransporter() {
       pass: process.env.SMTP_PASS || "",
     },
   });
+}
+
+export interface ISendEmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  replyTo?: string;
+}
+
+export async function sendEmail(options: ISendEmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    // Safety guard: if running in test environment and no mock transporter is injected, do NOT send real email!
+    if (process.env.NODE_ENV === "test" && !customTransporter) {
+      console.log(`[EMAIL SERVICE SAFETY] Test mode active without mock transporter. Skipping real email transmission to ${options.to}`);
+      return { success: true, messageId: `mock-test-${Date.now()}` };
+    }
+
+    const transporter = getTransporter();
+    const mailOptions = {
+      from: `"${process.env.MAIL_FROM_NAME || 'Olovely Total Suvidha'}" <${process.env.MAIL_FROM || 'olovelytotalsuvidha@gmail.com'}>`,
+      to: options.to,
+      replyTo: options.replyTo,
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[EMAIL SERVICE] Email "${options.subject}" sent to ${options.to}. Message ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error(`[EMAIL SERVICE ERROR] Failed to send email "${options.subject}" to ${options.to}:`, error.message);
+    return { success: false, error: error.message || "Failed to send email" };
+  }
 }
 
 export interface ISupportEmailPayload {
@@ -99,7 +143,7 @@ This message was submitted through the Olovely customer application.
   }
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return String(text || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

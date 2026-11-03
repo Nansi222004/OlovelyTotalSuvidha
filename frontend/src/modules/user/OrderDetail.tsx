@@ -1446,14 +1446,11 @@ export default function OrderDetail() {
                   Pay now, or pay to the delivery partner using Cash/UPI
                 </p>
               </div>
-              {/* Pay now Razorpay button temporarily disabled for customer app */}
-              {/*
               <Button
                 onClick={() => setShowRazorpayCheckout(true)}
-                className="bg-gray-900 hover:bg-gray-800 text-white rounded-full px-6">
+                className="bg-gray-900 hover:bg-gray-800 text-white rounded-full px-6 cursor-pointer">
                 Pay now <ChevronRightIcon className="w-4 h-4 ml-1" />
               </Button>
-              */}
             </div>
           </motion.div>
         )}
@@ -2164,8 +2161,7 @@ export default function OrderDetail() {
         )}
       </AnimatePresence>
 
-      {/* Razorpay Checkout Modal (temporarily commented out for customer app) */}
-      {/*
+      {/* Razorpay Checkout Modal */}
       {showRazorpayCheckout && order && (
         <RazorpayCheckout
           orderId={order._id || order.id || id!}
@@ -2193,7 +2189,6 @@ export default function OrderDetail() {
           }}
         />
       )}
-      */}
 
       {/* Return & Exchange Request Modal */}
       <AnimatePresence>

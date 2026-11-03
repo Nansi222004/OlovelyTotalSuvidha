@@ -1914,6 +1914,13 @@ export const cancelOrder = async (req: Request, res: Response) => {
           status: "Cancelled",
           message: "Order has been cancelled",
         });
+
+        const custId = (order.customer as any)?._id?.toString() || order.customer?.toString();
+        if (custId) {
+          sendOrderStatusNotification(order._id.toString(), custId, "Cancelled", io).catch((e) =>
+            console.error("Error sending customer cancel notification:", e)
+          );
+        }
       }
     } catch (err) {
       console.error("Notification error:", err);

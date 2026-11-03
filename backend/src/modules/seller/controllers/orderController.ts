@@ -1002,3 +1002,215 @@ export const assignDeliveryBoySeller = asyncHandler(
     return res.status(result.statusCode || 200).json(result);
   },
 );
+
+/**
+ * Get shipping label data for an order (4x6 Thermal QC label or official Ecommerce courier label)
+ */
+export const getShippingLabel = asyncHandler(
+  async (req: Request, res: Response) => {
+    const sellerId = (req as any).user?.userId;
+    const { id } = req.params;
+    const { groupId, channel } = req.query || {};
+
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const order = await Order.findOne(
+      isObjectId ? { $or: [{ _id: id }, { orderNumber: id }] } : { orderNumber: id }
+    )
+      .populate("customer", "name email phone")
+      .populate("deliveryBoy", "name mobile email")
+      .populate("fulfillmentGroups.deliveryBoy", "name mobile email vehicleNumber vehicleType");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Check seller ownership of items in this order
+    const sellerItems = await OrderItem.find({ order: order._id, seller: sellerId })
+      .populate("seller", "storeName sellerName address city state pincode phone isPlatform")
+      .populate("product");
+
+    if (!sellerItems || sellerItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or no items belong to this seller",
+      });
+    }
+
+    const sellerItemIds = new Set(sellerItems.map((it) => it._id.toString()));
+
+    // Filter fulfillment groups to those containing this seller's items
+    const sellerScopedGroups = (order.fulfillmentGroups || []).filter((g: any) => {
+      const isOwnSeller = g.seller && g.seller.toString() === sellerId.toString();
+      const hasOwnItems = Array.isArray(g.items) && g.items.some((itId: any) => sellerItemIds.has(itId.toString()));
+      return isOwnSeller || hasOwnItems;
+    });
+
+    // If order has no fulfillment groups, synthesize one based on orderType
+    const effectiveGroups: any[] = sellerScopedGroups.length > 0
+      ? (sellerScopedGroups as any[])
+      : [
+          {
+            groupId: `GRP-${order.orderNumber}-1`,
+            fulfillmentType: (order.orderType === "ECOMMERCE" ? "COURIER_SHIPPING" : "LOCAL_DELIVERY") as any,
+            status: order.status,
+            items: sellerItems.map((it) => it._id),
+            deliveryBoy: order.deliveryBoy,
+            shippingDetails: {
+              trackingNumber: order.trackingNumber,
+              carrier: order.orderType === "ECOMMERCE" ? "Courier Shipping" : undefined,
+            },
+            subtotal: sellerItems.reduce((sum, it) => sum + (it.total || 0), 0),
+            shippingFee: order.shipping || 0,
+            deliveryOption: order.deliveryOption,
+          },
+        ];
+
+    // Filter by groupId if requested
+    let targetGroups: any[] = effectiveGroups;
+    if (groupId) {
+      targetGroups = effectiveGroups.filter((g: any) => g.groupId === groupId);
+      if (targetGroups.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Fulfillment group ${groupId} not found for this seller`,
+        });
+      }
+    } else if (channel) {
+      const isQc = channel === "QUICK_COMMERCE";
+      targetGroups = effectiveGroups.filter((g: any) =>
+        isQc ? g.fulfillmentType === "LOCAL_DELIVERY" : g.fulfillmentType !== "LOCAL_DELIVERY"
+      );
+      if (targetGroups.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `No ${isQc ? "Quick Commerce" : "Ecommerce"} fulfillment groups found for this seller`,
+        });
+      }
+    }
+
+    // Process each target group into label data
+    const labels = await Promise.all(
+      targetGroups.map(async (group: any, idx: number) => {
+        const isQc = group.fulfillmentType === "LOCAL_DELIVERY";
+        const groupItems = sellerItems.filter((it) =>
+          group.items ? group.items.some((gIt: any) => gIt.toString() === it._id.toString()) : true
+        );
+        const firstSeller = groupItems[0]?.seller as any;
+        const storeName = firstSeller?.storeName || (groupItems[0] as any)?.billingEntityName || "Olovely Partner Store";
+        const pickupAddr = firstSeller?.address
+          ? `${firstSeller.address}, ${firstSeller.city || ""}, ${firstSeller.state || ""} ${firstSeller.pincode || ""}`.trim()
+          : "Local Partner Store";
+
+        if (isQc) {
+          // Quick Commerce Local Delivery Label (4x6 Internal Thermal)
+          const isCod = order.paymentMethod === "COD";
+          const isPaid = order.paymentStatus === "Paid";
+          const codAmount = isCod && !isPaid
+            ? (effectiveGroups.length > 1
+                ? Number((group.subtotal + (group.shippingFee || 0)).toFixed(2))
+                : (order.total || group.subtotal))
+            : 0;
+
+          return {
+            groupId: group.groupId,
+            channel: "QUICK_COMMERCE" as const,
+            type: "INTERNAL_THERMAL" as const,
+            status: group.status,
+            orderNumber: order.orderNumber,
+            packageIndex: idx + 1,
+            totalPackages: targetGroups.length,
+            customerName: (order.customer as any)?.name || order.customerName || "Customer",
+            customerPhone: (order.customer as any)?.phone || order.customerPhone || "",
+            deliveryAddress: order.deliveryAddress || {},
+            pickupStoreName: storeName,
+            pickupAddress: pickupAddr,
+            deliveryOption: group.deliveryOption || order.deliveryOption || "Standard",
+            deliveryBoy: group.deliveryBoy
+              ? { name: (group.deliveryBoy as any).name, mobile: (group.deliveryBoy as any).mobile }
+              : order.deliveryBoy
+              ? { name: (order.deliveryBoy as any).name, mobile: (order.deliveryBoy as any).mobile }
+              : null,
+            deliveryOtp: group.deliveryOtp || order.deliveryOtp || null,
+            paymentMethod: order.paymentMethod,
+            paymentStatus: order.paymentStatus,
+            isCod,
+            codAmount,
+            barcodeValue: order.orderNumber,
+            items: groupItems.map((it) => ({
+              productName: it.productName,
+              quantity: it.quantity,
+              variant: it.variation || (it as any).variantTitle || "Default",
+              unitPrice: it.unitPrice,
+            })),
+            itemCount: groupItems.reduce((sum, it) => sum + (it.quantity || 1), 0),
+            orderDate: order.orderDate,
+          };
+        } else {
+          // Ecommerce Courier Shipping Label (Shiprocket / Courier Official)
+          const shippingDetails = group.shippingDetails || {};
+          const awbNumber = shippingDetails.awbNumber || order.trackingNumber;
+          const shipmentId = group.thirdPartyOrderDetails?.shipmentId;
+          const carrier = shippingDetails.carrier || "Courier Express";
+
+          let available = false;
+          let labelUrl: string | undefined;
+          let reason: string | undefined;
+
+          if (awbNumber && awbNumber !== "N/A" && !awbNumber.startsWith("SR-PENDING-")) {
+            available = true;
+            try {
+              const { getShippingProvider } = await import("../../../services/shipping/shippingService");
+              const provider = getShippingProvider(group.thirdPartyOrderDetails?.providerId);
+              if (provider.getLabel) {
+                const labelRes = await provider.getLabel(shipmentId || awbNumber);
+                labelUrl = labelRes.labelUrl;
+              }
+            } catch (err: any) {
+              console.warn(`[getShippingLabel] Could not fetch remote label URL for ${awbNumber}:`, err.message);
+            }
+          } else {
+            reason = "Courier shipment manifestation is pending. Shipping label will be available once the carrier assigns an AWB number.";
+          }
+
+          return {
+            groupId: group.groupId,
+            channel: "ECOMMERCE" as const,
+            type: "OFFICIAL_COURIER" as const,
+            available,
+            status: group.status,
+            orderNumber: order.orderNumber,
+            awbNumber: awbNumber || undefined,
+            shipmentId: shipmentId || undefined,
+            carrier,
+            trackingUrl: shippingDetails.trackingUrl || (awbNumber ? `https://shiprocket.co/tracking/${awbNumber}` : undefined),
+            labelUrl,
+            reason,
+            customerName: (order.customer as any)?.name || order.customerName || "Customer",
+            deliveryAddress: order.deliveryAddress || {},
+            packageIndex: idx + 1,
+            totalPackages: targetGroups.length,
+            items: groupItems.map((it) => ({
+              productName: it.productName,
+              quantity: it.quantity,
+              variant: it.variation || "Default",
+            })),
+          };
+        }
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        isMixedOrder: sellerScopedGroups.some((g: any) => g.fulfillmentType === "LOCAL_DELIVERY") &&
+                      sellerScopedGroups.some((g: any) => g.fulfillmentType !== "LOCAL_DELIVERY"),
+        labels,
+      },
+    });
+  }
+);

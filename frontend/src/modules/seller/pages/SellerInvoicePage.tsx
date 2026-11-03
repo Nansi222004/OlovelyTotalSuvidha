@@ -2,6 +2,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { getOrderById, type OrderDetail } from '../../../services/api/orderService';
 import { SellerInvoice } from '../components/SellerInvoice';
+import { ThermalPrintModal } from '../components/ThermalPrintModal';
 import { exportElementToPdf } from '../../../utils/invoicePdfExport';
 import { useToast } from '../../../context/ToastContext';
 
@@ -18,6 +19,7 @@ export default function SellerInvoicePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -137,6 +139,15 @@ export default function SellerInvoicePage() {
           </button>
 
           <button
+            onClick={() => setShowThermalModal(true)}
+            className="inline-flex items-center gap-1.5 bg-neutral-800 hover:bg-black text-white px-3.5 py-2 rounded-lg text-sm font-bold shadow-xs transition-colors cursor-pointer"
+            title="Print on 4×6 Thermal Paper"
+          >
+            <span>🖨️</span>
+            Print (4×6 Thermal)
+          </button>
+
+          <button
             onClick={handlePrint}
             className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
           >
@@ -152,6 +163,15 @@ export default function SellerInvoicePage() {
 
       {/* Dedicated Invoice Document */}
       <SellerInvoice ref={invoiceRef} orderDetail={orderDetail} />
+
+      {orderDetail && (
+        <ThermalPrintModal
+          isOpen={showThermalModal}
+          onClose={() => setShowThermalModal(false)}
+          orderDetail={orderDetail}
+          initialMode="INVOICE"
+        />
+      )}
 
       {/* Global Print-Only CSS targeting A4 Document Flow */}
       <style>{`

@@ -277,6 +277,13 @@ export async function createEcommerceShipment(
   group.status = 'Shipped';
   await order.save();
 
+  // Trigger customer fulfillment group update email with tracking details
+  import('../orderEmailService').then(({ sendCustomerFulfillmentGroupEmail }) => {
+    sendCustomerFulfillmentGroupEmail(order._id.toString(), group.groupId, 'Shipped').catch((e) =>
+      console.error(`[OrderEmailService] Error sending shipment email for order ${order._id} group ${group.groupId}:`, e)
+    );
+  }).catch(() => undefined);
+
   return {
     order,
     group,
@@ -431,6 +438,13 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
       if (result.courierName) returnRequest.courierName = result.courierName;
     }
     await returnRequest.save();
+
+    // Trigger customer return/exchange email update
+    import('../orderEmailService').then(({ sendCustomerReturnExchangeEmail }) => {
+      sendCustomerReturnExchangeEmail(returnRequest._id.toString(), returnRequest.status).catch((e) =>
+        console.error(`[OrderEmailService] Error sending return webhook email:`, e)
+      );
+    }).catch(() => undefined);
     await completeEvent();
     return result;
   }
@@ -519,6 +533,21 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
     }
 
     await order.save();
+
+    // If all groups are delivered, trigger order Delivered notification (which sends customer Delivered email)
+    if (allDelivered && order.customer) {
+      import('../notificationService').then(({ sendOrderStatusNotification }) => {
+        const custId = (order.customer as any)?._id?.toString() || order.customer.toString();
+        sendOrderStatusNotification(order._id.toString(), custId, 'Delivered').catch(() => undefined);
+      }).catch(() => undefined);
+    } else {
+      // Trigger customer fulfillment group update email
+      import('../orderEmailService').then(({ sendCustomerFulfillmentGroupEmail }) => {
+        sendCustomerFulfillmentGroupEmail(order._id.toString(), group.groupId, group.status).catch((e) =>
+          console.error(`[OrderEmailService] Error sending group webhook email:`, e)
+        );
+      }).catch(() => undefined);
+    }
   }
 
   await completeEvent();

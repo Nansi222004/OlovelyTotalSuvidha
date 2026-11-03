@@ -67,6 +67,7 @@ export interface DeliveryAddress {
 
 export interface OrderDetail {
   id: string;
+  orderNumber?: string;
   invoiceNumber: string;
   orderDate: string;
   deliveryDate: string;
@@ -282,5 +283,61 @@ export const getSettlementOrders = async (params?: {
 /** Seller marks COD as paid to admin (order leaves pending settlement list) */
 export const markOrderCODPaid = async (orderId: string): Promise<ApiResponse<{ orderId: string; codPaidToAdminAt: string }>> => {
   const response = await api.patch<ApiResponse<{ orderId: string; codPaidToAdminAt: string }>>(`/orders/${orderId}/mark-cod-paid`);
+  return response.data;
+};
+
+export interface ShippingLabelItem {
+  productName: string;
+  quantity: number;
+  variant?: string;
+  unitPrice?: number;
+}
+
+export interface ShippingLabelData {
+  groupId: string;
+  channel: 'QUICK_COMMERCE' | 'ECOMMERCE';
+  type: 'INTERNAL_THERMAL' | 'OFFICIAL_COURIER';
+  status: string;
+  orderNumber: string;
+  packageIndex: number;
+  totalPackages: number;
+  customerName: string;
+  customerPhone?: string;
+  deliveryAddress: any;
+  pickupStoreName?: string;
+  pickupAddress?: string;
+  deliveryOption?: string;
+  deliveryBoy?: { name?: string; mobile?: string } | null;
+  deliveryOtp?: string | null;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  isCod?: boolean;
+  codAmount?: number;
+  barcodeValue?: string;
+  items: ShippingLabelItem[];
+  itemCount?: number;
+  orderDate?: string;
+  available?: boolean;
+  awbNumber?: string;
+  shipmentId?: string;
+  carrier?: string;
+  trackingUrl?: string;
+  labelUrl?: string;
+  reason?: string;
+}
+
+export interface ShippingLabelResponse {
+  orderId: string;
+  orderNumber: string;
+  isMixedOrder: boolean;
+  labels: ShippingLabelData[];
+}
+
+/** Get shipping labels for an order (4x6 QC thermal or official Ecommerce courier) */
+export const getOrderShippingLabel = async (
+  orderId: string,
+  params?: { groupId?: string; channel?: string }
+): Promise<ApiResponse<ShippingLabelResponse>> => {
+  const response = await api.get<ApiResponse<ShippingLabelResponse>>(`/orders/${orderId}/shipping-label`, { params });
   return response.data;
 };

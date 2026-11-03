@@ -170,7 +170,7 @@ export async function createApprovedReturnLogistics(
       reason: returnDoc.reason,
     });
 
-    return Return.findByIdAndUpdate(returnId, {
+    const updatedReturn = await Return.findByIdAndUpdate(returnId, {
       $set: {
         status: 'Reverse Shipment Created',
         reverseLogisticsStatus: 'CREATED',
@@ -182,6 +182,12 @@ export async function createApprovedReturnLogistics(
       },
       $unset: { reverseLastError: 1 },
     }, { new: true });
+
+    import("./orderEmailService").then(({ sendCustomerReturnExchangeEmail }) => {
+      sendCustomerReturnExchangeEmail(returnId, "Reverse Shipment Created").catch(() => undefined);
+    }).catch(() => undefined);
+
+    return updatedReturn;
   } catch (error) {
     const message = error instanceof ReturnLogisticsError ? error.message : safeLogisticsMessage;
     await Return.updateOne({ _id: returnId }, {
@@ -305,7 +311,7 @@ export async function processReturnQc(
       dimensionsCm: product.packageDetails?.dimensionsCm,
     };
     const { shipmentRequest, shipmentResult: shipment } = await dispatchForwardEcommerceShipment(request, seller, provider);
-    return Return.findByIdAndUpdate(returnId, {
+    const updatedReturn = await Return.findByIdAndUpdate(returnId, {
       $set: {
         status: 'Forward Shipment Created',
         financialSettlementStatus: 'Completed',
@@ -321,6 +327,12 @@ export async function processReturnQc(
       },
       $unset: { 'replacement.lastError': 1 },
     }, { new: true });
+
+    import("./orderEmailService").then(({ sendCustomerReturnExchangeEmail }) => {
+      sendCustomerReturnExchangeEmail(returnId, "Forward Shipment Created").catch(() => undefined);
+    }).catch(() => undefined);
+
+    return updatedReturn;
   } catch (error) {
     const message = error instanceof ReturnLogisticsError || error instanceof ForwardShipmentValidationError
       ? error.message

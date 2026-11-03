@@ -222,13 +222,47 @@ export default function AdminWallet() {
             Manage transactions, track earnings, and process withdrawals.
           </p>
         </div>
-        {/* 
-                <div className="flex gap-2">
-                     <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 font-medium transition">
-                        <DownloadIcon className="w-4 h-4" /> Export Report
-                    </button>
-                </div> 
-                */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              try {
+                let csvContent = "";
+                let filename = "wallet-report.csv";
+                if (activeTab === "transactions") {
+                  if (!transactions.length) {
+                    showToast("No transactions to export", "info");
+                    return;
+                  }
+                  csvContent = "ID,User,Type,Amount,Status,Date\n" +
+                    transactions.map(t => `"${t._id}","${t.userName || ''}","${t.type}","${t.amount}","${t.status}","${t.createdAt}"`).join("\n");
+                  filename = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+                } else if (activeTab === "earnings") {
+                  if (!earnings.length) {
+                    showToast("No earnings to export", "info");
+                    return;
+                  }
+                  csvContent = "ID,Source,Description,Status,Amount,Date\n" +
+                    earnings.map(e => `"${e.id}","${e.source || ''}","${e.description || ''}","${e.status}","${e.amount}","${e.date}"`).join("\n");
+                  filename = `earnings-${new Date().toISOString().slice(0, 10)}.csv`;
+                } else {
+                  showToast("Export not available for this tab", "info");
+                  return;
+                }
+                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+                showToast("Report exported successfully", "success");
+              } catch (err) {
+                console.error("Export error", err);
+                showToast("Failed to export report", "error");
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 font-medium transition cursor-pointer">
+            <DownloadIcon className="w-4 h-4" /> Export Report
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}

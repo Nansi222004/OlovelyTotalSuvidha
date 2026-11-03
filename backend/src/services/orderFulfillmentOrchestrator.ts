@@ -191,6 +191,13 @@ export async function recomputeOrderFulfillment(
       });
     }
 
+    if (order.customer) {
+      const customerId = (order.customer as any)._id?.toString() || order.customer.toString();
+      sendOrderStatusNotification(order._id.toString(), customerId, "Cancelled", io).catch((e) =>
+        console.error("Error sending customer cancellation notification on all_rejected:", e)
+      );
+    }
+
     return {
       outcome: "all_rejected",
       allHaveResponded: true,

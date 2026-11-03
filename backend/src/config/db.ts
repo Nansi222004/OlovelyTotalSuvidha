@@ -6,6 +6,7 @@ import Product from '../models/Product';
 import Notification from '../models/Notification';
 import ProcessedWebhookEvent from '../models/ProcessedWebhookEvent';
 import CustomerSupportRequest from '../models/CustomerSupportRequest';
+import OrderEmailNotification from '../models/OrderEmailNotification';
 
 dotenv.config();
 
@@ -32,6 +33,8 @@ const connectDB = async (): Promise<void> => {
     // Historical notifications do not have eventId. The partial unique index
     // applies only to new logical events and makes concurrent retries safe.
     await Notification.createIndexes();
+    // Order email notifications require unique eventKey index for concurrency-safe idempotency
+    await OrderEmailNotification.createIndexes();
     // Support ticket retries use a customer-scoped client request ID. This
     // additive partial index leaves historical tickets without an ID untouched.
     await CustomerSupportRequest.collection.createIndex(

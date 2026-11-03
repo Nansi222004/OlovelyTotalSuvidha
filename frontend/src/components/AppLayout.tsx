@@ -112,9 +112,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // If location is NOT enabled and route requires location, ALWAYS show modal
     // This will trigger on every app open until user explicitly confirms location
     if (!isLocationEnabled && requiresLocation()) {
-      // Automatic startup/navigation popup intentionally disabled. Restore this
-      // invocation to re-enable the preserved Location Access Required modal.
-      // setShowLocationRequest(true);
+      // Automatic startup/navigation popup re-enabled
+      setShowLocationRequest(true);
     } else {
       setShowLocationRequest(false);
     }

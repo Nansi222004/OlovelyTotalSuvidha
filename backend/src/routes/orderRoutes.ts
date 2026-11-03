@@ -10,6 +10,7 @@ import {
   getPendingOrderAlerts,
   getAvailableDeliveryPartners,
   assignDeliveryBoySeller,
+  getShippingLabel,
 } from "../modules/seller/controllers/orderController";
 import { authenticate, requireUserType, requireApprovedUser } from "../middleware/auth";
 
@@ -26,6 +27,9 @@ router.get("/", getOrders);
 router.get("/pending-alerts", getPendingOrderAlerts);
 // Settlement page (must be before /:id)
 router.get("/settlement", getSettlementOrders);
+
+// Shipping label endpoint for 4x6 thermal QC labels or official courier labels
+router.get("/:id/shipping-label", getShippingLabel);
 
 // Available delivery partners for manual seller assignment (must be before /:id)
 router.get("/:id/available-delivery-partners", getAvailableDeliveryPartners);

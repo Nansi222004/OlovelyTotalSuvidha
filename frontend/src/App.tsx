@@ -1085,12 +1085,14 @@ function App() {
                                         </ProtectedRoute>
                                       }
                                     />
-                                    {/* Customer Wallet - Temporarily Commented Out
                                     <Route
                                       path="/account/wallet"
-                                      element={<CustomerWallet />}
+                                      element={
+                                        <ProtectedRoute requiredUserType="Customer" redirectTo="/login">
+                                          <CustomerWallet />
+                                        </ProtectedRoute>
+                                      }
                                     />
-                                    */}
                                     <Route
                                       path="/notifications"
                                       element={<UserNotifications />}

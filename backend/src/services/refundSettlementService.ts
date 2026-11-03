@@ -290,6 +290,18 @@ export const handleOnlineOrderCancellation = async (
       const verifyOrder = await Order.findById(order._id).lean();
       console.log(`\n[REFUND ORDER DB VERIFY]\nOrder ID: ${verifyOrder?._id}\nstatus: ${verifyOrder?.status}\npaymentStatus: ${verifyOrder?.paymentStatus}\npaymentId: ${verifyOrder?.paymentId}`);
 
+      const totalRefunded = (order.walletAmountUsed || 0) + (onlineAmountToRefund || 0);
+      if (totalRefunded > 0) {
+        import("./orderEmailService").then(({ sendCustomerRefundEmail }) => {
+          sendCustomerRefundEmail(order._id.toString(), {
+            amount: totalRefunded,
+            reason: cancellationReason || "Order cancellation refund",
+            method: (order.walletAmountUsed && onlineAmountToRefund) ? "Wallet & Online Payment" : (order.walletAmountUsed ? "Olovely Wallet" : "Original Payment Method"),
+            status: "Completed",
+          }).catch((err) => console.error("[OrderEmailService] Cancellation refund email error:", err));
+        }).catch(() => undefined);
+      }
+
       return {
         success: true,
         message: "Order cancellation refund executed successfully (100% actual customer payment returned)",
@@ -562,6 +574,18 @@ export const executeReturnRefundAndReversal = async (
       }
 
       await session.commitTransaction();
+
+      if (breakdown.customerRefundAmount > 0) {
+        import("./orderEmailService").then(({ sendCustomerRefundEmail }) => {
+          sendCustomerRefundEmail(order._id.toString(), {
+            amount: breakdown.customerRefundAmount,
+            reason: returnReq.reason || "Return item refund",
+            method: "Wallet / Original Payment Method",
+            status: "Completed",
+            refundId: returnReq._id.toString(),
+          }).catch((err) => console.error("[OrderEmailService] Return refund email error:", err));
+        }).catch(() => undefined);
+      }
 
       return {
         success: true,
