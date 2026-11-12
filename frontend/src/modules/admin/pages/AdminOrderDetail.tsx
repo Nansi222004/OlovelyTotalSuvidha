@@ -18,6 +18,7 @@ import ConfirmationModal from '../../../components/ConfirmationModal';
 import { SellerInvoice } from '../../seller/components/SellerInvoice';
 import { exportElementToPdf } from '../../../utils/invoicePdfExport';
 import type { OrderDetail } from '../../../services/api/orderService';
+import { getOrderTipAmount, getOrderGiftPackagingFee } from '../../../utils/orderMoney';
 
 const ALLOWED_ORDER_TRANSITIONS: Record<string, string[]> = {
   Received: ['Accepted', 'Cancelled', 'Rejected'],
@@ -203,6 +204,8 @@ export default function AdminOrderDetail() {
   const customer = typeof order.customer === 'object' ? order.customer : null;
   const deliveryBoy = typeof order.deliveryBoy === 'object' ? order.deliveryBoy : null;
   const items: any[] = Array.isArray(order.items) ? order.items : [];
+  const orderTipAmount = getOrderTipAmount(order);
+  const orderGiftFee = getOrderGiftPackagingFee(order);
 
   const isTerminal = ['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(order.status);
   const rawAllowed = ALLOWED_ORDER_TRANSITIONS[order.status] || [];
@@ -272,6 +275,8 @@ export default function AdminOrderDetail() {
     shipping: order.shipping || 0,
     discount: order.discount || 0,
     platformFee: (order as any).platformFee || 0,
+    tipAmount: orderTipAmount,
+    giftPackagingFee: orderGiftFee,
     couponCode: order.couponCode,
     grandTotal: order.total || 0,
     orderGrandTotal: order.total || 0,
@@ -762,6 +767,18 @@ export default function AdminOrderDetail() {
                 <div className="flex justify-between text-red-600">
                   <span>Discount {order.couponCode ? `(${order.couponCode})` : ''}:</span>
                   <span className="font-semibold">-₹{order.discount.toFixed(2)}</span>
+                </div>
+              )}
+              {orderTipAmount > 0 && (
+                <div className="flex justify-between text-neutral-700">
+                  <span>Delivery Partner Tip:</span>
+                  <span className="font-semibold text-neutral-900">₹{orderTipAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {orderGiftFee > 0 && (
+                <div className="flex justify-between text-neutral-700">
+                  <span>Gift Packaging:</span>
+                  <span className="font-semibold text-neutral-900">₹{orderGiftFee.toFixed(2)}</span>
                 </div>
               )}
               {order.tax > 0 && (

@@ -72,7 +72,6 @@ export interface Order {
   tipAmount?: number;
   donationAmount?: number;
   couponCode?: string;
-  giftPackaging?: boolean;
   deliveryOption?: 'Instant' | 'Standard' | 'Courier';
   deliverySelections?: Record<string, string>;
   useWallet?: boolean;

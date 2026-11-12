@@ -527,12 +527,27 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
 
     // If all groups are delivered, update overall order status
     const allDelivered = areAllFulfillmentGroupsDelivered(order.fulfillmentGroups);
+    const wasDelivered = order.status === 'Delivered';
     if (allDelivered) {
       order.status = 'Delivered';
-      order.deliveredAt = new Date();
+      order.deliveredAt = order.deliveredAt || new Date();
     }
 
     await order.save();
+
+    // Fully delivered: prepaid → escrow settlement; COD → CourierCodSettlement PENDING_REMITTANCE
+    // (B-4: Shiprocket "Delivered" never credits sellers; only a verified remittance does).
+    if (allDelivered && !wasDelivered) {
+      try {
+        const { recordDeliveryFinancials } = await import('../commissionService');
+        const distRes: any = await recordDeliveryFinancials(order._id.toString());
+        if (distRes && distRes.success === false) {
+          console.error(`[Shipping] Commission distribution failed for order ${order.orderNumber}: ${distRes.message}`);
+        }
+      } catch (commErr) {
+        console.error(`[Shipping] Commission distribution error for order ${order.orderNumber}:`, commErr);
+      }
+    }
 
     // If all groups are delivered, trigger order Delivered notification (which sends customer Delivered email)
     if (allDelivered && order.customer) {

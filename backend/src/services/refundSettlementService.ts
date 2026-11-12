@@ -8,6 +8,9 @@ import Customer from "../models/Customer";
 import Refund from "../models/Refund";
 import { processRefund } from "./paymentService";
 import { debitWallet, creditWallet } from "./walletManagementService";
+import { itemIncludedGst, itemSellerCommission } from "./financeMath";
+
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 export interface IItemRefundCalculation {
   returnedItemTotal: number;
@@ -36,7 +39,9 @@ export const calculateItemRefundAmount = (
   // BUG FIX: Use ?? (nullish coalescing) not || (logical or).
   // With ||, commissionRate=0 would fall back to 10, charging sellers a 10% fee when they have 0% commission.
   const returnedCommissionRate = orderItem.commissionRate ?? 10;
-  const returnedCommissionAmount = Math.round((returnedItemTotal * returnedCommissionRate) / 100 * 100) / 100;
+  // B-3: commission on the ex-GST value of the returned share (same helper as commission creation)
+  const returnedTax = itemIncludedGst(orderItem) * proportion;
+  const returnedCommissionAmount = itemSellerCommission({ total: returnedItemTotal, taxAmount: returnedTax, taxRate: orderItem.taxRate }, returnedCommissionRate);
   const sellerNetReversal = Math.round((returnedItemTotal - returnedCommissionAmount) * 100) / 100;
 
   // Coupon-Aware Customer Refund Calculation:
@@ -132,8 +137,13 @@ export const handleOnlineOrderCancellation = async (
         walletRefundExecuted = true;
       }
 
-      // 2. REFUND RAZORPAY ONLINE PORTION (100% of online amount actually paid)
-      const onlineAmountToRefund = order.onlineAmountPaid || (order.paymentMethod === "Online" ? order.total : 0);
+      // 2. REFUND RAZORPAY ONLINE PORTION: only money actually CAPTURED (R-09). Unpaid online
+      // orders carried the intended amount in onlineAmountPaid, so cancelling one used to "refund"
+      // money that was never received and email the customer about it.
+      const onlineCaptured = order.paymentStatus === "Paid";
+      const onlineAmountToRefund = onlineCaptured
+        ? round2(order.onlineAmountPaid || (order.paymentMethod === "Online" ? Math.max(0, order.total - (order.walletAmountUsed || 0)) : 0))
+        : 0;
       let refundResultData: any = null;
 
       if (onlineAmountToRefund > 0) {
@@ -145,25 +155,17 @@ export const handleOnlineOrderCancellation = async (
           : await Payment.findOne({ $or: queryOrs });
 
         if (payment && payment.status !== "Refunded") {
+          // processRefund records the cumulative refund on the Payment itself (R-06 idempotent)
           const refundResult = await processRefund(
             payment._id.toString(),
             onlineAmountToRefund,
             cancellationReason || "Order cancelled before delivery",
-            session || undefined
+            session || undefined,
+            `CANCEL_${order._id.toString()}`
           );
 
           if (!refundResult.success) {
             throw new Error(refundResult.message || "Failed to process Razorpay online refund");
-          }
-
-          payment.status = "Refunded";
-          payment.refundAmount = onlineAmountToRefund;
-          payment.refundedAt = new Date();
-          payment.refundReason = cancellationReason || "Order cancelled before delivery";
-          if (session) {
-            await payment.save({ session });
-          } else {
-            await payment.save();
           }
           refundResultData = refundResult.data;
           onlineRefundExecuted = true;
@@ -175,7 +177,7 @@ export const handleOnlineOrderCancellation = async (
             paymentMethod: "Online",
             paymentGateway: "Razorpay",
             razorpayPaymentId: order.paymentId,
-            amount: order.total,
+            amount: onlineAmountToRefund,
             currency: "INR",
             status: "Completed",
             paidAt: new Date(),
@@ -186,7 +188,8 @@ export const handleOnlineOrderCancellation = async (
             newPay._id.toString(),
             onlineAmountToRefund,
             cancellationReason || "Order cancelled before delivery",
-            session || undefined
+            session || undefined,
+            `CANCEL_${order._id.toString()}`
           );
           if (!refundResult.success) {
             throw new Error(refundResult.message || "Failed to process Razorpay online refund");
@@ -253,11 +256,13 @@ export const handleOnlineOrderCancellation = async (
       const prevStatus = order.status;
       const prevPayStatus = order.paymentStatus;
 
-      // Mark order payment status refunded & order status cancelled
-      order.paymentStatus = "Refunded";
+      // Mark Refunded ONLY when money was actually returned (R-09). An unpaid online order or a
+      // COD order keeps its payment status; it is never reported as refunded.
+      const somethingRefunded = walletRefundExecuted || onlineRefundExecuted;
+      if (somethingRefunded) order.paymentStatus = "Refunded";
       order.status = "Cancelled";
 
-      console.log(`\n[REFUND ORDER UPDATE]\nOrder ID: ${order._id}\nPrevious status: ${prevStatus}\nNew status: Cancelled\nPrevious paymentStatus: ${prevPayStatus}\nNew paymentStatus: Refunded`);
+      console.log(`\n[REFUND ORDER UPDATE]\nOrder ID: ${order._id}\nPrevious status: ${prevStatus}\nNew status: Cancelled\nPrevious paymentStatus: ${prevPayStatus}\nNew paymentStatus: ${order.paymentStatus}`);
 
       if (session) {
         await order.save({ session });
@@ -391,6 +396,7 @@ export const executeReturnRefundAndReversal = async (
         order.discount || 0
       );
       let productRefundTotal = breakdown.customerRefundAmount;
+      let matchedPaymentPre: any = null;
 
       // Cumulative Refund Cap Safety Check:
       // Ensure cumulative customer refunds for this order never exceed order.total
@@ -410,46 +416,75 @@ export const executeReturnRefundAndReversal = async (
       }).session(session);
 
       let sellerReversed = false;
+      let sellerReversalShortfall = 0;
       const sellerId = orderItem.seller.toString();
 
-      if (existingCommission && existingCommission.status === "OnHold") {
-        // Debit exact net seller earning from Seller On-Hold Balance
-        const { default: Seller } = await import("../models/Seller");
-        await Seller.findByIdAndUpdate(
-          sellerId,
-          { $inc: { onHoldBalance: -breakdown.sellerNetReversal } },
-          { session }
-        );
+      if (existingCommission && existingCommission.status !== "Cancelled" && existingCommission.orderAmount > 0) {
+        // Reverse exactly the portion of THIS commission record that corresponds to the returned
+        // value (using the record's own amounts, i.e. what was actually held/credited).
+        // A partial-quantity return shrinks the commission instead of cancelling it; previously the
+        // whole record was cancelled, so the seller's earning for the kept units was stuck in
+        // onHoldBalance forever (OnHold) or never paid (COD Pending).
+        const fraction = Math.min(1, breakdown.returnedItemTotal / existingCommission.orderAmount);
+        const commNet = round2(existingCommission.orderAmount - existingCommission.commissionAmount);
+        const isFull = fraction >= 0.9999;
+        const reversedOrderAmount = isFull ? existingCommission.orderAmount : round2(existingCommission.orderAmount * fraction);
+        const reversedCommission = isFull ? existingCommission.commissionAmount : round2(existingCommission.commissionAmount * fraction);
+        const netReversal = isFull ? commNet : round2(reversedOrderAmount - reversedCommission);
+        breakdown.sellerNetReversal = netReversal;
+        breakdown.returnedCommissionAmount = reversedCommission;
 
-        existingCommission.status = "Cancelled";
-        await existingCommission.save({ session });
-        sellerReversed = true;
-      } else if (existingCommission && existingCommission.status === "Paid") {
-        // Debit exact net seller earning from Seller Available Wallet
-        await debitWallet(
-          sellerId,
-          "SELLER",
-          breakdown.sellerNetReversal,
-          `Return reversal for order #${order.orderNumber} (${returnReq.quantity}x ${orderItem.productName})`,
-          order._id.toString(),
-          session
-        );
+        const previousStatus = existingCommission.status;
+        if (previousStatus === "OnHold") {
+          const { default: Seller } = await import("../models/Seller");
+          await Seller.findByIdAndUpdate(
+            sellerId,
+            { $inc: { onHoldBalance: -netReversal } },
+            { session }
+          );
+          sellerReversed = true;
+        } else if (previousStatus === "Paid" && netReversal > 0) {
+          const debitRes = await debitWallet(
+            sellerId,
+            "SELLER",
+            netReversal,
+            `Return reversal for order #${order.orderNumber} (${returnReq.quantity}x ${orderItem.productName})`,
+            order._id.toString(),
+            session,
+            `RETURN_REVERSAL_${returnReq._id.toString()}`
+          );
+          if (debitRes.success) {
+            sellerReversed = true;
+          } else {
+            // Seller already withdrew the money. Customer refund is not blocked, but the
+            // shortfall is surfaced (see docs/OLOVELY_REMAINING_ISSUES.md: negative balance policy).
+            sellerReversalShortfall = netReversal;
+            console.error(`[RETURN REVERSAL SHORTFALL] Seller ${sellerId} could not be debited ₹${netReversal} for return ${returnReq._id}: ${debitRes.message}`);
+          }
+        }
 
-        existingCommission.status = "Cancelled";
-        await existingCommission.save({ session });
-        sellerReversed = true;
-      } else if (existingCommission && existingCommission.status === "Pending") {
-        existingCommission.status = "Cancelled";
+        if (isFull) {
+          existingCommission.status = "Cancelled";
+        } else {
+          existingCommission.orderAmount = round2(existingCommission.orderAmount - reversedOrderAmount);
+          existingCommission.commissionAmount = round2(existingCommission.commissionAmount - reversedCommission);
+        }
         await existingCommission.save({ session });
       }
 
       // 2. DETERMINISTIC CUSTOMER REFUND ALLOCATION
-      // Allocate productRefundTotal between Wallet and Razorpay/COD
-      const walletAllocationMax = order.walletAmountUsed || 0;
-      const walletRefundPortion = Math.min(walletAllocationMax, productRefundTotal);
-      const remainingProductRefund = productRefundTotal - walletRefundPortion;
+      // Allocate productRefundTotal: wallet-funded portion first, then Razorpay (online orders),
+      // and anything not refunded to the gateway (COD / failed gateway refund) to the wallet.
+      matchedPaymentPre = order.onlineAmountPaid && order.onlineAmountPaid > 0
+        ? await Payment.findOne({ $or: [{ order: order._id }, ...(order.paymentId ? [{ razorpayPaymentId: order.paymentId }] : [])] }).session(session)
+        : null;
+      const priorOnlineRefunded = round2(matchedPaymentPre?.refundAmount || 0);
+      const priorWalletPortionRefunded = Math.max(0, round2(totalAlreadyRefunded - priorOnlineRefunded));
+      const walletAllocationMax = Math.max(0, round2((order.walletAmountUsed || 0) - priorWalletPortionRefunded));
+      const walletRefundPortion = round2(Math.min(walletAllocationMax, productRefundTotal));
+      const remainingProductRefund = round2(productRefundTotal - walletRefundPortion);
 
-      let refundDetails: any = { walletRefundPortion, remainingProductRefund };
+      let refundDetails: any = { walletRefundPortion, remainingProductRefund, sellerReversalShortfall };
       let matchedPayment: any = null;
 
       // Credit wallet portion if any
@@ -472,53 +507,57 @@ export const executeReturnRefundAndReversal = async (
       }
 
       // Credit remaining product refund
+      let gatewayRefunded = 0;
       if (remainingProductRefund > 0) {
-        if (order.onlineAmountPaid && order.onlineAmountPaid > 0) {
-          matchedPayment = await Payment.findOne({
-            $or: [{ order: order._id }, { razorpayPaymentId: order.paymentId }]
-          }).session(session);
+        if (matchedPaymentPre && matchedPaymentPre.razorpayPaymentId) {
+          matchedPayment = matchedPaymentPre;
+          const gatewayRefundable = Math.max(0, round2((matchedPayment.amount || order.onlineAmountPaid || 0) - priorOnlineRefunded));
+          const razorpayRefundAmount = round2(Math.min(order.onlineAmountPaid || 0, gatewayRefundable, remainingProductRefund));
 
-          if (matchedPayment && matchedPayment.razorpayPaymentId) {
-            const razorpayRefundAmount = Math.min(order.onlineAmountPaid, remainingProductRefund);
+          if (razorpayRefundAmount > 0) {
+            // processRefund records the cumulative refund on the Payment itself
             const refundResult = await processRefund(
               matchedPayment._id.toString(),
               razorpayRefundAmount,
               `Return refund for order #${order.orderNumber}`,
-              session
+              session,
+              `RETURN_${returnReq._id.toString()}`
             );
 
             if (refundResult.success) {
+              gatewayRefunded = razorpayRefundAmount;
               refundDetails.razorpayRefundAmount = razorpayRefundAmount;
               refundDetails.refundResult = refundResult.data;
-              matchedPayment.refundAmount = (matchedPayment.refundAmount || 0) + razorpayRefundAmount;
-              if (matchedPayment.refundAmount >= order.total) {
-                matchedPayment.status = "Refunded";
+              const refreshedPayment = await Payment.findById(matchedPayment._id).session(session);
+              if (refreshedPayment && refreshedPayment.status === "Refunded") {
                 order.paymentStatus = "Refunded";
+                await order.save({ session });
               }
-              matchedPayment.refundedAt = new Date();
-              matchedPayment.refundReason = `Return refund: ${returnReq.reason}`;
-              await matchedPayment.save({ session });
-              await order.save({ session });
             } else {
               console.warn(`[RETURN REFUND] Razorpay refund note: ${refundResult.message}`);
             }
           }
         }
+      }
 
-        // ALWAYS credit Customer Wallet for the return refund so the customer receives the in-app wallet balance
+      // Whatever was NOT refunded to the gateway goes to the customer wallet (COD orders,
+      // gateway failure). Previously the wallet was ALWAYS credited the full remainder, so
+      // online customers were refunded twice (bank + wallet); and because it reused the
+      // wallet-portion reference, COD customers who had also used wallet lost the remainder.
+      const walletRemainder = round2(remainingProductRefund - gatewayRefunded);
+      if (walletRemainder > 0) {
         const targetCustomerId = (order.customer || returnReq.customer)?.toString();
         if (targetCustomerId) {
-          console.log(`[RETURN REFUND] Return ID: ${returnReq._id}, Customer ID: ${targetCustomerId}, Order ID: ${order._id}, Refund Amount: ₹${remainingProductRefund}`);
-          console.log(`[RETURN REFUND] Wallet Credit Started`);
+          console.log(`[RETURN REFUND] Return ID: ${returnReq._id}, Customer ID: ${targetCustomerId}, Order ID: ${order._id}, Wallet Refund Amount: ₹${walletRemainder}`);
           const custWalletRes = await creditWallet(
             targetCustomerId,
             "CUSTOMER",
-            remainingProductRefund,
+            walletRemainder,
             `Return refund for order #${order.orderNumber}`,
             order._id.toString(),
             undefined,
             session,
-            `RETURN_REFUND_WALLET_${returnReq._id.toString()}`,
+            `RETURN_REFUND_WALLET_REMAINDER_${returnReq._id.toString()}`,
             "COD_RETURN_REFUND",
             returnReq._id.toString()
           );
@@ -527,7 +566,7 @@ export const executeReturnRefundAndReversal = async (
             throw new Error(`Failed to credit customer wallet return refund: ${custWalletRes.message}`);
           }
           console.log(`[RETURN REFUND] Wallet Credit Successful. Transaction ID: ${custWalletRes.data?.transactionId}`);
-          refundDetails.codWalletRefundAmount = remainingProductRefund;
+          refundDetails.codWalletRefundAmount = walletRemainder;
         }
       }
 

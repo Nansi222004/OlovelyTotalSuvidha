@@ -89,6 +89,8 @@ export interface OrderDetail {
   normalShippingAmount?: number;
   shippingDiscount?: number;
   platformFee?: number;
+  tipAmount?: number;
+  giftPackagingFee?: number;
   discount?: number;
   couponCode?: string;
   orderTotal?: number;
@@ -213,13 +215,18 @@ export const assignDeliveryBoySeller = async (orderId: string, deliveryBoyId: st
 export interface SellerCODBreakdown {
   orderId: string;
   orderNumber: string;
-  adminProductCommission: number;
-  platformFee: number;
-  totalDeliveryCharge: number;
-  deliveryBoyCommission: number;
-  isSelfAssign?: boolean;
-  totalAdminEarning: number;
+  paymentMethod?: string;
+  /** R-12: everything below is scoped to the requesting seller's own items only */
+  yourItemsTotal: number;
+  gstIncluded: number;
+  taxableValue: number;
+  yourCommission: number;
   yourEarning: number;
+  settlement?: { pending: number; onHold: number; paid: number; cancelled: number; holdUntil?: string };
+  /** @deprecated same as yourCommission (kept for older screens) */
+  adminProductCommission: number;
+  /** @deprecated same as yourCommission (kept for older screens) */
+  totalAdminEarning: number;
   note?: string;
 }
 
@@ -232,13 +239,18 @@ export const getOrderCODBreakdown = async (id: string): Promise<ApiResponse<Sell
 export interface SellerEarningBreakdown {
   orderId: string;
   orderNumber: string;
-  adminProductCommission: number;
-  platformFee: number;
-  totalDeliveryCharge: number;
-  deliveryBoyCommission: number;
-  isSelfAssign?: boolean;
-  totalAdminEarning: number;
+  paymentMethod?: string;
+  /** R-12: everything below is scoped to the requesting seller's own items only */
+  yourItemsTotal: number;
+  gstIncluded: number;
+  taxableValue: number;
+  yourCommission: number;
   yourEarning: number;
+  settlement?: { pending: number; onHold: number; paid: number; cancelled: number; holdUntil?: string };
+  /** @deprecated same as yourCommission (kept for older screens) */
+  adminProductCommission: number;
+  /** @deprecated same as yourCommission (kept for older screens) */
+  totalAdminEarning: number;
   note?: string;
 }
 

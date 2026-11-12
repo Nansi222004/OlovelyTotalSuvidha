@@ -812,13 +812,33 @@ export default function SellerOrderDetail() {
           </div>
           <div className="px-4 sm:px-6 py-4 space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-neutral-600">Admin (commission + platform fee):</span>
-              <span className="font-semibold text-teal-700">₹{(earningBreakdown.totalAdminEarning ?? 0).toFixed(2)}</span>
+              <span className="text-neutral-600">Your items (incl. GST):</span>
+              <span className="font-semibold">₹{(earningBreakdown.yourItemsTotal ?? 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-neutral-500">
+              <span>GST included (kept by you, remitted by you):</span>
+              <span>₹{(earningBreakdown.gstIncluded ?? 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-neutral-600">Olovely commission (on ₹{(earningBreakdown.taxableValue ?? 0).toFixed(2)} ex-GST):</span>
+              <span className="font-semibold text-teal-700">−₹{(earningBreakdown.yourCommission ?? 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-2">
               <span className="text-neutral-600">Your earning (this order):</span>
               <span className="font-semibold text-green-700">₹{(earningBreakdown.yourEarning ?? 0).toFixed(2)}</span>
             </div>
+            {earningBreakdown.settlement && (
+              <div className="text-xs text-neutral-600 space-y-0.5">
+                {earningBreakdown.settlement.pending > 0 && <div>Awaiting payment / cash: ₹{earningBreakdown.settlement.pending.toFixed(2)}</div>}
+                {earningBreakdown.settlement.onHold > 0 && (
+                  <div>
+                    Locked until return window ends: ₹{earningBreakdown.settlement.onHold.toFixed(2)}
+                    {earningBreakdown.settlement.holdUntil ? ` (${new Date(earningBreakdown.settlement.holdUntil).toLocaleDateString('en-IN')})` : ''}
+                  </div>
+                )}
+                {earningBreakdown.settlement.paid > 0 && <div className="text-green-700">Available in wallet: ₹{earningBreakdown.settlement.paid.toFixed(2)}</div>}
+              </div>
+            )}
             {earningBreakdown.note && (
               <p className="text-xs text-neutral-500">{earningBreakdown.note}</p>
             )}

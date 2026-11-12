@@ -13,6 +13,7 @@ import Delivery from "../../../models/Delivery";
 import {
   createRazorpayOrder,
   verifyPaymentSignature,
+  fetchGatewayPaidAmount,
 } from "../../../services/paymentService";
 import WalletTransaction from "../../../models/WalletTransaction";
 
@@ -79,7 +80,8 @@ export const createAdminPayoutOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const receipt = `PAYOUT-ADMIN-${Date.now()}`;
+    // Receipt binds the Razorpay order to this delivery partner (Razorpay limit: 40 chars).
+    const receipt = `PA-${deliveryBoyId}-${Date.now().toString(36)}`;
     const result = await createRazorpayOrder(receipt, amount);
 
     if (!result.success) {
@@ -106,8 +108,8 @@ export const verifyAdminPayout = async (req: Request, res: Response) => {
   try {
     const deliveryBoyId = req.user!.userId;
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-    // Ensure amount is a number and rounded
-    const amount = Math.round(Number(req.body.amount) * 100) / 100;
+    // Client-declared amount is only trusted for development mock payments.
+    let amount = Math.round(Number(req.body.amount) * 100) / 100;
 
     const isValid = verifyPaymentSignature(
       razorpayOrderId,
@@ -116,10 +118,33 @@ export const verifyAdminPayout = async (req: Request, res: Response) => {
     );
 
     if (!isValid) {
+      await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: "Invalid payment signature",
       });
+    }
+
+    // The signature does not cover the amount. Use what Razorpay actually captured,
+    // otherwise a partner could pay ₹1 and claim their whole COD debt as settled.
+    try {
+      const gateway = await fetchGatewayPaidAmount(
+        razorpayOrderId,
+        razorpayPaymentId,
+        `PA-${deliveryBoyId}-`,
+      );
+      if (gateway) amount = gateway.amount;
+    } catch (gwErr: any) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: gwErr?.message || "Unable to verify payout payment with gateway",
+      });
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await session.abortTransaction();
+      return res.status(400).json({ success: false, message: "Invalid payout amount" });
     }
 
     // Update delivery boy pendingAdminPayout

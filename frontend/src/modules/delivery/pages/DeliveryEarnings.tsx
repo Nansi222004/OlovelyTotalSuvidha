@@ -155,6 +155,10 @@ export default function DeliveryEarnings() {
           <p className="text-3xl font-bold mb-1">
             ₹ {stats?.totalEarning?.toFixed(2) || "0.00"}
           </p>
+          {/* B-1: customer tips (100% yours) are credited to your wallet separately */}
+          <p className="text-orange-100 text-xs">
+            + Tips received: ₹ {Number((stats as any)?.totalTips || 0).toFixed(2)}
+          </p>
         </div>
 
         {/* Today's Earnings */}

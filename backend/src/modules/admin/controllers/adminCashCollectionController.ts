@@ -121,9 +121,11 @@ export const getCashCollectionById = asyncHandler(
  */
 export const createCashCollection = asyncHandler(
     async (req: Request, res: Response) => {
-        const { deliveryBoyId, orderId, amount, remark } = req.body;
+        const { deliveryBoyId, orderId, remark } = req.body;
+        // Coerce: a string amount ("500") previously string-concatenated into platform wallet totals.
+        const amount = Math.round(Number(req.body.amount) * 100) / 100;
 
-        if (!deliveryBoyId || !orderId || !amount) {
+        if (!deliveryBoyId || !orderId || !Number.isFinite(amount) || amount <= 0) {
             return res.status(400).json({
                 success: false,
                 message: "Delivery boy ID, order ID, and amount are required",
@@ -160,7 +162,7 @@ export const createCashCollection = asyncHandler(
         });
 
         // Update delivery boy's cash collected and debt
-        deliveryBoy.cashCollected = (deliveryBoy.cashCollected || 0) - amount;
+        deliveryBoy.cashCollected = Math.max(0, (deliveryBoy.cashCollected || 0) - amount);
         deliveryBoy.pendingAdminPayout = Math.max(0, (deliveryBoy.pendingAdminPayout || 0) - amount);
         await deliveryBoy.save();
 

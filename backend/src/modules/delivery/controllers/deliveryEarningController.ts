@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import WithdrawRequest from "../../../models/WithdrawRequest";
 import Delivery from "../../../models/Delivery";
 import AppSettings from "../../../models/AppSettings";
-import { debitWallet } from "../../../services/walletManagementService";
+import { createWithdrawalRequest } from "../../../services/walletManagementService";
 
 /**
  * Get Earnings History
@@ -23,13 +23,15 @@ export const getEarningsHistory = asyncHandler(async (req: Request, res: Respons
             $match: {
                 deliveryBoy: objectId,
                 type: "DELIVERY_BOY",
-                status: "Paid" // Only count paid commissions? Or all? Usually Paid.
+                // Same basis as the delivery dashboard (rider earnings are credited when created)
+                status: { $ne: "Cancelled" }
             }
         },
         {
             $group: {
                 _id: {
-                    $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+                    // IST business day (UTC grouping put 00:00–05:30 IST deliveries on the previous day)
+                    $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Asia/Kolkata" }
                 },
                 amount: { $sum: '$commissionAmount' },
                 deliveries: { $sum: 1 }
@@ -74,95 +76,29 @@ export const getEarningsHistory = asyncHandler(async (req: Request, res: Respons
  * Request Withdrawal
  */
 export const requestWithdrawal = asyncHandler(async (req: Request, res: Response) => {
-    const deliveryId = req.user?.userId;
-    const { amount } = req.body;
-
-    // 1. Get Delivery Profile & Balance
-    const deliveryBoy = await Delivery.findById(deliveryId);
+    // Delegates to the shared withdrawal service used by /delivery/wallet/withdraw and sellers.
+    // Previously this endpoint debited the balance at REQUEST time while admin "Complete" debits
+    // again (double debit), and a rejected request was never refunded.
+    const deliveryId = req.user?.userId as string;
+    const deliveryBoy = await Delivery.findById(deliveryId).select("balance");
     if (!deliveryBoy) {
         return res.status(404).json({ success: false, message: "Delivery profile not found" });
     }
 
-    if (deliveryBoy.balance <= 0) {
-        return res.status(400).json({ success: false, message: "Insufficient balance for withdrawal" });
+    // Amount defaults to the full available balance (existing behaviour of this endpoint)
+    const raw = req.body?.amount;
+    const withdrawalAmount = Math.round(Number(raw === undefined || raw === null || raw === "" ? deliveryBoy.balance : raw) * 100) / 100;
+    if (!Number.isFinite(withdrawalAmount) || withdrawalAmount <= 0) {
+        return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
     }
 
-    // Amount Validation
-    let withdrawalAmount = deliveryBoy.balance; // Default to full balance
-
-    if (amount) {
-        withdrawalAmount = Number(amount);
-        if (isNaN(withdrawalAmount) || withdrawalAmount <= 0) {
-            return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
-        }
-
-        if (withdrawalAmount > deliveryBoy.balance) {
-            return res.status(400).json({ success: false, message: "Insufficient balance" });
-        }
+    const result = await createWithdrawalRequest(deliveryId, "DELIVERY_BOY", withdrawalAmount, "Bank Transfer");
+    if (!result.success) {
+        return res.status(400).json(result);
     }
-
-    // 2. Check Bank Details
-    if (!deliveryBoy.accountName || !deliveryBoy.accountNumber || !deliveryBoy.ifscCode) {
-        return res.status(400).json({
-            success: false,
-            message: "Please update your bank details in profile before withdrawing"
-        });
-    }
-
-    // 3. Check Minimum Withdrawal Amount from Settings
-    const settings = await AppSettings.findOne();
-    const minAmount = settings?.minimumWithdrawalAmount || 100;
-
-    if (withdrawalAmount < minAmount) {
-        return res.status(400).json({
-            success: false,
-            message: `Minimum withdrawal amount is ₹${minAmount}`
-        });
-    }
-
-    // 4. Check for existing pending request
-    const existingRequest = await WithdrawRequest.findOne({
-        userId: deliveryBoy._id,
-        status: "Pending"
-    });
-
-    if (existingRequest) {
-        return res.status(400).json({
-            success: false,
-            message: "You already have a pending withdrawal request"
-        });
-    }
-
-    // 5. Deduct Balance Immediately
-    const debitResult = await debitWallet(
-        deliveryBoy._id.toString(),
-        "DELIVERY_BOY",
-        withdrawalAmount,
-        "Withdrawal Request"
-    );
-
-    if (!debitResult.success) {
-        return res.status(400).json({
-            success: false,
-            message: debitResult.message || "Failed to process withdrawal deduction"
-        });
-    }
-
-    // 6. Create Withdrawal Request
-    const accountDetails = `${deliveryBoy.bankName} - ${deliveryBoy.accountNumber} (${deliveryBoy.ifscCode})`;
-
-    const withdrawRequest = await WithdrawRequest.create({
-        userId: deliveryBoy._id,
-        userType: "DELIVERY_BOY",
-        amount: withdrawalAmount,
-        status: "Pending",
-        paymentMethod: "Bank Transfer",
-        accountDetails: accountDetails
-    });
-
     return res.status(201).json({
         success: true,
         message: "Withdrawal request submitted successfully",
-        data: withdrawRequest
+        data: (result as any).data,
     });
 });

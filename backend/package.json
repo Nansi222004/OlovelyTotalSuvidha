@@ -18,6 +18,7 @@
     "test:shiprocket-return-exchange": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketReturnExchange.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
     "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
+    "test:financial-audit": "node scripts/runTypeScriptTest.cjs src/scripts/testFinancialAuditRegressionIsolated.ts",
     "test:pos-isolated": "tsx src/scripts/testPosCheckoutIsolated.ts",
     "test:pos-invoice-ui": "tsx ../frontend/src/scripts/testPosInvoiceRendering.tsx",
     "test:pos-barcode": "node scripts/runTypeScriptTest.cjs src/scripts/testPosBarcodeIsolated.ts",

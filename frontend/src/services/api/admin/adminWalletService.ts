@@ -11,6 +11,28 @@ export interface WalletStats {
   deliveryPendingPayouts: number;
   pendingAmountFromDeliveryBoy: number;
   pendingWithdrawalsCount?: number;
+  /** B-6 KPI block (server: services/financeKpiService.ts) */
+  kpis?: {
+    orders: number;
+    gmv: number;
+    gstIncludedInGmv: number;
+    couponDiscount: number;
+    returnProductRefunds: number;
+    netSales: number;
+    netSalesExGst: number;
+    platformFees: number;
+    deliveryFees: number;
+    sellerCommissions: number;
+    riderEarnings: number;
+    courierCharges: number;
+    couponCostNet: number;
+    platformEarningsGross: number;
+    platformEarningsNet: number;
+    sellerEarnings: { total: number; pending: number; onHold: number; paid: number };
+    refunds: { gateway: number; wallet: number; total: number; returnRecords: number };
+    codPending: { riders: number; courier: number; courierReceived: number };
+    tips: { collected: number; creditedToRiders: number; notYetCredited: number };
+  };
 }
 
 export interface WalletTransaction {

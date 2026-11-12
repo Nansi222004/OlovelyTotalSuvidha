@@ -60,10 +60,24 @@ export const getCoupons = async (): Promise<GetCouponsResponse> => {
 /**
  * Validate a coupon code
  */
-export const validateCoupon = async (code: string, orderTotal: number): Promise<ValidateCouponResponse> => {
+export interface CouponCartLine {
+    productId: string;
+    total: number;
+}
+
+/**
+ * Pass `items` so the backend applies coupon scope (Product/Category/Seller)
+ * exactly as checkout will charge it.
+ */
+export const validateCoupon = async (
+    code: string,
+    orderTotal: number,
+    items?: CouponCartLine[],
+): Promise<ValidateCouponResponse> => {
     const response = await api.post<any>('/customer/coupons/validate', {
         code,
-        orderTotal
+        orderTotal,
+        ...(items && items.length > 0 ? { items } : {}),
     });
     
     if (response.data.success && response.data.data?.coupon) {

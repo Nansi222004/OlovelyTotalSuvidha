@@ -248,6 +248,9 @@ const AdminFundTransfer = lazyWithRetry(
 const AdminCashCollection = lazyWithRetry(
   () => import("./modules/admin/pages/AdminCashCollection"), "AdminCashCollection"
 );
+const AdminCourierCod = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminCourierCod"), "AdminCourierCod"
+);
 const AdminReturnRequest = lazyWithRetry(
   () => import("./modules/admin/pages/AdminReturnRequest"), "AdminReturnRequest"
 );
@@ -876,6 +879,10 @@ function App() {
                                       <Route
                                         path="delivery-boy/cash-collection"
                                         element={<AdminCashCollection />}
+                                      />
+                                      <Route
+                                        path="courier-cod"
+                                        element={<AdminCourierCod />}
                                       />
                                       <Route
                                         path="manage-location/seller-location"

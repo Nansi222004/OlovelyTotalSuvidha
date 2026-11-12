@@ -99,13 +99,21 @@ export const getDashboardStats = asyncHandler(
             .sort({ createdAt: -1 })
             .limit(10);
 
+        // Seller's own share of each order (Σ this seller's item totals). order.total includes other
+        // sellers' items, platform fee, delivery and tip, which the seller panel must not present as theirs.
+        const sellerItemTotals = await OrderItem.aggregate([
+            { $match: { seller: new mongoose.Types.ObjectId(sellerId), order: { $in: newOrders.map(o => o._id) } } },
+            { $group: { _id: "$order", total: { $sum: "$total" } } },
+        ]);
+        const sellerTotalByOrder = new Map(sellerItemTotals.map((r: any) => [r._id.toString(), Math.round(r.total * 100) / 100]));
+
         const formattedNewOrders = newOrders.map(order => ({
             id: order._id.toString(),
             orderId: order.orderNumber || order._id.toString(),
             orderNumber: order.orderNumber || order._id.toString(),
             orderDate: new Date(order.orderDate).toLocaleDateString('en-GB'),
             status: order.status === 'Out for Delivery' ? 'Out For Delivery' : order.status,
-            amount: order.total, // Use total instead of grandTotal (check Schema)
+            amount: sellerTotalByOrder.get(order._id.toString()) ?? 0,
         }));
 
         // 4. Chart Data (Last 12 months)
@@ -116,8 +124,9 @@ export const getDashboardStats = asyncHandler(
                     _id: { $in: sellerOrderIds.map(id => new mongoose.Types.ObjectId(id)) },
                     status: { $ne: "Pending" },
                     orderDate: {
-                        $gte: new Date(`${currentYear}-01-01`),
-                        $lte: new Date(`${currentYear}-12-31`)
+                        $gte: new Date(currentYear, 0, 1),
+                        // exclusive upper bound: `$lte 12-31T00:00Z` dropped 31 December
+                        $lt: new Date(currentYear + 1, 0, 1)
                     }
                 }
             },
@@ -145,7 +154,8 @@ export const getDashboardStats = asyncHandler(
                     status: { $ne: "Pending" },
                     orderDate: {
                         $gte: new Date(currentYear, currentMonth, 1),
-                        $lte: new Date(currentYear, currentMonth + 1, 0)
+                        // exclusive upper bound: previously `$lte last-day 00:00` dropped the last day's orders
+                        $lt: new Date(currentYear, currentMonth + 1, 1)
                     }
                 }
             },

@@ -92,14 +92,18 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
     const platformFee = orderDetail.invoiceChannel || isMultiSeller ? 0 : (orderDetail.platformFee || 0);
     const discount = orderDetail.invoiceChannel || isMultiSeller ? 0 : (orderDetail.discount || 0);
     const taxAmount = orderDetail.taxIncluded ?? (isMultiSeller ? 0 : (orderDetail.tax || 0));
+    // Tip and gift packaging are part of order.total (order-level, not seller-scoped)
+    const tipAmount = orderDetail.invoiceChannel || isMultiSeller ? 0 : Math.max(0, Number(orderDetail.tipAmount) || 0);
+    const giftPackagingFee = orderDetail.invoiceChannel || isMultiSeller ? 0 : Math.max(0, Number(orderDetail.giftPackagingFee) || 0);
 
-    // Authoritative grand total: strictly seller-scoped for multi-seller, order-snapshot for single-seller
+    // Authoritative grand total: strictly seller-scoped for multi-seller, order-snapshot for single-seller.
+    // GST is inclusive in item prices, so it is never added.
     const computedGrandTotal = orderDetail.invoiceChannel
       ? itemsSubtotal + shippingCharge
       : isMultiSeller
       ? itemsSubtotal + shippingCharge
       : (orderDetail.orderGrandTotal || orderDetail.grandTotal || (
-          itemsSubtotal + shippingCharge + platformFee + taxAmount - discount
+          itemsSubtotal + shippingCharge + platformFee + tipAmount + giftPackagingFee - discount
         ));
 
     const renderItemRows = (items: OrderItem[], startIndex: number) => {
@@ -399,6 +403,20 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
                   Discount {orderDetail.couponCode ? `(${orderDetail.couponCode})` : ''}:
                 </span>
                 <span>-{formatCurrency(discount)}</span>
+              </div>
+            )}
+
+            {tipAmount > 0 && (
+              <div className="flex justify-between text-neutral-700">
+                <span>Delivery Partner Tip:</span>
+                <span className="font-semibold text-neutral-900">{formatCurrency(tipAmount)}</span>
+              </div>
+            )}
+
+            {giftPackagingFee > 0 && (
+              <div className="flex justify-between text-neutral-700">
+                <span>Gift Packaging:</span>
+                <span className="font-semibold text-neutral-900">{formatCurrency(giftPackagingFee)}</span>
               </div>
             )}
 

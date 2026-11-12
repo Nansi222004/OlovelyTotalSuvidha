@@ -1440,7 +1440,11 @@ export default function OrderDetail() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold text-gray-900">
-                  Payment of ₹{order.totalAmount?.toFixed(0) || order.total?.toFixed(0) || "0"} pending
+                  Payment of ₹{Number(
+                    order.paymentMethod === "COD" && Number(order.codAmountPending) > 0
+                      ? order.codAmountPending
+                      : Math.max(0, (order.totalAmount || order.total || 0) - (order.walletAmountUsed || 0)),
+                  ).toFixed(2)} pending
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
                   Pay now, or pay to the delivery partner using Cash/UPI
@@ -1480,10 +1484,8 @@ export default function OrderDetail() {
           </motion.div>
         )}
 
-        {/* Tip Section - Only for active orders */}
-        {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
-          <TipSection />
-        )}
+        {/* Post-order tip widget removed: it never submitted a tip (no API), so customers were told
+            their rider would get money that was never charged or paid. Tips are taken at checkout (B-1). */}
 
         {/* Delivery Partner Safety - Only for active orders */}
         {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
@@ -2166,9 +2168,13 @@ export default function OrderDetail() {
         <RazorpayCheckout
           orderId={order._id || order.id || id!}
           amount={
-            order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0
-              ? order.onlineAmountPaid
-              : (order.totalAmount || order.total || 0)
+            // Same rule as POST /payments/create-order (getOnlineAmountDue): amount due online;
+            // the server decides the real charge, this is only the widget's display amount.
+            Number(order.onlineAmountDue) > 0
+              ? Number(order.onlineAmountDue)
+              : order.paymentStatus !== "Paid" && Number(order.onlineAmountPaid) > 0
+                ? Number(order.onlineAmountPaid)
+                : Math.max(0, (order.totalAmount || order.total || 0) - (order.walletAmountUsed || 0))
           }
           customerDetails={{
             name: user?.name || order.customerName || order.address?.name || "Customer",

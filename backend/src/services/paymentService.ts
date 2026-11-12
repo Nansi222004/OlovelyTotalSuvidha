@@ -3,8 +3,25 @@ import crypto from 'crypto';
 import Payment from '../models/Payment';
 import Order from '../models/Order';
 import mongoose from 'mongoose';
+import { getOnlineAmountDue } from './financeMath';
 
 let transactionsSupported: boolean | null = null;
+
+/**
+ * Mock payments (order_mock_/pay_mock_/sig_mock_ identifiers) are a development aid only.
+ * They must NEVER be accepted in production: otherwise any client can mark an order Paid
+ * (or clear a delivery partner's COD debt) by sending a "pay_mock_..." id.
+ */
+export const isMockPaymentAllowed = (): boolean => process.env.NODE_ENV !== 'production';
+
+const isMockIdentifier = (razorpayOrderId?: string, razorpayPaymentId?: string, razorpaySignature?: string) =>
+    Boolean(
+        (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) ||
+        (razorpayPaymentId && razorpayPaymentId.startsWith('pay_mock_')) ||
+        (razorpaySignature && razorpaySignature.startsWith('sig_mock_'))
+    );
+
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Initialize Razorpay instance
 const getRazorpayInstance = () => {
@@ -59,7 +76,7 @@ export const createRazorpayOrder = async (
         
         // Fallback for development/testing if Razorpay key is invalid, revoked, or unauthenticated or USE_MOCK_PAYMENT is true
         const isAuthError = error?.statusCode === 401 || error?.error?.code === 'BAD_REQUEST_ERROR' || (error?.message && String(error.message).includes('Authentication failed'));
-        if (process.env.USE_MOCK_PAYMENT === 'true' || isAuthError) {
+        if (isMockPaymentAllowed() && (process.env.USE_MOCK_PAYMENT === 'true' || isAuthError)) {
             if (isAuthError) {
                 console.warn('⚠️ [Payment] Razorpay credentials in backend/.env failed authentication (401). Falling back to mock payment.');
                 console.warn('💡 To display the official Razorpay Test Checkout popup (UPI/Card/Netbanking), update RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET in backend/.env with active test keys from https://dashboard.razorpay.com/#/app/keys.');
@@ -94,12 +111,9 @@ export const verifyPaymentSignature = (
     razorpaySignature: string
 ): boolean => {
     try {
-        if (
-            (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) ||
-            (razorpayPaymentId && razorpayPaymentId.startsWith('pay_mock_')) ||
-            (razorpaySignature && razorpaySignature.startsWith('sig_mock_'))
-        ) {
-            return true;
+        if (isMockIdentifier(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+            // Never trust mock identifiers outside development/test.
+            return isMockPaymentAllowed();
         }
 
         const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -121,6 +135,43 @@ export const verifyPaymentSignature = (
     }
 };
 
+
+/**
+ * Ask Razorpay what was actually paid for (razorpayOrderId, razorpayPaymentId).
+ * Returns null for allowed mock payments (development only). Throws when the payment
+ * cannot be confirmed, is not captured, or does not belong to the given Razorpay order.
+ */
+export const fetchGatewayPaidAmount = async (
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    expectedReceiptPrefix?: string
+): Promise<{ amount: number; receipt: string } | null> => {
+    if (isMockIdentifier(razorpayOrderId, razorpayPaymentId)) {
+        if (!isMockPaymentAllowed()) throw new Error('Mock payments are not accepted');
+        return null;
+    }
+    const razorpay = getRazorpayInstance();
+    const [payDetails, rzpOrder]: any[] = await Promise.all([
+        razorpay.payments.fetch(razorpayPaymentId),
+        razorpay.orders.fetch(razorpayOrderId),
+    ]);
+    if (payDetails?.order_id !== razorpayOrderId) {
+        throw new Error('Payment does not belong to this payment order');
+    }
+    const receipt = String(rzpOrder?.receipt || '');
+    if (expectedReceiptPrefix && !receipt.startsWith(expectedReceiptPrefix)) {
+        throw new Error('Payment order does not belong to this account');
+    }
+    let status = payDetails.status;
+    if (status === 'authorized') {
+        await razorpay.payments.capture(razorpayPaymentId, Number(payDetails.amount), 'INR');
+        status = 'captured';
+    }
+    if (status !== 'captured') {
+        throw new Error(`Payment is not captured (status: ${status})`);
+    }
+    return { amount: round2(Number(payDetails.amount) / 100), receipt };
+};
 
 /**
  * Capture payment and update order
@@ -167,6 +218,52 @@ export const capturePayment = async (
         };
     }
 
+    // A valid signature only proves (razorpayOrderId, razorpayPaymentId) belong together.
+    // It does NOT prove they belong to *this* Olovely order, nor that the right amount was paid.
+    // Without the checks below a customer could replay the signature of a cheap paid order
+    // to mark an expensive order as Paid.
+    const conflictingPayment = await Payment.findOne({
+        $or: [{ razorpayPaymentId }, { razorpayOrderId }],
+        order: { $ne: existingOrder._id },
+    });
+    if (conflictingPayment) {
+        console.error(`❌ [PAYMENT VERIFY FAILED] Razorpay payment ${razorpayPaymentId} already belongs to order ${conflictingPayment.order}, not ${orderId}`);
+        return { success: false, message: 'Payment does not belong to this order' };
+    }
+
+    const expectedPayable = getOnlineAmountDue(existingOrder);
+
+    let payStatus = 'captured';
+    if (!isMockIdentifier(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+        try {
+            const razorpay = getRazorpayInstance();
+            const [payDetails, rzpOrder]: any[] = await Promise.all([
+                razorpay.payments.fetch(razorpayPaymentId),
+                razorpay.orders.fetch(razorpayOrderId),
+            ]);
+            const rzpOrderRef = String(rzpOrder?.receipt || rzpOrder?.notes?.orderId || '');
+            if (payDetails?.order_id !== razorpayOrderId || rzpOrderRef !== String(orderId)) {
+                return { success: false, message: 'Payment does not belong to this order' };
+            }
+            if (Number(payDetails.amount) + 1 < Math.round(expectedPayable * 100)) {
+                return { success: false, message: 'Paid amount is less than the order payable amount' };
+            }
+            payStatus = payDetails.status;
+            if (payDetails.status === 'authorized') {
+                await razorpay.payments.capture(razorpayPaymentId, Number(payDetails.amount), 'INR');
+                payStatus = 'captured';
+            }
+            if (payStatus !== 'captured') {
+                return { success: false, message: `Payment is not captured (status: ${payStatus})` };
+            }
+        } catch (apiErr: any) {
+            // Fail closed: if Razorpay cannot confirm the payment, the order stays unpaid.
+            // The payment.captured webhook will still mark it Paid once Razorpay confirms.
+            console.error(`❌ [Razorpay API] Could not verify payment ${razorpayPaymentId}:`, apiErr?.message || apiErr);
+            return { success: false, message: 'Unable to verify payment with gateway. Please retry shortly.' };
+        }
+    }
+
     const maxRetries = 3;
     let attempt = 0;
 
@@ -202,27 +299,7 @@ export const capturePayment = async (
                 };
             }
 
-            const payableAmount = (order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0)
-                ? order.onlineAmountPaid
-                : (order.walletAmountUsed ? Math.max(0, order.total - order.walletAmountUsed) : order.total);
-
-            // Explicitly verify & capture on Razorpay API if real payment
-            let payStatus = 'captured';
-            if (razorpayPaymentId && !razorpayPaymentId.startsWith('pay_mock_')) {
-                try {
-                    const razorpay = getRazorpayInstance();
-                    const payDetails = await razorpay.payments.fetch(razorpayPaymentId);
-                    payStatus = payDetails.status;
-                    console.log(`ℹ️ [Razorpay API] Fetched payment ${razorpayPaymentId} status: ${payDetails.status}`);
-                    if (payDetails.status === 'authorized') {
-                        await razorpay.payments.capture(razorpayPaymentId, Math.round(payableAmount * 100), 'INR');
-                        payStatus = 'captured';
-                        console.log(`✅ [Razorpay API] Explicitly captured authorized payment ${razorpayPaymentId} for ₹${payableAmount}`);
-                    }
-                } catch (apiErr: any) {
-                    console.warn(`⚠️ [Razorpay API] Fetch/Capture warning for ${razorpayPaymentId}:`, apiErr?.message || apiErr);
-                }
-            }
+            const payableAmount = getOnlineAmountDue(order);
 
             console.log(`\n[PAYMENT VERIFY]\nOrder ID: ${orderId}\nRazorpay Order ID: ${razorpayOrderId}\nRazorpay Payment ID: ${razorpayPaymentId}\nRazorpay Payment Status: ${payStatus}`);
 
@@ -377,105 +454,163 @@ export const capturePayment = async (
 
 
 /**
- * Process refund
+ * R-06: gateway refund with durable idempotency.
+ *
+ * Callers run inside retryable Mongo transactions, but a gateway refund cannot be rolled back.
+ * Every attempt is therefore recorded in GatewayRefundIntent OUTSIDE the caller's transaction:
+ *   - SUCCEEDED intent for this key → Razorpay is never called again; the refund is only
+ *     (re-)applied to the Payment if the caller's view does not include it yet
+ *   - INITIATED/FAILED intent with earlier attempts → Razorpay's refunds for the payment are
+ *     searched by receipt / notes.idempotency_key first, and a match is adopted
+ * The Payment's cumulative refundAmount is written in the caller's session, so an aborted
+ * attempt is simply re-applied on retry with no second gateway refund.
+ *
+ * `idempotencyKey` must identify the business event (RETURN_<returnId>, CANCEL_<orderId>).
  */
+const refundReceiptFor = (key: string) =>
+    key.length <= 40 ? key : `RF_${crypto.createHash('sha1').update(key).digest('hex').slice(0, 32)}`;
+
 export const processRefund = async (
     paymentId: string,
     amount?: number,
     reason?: string,
-    session?: mongoose.ClientSession
-) => {
+    session?: mongoose.ClientSession,
+    idempotencyKey?: string,
+): Promise<{ success: boolean; message: string; data?: { refundId?: string; amount?: number } }> => {
     try {
         const payment = session ? await Payment.findById(paymentId).session(session) : await Payment.findById(paymentId);
-        if (!payment) {
-            throw new Error(`Payment record not found for ID: ${paymentId}`);
-        }
+        if (!payment) throw new Error(`Payment record not found for ID: ${paymentId}`);
+        if (!payment.razorpayPaymentId) throw new Error(`Razorpay payment ID missing on payment record: ${paymentId}`);
 
-        if (!payment.razorpayPaymentId) {
-            throw new Error(`Razorpay payment ID missing on payment record: ${paymentId}`);
-        }
+        const alreadyRefunded = round2(payment.refundAmount || 0);
+        const refundableRemaining = round2(payment.amount - alreadyRefunded);
+        const requested = round2(amount || refundableRemaining);
+        // Deterministic fallback: the same payment state + amount gives the same key on a retry.
+        const key = idempotencyKey || `PAY_${paymentId}_CUM_${Math.round(alreadyRefunded * 100)}_AMT_${Math.round(requested * 100)}`;
 
-        // Pre-check: Idempotency
+        const { default: GatewayRefundIntent } = await import('../models/GatewayRefundIntent');
+
+        const applyToPayment = async (refundId: string, amt: number) => {
+            const cumulative = round2(alreadyRefunded + amt);
+            if (cumulative >= round2(payment.amount) - 0.01) payment.status = 'Refunded';
+            payment.refundId = refundId;
+            payment.refundAmount = cumulative;
+            payment.refundedAt = new Date();
+            payment.refundReason = reason;
+            if (session) await payment.save({ session }); else await payment.save();
+            GatewayRefundIntent.updateOne({ key }, { $set: { appliedToPaymentAt: new Date() } }).catch(() => undefined);
+        };
+
+        let intent = await GatewayRefundIntent.findOne({ key });
+        const resolveSucceeded = async (it: any) => {
+            // Refund totals only grow, so the Payment already includes this refund iff it reached
+            // the cumulative total recorded when the intent was created.
+            if (alreadyRefunded + 0.01 < round2(it.cumulativeAfter ?? alreadyRefunded + it.amount)) {
+                await applyToPayment(it.gatewayRefundId, it.amount);
+            }
+            return { success: true, message: 'Refund already processed (idempotent)', data: { refundId: it.gatewayRefundId, amount: it.amount } };
+        };
+        if (intent && intent.status === 'SUCCEEDED') return resolveSucceeded(intent);
+
         if (payment.status === 'Refunded') {
-            console.log(`ℹ️ [RAZORPAY REFUND] Payment ${paymentId} is already marked Refunded. Skipping duplicate refund.`);
             return {
                 success: true,
                 message: 'Payment is already marked Refunded (Idempotent)',
-                data: {
-                    refundId: payment.refundId || `rfnd_existing_${payment._id}`,
-                    amount: payment.refundAmount || payment.amount,
-                },
+                data: { refundId: payment.refundId || `rfnd_existing_${payment._id}`, amount: payment.refundAmount || payment.amount },
             };
         }
-
-        const refundAmount = amount || payment.amount;
-        if (!refundAmount || refundAmount <= 0) {
-            throw new Error(`Invalid refund amount: ₹${refundAmount}`);
+        if (!requested || requested <= 0) throw new Error(`Invalid refund amount: ₹${requested}`);
+        if (requested > refundableRemaining + 0.01) {
+            throw new Error(`Refund amount ₹${requested} exceeds refundable balance ₹${refundableRemaining} on payment ${paymentId}`);
         }
 
-        const amountPaise = Math.round(refundAmount * 100);
+        if (!intent) {
+            try {
+                intent = await GatewayRefundIntent.create({
+                    key,
+                    payment: payment._id,
+                    order: payment.order,
+                    razorpayPaymentId: payment.razorpayPaymentId,
+                    amount: requested,
+                    cumulativeAfter: round2(alreadyRefunded + requested),
+                    status: 'INITIATED',
+                    reason,
+                });
+            } catch (e: any) {
+                if (e?.code !== 11000) throw e;
+                intent = await GatewayRefundIntent.findOne({ key });
+                if (intent?.status === 'SUCCEEDED') return resolveSucceeded(intent);
+            }
+        }
+        if (!intent) throw new Error(`Could not record refund intent ${key}`);
+        if (Math.abs(intent.amount - requested) > 0.01) {
+            throw new Error(`Refund key ${key} was first used for ₹${intent.amount}, not ₹${requested}`);
+        }
 
-        const isMockPayment = payment.razorpayPaymentId.startsWith('pay_mock_') || process.env.USE_MOCK_PAYMENT === 'true';
-        let refundId = `rfnd_mock_${Date.now()}`;
+        const amountPaise = Math.round(requested * 100);
+        const receipt = refundReceiptFor(key);
+        const isMockPayment = isMockPaymentAllowed() &&
+            (payment.razorpayPaymentId.startsWith('pay_mock_') || process.env.USE_MOCK_PAYMENT === 'true');
+        let refundId = '';
 
-        if (!isMockPayment) {
+        if (isMockPayment) {
+            refundId = `rfnd_mock_${receipt}`;
+        } else {
             const razorpay = getRazorpayInstance();
 
-            // 1. Fetch payment details from Razorpay to verify status
-            const payDetails = await razorpay.payments.fetch(payment.razorpayPaymentId);
-            console.log(`ℹ️ [Razorpay Refund Check] Payment ${payment.razorpayPaymentId} status: ${payDetails.status}`);
-
-            if (payDetails.status !== 'captured' && payDetails.status !== 'refunded') {
-                throw new Error(`Cannot refund payment ${payment.razorpayPaymentId}. Current Razorpay status is '${payDetails.status}' (expected 'captured')`);
+            // Recovery: an earlier attempt may have refunded at the gateway and then failed locally.
+            if (intent.attempts > 0) {
+                const existing: any = await (razorpay.payments as any).fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 });
+                const match = (existing?.items || []).find(
+                    (r: any) => r.receipt === receipt || r.notes?.idempotency_key === key,
+                );
+                if (match?.id) refundId = match.id;
             }
 
-            // 2. Call Razorpay Refund API
-            const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
-                amount: amountPaise,
-                notes: {
-                    reason: reason || 'Order cancelled by seller',
-                    orderId: payment.order?.toString() || '',
-                },
-            });
-
-            if (!refund || !refund.id) {
-                throw new Error(`Razorpay refund API call failed to return refund ID`);
+            if (!refundId) {
+                const payDetails = await razorpay.payments.fetch(payment.razorpayPaymentId);
+                if (payDetails.status !== 'captured' && payDetails.status !== 'refunded') {
+                    throw new Error(`Cannot refund payment ${payment.razorpayPaymentId}. Current Razorpay status is '${payDetails.status}' (expected 'captured')`);
+                }
+                await GatewayRefundIntent.updateOne({ key }, { $inc: { attempts: 1 } });
+                try {
+                    const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
+                        amount: amountPaise,
+                        receipt,
+                        notes: {
+                            reason: reason || 'Order refund',
+                            orderId: payment.order?.toString() || '',
+                            idempotency_key: key,
+                        },
+                    });
+                    if (!refund || !refund.id) throw new Error('Razorpay refund API call failed to return refund ID');
+                    refundId = refund.id;
+                } catch (gwErr: any) {
+                    await GatewayRefundIntent.updateOne(
+                        { key, status: { $ne: 'SUCCEEDED' } },
+                        { $set: { status: 'FAILED', lastError: String(gwErr?.message || gwErr?.error?.description || gwErr) } },
+                    );
+                    throw gwErr;
+                }
             }
-
-            refundId = refund.id;
         }
 
-        console.log(`\n[RAZORPAY REFUND]\nOrder ID: ${payment.order}\nRazorpay Payment ID: ${payment.razorpayPaymentId}\nRefund Amount: ₹${refundAmount}\nRefund Amount Paise: ${amountPaise}\nRazorpay Refund ID: ${refundId}\nRefund Status: Refunded`);
+        // Durable success record BEFORE touching the caller's transaction
+        await GatewayRefundIntent.updateOne({ key }, { $set: { status: 'SUCCEEDED', gatewayRefundId: refundId }, $unset: { lastError: 1 } });
 
-        // Update payment record only AFTER Razorpay API succeeds
-        payment.status = 'Refunded';
-        payment.refundId = refundId;
-        payment.refundAmount = refundAmount;
-        payment.refundedAt = new Date();
-        payment.refundReason = reason;
+        console.log(`\n[RAZORPAY REFUND]\nOrder ID: ${payment.order}\nRazorpay Payment ID: ${payment.razorpayPaymentId}\nRefund Amount: ₹${requested}\nRazorpay Refund ID: ${refundId}\nKey: ${key}`);
+        await applyToPayment(refundId, requested);
 
-        if (session) {
-            await payment.save({ session });
-        } else {
-            await payment.save();
-        }
-
-        return {
-            success: true,
-            message: 'Refund processed successfully',
-            data: {
-                refundId,
-                amount: refundAmount,
-            },
-        };
+        return { success: true, message: 'Refund processed successfully', data: { refundId, amount: requested } };
     } catch (error: any) {
-        console.error('❌ [RAZORPAY REFUND ERROR]:', error.message || error);
+        console.error('❌ [RAZORPAY REFUND ERROR]:', error?.message || error?.error?.description || error);
         return {
             success: false,
-            message: error.message || 'Failed to process Razorpay refund',
+            message: error?.message || error?.error?.description || 'Failed to process Razorpay refund',
         };
     }
 };
+
 
 /**
  * Handle Razorpay webhook
@@ -483,7 +618,8 @@ export const processRefund = async (
 export const handleWebhook = async (
     body: any,
     signature: string,
-    io?: any
+    io?: any,
+    rawBody?: string
 ): Promise<{ success: boolean; message: string }> => {
     try {
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -492,13 +628,15 @@ export const handleWebhook = async (
             throw new Error('Razorpay webhook secret not configured');
         }
 
-        // Verify webhook signature
+        // Verify webhook signature over the exact bytes Razorpay sent (fallback: re-serialised JSON)
         const expectedSignature = crypto
             .createHmac('sha256', webhookSecret)
-            .update(JSON.stringify(body))
+            .update(rawBody ?? JSON.stringify(body))
             .digest('hex');
 
-        if (expectedSignature !== signature) {
+        const sigBuf = Buffer.from(String(signature || ''), 'utf8');
+        const expBuf = Buffer.from(expectedSignature, 'utf8');
+        if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
             throw new Error('Invalid webhook signature');
         }
 
@@ -524,7 +662,7 @@ export const handleWebhook = async (
             case 'refund.processed':
                 // Refund was created or processed
                 if (body.payload?.refund?.entity) {
-                    await handleRefundCreated(body.payload.refund.entity);
+                    await handleRefundCreated(body.payload.refund.entity, body.payload?.payment?.entity);
                 }
                 break;
 
@@ -592,6 +730,12 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
             return;
         }
 
+        // R-09: record what the gateway actually captured (paise → ₹), never order.total
+        // (order.total includes any wallet-funded part).
+        const capturedAmount = Number.isFinite(Number(payload.amount)) && Number(payload.amount) > 0
+            ? round2(Number(payload.amount) / 100)
+            : getOnlineAmountDue(order);
+
         // Create or update Payment record
         if (!payment) {
             payment = new Payment({
@@ -601,7 +745,7 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
                 paymentGateway: 'Razorpay',
                 razorpayOrderId,
                 razorpayPaymentId,
-                amount: order.total,
+                amount: capturedAmount,
                 currency: 'INR',
                 status: 'Completed',
                 paidAt: new Date(),
@@ -627,6 +771,8 @@ const handlePaymentCaptured = async (payload: any, io?: any) => {
         const prevPaymentStatus = order.paymentStatus;
         order.paymentStatus = 'Paid';
         order.paymentId = razorpayPaymentId;
+        order.onlineAmountPaid = capturedAmount;
+        order.codAmountPending = 0;
         if (order.status === 'Pending') {
             order.status = 'Received';
         }
@@ -706,8 +852,9 @@ const handlePaymentFailed = async (payload: any) => {
         });
 
         if (payment) {
-            // Idempotency: skip if already Failed
-            if (payment.status === 'Failed') {
+            // Idempotency: skip if already Failed. A captured/refunded payment can never "fail" later
+            // (late or out-of-order event for an earlier attempt).
+            if (payment.status === 'Failed' || payment.status === 'Completed' || payment.status === 'Refunded') {
                 return;
             }
             payment.status = 'Failed';
@@ -718,9 +865,12 @@ const handlePaymentFailed = async (payload: any) => {
             };
             await payment.save();
 
-            // Update order and restore inventory atomically
+            // Update order and restore inventory atomically.
+            // Razorpay emits payment.failed for every failed attempt; a later attempt on the
+            // same checkout can still succeed, and webhooks can arrive out of order. Never
+            // cancel an order that is already Paid.
             const order = await Order.findById(payment.order);
-            if (order && order.paymentStatus !== 'Failed') {
+            if (order && order.paymentStatus !== 'Failed' && order.paymentStatus !== 'Paid') {
                 order.paymentStatus = 'Failed';
                 order.status = 'Cancelled';
                 if (order.fulfillmentGroups) {
@@ -781,7 +931,7 @@ const handlePaymentFailed = async (payload: any) => {
     }
 };
 
-const handleRefundCreated = async (payload: any) => {
+const handleRefundCreated = async (payload: any, paymentEntity?: any) => {
     try {
         const razorpayPaymentId = payload.payment_id;
 
@@ -793,16 +943,31 @@ const handleRefundCreated = async (payload: any) => {
             if (payment.status === 'Refunded') {
                 return;
             }
-            payment.status = 'Refunded';
-            payment.refundAmount = payload.amount / 100; // Convert from paise
+            // Partial refunds (item returns) are common. Use the gateway's cumulative
+            // amount_refunded when available; never shrink what we already recorded.
+            const gatewayCumulative = paymentEntity?.amount_refunded != null
+                ? Number(paymentEntity.amount_refunded) / 100
+                : Number(payload.amount || 0) / 100;
+            const cumulative = round2(Math.max(payment.refundAmount || 0, gatewayCumulative));
+            const isFullRefund = cumulative >= round2(payment.amount) - 0.01;
+            payment.refundAmount = cumulative;
             payment.refundedAt = new Date();
+            if (isFullRefund) payment.status = 'Refunded';
             await payment.save();
 
-            // Update order
-            const updatedOrder = await Order.findByIdAndUpdate(payment.order, {
-                paymentStatus: 'Refunded',
-                status: 'Cancelled',
-            }, { new: true });
+            if (!isFullRefund) {
+                console.log(`ℹ️ [REFUND WEBHOOK] Partial refund recorded for payment ${payment._id}: ₹${cumulative} of ₹${payment.amount}. Order status unchanged.`);
+                return;
+            }
+
+            // A full refund must never "un-deliver" an order: delivered/returned orders keep
+            // their fulfillment status; only pre-delivery orders become Cancelled.
+            const currentOrder = await Order.findById(payment.order).select('status');
+            const orderUpdate: any = { paymentStatus: 'Refunded' };
+            if (currentOrder && !['Delivered', 'Returned'].includes(currentOrder.status)) {
+                orderUpdate.status = 'Cancelled';
+            }
+            const updatedOrder = await Order.findByIdAndUpdate(payment.order, orderUpdate, { new: true });
 
             console.log(`\n[REFUND WEBHOOK ORDER UPDATE]\nRefund ID: ${payload.id || 'N/A'}\nPayment ID: ${payment._id}\nOrder ID: ${payment.order}\npayment.status: ${payment.status}\norder.status: ${updatedOrder?.status}\norder.paymentStatus: ${updatedOrder?.paymentStatus}`);
         }

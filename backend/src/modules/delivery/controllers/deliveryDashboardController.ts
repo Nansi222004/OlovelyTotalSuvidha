@@ -101,6 +101,8 @@ export const getDashboardStats = asyncHandler(
         $match: {
           deliveryBoy: objectId,
           type: "DELIVERY_BOY",
+          // Same basis as the Earnings screen: cancelled earnings are not earnings
+          status: { $ne: "Cancelled" },
         },
       },
       {
@@ -231,6 +233,27 @@ export const getDashboardStats = asyncHandler(
       console.error("Error fetching return pickup count:", err);
     }
 
+    // B-1: tips are 100% the rider's and are credited to the wallet separately from delivery
+    // commissions, so they are reported separately (wallet = commissions + tips - withdrawals).
+    const [tipAgg] = await Order.aggregate([
+      { $match: { tipCreditedTo: objectId, tipCreditedAt: { $ne: null } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $ifNull: ["$tipAmount", 0] } },
+          today: {
+            $sum: {
+              $cond: [
+                { $and: [{ $gte: ["$tipCreditedAt", todayStart] }, { $lte: ["$tipCreditedAt", todayEnd] }] },
+                { $ifNull: ["$tipAmount", 0] },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -242,6 +265,8 @@ export const getDashboardStats = asyncHandler(
         returnItems: activeReturnPickupsCount,
         todayEarning: todayEarning,
         totalEarning: totalEarning,
+        totalTips: Math.round((tipAgg?.total || 0) * 100) / 100,
+        todayTips: Math.round((tipAgg?.today || 0) * 100) / 100,
         walletBalance: walletBalance,
         todayDeliveredCount,
         totalDeliveredCount: completedQcAssignments.length,

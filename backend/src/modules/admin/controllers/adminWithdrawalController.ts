@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import WithdrawRequest from '../../../models/WithdrawRequest';
-import { debitWallet } from '../../../services/walletManagementService';
+import { debitWallet, releaseWithdrawalReservation } from '../../../services/walletManagementService';
 import mongoose from 'mongoose';
 import PlatformWallet from '../../../models/PlatformWallet';
 
@@ -70,10 +70,16 @@ export const approveWithdrawal = async (req: Request, res: Response) => {
             });
         }
 
+        // Atomic claim: two admins approving at once cannot both succeed
+        const approved = await WithdrawRequest.findOneAndUpdate(
+            { _id: request._id, status: 'Pending' },
+            { $set: { status: 'Approved', processedBy: new mongoose.Types.ObjectId(adminId), processedAt: new Date() } },
+            { new: true },
+        );
+        if (!approved) {
+            return res.status(409).json({ success: false, message: 'Request was processed by someone else' });
+        }
         request.status = 'Approved';
-        request.processedBy = new mongoose.Types.ObjectId(adminId);
-        request.processedAt = new Date();
-        await request.save();
 
         // Notify Seller (safely wrapped in try/catch with idempotency check)
         try {
@@ -147,11 +153,32 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
             });
         }
 
+        // Atomic claim + release of the reserved amount (R-11)
+        const rjSession = await mongoose.startSession();
+        let rejected: any = null;
+        try {
+            await rjSession.withTransaction(async () => {
+                rejected = await WithdrawRequest.findOneAndUpdate(
+                    { _id: request._id, status: 'Pending' },
+                    {
+                        $set: {
+                            status: 'Rejected',
+                            processedBy: new mongoose.Types.ObjectId(adminId),
+                            processedAt: new Date(),
+                            ...(remarks ? { remarks } : {}),
+                        },
+                    },
+                    { new: true, session: rjSession },
+                );
+                if (rejected) await releaseWithdrawalReservation(rejected, rjSession);
+            });
+        } finally {
+            await rjSession.endSession();
+        }
+        if (!rejected) {
+            return res.status(409).json({ success: false, message: 'Request was processed by someone else' });
+        }
         request.status = 'Rejected';
-        request.processedBy = new mongoose.Types.ObjectId(adminId);
-        request.processedAt = new Date();
-        if (remarks) request.remarks = remarks;
-        await request.save();
 
         // Notify Seller (safely wrapped in try/catch with idempotency check)
         try {
@@ -242,14 +269,26 @@ export const completeWithdrawal = async (req: Request, res: Response) => {
             });
         }
 
-        // Debit from wallet
+        // Atomic claim Approved → Completed inside this transaction
+        const claimed = await WithdrawRequest.findOneAndUpdate(
+            { _id: request._id, status: 'Approved' },
+            { $set: { status: 'Completed' } },
+            { session, new: true },
+        );
+        if (!claimed) {
+            await session.abortTransaction();
+            return res.status(409).json({ success: false, message: 'Request was processed by someone else' });
+        }
+
+        // Debit from wallet (unique reference: a request can only ever be paid once)
         const debitResult = await debitWallet(
             request.userId.toString(),
             request.userType,
             request.amount,
             `Withdrawal completed - ${transactionReference}`,
             undefined,
-            session
+            session,
+            `WITHDRAWAL_${request._id.toString()}`
         );
 
         if (!debitResult.success) {
@@ -267,6 +306,8 @@ export const completeWithdrawal = async (req: Request, res: Response) => {
             platformWallet.deliveryBoyPendingPayouts = Math.max(0, platformWallet.deliveryBoyPendingPayouts - request.amount);
         }
         await platformWallet.save({ session });
+
+        await releaseWithdrawalReservation(request, session);
 
         // Update request
         request.status = 'Completed';

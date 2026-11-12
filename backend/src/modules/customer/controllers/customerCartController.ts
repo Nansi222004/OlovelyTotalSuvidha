@@ -374,7 +374,6 @@ const buildUnifiedCartResponse = async (
         platformFee,
         freeDeliveryThreshold,
         minimumOrderValue,
-        giftPackagingFee: settings?.giftPackagingFee ?? 30,
     };
 };
 

@@ -1,3 +1,4 @@
+import "./testDbGuard"; // R-15: refuse to run against a non-local database
 /**
  * testReturnLifecycleSuite.ts
  *

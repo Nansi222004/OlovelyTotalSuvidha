@@ -307,12 +307,25 @@ export const markOrderCODPaid = asyncHandler(
     if (order.codPaidToAdminAt) {
       return res.status(400).json({ success: false, message: "COD for this order is already marked as paid" });
     }
+    // Rider cash is settled through Cash Collection, courier cash through a verified Shiprocket
+    // remittance (B-4). This endpoint only confirms cash for legacy rider-less COD orders.
+    const fullOrder = await Order.findById(id).select("deliveryBoy fulfillmentGroups");
+    const hasRider = !!fullOrder?.deliveryBoy ||
+      (fullOrder?.fulfillmentGroups || []).some((g: any) => g.fulfillmentType === "LOCAL_DELIVERY" && g.deliveryBoy);
+    if (hasRider) {
+      return res.status(400).json({
+        success: false,
+        message: "This order was delivered by an Olovely rider. Record the rider's cash in Cash Collection instead.",
+      });
+    }
     order.codPaidToAdminAt = new Date();
     await order.save();
+    const { settleUnassignedCod } = await import("../../../services/commissionService");
+    const settled = await settleUnassignedCod(id);
     return res.status(200).json({
       success: true,
-      message: "COD marked as received. Order will no longer appear in seller pending settlement.",
-      data: { orderId: order._id, codPaidToAdminAt: order.codPaidToAdminAt },
+      message: "COD marked as received. Seller earnings move to escrow until their return window ends.",
+      data: { orderId: order._id, codPaidToAdminAt: order.codPaidToAdminAt, settlement: settled },
     });
   },
 );
@@ -523,13 +536,10 @@ export const updateOrderStatus = asyncHandler(
     // Distribute commissions if order is delivered
     if (canonicalStatus === "Delivered" && existingOrder.status !== "Delivered") {
       try {
-        if (order.paymentMethod && order.paymentMethod.toUpperCase() === "COD") {
-          const { processCODOrderDelivery } = await import("../../../services/commissionService");
-          await processCODOrderDelivery(id, undefined, order.deliveryBoy?.toString());
-        } else {
-          const { distributeCommissions } = await import("../../../services/commissionService");
-          await distributeCommissions(id);
-        }
+        // One idempotent hook: rider COD cash, courier COD pending record, prepaid escrow settlement
+        const { recordDeliveryFinancials } = await import("../../../services/commissionService");
+        const res: any = await recordDeliveryFinancials(id);
+        if (res && res.success === false) console.error(`Delivery financials failed for order ${id}: ${res.message}`);
       } catch (error) {
         console.error("Error distributing commissions:", error);
       }

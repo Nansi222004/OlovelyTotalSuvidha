@@ -51,8 +51,14 @@ export interface IOrder extends Document {
 
   // Payment Allocation Breakdown
   walletAmountUsed?: number;
+  /** Amount actually CAPTURED by the gateway. 0 until capture (R-09). */
   onlineAmountPaid?: number;
+  /** Amount to be collected online at checkout (set at order creation; not proof of payment). */
+  onlineAmountDue?: number;
   codAmountPending?: number;
+  /** B-1: tip credited (once) to the delivering rider. */
+  tipCreditedAt?: Date;
+  tipCreditedTo?: mongoose.Types.ObjectId;
 
   // Order Status
   status:
@@ -159,7 +165,10 @@ export interface IOrder extends Document {
   deliveryOption: "Instant" | "Standard" | "Courier";
   deliveryPreference?: "Self" | "Admin";
   tipAmount: number;
-  giftPackaging: boolean;
+  /** @deprecated Gift packaging was removed (2026-11). Read-only on historical orders; never set. */
+  giftPackaging?: boolean;
+  /** @deprecated Historical only. Never written by current code. */
+  giftPackagingFee?: number;
 
   // Commerce Channel & Multi-Fulfillment Extensions (Ecommerce & Quick Commerce)
   orderType: 'QUICK_COMMERCE' | 'ECOMMERCE' | 'MIXED';
@@ -380,6 +389,13 @@ const OrderSchema = new Schema<IOrder>(
       default: 0,
       min: 0,
     },
+    onlineAmountDue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    tipCreditedAt: { type: Date },
+    tipCreditedTo: { type: Schema.Types.ObjectId, ref: "Delivery" },
     codAmountPending: {
       type: Number,
       default: 0,
@@ -601,6 +617,11 @@ const OrderSchema = new Schema<IOrder>(
     giftPackaging: {
       type: Boolean,
       default: false,
+    },
+    giftPackagingFee: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     // Commerce Channel & Multi-Fulfillment Extensions (Ecommerce & Quick Commerce)
     orderType: {

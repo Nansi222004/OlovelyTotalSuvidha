@@ -264,6 +264,40 @@ export const getWalletBalance = async (
 };
 
 /**
+ * R-11: balance the user can still request (available balance − open withdrawal reservations).
+ */
+export const getWithdrawableBalance = async (
+  userId: string,
+  userType: "SELLER" | "DELIVERY_BOY",
+  session?: mongoose.ClientSession,
+): Promise<number> => {
+  const Model: any = userType === "SELLER" ? Seller : Delivery;
+  const user = await Model.findById(userId).select("balance pendingWithdrawalAmount").session(session || null);
+  if (!user) return 0;
+  return Math.max(0, Math.round(((user.balance || 0) - (user.pendingWithdrawalAmount || 0)) * 100) / 100);
+};
+
+/** R-11: release what a withdrawal request reserved (no-op for legacy requests). */
+export const releaseWithdrawalReservation = async (request: any, session?: mongoose.ClientSession) => {
+  const amt = Number(request?.reservedAmount) || 0;
+  if (amt <= 0) return;
+  const Model: any = request.userType === "SELLER" ? Seller : Delivery;
+  await Model.updateOne(
+    { _id: request.userId },
+    [
+      {
+        $set: {
+          pendingWithdrawalAmount: {
+            $max: [0, { $subtract: [{ $ifNull: ["$pendingWithdrawalAmount", 0] }, amt] }],
+          },
+        },
+      },
+    ],
+    { session },
+  );
+};
+
+/**
  * Get wallet transactions
  */
 export const getWalletTransactions = async (
@@ -326,12 +360,13 @@ export const validateWithdrawal = async (
       };
     }
 
-    // Check balance
-    const balance = await getWalletBalance(userId, userType);
-    if (balance < amount) {
+    // Check WITHDRAWABLE balance: available balance minus amounts already reserved by
+    // open withdrawal requests (R-11). Escrow (onHoldBalance) is never part of balance (B-5).
+    const withdrawable = await getWithdrawableBalance(userId, userType);
+    if (withdrawable < amount) {
       return {
         success: false,
-        message: "Insufficient wallet balance",
+        message: `Insufficient withdrawable balance (available ₹${withdrawable})`,
       };
     }
 
@@ -435,18 +470,54 @@ export const createWithdrawalRequest = async (
       accountDetails = `${user.bankName || 'Bank'} - ${user.accountNumber || ''} (${ifsc})`;
     }
 
-    // Create withdrawal request
-    const withdrawRequest = new WithdrawRequest({
-      userId,
-      userType,
-      amount,
-      status: "Pending",
-      paymentMethod,
-      accountDetails,
-      upiId: upiIdSnapshot,
-    });
-
-    await withdrawRequest.save();
+    // R-11: reserve the amount and create the request atomically. The conditional $inc only
+    // matches while (balance − already reserved) ≥ amount, so two concurrent requests can never
+    // spend the same funds, even though validateWithdrawal above ran without a lock.
+    let withdrawRequest: any;
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const reserved = await Model.findOneAndUpdate(
+          {
+            _id: userId,
+            $expr: {
+              $gte: [
+                { $subtract: [{ $ifNull: ["$balance", 0] }, { $ifNull: ["$pendingWithdrawalAmount", 0] }] },
+                amount,
+              ],
+            },
+          },
+          { $inc: { pendingWithdrawalAmount: amount } },
+          { session, new: true },
+        );
+        if (!reserved) throw new Error("Insufficient withdrawable balance");
+        const open = await WithdrawRequest.countDocuments({
+          userId,
+          userType,
+          status: { $in: ["Pending", "Approved"] },
+        }).session(session);
+        if (open > 0) throw new Error("You have a pending withdrawal request. Please wait for it to be processed.");
+        [withdrawRequest] = await WithdrawRequest.create(
+          [
+            {
+              userId,
+              userType,
+              amount,
+              reservedAmount: amount,
+              status: "Pending",
+              paymentMethod,
+              accountDetails,
+              upiId: upiIdSnapshot,
+            },
+          ],
+          { session },
+        );
+      });
+    } catch (e: any) {
+      return { success: false, message: e?.message || "Failed to create withdrawal request" };
+    } finally {
+      await session.endSession();
+    }
 
     // Notify Admin about new withdrawal request (wrapped safely in try/catch)
     try {

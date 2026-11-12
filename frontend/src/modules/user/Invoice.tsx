@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Button from "../../components/ui/button";
 import { useOrders } from "../../hooks/useOrders";
 import { exportElementToPdf } from "../../utils/invoicePdfExport";
+import { getOrderTipAmount, getOrderGiftPackagingFee } from "../../utils/orderMoney";
 
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
   <svg
@@ -254,7 +255,11 @@ export default function Invoice() {
   const platformFee = order.platformFee ?? order.fees?.platformFee ?? 0;
   const discount = order.discount || 0;
   const tax = order.tax || 0;
-  const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee + tax - discount);
+  const tipAmount = getOrderTipAmount(order);
+  // GST is inclusive in item prices, so it is never added to the total.
+  const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee + tipAmount - discount);
+  // Snapshot when present; for older orders derived from the stored total.
+  const giftPackagingFee = getOrderGiftPackagingFee({ ...order, total: totalAmount, shipping: deliveryFee, platformFee });
   const customerName = typeof order.customerName === "string" && order.customerName.trim()
     ? order.customerName.trim()
     : (typeof addr.name === "string" && addr.name.trim() ? addr.name.trim() : "Valued Customer");
@@ -703,19 +708,19 @@ export default function Invoice() {
                 </div>
               )}
 
-              {/* Taxes */}
-              {tax > 0 && (
+              {/* Tip (part of order total) */}
+              {tipAmount > 0 && (
                 <div className="flex justify-between text-gray-600">
-                  <span>Tax (Included/Calculated)</span>
-                  <span className="font-semibold text-gray-900">{formatCurrency(tax)}</span>
+                  <span>Delivery Partner Tip</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(tipAmount)}</span>
                 </div>
               )}
 
-              {/* Wallet Amount Used */}
-              {Boolean(order.walletAmountUsed && order.walletAmountUsed > 0) && (
-                <div className="flex justify-between text-blue-700 font-medium">
-                  <span>Wallet Balance Used</span>
-                  <span>- {formatCurrency(order.walletAmountUsed)}</span>
+              {/* Gift packaging (part of order total) */}
+              {giftPackagingFee > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Gift Packaging</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(giftPackagingFee)}</span>
                 </div>
               )}
 
@@ -724,6 +729,22 @@ export default function Invoice() {
                 <span>Total Amount</span>
                 <span>{formatCurrency(totalAmount)}</span>
               </div>
+
+              {/* GST is inclusive: informational only, already inside item prices */}
+              {tax > 0 && (
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Includes GST</span>
+                  <span>{formatCurrency(tax)}</span>
+                </div>
+              )}
+
+              {/* Wallet Amount Used: how the total was paid, not a discount */}
+              {Boolean(order.walletAmountUsed && order.walletAmountUsed > 0) && (
+                <div className="flex justify-between text-blue-700 font-medium">
+                  <span>Paid from Wallet</span>
+                  <span>{formatCurrency(order.walletAmountUsed)}</span>
+                </div>
+              )}
 
               {/* Payment Settlement Snapshot */}
               <div className="pt-2 border-t border-gray-200 text-xs text-gray-500">

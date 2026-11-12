@@ -562,14 +562,14 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <DashboardCard
           icon={<DollarSignIcon />}
-          title={t("admin.totalRevenue", "Total Revenue")}
+          title="GMV (gross merchandise, excl. cancelled)"
           value={`₹${financeStats?.totalGMV?.toLocaleString("en-IN") || "0"}`}
           accentColor="#3b82f6"
           to="/admin/wallet?tab=transactions"
         />
         <DashboardCard
           icon={<TrendingUpIcon />}
-          title={t("admin.adminProfit", "Admin Profit")}
+          title="Platform Earnings (net)"
           value={`₹${financeStats?.totalAdminEarnings?.toLocaleString("en-IN") || "0"}`}
           accentColor="#16a34a"
           to="/admin/wallet?tab=earnings"
@@ -595,7 +595,7 @@ export default function AdminDashboard() {
         {/* Total Sales Today */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-neutral-200 p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-            {t("admin.salesToday", "Total Sales Today")}
+            {t("admin.salesToday", "Net Sales Today (IST)")}
           </h3>
           <div className="mb-4">
             <p className="text-3xl font-bold text-neutral-900">

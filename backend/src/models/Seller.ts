@@ -71,6 +71,8 @@ export interface ISeller extends Document {
   // Status
   status: 'Approved' | 'Pending' | 'Rejected';
   balance: number;
+  /** R-11: amount reserved by Pending/Approved withdrawal requests (not withdrawable again). */
+  pendingWithdrawalAmount?: number;
   onHoldBalance: number;
   categories: string[];
   logo?: string;
@@ -328,6 +330,11 @@ const SellerSchema = new Schema<ISeller>(
       type: Number,
       default: 0,
       min: [0, 'Balance cannot be negative'],
+    },
+    pendingWithdrawalAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Reserved withdrawal amount cannot be negative"],
     },
     onHoldBalance: {
       type: Number,

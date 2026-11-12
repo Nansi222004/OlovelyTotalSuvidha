@@ -114,7 +114,6 @@ export default function Checkout() {
   const [similarProducts, setSimilarProducts] = useState<any[]>([]);
 
   const [showCancellationPolicy, setShowCancellationPolicy] = useState(false);
-  const [giftPackaging, setGiftPackaging] = useState<boolean>(false);
 
   // Profile completion modal state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -465,6 +464,54 @@ export default function Checkout() {
     fetchSimilar();
   }, [cart?.items?.length]);
 
+  // Coupon preview must equal what checkout charges: the backend computes it
+  // (scope + rounding). Re-validate whenever the cart lines change.
+  const couponCartLines = useMemo(
+    () =>
+      (cart?.items || [])
+        .filter((item) => item && item.product)
+        .map((item) => {
+          const { displayPrice } = calculateProductPrice(
+            item.product,
+            item.variant,
+            item.isWholesale,
+            item.wholesalePrice,
+          );
+          return {
+            productId: String((item.product as any)?._id || (item.product as any)?.id || ""),
+            total: Math.round(displayPrice * (item.quantity || 0) * 100) / 100,
+          };
+        })
+        .filter((l) => l.productId),
+    [cart?.items],
+  );
+  const couponLinesKey = JSON.stringify(couponCartLines);
+  const couponLinesSubtotal = couponCartLines.reduce((s, l) => s + l.total, 0);
+  useEffect(() => {
+    if (!selectedCoupon) return;
+    let cancelled = false;
+    validateCoupon(selectedCoupon.code, couponLinesSubtotal, couponCartLines)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success && result.data?.isValid) {
+          setValidatedDiscount(Number(result.data.discountAmount) || 0);
+          setCouponError(null);
+        } else {
+          setValidatedDiscount(0);
+          setCouponError(result.message || "Coupon is no longer applicable");
+        }
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setValidatedDiscount(0);
+        setCouponError(err?.response?.data?.message || "Coupon is no longer applicable");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCoupon?.code, couponLinesKey]);
+
   if (cartLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -589,50 +636,24 @@ export default function Checkout() {
   // If we have a selected coupon, we should re-validate if cart total changes,
   // but for simplicity, we'll re-calculate locally if possible or trust the previous validation if acceptable (better to re-validate)
   // BUSINESS RULE: Coupon applies strictly to PRODUCT SUBTOTAL (discountedTotal)
-  // Delivery fee, handling/platform fee, tip, and gift packaging fees are NOT eligible for coupon discount.
+  // Delivery fee, handling/platform fee, and tip are NOT eligible for coupon discount.
   const productSubtotalForCoupon = discountedTotal;
 
-  // Local calculation for immediate feedback, relying on backend validation on Apply
-  let currentCouponDiscount = 0;
-  if (selectedCoupon) {
-    // Logic mirrors backend for UI update purposes
-    if (
-      selectedCoupon.minOrderValue &&
-      productSubtotalForCoupon < selectedCoupon.minOrderValue
-    ) {
-      // Invalid now
-    } else {
-      if (selectedCoupon.discountType === "percentage") {
-        currentCouponDiscount = Math.round(
-          (productSubtotalForCoupon * selectedCoupon.discountValue) / 100,
-        );
-        if (
-          selectedCoupon.maxDiscountAmount &&
-          currentCouponDiscount > selectedCoupon.maxDiscountAmount
-        ) {
-          currentCouponDiscount = selectedCoupon.maxDiscountAmount;
-        }
-      } else {
-        currentCouponDiscount = Math.min(
-          selectedCoupon.discountValue,
-          productSubtotalForCoupon,
-        );
-      }
-    }
-  }
+  // Backend-validated amount (same function checkout uses), capped by the subtotal.
+  const currentCouponDiscount = selectedCoupon
+    ? Math.min(validatedDiscount, productSubtotalForCoupon)
+    : 0;
 
   // Calculate tip amount (use custom tip if custom tip input is shown, otherwise use selected tip)
-  const finalTipAmount = showCustomTipInput ? customTipAmount : tipAmount || 0;
-  const giftPackagingPrice = (cart as any)?.giftPackagingFee ?? 30;
-  const giftPackagingFee = giftPackaging ? giftPackagingPrice : 0;
+  // B-1: tips go 100% to the Olovely rider; courier-only orders have no rider, so no tip.
+  const finalTipAmount = qcItems.length > 0 ? (showCustomTipInput ? customTipAmount : tipAmount || 0) : 0;
   const grandTotal = Math.max(
     0,
     discountedTotal -
       currentCouponDiscount +
       handlingCharge +
       deliveryCharge +
-      finalTipAmount +
-      giftPackagingFee,
+      finalTipAmount,
   );
   const walletDeduction = useWallet ? Math.min(walletBalance, grandTotal) : 0;
   const finalPayable = Math.max(0, grandTotal - walletDeduction);
@@ -641,7 +662,7 @@ export default function Checkout() {
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
-      const result = await validateCoupon(coupon.code, productSubtotalForCoupon);
+      const result = await validateCoupon(coupon.code, productSubtotalForCoupon, couponCartLines);
       if (result.success && result.data?.isValid) {
         const isFirstTime = !hasAppliedCouponBefore;
         setSelectedCoupon(coupon);
@@ -835,7 +856,6 @@ export default function Checkout() {
       tipAmount: finalTipAmount,
 
       couponCode: selectedCoupon?.code || undefined,
-      giftPackaging: giftPackaging,
       deliveryOption: qcItems.length > 0 ? "Instant" : "Courier",
       deliverySelections: {
         ...(qcItems.length > 0 ? { quickCommerce: "Instant" } : {}),
@@ -3313,31 +3333,6 @@ export default function Checkout() {
             </div>
           )}
 
-          {/* Gift Packaging */}
-          {giftPackaging && (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                </svg>
-                <span className="text-xs text-neutral-700">Gift Packaging</span>
-              </div>
-              <span className="text-xs font-medium text-neutral-900">
-                ₹{giftPackagingFee.toLocaleString("en-IN")}
-              </span>
-            </div>
-          )}
-
           {/* Grand total */}
           <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
             <span className="text-sm font-bold text-neutral-900">
@@ -3370,7 +3365,8 @@ export default function Checkout() {
 
 
 
-      {/* Tip your delivery partner */}
+      {/* Tip your delivery partner (B-1: only when an Olovely rider delivers part of the order) */}
+      {qcItems.length > 0 && (
       <div className="px-4 py-2 border-b border-neutral-200">
         <h3 className="text-sm font-bold text-neutral-900 mb-0.5">
           Tip your delivery partner
@@ -3466,70 +3462,7 @@ export default function Checkout() {
           </div>
         )}
       </div>
-
-      {/* Gift Packaging */}
-      <div className="px-4 py-2 border-b border-neutral-200">
-        <button
-          onClick={() => setGiftPackaging(!giftPackaging)}
-          className={`w-full flex items-center justify-between rounded-lg p-2 transition-colors ${
-            giftPackaging
-              ? "bg-green-50 border-2 border-green-600"
-              : "bg-neutral-50 border-2 border-transparent hover:bg-neutral-100"
-          }`}>
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                giftPackaging
-                  ? "border-green-600 bg-green-600"
-                  : "border-neutral-400 bg-white"
-              }`}>
-              {giftPackaging && (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M20 6L9 17l-5-5"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              )}
-            </div>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-              />
-            </svg>
-            <div className="text-left">
-              <p
-                className={`text-xs font-semibold ${giftPackaging ? "text-green-700" : "text-neutral-900"}`}>
-                Gift Packaging
-              </p>
-              <p className="text-[10px] text-neutral-600">
-                {giftPackaging
-                  ? `Add ₹${giftPackagingPrice} for gift packaging`
-                  : `Add ₹${giftPackagingPrice} for elegant gift packaging`}
-              </p>
-            </div>
-          </div>
-          {giftPackaging && (
-            <span className="text-xs font-semibold text-green-600">₹{giftPackagingPrice}</span>
-          )}
-        </button>
-      </div>
+      )}
 
       {/* Cancellation Policy */}
       <div className="px-4 py-2">

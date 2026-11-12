@@ -97,15 +97,10 @@ const createCommissions = async (items: IOrderItem[]) => {
 
     if (!order) return;
 
-    if (order.paymentMethod && order.paymentMethod.toUpperCase() === "COD") {
-      // For COD orders, use the comprehensive COD processing logic
-      const { processCODOrderDelivery } = await import("./commissionService");
-      await processCODOrderDelivery(orderId, undefined, order.deliveryBoy?.toString());
-    } else {
-      // For online/prepaid orders, distribute commissions immediately
-      const { distributeCommissions } = await import("./commissionService");
-      await distributeCommissions(orderId);
-    }
+    // One idempotent hook for all payment methods / channels (see commissionService)
+    const { recordDeliveryFinancials } = await import("./commissionService");
+    const res: any = await recordDeliveryFinancials(orderId);
+    if (res && res.success === false) console.error(`Delivery financials failed for order ${orderId}: ${res.message}`);
   } catch (err) {
     console.error("Error creating commissions in orderService:", err);
     throw err;
@@ -146,44 +141,4 @@ export const validateStatusTransition = (
   return { valid: true };
 };
 
-/**
- * Calculate order totals
- */
-export const calculateOrderTotals = async (
-  items: IOrderItem[],
-  couponCode?: string
-) => {
-  let subtotal = 0;
-  let tax = 0;
-  let shipping = 0;
-  let discount = 0;
-
-  // Calculate subtotal from items
-  for (const item of items) {
-    subtotal += item.total;
-  }
-
-  // Apply coupon discount if provided
-  if (couponCode) {
-    // Coupon validation and discount calculation would go here
-    // For now, we'll skip this as it's handled in the coupon controller
-  }
-
-  // Calculate tax (example: 18% GST)
-  tax = subtotal * 0.18;
-
-  // Calculate shipping (example: free shipping over 500)
-  if (subtotal < 500) {
-    shipping = 50;
-  }
-
-  const total = subtotal + tax + shipping - discount;
-
-  return {
-    subtotal,
-    tax,
-    shipping,
-    discount,
-    total,
-  };
-};
+// R-14: calculateOrderTotals (hardcoded 18% exclusive GST + ₹50 shipping, contradicting checkout) removed; it had no callers.

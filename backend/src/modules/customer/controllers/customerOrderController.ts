@@ -20,7 +20,13 @@ import { hasActiveLocalDeliveryFulfillment } from "../../../utils/fulfillmentSta
 import Coupon from "../../../models/Coupon";
 import Return from "../../../models/Return";
 import { debitWallet } from "../../../services/walletManagementService";
-import { commitCouponUsage } from "../../../services/couponService";
+import {
+  commitCouponUsage,
+  computeCouponDiscount,
+  hasReachedPerUserCouponLimit,
+  sanitizeTipAmount,
+  ICouponLine,
+} from "../../../services/couponService";
 import { createEcommerceShipment, cancelEcommerceShipment, checkPincode } from "../../../services/shipping/shippingService";
 import { IFulfillmentGroup } from "../../../models/Order";
 import InventoryTransaction from "../../../models/InventoryTransaction";
@@ -46,6 +52,30 @@ export const createOrder = async (req: Request, res: Response) => {
   let session: mongoose.ClientSession | null = null;
   let claimedFirstOrderPromo = false;
   const userId = req.user!.userId;
+  // Stock is deducted via mutateStock outside the checkout transaction. If the order is then
+  // rejected/aborted, that stock must be put back or it is silently lost.
+  const deductedStock: { productId: string; variationId: string | null; quantity: number; orderItemId: string }[] = [];
+  let orderRefForCompensation = "";
+  const compensateDeductedStock = async () => {
+    while (deductedStock.length > 0) {
+      const d = deductedStock.pop()!;
+      try {
+        await mutateStock({
+          productId: d.productId,
+          variationId: d.variationId,
+          quantity: +d.quantity,
+          type: 'RETURN',
+          referenceType: 'RETURN',
+          referenceId: orderRefForCompensation,
+          orderItemId: d.orderItemId,
+          performedByRole: 'SYSTEM',
+          note: 'Checkout aborted - stock compensation',
+        });
+      } catch (compErr: any) {
+        console.error(`[ORDER] Stock compensation failed for product ${d.productId}:`, compErr?.message || compErr);
+      }
+    }
+  };
   try {
     // Only start session if we are on a replica set (required for transactions)
     // For simplicity in local dev, we check and fallback if it fails
@@ -59,7 +89,7 @@ export const createOrder = async (req: Request, res: Response) => {
       session = null;
     }
 
-    const { items, address, paymentMethod, fees, deliveryOption, deliveryOptions, deliverySelections, couponCode, tipAmount, giftPackaging, useWallet, fulfillmentType } = req.body;
+    const { items, address, paymentMethod, fees, deliveryOption, deliveryOptions, deliverySelections, couponCode, tipAmount, useWallet, fulfillmentType } = req.body;
 
 
     // Log incoming request for debugging (development mode only)
@@ -313,17 +343,19 @@ export const createOrder = async (req: Request, res: Response) => {
       discount: 0,
       total: 0,
       items: [],
-      tipAmount: Number(tipAmount) || 0,
-      giftPackaging: !!giftPackaging,
+      tipAmount: sanitizeTipAmount(tipAmount),
       sellerConfirmationStatus: "Pending",
       deliveryAssignmentStatus: "NotStarted",
     });
+    orderRefForCompensation = newOrder._id.toString();
 
     // Pre-fetch settings for various calculations
     const settings = await AppSettings.getSettings();
 
     let calculatedSubtotal = 0;
     let calculatedTax = 0;
+    // Per-line data for authoritative coupon scope evaluation
+    const couponLines: ICouponLine[] = [];
     let qcSubtotal = 0;
     let ecomSubtotal = 0;
     const orderItemIds: mongoose.Types.ObjectId[] = [];
@@ -727,9 +759,23 @@ export const createOrder = async (req: Request, res: Response) => {
           };
           throw err;
         }
+        // Remember the deduction so it can be compensated if order creation fails later
+        // (mutateStock runs outside the checkout transaction).
+        deductedStock.push({
+          productId: product._id.toString(),
+          variationId: resolvedVariationId,
+          quantity: qty,
+          orderItemId: orderItemId.toString(),
+        });
       }
 
       calculatedSubtotal += itemTotal;
+      couponLines.push({
+        productId: product._id.toString(),
+        categoryId: product.category ? String((product.category as any)?._id || product.category) : undefined,
+        sellerId: product.seller ? product.seller.toString() : undefined,
+        total: itemTotal,
+      });
       if (taxRate > 0) {
         calculatedTax += itemTotal * taxRate / (100 + taxRate);
       }
@@ -821,6 +867,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const minimumOrderValue = Number(settings?.minimumOrderValue) || 0;
     if (minimumOrderValue > 0 && calculatedSubtotal < minimumOrderValue) {
       if (session) await session.abortTransaction();
+      await compensateDeductedStock();
       const shortfall = Number((minimumOrderValue - calculatedSubtotal).toFixed(2));
       return res.status(400).json({
         success: false,
@@ -999,14 +1046,17 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const combinedShippingFee = firstOrderPromo.finalShippingAmount;
-    const finalTipAmount = Number(tipAmount) || 0;
-    const giftPackagingPrice = Number.isFinite(settings?.giftPackagingFee)
-      ? Number(settings.giftPackagingFee)
-      : 30;
-    const giftPackagingFee = giftPackaging ? giftPackagingPrice : 0;
+    // B-1: a tip is 100% for the Olovely rider. Courier-only (Shiprocket) orders have no rider,
+    // so no tip is accepted for them (the checkout UI hides it; a stale client is charged ₹0).
+    const requestedTip = sanitizeTipAmount(tipAmount);
+    const finalTipAmount = qcItemIds.length > 0 ? requestedTip : 0;
+    if (requestedTip > 0 && finalTipAmount === 0) {
+      console.warn(`[TIP] Ignored ₹${requestedTip} tip on courier-only order ${newOrder.orderNumber}: no Olovely rider`);
+    }
+    newOrder.tipAmount = finalTipAmount;
 
     // BUSINESS RULE: Coupon applies strictly to PRODUCT SUBTOTAL (calculatedSubtotal)
-    // Delivery fees, platform fees, tips, and gift packaging fees are NOT eligible for coupon discount.
+    // Delivery fees, platform fees, and tips are NOT eligible for coupon discount.
     const productSubtotalForCoupon = calculatedSubtotal;
     let discountAmount = 0;
 
@@ -1031,28 +1081,14 @@ export const createOrder = async (req: Request, res: Response) => {
               !coupon.usageLimit ||
               coupon.usageCount < coupon.usageLimit
             ) {
-              // Check minimum purchase (strictly on product subtotal)
-              if (
-                !coupon.minimumPurchase ||
-                productSubtotalForCoupon >= coupon.minimumPurchase
-              ) {
-                // Calculate discount strictly on product subtotal
-                if (coupon.discountType === "Percentage") {
-                  discountAmount =
-                    (productSubtotalForCoupon * coupon.discountValue) / 100;
-                  if (
-                    coupon.maximumDiscount &&
-                    discountAmount > coupon.maximumDiscount
-                  ) {
-                    discountAmount = coupon.maximumDiscount;
-                  }
-                } else {
-                  // Fixed discount cannot exceed product subtotal
-                  discountAmount = Math.min(
-                    coupon.discountValue,
-                    productSubtotalForCoupon
-                  );
-                }
+              // Per-user usage limit + product/category/seller scope + minimum purchase
+              // are all enforced server-side (previously only the global limit/min purchase were).
+              const perUserExceeded = await hasReachedPerUserCouponLimit(coupon as any, userId);
+              const couponEval = perUserExceeded
+                ? { discount: 0, reason: `Per-customer usage limit (${coupon.usageLimitPerUser}) reached` }
+                : computeCouponDiscount(coupon as any, couponLines);
+              if (couponEval.discount > 0) {
+                discountAmount = couponEval.discount;
 
                 newOrder.couponCode = normalizedCode;
                 newOrder.discount = Number(discountAmount.toFixed(2));
@@ -1063,8 +1099,7 @@ export const createOrder = async (req: Request, res: Response) => {
                     discountAmount +
                     platformFee +
                     combinedShippingFee +
-                    finalTipAmount +
-                    giftPackagingFee
+                    finalTipAmount
                 );
 
                 console.log(`[COUPON CALCULATION]
@@ -1078,11 +1113,10 @@ Ecommerce Shipping Fee: ₹${ecomShippingFee}
 Combined Shipping Fee: ₹${combinedShippingFee}
 Platform Fee: ₹${platformFee}
 Tip: ₹${finalTipAmount}
-Gift Packaging Fee: ₹${giftPackagingFee}
 Final Total: ₹${computedFinalTotal.toFixed(2)}`);
               } else {
                 console.warn(
-                  `⚠️ Coupon ${normalizedCode} rejected: min purchase ₹${coupon.minimumPurchase} not met (Product Subtotal: ₹${productSubtotalForCoupon})`,
+                  `⚠️ Coupon ${normalizedCode} rejected: ${couponEval.reason || "not applicable"} (Product Subtotal: ₹${productSubtotalForCoupon})`,
                 );
               }
             } else {
@@ -1108,8 +1142,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
         discountAmount +
         platformFee +
         combinedShippingFee +
-        finalTipAmount +
-        giftPackagingFee
+        finalTipAmount
     );
 
     let walletAmountUsed = 0;
@@ -1130,6 +1163,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
 
         if (!debitRes.success) {
           if (session) await session.abortTransaction();
+          await compensateDeductedStock();
           if (claimedFirstOrderPromo) {
             await releaseFirstOrderFreeShippingClaim(userId);
           }
@@ -1155,7 +1189,9 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
         newOrder.paymentMethod = paymentMethod;
         newOrder.paymentStatus = "Pending";
         newOrder.status = "Pending";
-        newOrder.onlineAmountPaid = remainingPayable;
+        // R-09: what is DUE online. onlineAmountPaid stays 0 until the gateway captures it.
+        newOrder.onlineAmountDue = remainingPayable;
+        newOrder.onlineAmountPaid = 0;
         newOrder.codAmountPending = 0;
       } else {
         newOrder.paymentMethod = "COD";
@@ -1254,6 +1290,8 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
       }
       await newOrder.save();
     }
+    // Order is persisted: the stock deductions now belong to it and must not be compensated.
+    deductedStock.length = 0;
 
     // Commit coupon usage if order is confirmed at creation time (100% Wallet paid or COD)
     if (newOrder.couponCode && (newOrder.paymentStatus === "Paid" || newOrder.paymentMethod === "COD")) {
@@ -1321,6 +1359,8 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
         console.error("Error aborting transaction:", abortError);
       }
     }
+
+    await compensateDeductedStock();
 
     if (claimedFirstOrderPromo && userId) {
       try {

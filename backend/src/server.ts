@@ -113,7 +113,15 @@ app.use(cors(corsOptions));
 
 import path from "path";
 
-app.use(express.json());
+app.use(express.json({
+  // Keep the exact request bytes for webhook HMAC verification (Razorpay signs the raw
+  // body; re-serialising parsed JSON can differ byte-for-byte and reject valid webhooks).
+  verify: (req: any, _res, buf) => {
+    if (req.originalUrl && req.originalUrl.includes("/webhook")) {
+      req.rawBody = buf.toString("utf8");
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // Serve local uploaded files statically
@@ -159,6 +167,10 @@ async function startServer() {
 
   // Initialize Firebase Admin SDK for push notifications
   initializeFirebaseAdmin();
+
+  // R-03: scheduled escrow release (return-window expiry → withdrawable), lease-locked per job
+  const { startFinanceScheduler } = await import("./services/financeScheduler");
+  startFinanceScheduler();
 
   // Handle server errors gracefully (e.g., port already in use)
   httpServer.on('error', (error: NodeJS.ErrnoException) => {

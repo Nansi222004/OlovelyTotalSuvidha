@@ -72,7 +72,11 @@ export const getSalesReport = asyncHandler(
             orderItemId: item._id.toString().slice(-4), // SR No / Item ID shortcut
             product: item.productName,
             variant: item.variantTitle,
-            total: item.subtotal,
+            // `subtotal` is never populated at checkout (always 0); `total` is unitPrice × qty.
+            total: item.total ?? item.subtotal ?? 0,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            status: item.status,
             date: item.createdAt.toISOString().replace('T', ' ').split('.')[0], // YYYY-MM-DD HH:mm:ss
         }));
 

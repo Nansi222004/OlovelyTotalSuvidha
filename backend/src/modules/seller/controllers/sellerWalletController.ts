@@ -14,18 +14,38 @@ export const getBalance = async (req: Request, res: Response) => {
     try {
         const sellerId = (req as any).user!.userId;
         
-        // Auto-release expired escrows
+        // Release THIS seller's expired escrow so the page is current (the scheduler handles all sellers)
         const { releaseExpiredEscrow } = await import('../../../services/commissionService');
-        await releaseExpiredEscrow();
+        await releaseExpiredEscrow({ sellerId });
 
         const Seller = (await import('../../../models/Seller')).default;
-        const seller = await Seller.findById(sellerId).select('balance onHoldBalance');
+        const Commission = (await import('../../../models/Commission')).default;
+        const WithdrawRequest = (await import('../../../models/WithdrawRequest')).default;
+        const mongoose = (await import('mongoose')).default;
+        const sid = new mongoose.Types.ObjectId(sellerId);
+        const seller = await Seller.findById(sellerId).select('balance onHoldBalance pendingWithdrawalAmount');
+        const [pendingAgg] = await Commission.aggregate([
+            { $match: { seller: sid, type: 'SELLER', status: 'Pending' } },
+            { $group: { _id: null, total: { $sum: { $subtract: ['$orderAmount', '$commissionAmount'] } } } },
+        ]);
+        const [withdrawnAgg] = await WithdrawRequest.aggregate([
+            { $match: { userId: sid, userType: 'SELLER', status: 'Completed' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]);
+        const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+        const balance = r2(seller?.balance || 0);
+        const reserved = r2((seller as any)?.pendingWithdrawalAmount || 0);
 
+        // B-5 buckets
         return res.status(200).json({
             success: true,
             data: {
-                balance: seller?.balance || 0,
-                onHoldBalance: seller?.onHoldBalance || 0,
+                balance,                                    // available (return window over)
+                onHoldBalance: r2(seller?.onHoldBalance || 0), // locked by return window
+                pendingEarnings: r2(pendingAgg?.total || 0),   // money not yet received (COD cash / remittance / undelivered)
+                pendingWithdrawal: reserved,                // reserved by open withdrawal requests
+                withdrawableBalance: r2(Math.max(0, balance - reserved)),
+                totalWithdrawn: r2(withdrawnAgg?.total || 0),
             },
         });
     } catch (error: any) {

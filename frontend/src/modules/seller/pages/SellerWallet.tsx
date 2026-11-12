@@ -17,6 +17,11 @@ export default function SellerWallet() {
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [balance, setBalance] = useState(0);
   const [onHoldBalance, setOnHoldBalance] = useState(0);
+  // B-5 buckets from /seller/wallet-new/balance
+  const [pendingEarnings, setPendingEarnings] = useState(0);
+  const [pendingWithdrawal, setPendingWithdrawal] = useState(0);
+  const [withdrawableBalance, setWithdrawableBalance] = useState(0);
+  const [totalWithdrawn, setTotalWithdrawn] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [commissions, setCommissions] = useState<any>({ commissions: [], total: 0, paid: 0, pending: 0 });
@@ -45,6 +50,10 @@ export default function SellerWallet() {
       if (balanceRes.success) {
         setBalance(balanceRes.data.balance || 0);
         setOnHoldBalance(balanceRes.data.onHoldBalance || 0);
+        setPendingEarnings(balanceRes.data.pendingEarnings || 0);
+        setPendingWithdrawal(balanceRes.data.pendingWithdrawal || 0);
+        setWithdrawableBalance(balanceRes.data.withdrawableBalance ?? balanceRes.data.balance ?? 0);
+        setTotalWithdrawn(balanceRes.data.totalWithdrawn || 0);
       }
       if (transactionsRes.success) setTransactions(transactionsRes.data.transactions || []);
       if (withdrawalsRes.success) setWithdrawals(withdrawalsRes.data || []);
@@ -65,7 +74,7 @@ export default function SellerWallet() {
         return;
       }
 
-      if (amount > balance) {
+      if (amount > withdrawableBalance) {
         showToast('Insufficient balance', 'error');
         return;
       }
@@ -110,11 +119,24 @@ export default function SellerWallet() {
       >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <p className="text-sm opacity-90 mb-1">Available Withdrawable Balance</p>
-            <h1 className="text-4xl font-bold mb-2">₹{balance.toFixed(2)}</h1>
-            <p className="text-xs bg-white/20 px-3 py-1 rounded-full inline-block backdrop-blur-sm">
-              On-Hold (Return Window): <span className="font-semibold">₹{onHoldBalance.toFixed(2)}</span>
-            </p>
+            <p className="text-sm opacity-90 mb-1">Available to withdraw</p>
+            <h1 className="text-4xl font-bold mb-2">₹{withdrawableBalance.toFixed(2)}</h1>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                Pending (awaiting payment/cash): <span className="font-semibold">₹{pendingEarnings.toFixed(2)}</span>
+              </span>
+              <span className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                Locked (return window): <span className="font-semibold">₹{onHoldBalance.toFixed(2)}</span>
+              </span>
+              {pendingWithdrawal > 0 && (
+                <span className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                  In withdrawal: <span className="font-semibold">₹{pendingWithdrawal.toFixed(2)}</span>
+                </span>
+              )}
+              <span className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                Withdrawn: <span className="font-semibold">₹{totalWithdrawn.toFixed(2)}</span>
+              </span>
+            </div>
           </div>
           <button
             onClick={() => setShowWithdrawModal(true)}
@@ -276,12 +298,22 @@ export default function SellerWallet() {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="font-medium text-gray-900">Order Commission</p>
-                        <p className="text-xs text-gray-600">Rate: {comm.rate}%</p>
+                        <p className="text-xs text-gray-600">
+                          Rate: {comm.rate}% · Fee: ₹{Number(comm.amount || 0).toFixed(2)}
+                        </p>
                       </div>
-                      <p className="font-bold text-green-600">₹{comm.amount.toFixed(2)}</p>
+                      <div className="text-right">
+                        {/* Seller's net earning = order amount − platform commission (same figure the wallet is credited) */}
+                        <p className={`font-bold ${comm.status === 'Cancelled' ? 'text-gray-400 line-through' : 'text-green-600'}`}>
+                          ₹{(Number(comm.orderAmount || 0) - Number(comm.amount || 0)).toFixed(2)}
+                        </p>
+                        <span className="text-[10px] font-semibold text-gray-500">
+                          {comm.status === 'Paid' ? 'Settled' : comm.status === 'OnHold' ? 'On Hold (Return Window)' : comm.status === 'Pending' ? 'Pending' : comm.status}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs text-gray-500">
-                      <span>Order Amount: ₹{comm.orderAmount.toFixed(2)}</span>
+                      <span>Order Amount: ₹{Number(comm.orderAmount || 0).toFixed(2)}</span>
                       <span>{new Date(comm.createdAt).toLocaleDateString('en-IN')}</span>
                     </div>
                   </div>
@@ -316,7 +348,7 @@ export default function SellerWallet() {
                     step="0.01"
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Available: ₹{balance.toFixed(2)}</p>
+                <p className="text-xs text-gray-500 mt-1">Available: ₹{withdrawableBalance.toFixed(2)}</p>
               </div>
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>

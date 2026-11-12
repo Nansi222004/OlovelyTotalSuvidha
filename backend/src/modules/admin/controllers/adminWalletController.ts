@@ -12,6 +12,8 @@ import {
 import Seller from "../../../models/Seller";
 import Delivery from "../../../models/Delivery";
 import Order from "../../../models/Order";
+import Customer from "../../../models/Customer";
+import Payment from "../../../models/Payment";
 
 /**
  * Get Financial Dashboard Stats
@@ -42,42 +44,23 @@ export const getFinancialDashboard = asyncHandler(
     const deliveryBoyPendingPayouts = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalBalance : 0;
     const pendingFromDeliveryBoy = deliveryBalanceResult.length > 0 ? deliveryBalanceResult[0].totalPendingDebt : 0;
 
-    // 3. Gross Platform Earnings (Gross GMV collected from customers on Paid/Delivered orders)
-    const totalOrderAmountResult = await Order.aggregate([
-      { $match: { status: { $ne: "Cancelled" }, paymentStatus: "Paid" } },
-      { $group: { _id: null, total: { $sum: "$total" } } },
-    ]);
-    const totalPlatformEarning = totalOrderAmountResult.length > 0 ? totalOrderAmountResult[0].total : 0;
+    // 3-7. B-6 KPI definitions (single source: services/financeKpiService.ts).
+    // totalPlatformEarning = GMV of qualifying orders; totalAdminEarning = platform earnings (net of
+    // rider pay, Shiprocket charges and platform-funded coupons; excludes GST, seller money, tips).
+    // B-7: the former self-delivery fee deduction is gone (there is no seller self-delivery).
+    const { getFinanceKpis } = await import("../../../services/financeKpiService");
+    const kpis = await getFinanceKpis();
+    const totalPlatformEarning = kpis.gmv;
+    const totalAdminEarning = kpis.platformEarningsNet;
 
-    // 4. Seller Commissions collected on Paid/Delivered orders
-    const sellerCommResult = await Commission.aggregate([
-      { $match: { type: "SELLER", status: { $ne: "Cancelled" } } },
-      { $group: { _id: null, total: { $sum: "$commissionAmount" } } },
+    // Customer money that actually reached the platform (online + COD), excluding wallet-funded
+    // parts (not new cash) — qualifying orders only.
+    const [extCashAgg] = await Order.aggregate([
+      { $match: { status: { $nin: ["Pending", "Cancelled", "Rejected"] }, paymentStatus: { $in: ["Paid", "Refunded"] } } },
+      { $group: { _id: null, total: { $sum: { $subtract: [{ $ifNull: ["$total", 0] }, { $ifNull: ["$walletAmountUsed", 0] }] } } } },
     ]);
-    const sellerCommissions = sellerCommResult.length > 0 ? sellerCommResult[0].total : 0;
-
-    // 5. Delivery Commissions payable to delivery boys
-    const deliveryCommResult = await Commission.aggregate([
-      { $match: { type: "DELIVERY_BOY", status: { $ne: "Cancelled" } } },
-      { $group: { _id: null, total: { $sum: "$commissionAmount" } } },
-    ]);
-    const deliveryCommissions = deliveryCommResult.length > 0 ? deliveryCommResult[0].total : 0;
-
-    // 6. Order Fees (Platform Fee + Shipping Charge) collected
-    const orderFeesResult = await Order.aggregate([
-      { $match: { status: { $ne: "Cancelled" }, paymentStatus: "Paid" } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: { $add: ["$platformFee", "$shipping"] } },
-        },
-      },
-    ]);
-    const orderFees = orderFeesResult.length > 0 ? orderFeesResult[0].total : 0;
-
-    // 7. Net Admin Earning = SellerCommissions + PlatformFees + ShippingCharges - DeliveryCommissions
-    const rawAdminEarning = sellerCommissions + orderFees - deliveryCommissions;
-    const totalAdminEarning = Math.round(rawAdminEarning * 100) / 100;
+    const externalCashFromOrders = extCashAgg?.total || 0;
+    const tipsCollected = kpis.tips.notYetCredited;
 
     // 8. Total Completed Withdrawals Outflow
     const withdrawalResult = await WithdrawRequest.aggregate([
@@ -86,11 +69,31 @@ export const getFinancialDashboard = asyncHandler(
     ]);
     const totalWithdrawals = withdrawalResult.length > 0 ? withdrawalResult[0].total : 0;
 
-    // 9. Current Platform Available Cash = Gross GMV - Seller Balances - Delivery Balances - Completed Withdrawals
-    const currentPlatformBalance = Math.max(
-      0,
-      Math.round((totalPlatformEarning - sellerPendingPayouts - deliveryBoyPendingPayouts - totalWithdrawals) * 100) / 100
-    );
+    // 9. Current Platform Balance = cash actually held by the platform − everything it owes.
+    // Previously: GMV − seller available − rider balances − withdrawals, which ignored seller
+    // escrow (onHoldBalance), customer wallet balances, gateway refunds already paid out, the
+    // wallet-funded part of order totals (not new cash), and COD cash still with riders/sellers.
+    const [sellerHoldAgg, customerWalletAgg, gatewayRefundAgg, sellerHeldCodAgg] = await Promise.all([
+      Seller.aggregate([{ $group: { _id: null, total: { $sum: { $ifNull: ["$onHoldBalance", 0] } } } }]),
+      Customer.aggregate([{ $group: { _id: null, total: { $sum: { $ifNull: ["$walletAmount", 0] } } } }]),
+      Payment.aggregate([{ $group: { _id: null, total: { $sum: { $ifNull: ["$refundAmount", 0] } } } }]),
+      // Legacy rider-less quick-commerce COD (old seller self-delivery): cash not yet confirmed
+      Order.aggregate([
+        { $match: { status: "Delivered", paymentMethod: "COD", deliveryBoy: null, codPaidToAdminAt: null, orderType: "QUICK_COMMERCE" } },
+        { $group: { _id: null, total: { $sum: { $ifNull: ["$codAmountPending", 0] } } } },
+      ]),
+    ]);
+    const sellerOnHoldBalance = sellerHoldAgg[0]?.total || 0;
+    const customerWalletLiability = customerWalletAgg[0]?.total || 0;
+    const gatewayRefundsPaid = gatewayRefundAgg[0]?.total || 0;
+    const codCashWithSellers = sellerHeldCodAgg[0]?.total || 0;
+
+    // B-4: COD still with Shiprocket is not cash held; courier charges are platform-borne outflow
+    const codWithCourier = kpis.codPending.courier;
+    const cashHeld = externalCashFromOrders - gatewayRefundsPaid - pendingFromDeliveryBoy - codCashWithSellers - codWithCourier - kpis.courierCharges - totalWithdrawals;
+    const liabilities = sellerPendingPayouts + sellerOnHoldBalance + deliveryBoyPendingPayouts + customerWalletLiability;
+    // Not clamped at 0: a negative value is a real signal (platform owes more than it holds).
+    const currentPlatformBalance = Math.round((cashHeld - liabilities) * 100) / 100;
 
     // Sync PlatformWallet document in DB asynchronously for background consistency
     PlatformWallet.getWallet().then((pw) => {
@@ -121,6 +124,29 @@ export const getFinancialDashboard = asyncHandler(
         currentAccountBalance: currentPlatformBalance,
         pendingAmountFromDeliveryBoy: pendingFromDeliveryBoy,
         totalWithdrawals,
+
+        // Composition of currentPlatformBalance, so the figure can be reconciled
+        sellerOnHoldBalance: Math.round(sellerOnHoldBalance * 100) / 100,
+        balanceBreakdown: {
+          externalCashFromOrders: Math.round(externalCashFromOrders * 100) / 100,
+          gatewayRefundsPaid: Math.round(gatewayRefundsPaid * 100) / 100,
+          codCashWithRiders: Math.round(pendingFromDeliveryBoy * 100) / 100,
+          codCashWithSellers: Math.round(codCashWithSellers * 100) / 100,
+          codCashWithCourier: Math.round(codWithCourier * 100) / 100,
+          courierCharges: kpis.courierCharges,
+          completedWithdrawals: Math.round(totalWithdrawals * 100) / 100,
+          cashHeld: Math.round(cashHeld * 100) / 100,
+          sellerAvailable: Math.round(sellerPendingPayouts * 100) / 100,
+          sellerOnHold: Math.round(sellerOnHoldBalance * 100) / 100,
+          riderBalances: Math.round(deliveryBoyPendingPayouts * 100) / 100,
+          customerWallets: Math.round(customerWalletLiability * 100) / 100,
+          liabilities: Math.round(liabilities * 100) / 100,
+          // B-1: tips collected but not yet credited to a rider (undelivered orders / legacy)
+          unallocatedTips: Math.round(tipsCollected * 100) / 100,
+        },
+
+        // B-6 KPI block (IST, documented definitions)
+        kpis,
 
         pendingWithdrawalsCount: await WithdrawRequest.countDocuments({
           status: "Pending",
@@ -171,7 +197,10 @@ export const getAdminEarnings = asyncHandler(
         id: e._id,
         source: sourceName,
         sourceType: e.type,
-        amount: e.commissionAmount,
+        // Admin perspective: seller commission is income (+); a rider's delivery earning is a
+        // payout the platform owes (−). Previously both were listed as positive "earnings".
+        amount: e.type === "DELIVERY_BOY" ? -Math.abs(e.commissionAmount) : e.commissionAmount,
+        countsTowardEarning: e.status !== "Cancelled",
         date: e.createdAt,
         status: e.status,
         description: `Order #${(e.order as any)?.orderNumber || "Unknown"}`,
@@ -321,9 +350,11 @@ export const getWalletSummary = asyncHandler(async (_req: Request, res: Response
  * Create Manual Wallet Transfer (Credit/Debit)
  */
 export const createManualTransfer = asyncHandler(async (req: Request, res: Response) => {
-  const { userId, userType, amount, type, description } = req.body;
+  const { userId, userType, type, description } = req.body;
+  // Coerce once: a string amount previously did string concatenation on user.balance
+  const amount = Math.round(Number(req.body.amount) * 100) / 100;
 
-  if (!userId || !userType || !amount || !type || !description) {
+  if (!userId || !userType || !type || !description || !Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({
       success: false,
       message: "Required fields: userId, userType, amount, type, description"
@@ -347,29 +378,23 @@ export const createManualTransfer = asyncHandler(async (req: Request, res: Respo
       throw new Error(`${userType} not found`);
     }
 
-    // Update balance
-    if (type === 'Credit') {
-      user.balance += amount;
-    } else {
-      if (user.balance < amount) {
-        throw new Error("Insufficient balance for debit");
-      }
-      user.balance -= amount;
+    if (!['SELLER', 'DELIVERY_BOY'].includes(userType) || !['Credit', 'Debit'].includes(type)) {
+      throw new Error("userType must be SELLER or DELIVERY_BOY and type Credit or Debit");
     }
-
-    await user.save({ session });
-
-    // Create transaction record
-    const reference = `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    await WalletTransaction.create([{
-      userId,
-      userType,
-      amount,
-      type,
-      description,
-      status: 'Completed',
-      reference
-    }], { session });
+    // Ledger + balance through the shared wallet functions (balanceBefore/After, unique reference,
+    // atomic non-negative debit). A debit may not touch money reserved by open withdrawals (R-11).
+    const { creditWallet, debitWallet, getWithdrawableBalance } = await import("../../../services/walletManagementService");
+    const reference = `MANUAL-${type.toUpperCase()}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    let walletRes: any;
+    if (type === 'Credit') {
+      walletRes = await creditWallet(userId, userType, amount, description, undefined, undefined, session, reference, 'MANUAL_ADMIN_CREDIT');
+    } else {
+      const withdrawable = await getWithdrawableBalance(userId, userType, session);
+      if (withdrawable < amount) throw new Error(`Insufficient withdrawable balance for debit (₹${withdrawable})`);
+      walletRes = await debitWallet(userId, userType, amount, description, undefined, session, reference, 'MANUAL_ADMIN_DEBIT');
+    }
+    if (!walletRes?.success) throw new Error(walletRes?.message || "Wallet update failed");
+    user = await (user.constructor as any).findById(userId).session(session);
 
     // Update Platform Wallet aggregates
     const PlatformWallet = (await import("../../../models/PlatformWallet")).default;

@@ -131,7 +131,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         deliverySelections: (order as any).deliverySelections,
         couponCode: order.couponCode,
         tipAmount: order.tipAmount,
-        giftPackaging: order.giftPackaging,
         useWallet: order.useWallet,
       };
 

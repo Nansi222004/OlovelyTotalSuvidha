@@ -1,3 +1,4 @@
+import "./testDbGuard"; // R-15: refuse to run against a non-local database
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";

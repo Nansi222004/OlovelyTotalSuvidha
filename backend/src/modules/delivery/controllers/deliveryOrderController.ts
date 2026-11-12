@@ -442,22 +442,28 @@ export const updateOrderStatus = asyncHandler(
             message: `Failed to process COD delivery: ${codError.message}`,
           });
         }
-      } else {
-        // For non-COD orders, use existing distribution logic
-        const { distributeCommissions } =
-          await import("../../../services/commissionService");
-        try {
-          await distributeCommissions(id);
-        } catch (commError: any) {
-          console.error("Error distributing commissions:", commError);
-          // Continue even if commission distribution fails
-        }
       }
+      // Non-COD commissions are distributed AFTER order.save() below: distributeCommissions
+      // re-reads the order and refuses unless its persisted status is "Delivered".
     } else if (status) {
       order.status = status;
     }
 
     await order.save();
+
+    if (status === "Delivered" && order.status === "Delivered" && previousStatus !== "Delivered") {
+      const { recordDeliveryFinancials } =
+        await import("../../../services/commissionService");
+      try {
+        const distRes: any = await recordDeliveryFinancials(id, deliveryId);
+        if (distRes && distRes.success === false) {
+          console.error(`Commission distribution failed for order ${order.orderNumber}: ${distRes.message}`);
+        }
+      } catch (commError: any) {
+        console.error("Error distributing commissions:", commError);
+        // Continue even if commission distribution fails
+      }
+    }
     if (status === "Delivered") {
       await DeliveryAssignment.findOneAndUpdate(
         { order: order._id, deliveryBoy: deliveryId },

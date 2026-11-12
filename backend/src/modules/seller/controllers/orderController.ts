@@ -7,10 +7,7 @@ import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import { recomputeOrderFulfillment } from "../../../services/orderFulfillmentOrchestrator";
 import { Server as SocketIOServer } from "socket.io";
-import {
-  calculateCODOrderBreakdown,
-  getOrderEarningBreakdown,
-} from "../../../services/commissionService";
+import { buildSellerOrderEarning } from "../../../services/sellerSettlementService";
 import { getSellerPendingOrderAlerts } from "../../../services/orderAlertService";
 import { buildSellerInvoiceScope, isSellerInvoiceChannel } from "../../../utils/sellerInvoiceScoping";
 import { getChannelFulfillmentStatus } from "../../../utils/fulfillmentStatus";
@@ -300,22 +297,7 @@ export const getSettlementOrders = asyncHandler(
         let codBreakdown = null;
         if (order.paymentMethod === "COD") {
           try {
-            const full = await calculateCODOrderBreakdown(order._id.toString());
-            const myEarning = full.sellerEarnings.get(sellerId) ?? 0;
-            codBreakdown = {
-              orderId: full.orderId,
-              orderNumber: full.orderNumber,
-              adminProductCommission: full.adminProductCommission,
-              platformFee: full.platformFee,
-              totalDeliveryCharge: full.totalDeliveryCharge,
-              deliveryBoyCommission: full.deliveryBoyCommission,
-              isSelfAssign: full.isSelfAssign,
-              totalAdminEarning: full.totalAdminEarning,
-              yourEarning: myEarning,
-              note: full.isSelfAssign
-                ? "Self Assign: Delivery charge added to your earning. Delivery boy has no share."
-                : "Amount to pay admin & your earning.",
-            };
+            codBreakdown = await buildSellerOrderEarning(order._id.toString(), sellerId);
           } catch {
             // ignore
           }
@@ -371,25 +353,8 @@ export const getOrderCODBreakdown = asyncHandler(
         message: "COD breakdown is only available for COD orders",
       });
     }
-    const breakdown = await calculateCODOrderBreakdown(order._id.toString());
-    const myEarning = breakdown.sellerEarnings.get(sellerId) ?? 0;
-    return res.status(200).json({
-      success: true,
-      data: {
-        orderId: breakdown.orderId,
-        orderNumber: breakdown.orderNumber,
-        adminProductCommission: breakdown.adminProductCommission,
-        platformFee: breakdown.platformFee,
-        totalDeliveryCharge: breakdown.totalDeliveryCharge,
-        deliveryBoyCommission: breakdown.deliveryBoyCommission,
-        isSelfAssign: breakdown.isSelfAssign,
-        totalAdminEarning: breakdown.totalAdminEarning,
-        yourEarning: myEarning,
-        note: breakdown.isSelfAssign
-          ? "Self Assign: Delivery charge added to seller earning. Delivery boy has no share."
-          : "Admin commission and your earning for this COD order.",
-      },
-    });
+    const data = await buildSellerOrderEarning(order._id.toString(), sellerId);
+    return res.status(200).json({ success: true, data });
   },
 );
 
@@ -408,22 +373,7 @@ export const getOrderEarningBreakdownSeller = asyncHandler(
     if (!hasItems) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const breakdown = await getOrderEarningBreakdown(order._id.toString());
-    const yourEarning = breakdown.sellerEarnings.get(sellerId) ?? 0;
-    const payload = {
-      orderId: breakdown.orderId,
-      orderNumber: breakdown.orderNumber,
-      adminProductCommission: breakdown.adminProductCommission,
-      platformFee: breakdown.platformFee,
-      totalDeliveryCharge: breakdown.totalDeliveryCharge,
-      deliveryBoyCommission: breakdown.deliveryBoyCommission,
-      isSelfAssign: breakdown.isSelfAssign,
-      totalAdminEarning: breakdown.totalAdminEarning,
-      yourEarning,
-      note: breakdown.isSelfAssign
-        ? "Self Assign: Delivery charge is included in your earning. Delivery partner has no share."
-        : "Delivery partner gets delivery share. Your earning is from product sale (after commission).",
-    };
+    const payload = await buildSellerOrderEarning(order._id.toString(), sellerId);
     return res.status(200).json({ success: true, data: payload });
   },
 );
@@ -660,6 +610,15 @@ export const getOrderById = asyncHandler(
       shippingDiscount: order.shippingDiscount || 0,
       platformFee: requestedChannel ? 0 : (order.platformFee || 0),
       discount: requestedChannel ? 0 : (order.discount || 0),
+      // Order-level components of order.total, shown so the invoice adds up
+      tipAmount: requestedChannel ? 0 : Math.max(0, Number((order as any).tipAmount) || 0),
+      giftPackagingFee: requestedChannel ? 0 : (
+        Number((order as any).giftPackagingFee) > 0
+          ? Number((order as any).giftPackagingFee)
+          : (order as any).giftPackaging
+            ? Math.max(0, Math.round(((order.total || 0) - ((order.subtotal || 0) - (order.discount || 0) + (order.platformFee || 0) + (order.shipping || 0) + (Number((order as any).tipAmount) || 0))) * 100) / 100)
+            : 0
+      ),
       couponCode: requestedChannel ? "" : (order.couponCode || ""),
       grandTotal: invoiceScope?.total ?? formattedItems.reduce((sum, it) => sum + it.subtotal, 0),
       orderGrandTotal: order.total || 0,
@@ -741,6 +700,21 @@ export const updateOrderStatus = asyncHandler(
     }
 
     const previousStatus = order.status;
+
+    // B-7: Olovely has no seller self-delivery. A quick-commerce order is delivered by an Olovely
+    // rider (who confirms delivery), so a seller cannot mark it Delivered while no rider is assigned.
+    if (status === "Delivered") {
+      const qcGroupRider = (order.fulfillmentGroups || []).find(
+        (g: any) => g.fulfillmentType === "LOCAL_DELIVERY" && g.deliveryBoy,
+      );
+      const hasQcItems = order.orderType !== "ECOMMERCE";
+      if (hasQcItems && !order.deliveryBoy && !qcGroupRider) {
+        return res.status(400).json({
+          success: false,
+          message: "Assign an Olovely delivery partner first. Sellers cannot self-deliver quick-commerce orders.",
+        });
+      }
+    }
 
     // Allow same status only when updating deliveryPreference or in multi-seller acceptance phase
     if (order.status === status && !deliveryPreference && status !== "Accepted" && status !== "Rejected") {
@@ -931,10 +905,10 @@ export const updateOrderStatus = asyncHandler(
     // Distribute commissions on delivery (unchanged)
     if (status === "Delivered" && previousStatus !== "Delivered") {
       try {
-        const { distributeCommissions } = await import(
+        const { recordDeliveryFinancials } = await import(
           "../../../services/commissionService"
         );
-        await distributeCommissions(order._id.toString());
+        await recordDeliveryFinancials(order._id.toString());
       } catch (commissionError) {
         console.error("Error distributing commissions on seller delivery:", commissionError);
       }
@@ -1108,10 +1082,13 @@ export const getShippingLabel = asyncHandler(
           // Quick Commerce Local Delivery Label (4x6 Internal Thermal)
           const isCod = order.paymentMethod === "COD";
           const isPaid = order.paymentStatus === "Paid";
+          // Same rule as the rider app (deliveryOrderScopingHelper): the cash still owed
+          // (codAmountPending = total − wallet portion), scoped to this group when split.
+          const fullCodPending = Number((order as any).codAmountPending ?? order.total ?? group.subtotal ?? 0);
           const codAmount = isCod && !isPaid
             ? (effectiveGroups.length > 1
-                ? Number((group.subtotal + (group.shippingFee || 0)).toFixed(2))
-                : (order.total || group.subtotal))
+                ? Number(Math.min(group.subtotal + (group.shippingFee || 0), fullCodPending).toFixed(2))
+                : Number(fullCodPending.toFixed(2)))
             : 0;
 
           return {

@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import { createRazorpayOrder, capturePayment, handleWebhook } from '../services/paymentService';
 import Order from '../models/Order';
 import { getCommerceChannels } from '../services/commerceChannelService';
+import { getOnlineAmountDue } from '../services/financeMath';
 
 const router = Router();
 
@@ -51,9 +52,7 @@ router.post('/create-order', authenticate, requireUserType('Customer'), async (r
             });
         }
 
-        const payableAmount = (order.onlineAmountPaid !== undefined && order.onlineAmountPaid !== null && order.onlineAmountPaid > 0)
-            ? order.onlineAmountPaid
-            : (order.walletAmountUsed ? Math.max(0, order.total - order.walletAmountUsed) : order.total);
+        const payableAmount = getOnlineAmountDue(order);
 
         if (order.paymentStatus === 'Paid' || payableAmount <= 0) {
             return res.status(400).json({
@@ -146,7 +145,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
         }
 
         const io = req.app.get('io');
-        const result = await handleWebhook(req.body, signature, io);
+        const result = await handleWebhook(req.body, signature, io, (req as any).rawBody);
 
         if (!result.success) {
             return res.status(400).json(result);

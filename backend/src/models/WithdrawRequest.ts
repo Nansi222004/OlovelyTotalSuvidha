@@ -4,6 +4,8 @@ export interface IWithdrawRequest extends Document {
     userId: mongoose.Types.ObjectId; // Generic user reference (seller or delivery boy)
     userType: 'SELLER' | 'DELIVERY_BOY'; // Type of user
     amount: number;
+    /** R-11: amount reserved on the user (pendingWithdrawalAmount) when requested. 0 for legacy requests. */
+    reservedAmount?: number;
     status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
     paymentMethod: 'Bank Transfer' | 'UPI';
     accountDetails: string;
@@ -32,6 +34,11 @@ const WithdrawRequestSchema = new Schema<IWithdrawRequest>(
             type: Number,
             required: [true, 'Amount is required'],
             min: [1, 'Minimum withdrawal amount is 1'],
+        },
+        reservedAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
         },
         status: {
             type: String,

@@ -283,7 +283,7 @@ export default function AdminWallet() {
           bg="bg-green-50"
         />
         <StatsCard
-          title="Total Admin Earning"
+          title="Platform Earnings (net)"
           value={`₹${stats?.totalAdminEarnings?.toLocaleString("en-IN") || "0"}`}
           icon={DollarSignIcon}
           color="text-purple-600"
@@ -311,6 +311,47 @@ export default function AdminWallet() {
           bg="bg-amber-50"
         />
       </div>
+
+      {/* B-6 KPI breakdown: one definition per figure (all-time, IST) */}
+      {stats?.kpis && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">Financial KPIs (excl. cancelled / rejected orders)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-1 text-sm">
+            {([
+              ["GMV (merchandise incl. GST)", stats.kpis.gmv],
+              ["− Platform coupons", -stats.kpis.couponDiscount],
+              ["− Return refunds (product)", -stats.kpis.returnProductRefunds],
+              ["= Net sales", stats.kpis.netSales],
+              ["Net sales excl. GST", stats.kpis.netSalesExGst],
+              ["GST in GMV (sellers' liability)", stats.kpis.gstIncludedInGmv],
+              ["Seller commissions (ex-GST base)", stats.kpis.sellerCommissions],
+              ["+ Platform fees", stats.kpis.platformFees],
+              ["+ Delivery / shipping fees", stats.kpis.deliveryFees],
+              ["− Rider earnings", -stats.kpis.riderEarnings],
+              ["− Shiprocket charges", -stats.kpis.courierCharges],
+              ["= Platform earnings (gross)", stats.kpis.platformEarningsGross],
+              ["− Coupon cost (net of returns)", -stats.kpis.couponCostNet],
+              ["= Platform earnings (net)", stats.kpis.platformEarningsNet],
+              ["Seller earnings: pending cash", stats.kpis.sellerEarnings.pending],
+              ["Seller earnings: return-window locked", stats.kpis.sellerEarnings.onHold],
+              ["Seller earnings: released", stats.kpis.sellerEarnings.paid],
+              ["Refunds to bank (gateway)", stats.kpis.refunds.gateway],
+              ["Refunds to customer wallet", stats.kpis.refunds.wallet],
+              ["COD pending from riders", stats.kpis.codPending.riders],
+              ["COD pending from Shiprocket", stats.kpis.codPending.courier],
+              ["Tips collected (100% riders)", stats.kpis.tips.collected],
+              ["Tips not yet credited", stats.kpis.tips.notYetCredited],
+            ] as [string, number][]).map(([label, value]) => (
+              <div key={label} className="flex justify-between border-b border-gray-100 py-1">
+                <span className="text-gray-600">{label}</span>
+                <span className={`font-medium ${value < 0 ? "text-red-600" : "text-gray-900"}`}>
+                  {value < 0 ? "−" : ""}₹{Math.abs(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs & Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
@@ -473,8 +514,16 @@ export default function AdminWallet() {
                               {earning.status}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-medium text-green-600">
-                            ₹{earning.amount.toFixed(2)}
+                          <td
+                            className={`py-3 px-4 text-right font-medium ${
+                              earning.status === "Cancelled"
+                                ? "text-gray-400 line-through"
+                                : earning.amount < 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                            }`}>
+                            {/* Negative = rider delivery payout (platform expense) */}
+                            {earning.amount < 0 ? "−" : ""}₹{Math.abs(earning.amount).toFixed(2)}
                           </td>
                         </tr>
                       ))}

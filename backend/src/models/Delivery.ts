@@ -39,6 +39,8 @@ export interface IDelivery extends Document {
     coordinates: [number, number]; // [longitude, latitude]
   };
   balance: number;
+  /** R-11: amount reserved by Pending/Approved withdrawal requests (not withdrawable again). */
+  pendingWithdrawalAmount?: number;
   cashCollected: number;
   pendingAdminPayout: number;
   settings: {
@@ -195,6 +197,11 @@ const DeliverySchema = new Schema<IDelivery>(
       type: Number,
       default: 0,
       min: [0, "Balance cannot be negative"],
+    },
+    pendingWithdrawalAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Reserved withdrawal amount cannot be negative"],
     },
     cashCollected: {
       type: Number,

@@ -90,7 +90,8 @@ class Cache {
 // Singleton instance
 export const cache = new Cache();
 
-// Clean expired entries every 5 minutes
+// Clean expired entries every 5 minutes. unref(): the sweep must not keep a process alive on its own
+// (R-19: scripts/tests that import services never exited). The HTTP server keeps the API process alive.
 setInterval(() => {
   cache.cleanExpired();
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();

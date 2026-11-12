@@ -1,3 +1,4 @@
+import "./testDbGuard"; // R-15: refuse to run against a non-local database
 // Comprehensive End-to-End E2E Test Suite for Self Assign & Admin Delivery Flows
 import dotenv from 'dotenv';
 dotenv.config();

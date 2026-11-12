@@ -88,3 +88,7 @@ frontend/tests/
 !README.md
 
 
+
+# All documentation and markdown files stay local (never pushed)
+docs/
+*.md
