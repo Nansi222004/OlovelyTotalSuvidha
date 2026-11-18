@@ -2167,15 +2167,6 @@ export default function OrderDetail() {
       {showRazorpayCheckout && order && (
         <RazorpayCheckout
           orderId={order._id || order.id || id!}
-          amount={
-            // Same rule as POST /payments/create-order (getOnlineAmountDue): amount due online;
-            // the server decides the real charge, this is only the widget's display amount.
-            Number(order.onlineAmountDue) > 0
-              ? Number(order.onlineAmountDue)
-              : order.paymentStatus !== "Paid" && Number(order.onlineAmountPaid) > 0
-                ? Number(order.onlineAmountPaid)
-                : Math.max(0, (order.totalAmount || order.total || 0) - (order.walletAmountUsed || 0))
-          }
           customerDetails={{
             name: user?.name || order.customerName || order.address?.name || "Customer",
             email: user?.email || order.customerEmail || "customer@olovely.com",

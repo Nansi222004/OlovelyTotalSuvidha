@@ -3,7 +3,6 @@ import { createRazorpayOrder, verifyPayment } from '../services/api/paymentServi
 
 interface RazorpayCheckoutProps {
     orderId: string;
-    amount: number;
     onSuccess: (paymentId: string) => void;
     onFailure: (error: string) => void;
     customerDetails: {
@@ -21,7 +20,6 @@ declare global {
 
 const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
     orderId,
-    amount,
     onSuccess,
     onFailure,
     customerDetails,
@@ -60,7 +58,7 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
                     return;
                 }
 
-                const { razorpayOrderId, razorpayKey, isMock } = orderResponse.data;
+                const { razorpayOrderId, razorpayKey, isMock, amount: orderAmount } = orderResponse.data;
 
                 // Handle mock/development fallback payment
                 if (isMock || (razorpayOrderId && razorpayOrderId.startsWith('order_mock_'))) {
@@ -86,7 +84,7 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
                 // Razorpay options
                 const options = {
                     key: razorpayKey, // Get key from backend response
-                    amount: Math.round(amount * 100), // Amount in paise (integer)
+                    amount: orderAmount, // Backend-created Razorpay order amount, in paise
                     currency: 'INR',
                     name: 'Olovely Total Suvidha',
                     description: `Order #${orderId}`,
@@ -135,7 +133,7 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({
         };
 
         initiatePayment();
-    }, [orderId, amount, customerDetails, onSuccess, onFailure]);
+    }, [orderId, customerDetails, onSuccess, onFailure]);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

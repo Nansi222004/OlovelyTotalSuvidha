@@ -50,7 +50,7 @@ export interface BarcodeLabelData {
 export function barcodeLabelHtml(data: BarcodeLabelData): string {
   const escape = (value: string) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character] || character));
   return `<!doctype html><html><head><title>Barcode label</title><style>
-    @page{size:50mm 30mm;margin:2mm}body{font-family:Arial,sans-serif;margin:0;color:#000}.label{text-align:center;width:46mm}.name{font-size:10pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta,.number{font-size:7pt;margin-top:1mm}.number{font-family:monospace;letter-spacing:.5px}svg{display:block;width:100%;height:12mm;margin-top:1mm}@media print{button{display:none}}
+    @page{size:4in 5in;margin:0}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#000}.label{text-align:center;width:4in;height:5in;padding:.15in;overflow:hidden}.name{font-size:16pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta,.number{font-size:12pt;margin-top:.12in}.number{font-family:monospace;letter-spacing:.5px}svg{display:block;width:100%;height:1.7in;margin-top:.2in}@media print{button{display:none}}
   </style></head><body><div class="label"><div class="name">${escape(data.productName)}</div>${data.variantName ? `<div class="meta">${escape(data.variantName)}</div>` : ""}${data.sku ? `<div class="meta">SKU: ${escape(data.sku)}</div>` : ""}${barcodeSvgMarkup(data.barcode, 64)}<div class="number">${escape(data.barcode)}</div></div><script>window.onload=()=>{window.print();window.close()}</script></body></html>`;
 }
 

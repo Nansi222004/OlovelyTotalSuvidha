@@ -11,10 +11,12 @@ import { ensureDefaultAdmin } from "./utils/ensureDefaultAdmin";
 import { seedHeaderCategories } from "./utils/seedHeaderCategories";
 import { initializeSocket } from "./socket/socketService";
 import { initializeFirebaseAdmin } from "./services/firebaseAdmin";
+import { applyRazorpayMode } from "./config/razorpayEnv";
 
 // Load environment variables - reloaded for Phase 2
 // Reload timestamp: 2026-09-26T12:58:30
 dotenv.config();
+applyRazorpayMode();
 
 // Server Instance
 const app: Application = express();

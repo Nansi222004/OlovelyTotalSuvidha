@@ -3835,7 +3835,6 @@ export default function Checkout() {
       {showRazorpayCheckout && pendingOrderId && user && (
         <RazorpayCheckout
           orderId={pendingOrderId}
-          amount={finalPayable}
           customerDetails={{
             name: user.name || "Customer",
             email: user.email || "",

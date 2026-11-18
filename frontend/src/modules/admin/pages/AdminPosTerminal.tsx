@@ -1491,7 +1491,7 @@ export default function AdminPosTerminal() {
                       receiptFormat === "thermal" ? "bg-white shadow-xs text-indigo-700" : "text-slate-600"
                     }`}
                   >
-                    Thermal (80mm)
+                    Thermal (79mm)
                   </button>
                   <button
                     type="button"
@@ -1529,12 +1529,22 @@ export default function AdminPosTerminal() {
               }
             >
               {receiptFormat === "thermal" ? (
-                /* --- 80MM THERMAL RECEIPT VIEW --- */
+                /* --- 79MM THERMAL RECEIPT VIEW --- */
                 <div className="space-y-3 leading-tight">
                   <div className="text-center space-y-1">
-                    <p className="font-extrabold text-base tracking-wider uppercase">
-                      {lastCompletedSale.business.businessName}
-                    </p>
+                    <div className="flex items-center justify-center gap-2">
+                      {businessSettings?.appLogo && (
+                        <img
+                          src={resolveImageUrl(businessSettings.appLogo)}
+                          alt="Business logo"
+                          className="w-9 h-9 object-contain shrink-0"
+                          onError={(event) => { event.currentTarget.style.display = "none"; }}
+                        />
+                      )}
+                      <p className="font-extrabold text-base tracking-wider uppercase">
+                        {lastCompletedSale.business.businessName}
+                      </p>
+                    </div>
                     {lastCompletedSale.business.businessAddress && (
                       <p className="text-[11px] text-slate-600">{lastCompletedSale.business.businessAddress}</p>
                     )}
@@ -1649,10 +1659,22 @@ export default function AdminPosTerminal() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-start border-b pb-4">
                     <div>
-                      <h2 className="text-lg font-black text-slate-900 uppercase">GST TAX INVOICE</h2>
-                      <p className="font-bold text-slate-800 text-sm">
-                        {lastCompletedSale.business.businessName}
-                      </p>
+                      <div className="flex items-center gap-3">
+                        {businessSettings?.appLogo && (
+                          <img
+                            src={resolveImageUrl(businessSettings.appLogo)}
+                            alt="Business logo"
+                            className="w-14 h-14 object-contain shrink-0"
+                            onError={(event) => { event.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                        <div>
+                          <h2 className="text-lg font-black text-slate-900 uppercase">GST TAX INVOICE</h2>
+                          <p className="font-bold text-slate-800 text-sm">
+                            {lastCompletedSale.business.businessName}
+                          </p>
+                        </div>
+                      </div>
                       <p className="text-slate-500 text-xs">{lastCompletedSale.business.businessAddress}</p>
                       <p className="text-slate-500 text-xs">{lastCompletedSale.business.companyState} ({lastCompletedSale.business.stateCode})</p>
                       <p className="text-slate-500 text-xs">GSTIN: <strong>{lastCompletedSale.business.gstin}</strong></p>
@@ -1766,7 +1788,9 @@ export default function AdminPosTerminal() {
             border: none !important;
           }
           #printable-pos-receipt[data-format="thermal"] {
-            max-width: 80mm !important;
+            width: 79mm !important;
+            max-width: 79mm !important;
+            box-sizing: border-box !important;
           }
           #printable-pos-receipt[data-format="a4"] {
             width: 190mm !important;
