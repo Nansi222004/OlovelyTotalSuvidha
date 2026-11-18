@@ -210,6 +210,7 @@ export interface IFulfillmentGroup {
     retryCount?: number;
     lastError?: string;
     idempotencyKey?: string;
+    codAmount?: number;
   };
   subtotal: number;
   shippingFee: number;
@@ -671,6 +672,8 @@ const OrderSchema = new Schema<IOrder>(
           retryCount: { type: Number, default: 0 },
           lastError: { type: String, trim: true },
           idempotencyKey: { type: String, trim: true },
+          // COD cash the carrier was told to collect for this shipment (fixed at booking).
+          codAmount: { type: Number },
         },
         subtotal: { type: Number, default: 0 },
         shippingFee: { type: Number, default: 0 },

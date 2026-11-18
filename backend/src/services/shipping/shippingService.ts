@@ -287,6 +287,7 @@ export async function createEcommerceShipment(
     shipmentId: shipmentResult.shipmentId,
     status: shipmentResult.status,
     idempotencyKey,
+    ...(codAmount !== undefined ? { codAmount } : {}),
   };
 
   group.status = 'Shipped';
@@ -628,6 +629,7 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
     const terminalRegression =
       (group.status === 'Delivered' && targetGroupStatus !== 'Delivered') ||
       (group.status === 'Cancelled' && targetGroupStatus !== 'Cancelled');
+    const previousGroupStatus = group.status;
 
     if (!terminalRegression && incomingWeight >= currentWeight) {
       group.status = targetGroupStatus;
@@ -647,8 +649,13 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
       group.thirdPartyOrderDetails.providerId = 'shiprocket';
     }
 
+    // The carrier cancelled this shipment just now (e.g. from the Shiprocket dashboard). Its items
+    // must be settled (refund / COD reduction / stock) BEFORE the order can complete, so the
+    // settlement service decides completion for this event instead of the block below.
+    const groupJustCancelled = previousGroupStatus !== 'Cancelled' && group.status === 'Cancelled';
+
     // If all groups are delivered, update overall order status
-    const allDelivered = areAllFulfillmentGroupsDelivered(order.fulfillmentGroups);
+    const allDelivered = !groupJustCancelled && areAllFulfillmentGroupsDelivered(order.fulfillmentGroups);
     const wasDelivered = order.status === 'Delivered';
     if (allDelivered) {
       order.status = 'Delivered';
@@ -656,6 +663,22 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
     }
 
     await order.save();
+
+    if (groupJustCancelled && !['Cancelled', 'Delivered', 'Returned'].includes(String(order.status))) {
+      try {
+        const { settleCancelledOrderItems } = await import('../orderPartCancellationService');
+        const settlement = await settleCancelledOrderItems(
+          order._id.toString(),
+          (group.items || []).map((itemId: any) => String(itemId)),
+          { reason: 'Courier shipment was cancelled' },
+        );
+        if (!settlement.success) {
+          console.error(`[Shipping] Settlement of cancelled shipment failed for order ${order.orderNumber}: ${settlement.message}`);
+        }
+      } catch (settleErr) {
+        console.error(`[Shipping] Settlement of cancelled shipment errored for order ${order.orderNumber}:`, settleErr);
+      }
+    }
 
     // Fully delivered: prepaid → escrow settlement; COD → CourierCodSettlement PENDING_REMITTANCE
     // (B-4: Shiprocket "Delivered" never credits sellers; only a verified remittance does).

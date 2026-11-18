@@ -184,8 +184,12 @@ export function getDeliveryPartnerQcContext(
     qcGroups.length > 0 ||
     (!hasFulfillmentGroups && orderObj.orderType !== "ECOMMERCE");
 
+  // Cancelled items (seller-rejected / partially cancelled) are never handed over or paid for.
+  const isCancelledItem = (item: any) => String(item?.status || "") === "Cancelled";
+  const isCancelledGroup = (group: any) => String(group?.status || "") === "Cancelled";
+
   // 4. Calculate QC item subtotal from assigned items only
-  const assignedQcSubtotal = assignedQcItems.reduce((acc: number, item: any) => {
+  const assignedQcSubtotal = assignedQcItems.filter((item: any) => !isCancelledItem(item)).reduce((acc: number, item: any) => {
     const itemTotal =
       typeof item.total === "number" && !isNaN(item.total)
         ? item.total
@@ -196,7 +200,7 @@ export function getDeliveryPartnerQcContext(
   // Calculate assigned QC shipping fee
   let assignedQcShippingFee = 0;
   if (hasFulfillmentGroups) {
-    assignedQcShippingFee = assignedQcGroups.reduce((acc: number, g: any) => {
+    assignedQcShippingFee = assignedQcGroups.filter((g: any) => !isCancelledGroup(g)).reduce((acc: number, g: any) => {
       return acc + Number(g.shippingFee || 0);
     }, 0);
   } else if (orderObj.orderType !== "ECOMMERCE" && assignedQcItems.length > 0) {
@@ -222,8 +226,10 @@ export function getDeliveryPartnerQcContext(
         // once, by the rider of the first QC group. Ecommerce items, the platform fee and
         // coupon/wallet reductions belong to the courier's share (see courierCodService).
         const tipAmount = Math.max(0, Number(orderObj.tipAmount) || 0);
-        const tipOwnerGroup = qcGroups[0];
-        const collectsTip = !tipOwnerGroup || assignedQcGroups.includes(tipOwnerGroup);
+        const tipOwnerGroup = qcGroups.find((g: any) => !isCancelledGroup(g));
+        // Legacy orders without QC groups: this rider is the only collector. Otherwise only the
+        // rider of the first non-cancelled QC group collects it (none if every QC part is cancelled).
+        const collectsTip = qcGroups.length === 0 || (!!tipOwnerGroup && assignedQcGroups.includes(tipOwnerGroup));
         assignedQcCodAmount = Math.min(assignedQcTotal + (collectsTip ? tipAmount : 0), fullCodPending);
       }
       // Safety cap: cannot exceed full COD pending or assigned gross

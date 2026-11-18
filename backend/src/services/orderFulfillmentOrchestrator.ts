@@ -182,14 +182,19 @@ export async function recomputeOrderFulfillment(
       console.error("Error cancelling courier shipments on all_rejected:", courierErr);
     }
 
-    // Trigger online payment refund if order was online paid
-    if ((order.paymentMethod === "Online" || (order.onlineAmountPaid && order.onlineAmountPaid > 0)) && order.paymentStatus !== "Refunded") {
-      try {
-        const { handleOnlineOrderCancellation } = await import("./refundSettlementService");
-        await handleOnlineOrderCancellation(order._id.toString(), order.cancellationReason);
-      } catch (refundErr) {
-        console.error("Error issuing online refund on all_rejected:", refundErr);
-      }
+    // Settle every item: stock back, seller commissions cancelled, and everything the customer
+    // actually paid (wallet AND online, minus anything already refunded) returned. Previously only
+    // online payments were refunded and rejected items never had their stock restored.
+    try {
+      const { settleCancelledOrderItems } = await import("./orderPartCancellationService");
+      const settlement = await settleCancelledOrderItems(
+        order._id.toString(),
+        items.map((item: any) => String(item._id)),
+        { reason: order.cancellationReason },
+      );
+      if (!settlement.success) console.error(`Settlement failed on all_rejected for ${order.orderNumber}: ${settlement.message}`);
+    } catch (refundErr) {
+      console.error("Error settling cancelled items on all_rejected:", refundErr);
     }
 
     if (io) {

@@ -435,6 +435,22 @@ export const updateOrderStatus = asyncHandler(
       const { recomputeOrderFulfillment } = await import("../../../services/orderFulfillmentOrchestrator");
       await recomputeOrderFulfillment(existingOrder._id.toString(), io);
 
+      // Rejected platform items: refund (prepaid) or reduce COD for them. Idempotent; stock was
+      // already restored above with the same key, and a full rejection was settled by the
+      // orchestrator.
+      if (canonicalStatus === "Rejected") {
+        const { settleCancelledOrderItems } = await import("../../../services/orderPartCancellationService");
+        const rejectedPlatformItems = await OrderItem.find({
+          order: existingOrder._id, ownerType: "PLATFORM", productType: "QUICK_COMMERCE", sellerStatus: "Rejected",
+        }).select("_id");
+        const settlement = await settleCancelledOrderItems(
+          existingOrder._id.toString(),
+          rejectedPlatformItems.map((item: any) => String(item._id)),
+          { reason: "Platform items rejected by admin" },
+        );
+        if (!settlement.success) console.error(`[ADMIN REJECT] Settlement failed for order ${existingOrder.orderNumber}: ${settlement.message}`);
+      }
+
       const updatedOrder = await Order.findById(existingOrder._id)
         .populate("customer", "name email phone")
         .populate("deliveryBoy", "name mobile")

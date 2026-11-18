@@ -18,6 +18,7 @@
     "test:shiprocket-return-exchange": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketReturnExchange.ts",
     "test:shiprocket-cancellation": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketCancellation.ts",
     "test:courier-cod-amounts": "node scripts/runTypeScriptTest.cjs src/scripts/testCourierCodAmounts.ts",
+    "test:partial-cancellation": "node scripts/runTypeScriptTest.cjs src/scripts/testPartialCancellationIsolated.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
     "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
     "test:financial-audit": "node scripts/runTypeScriptTest.cjs src/scripts/testFinancialAuditRegressionIsolated.ts",

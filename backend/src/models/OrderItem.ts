@@ -44,6 +44,8 @@ export interface IOrderItem extends Document {
   status: "Pending" | "Shipped" | "Delivered" | "Cancelled" | "Returned";
   // Per-seller acceptance tracking (independent of main order status)
   sellerStatus: "Pending" | "Accepted" | "Rejected";
+  /** Set once the cancellation of this item has been settled (stock, commission, money). */
+  cancellationSettledAt?: Date;
   subtotal: number;
   orderId?: string;
   commissionRate: number;
@@ -185,6 +187,10 @@ const OrderItemSchema = new Schema<IOrderItem>(
       type: String,
       enum: ["Pending", "Accepted", "Rejected"],
       default: "Pending",
+    },
+    // Set once the cancellation of this item has been settled (stock, commission, money).
+    cancellationSettledAt: {
+      type: Date,
     },
     commissionRate: {
       type: Number,

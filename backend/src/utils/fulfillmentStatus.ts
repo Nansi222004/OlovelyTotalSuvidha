@@ -30,10 +30,17 @@ export const hasActiveLocalDeliveryFulfillment = (order: any): boolean => {
   return order?.orderType !== "ECOMMERCE" && isFulfillmentStatusActionable(order?.status);
 };
 
+/**
+ * True when the order is finished from a delivery point of view: every shipment is either
+ * Delivered or Cancelled (a cancelled part will never be delivered), and at least one was
+ * actually Delivered. Without the Cancelled allowance a mixed/multi-seller order with one
+ * cancelled part could never reach Delivered.
+ */
 export const areAllFulfillmentGroupsDelivered = (groups: any[]): boolean =>
   Array.isArray(groups) &&
   groups.length > 0 &&
-  groups.every((group) => group?.status === "Delivered");
+  groups.every((group) => group?.status === "Delivered" || group?.status === "Cancelled") &&
+  groups.some((group) => group?.status === "Delivered");
 
 const STATUS_PRIORITY = [
   "OutForDelivery",

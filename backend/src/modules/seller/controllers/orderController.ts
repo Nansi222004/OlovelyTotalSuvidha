@@ -7,6 +7,7 @@ import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import { recomputeOrderFulfillment } from "../../../services/orderFulfillmentOrchestrator";
 import { cancelCourierShipmentsForOrder, isCourierGroupPastPickup } from "../../../services/shipping/shippingService";
+import { settleCancelledOrderItems } from "../../../services/orderPartCancellationService";
 import { Server as SocketIOServer } from "socket.io";
 import { buildSellerOrderEarning } from "../../../services/sellerSettlementService";
 import { getSellerPendingOrderAlerts } from "../../../services/orderAlertService";
@@ -835,6 +836,19 @@ export const updateOrderStatus = asyncHandler(
           sellerId: sellerIdStr,
           reason: "Seller rejected the order",
         });
+
+        // Settle this seller's rejected items: stock back, their commission cancelled, and the
+        // customer refunded (prepaid) or charged less (COD) for them. Idempotent; when this was
+        // the last seller, the orchestrator above already settled the whole order.
+        const rejectedItems = await OrderItem.find({ order: order._id, seller: sellerId }).select("_id");
+        const settlement = await settleCancelledOrderItems(
+          order._id.toString(),
+          rejectedItems.map((item: any) => String(item._id)),
+          { reason: "Seller rejected their items" },
+        );
+        if (!settlement.success) {
+          console.error(`[SELLER REJECT] Settlement failed for order ${order.orderNumber}: ${settlement.message}`);
+        }
       }
 
       if (fulfillment.outcome === "all_rejected") {

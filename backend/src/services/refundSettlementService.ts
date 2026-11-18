@@ -118,12 +118,25 @@ export const handleOnlineOrderCancellation = async (
       let walletRefundExecuted = false;
       let onlineRefundExecuted = false;
 
-      // 1. REFUND WALLET PORTION (100% of wallet amount actually used)
-      if (order.walletAmountUsed && order.walletAmountUsed > 0 && order.customer) {
+      // Refunds already made for part of this order (step 2: partial cancellation) must not be
+      // paid again. Without earlier partial refunds both values are 0 and nothing changes.
+      const priorRefundDocs = session
+        ? await Refund.find({ order: order._id, status: "Completed" }).session(session)
+        : await Refund.find({ order: order._id, status: "Completed" });
+      const priorRefundTotal = round2(priorRefundDocs.reduce((s, r: any) => s + (r.amount || 0), 0));
+      const priorPayment: any = priorRefundTotal > 0
+        ? await Payment.findOne({ $or: [{ order: order._id }, ...(order.paymentId ? [{ razorpayPaymentId: order.paymentId }] : [])] }).session(session || null)
+        : null;
+      const priorOnlineRefunded = round2(priorPayment?.refundAmount || 0);
+      const priorWalletRefunded = Math.max(0, round2(priorRefundTotal - priorOnlineRefunded));
+      const walletToRefund = Math.max(0, round2((order.walletAmountUsed || 0) - priorWalletRefunded));
+
+      // 1. REFUND WALLET PORTION (wallet amount actually used, minus earlier partial refunds)
+      if (walletToRefund > 0 && order.customer) {
         const walletRes = await creditWallet(
           order.customer.toString(),
           "CUSTOMER",
-          order.walletAmountUsed,
+          walletToRefund,
           `Order cancellation refund for #${order.orderNumber}`,
           order._id.toString(),
           undefined,
@@ -142,7 +155,10 @@ export const handleOnlineOrderCancellation = async (
       // money that was never received and email the customer about it.
       const onlineCaptured = order.paymentStatus === "Paid";
       const onlineAmountToRefund = onlineCaptured
-        ? round2(order.onlineAmountPaid || (order.paymentMethod === "Online" ? Math.max(0, order.total - (order.walletAmountUsed || 0)) : 0))
+        ? Math.max(0, round2(
+            (order.onlineAmountPaid || (order.paymentMethod === "Online" ? Math.max(0, order.total - (order.walletAmountUsed || 0)) : 0))
+            - priorOnlineRefunded,
+          ))
         : 0;
       let refundResultData: any = null;
 
@@ -295,13 +311,13 @@ export const handleOnlineOrderCancellation = async (
       const verifyOrder = await Order.findById(order._id).lean();
       console.log(`\n[REFUND ORDER DB VERIFY]\nOrder ID: ${verifyOrder?._id}\nstatus: ${verifyOrder?.status}\npaymentStatus: ${verifyOrder?.paymentStatus}\npaymentId: ${verifyOrder?.paymentId}`);
 
-      const totalRefunded = (order.walletAmountUsed || 0) + (onlineAmountToRefund || 0);
+      const totalRefunded = walletToRefund + (onlineAmountToRefund || 0);
       if (totalRefunded > 0) {
         import("./orderEmailService").then(({ sendCustomerRefundEmail }) => {
           sendCustomerRefundEmail(order._id.toString(), {
             amount: totalRefunded,
             reason: cancellationReason || "Order cancellation refund",
-            method: (order.walletAmountUsed && onlineAmountToRefund) ? "Wallet & Online Payment" : (order.walletAmountUsed ? "Olovely Wallet" : "Original Payment Method"),
+            method: (walletToRefund && onlineAmountToRefund) ? "Wallet & Online Payment" : (walletToRefund ? "Olovely Wallet" : "Original Payment Method"),
             status: "Completed",
           }).catch((err) => console.error("[OrderEmailService] Cancellation refund email error:", err));
         }).catch(() => undefined);
@@ -312,7 +328,7 @@ export const handleOnlineOrderCancellation = async (
         message: "Order cancellation refund executed successfully (100% actual customer payment returned)",
         data: {
           orderId: order._id,
-          walletRefunded: order.walletAmountUsed || 0,
+          walletRefunded: walletToRefund,
           onlineRefunded: onlineAmountToRefund,
           onlineResult: refundResultData,
         },

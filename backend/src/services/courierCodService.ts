@@ -36,9 +36,10 @@ const isCourierGroup = (g: any) => g?.fulfillmentType === "COURIER_SHIPPING" || 
  */
 const riderCodShare = async (order: any): Promise<number> => {
   const groups: any[] = Array.isArray(order.fulfillmentGroups) ? order.fulfillmentGroups : [];
-  const qcGroups = groups.filter((g) => g.fulfillmentType === "LOCAL_DELIVERY");
+  // Cancelled QC parts are never delivered, so the rider collects nothing for them.
+  const qcGroups = groups.filter((g) => g.fulfillmentType === "LOCAL_DELIVERY" && g.status !== "Cancelled");
   const qcGroup = qcGroups[0];
-  const hasQcItems = (order.items || []).some((i: any) => isQcItem(i));
+  const hasQcItems = (order.items || []).some((i: any) => isQcItem(i) && i?.status !== "Cancelled");
   if (!hasQcItems) return 0;
   const fullPending = Number(order.codAmountPending ?? order.total ?? 0);
   const riderId = qcGroup?.deliveryBoy?.toString() || order.deliveryBoy?.toString();
@@ -92,6 +93,14 @@ export const computeCourierGroupCodAmounts = async (order: any): Promise<Map<str
     allocated = round2(allocated + amount);
     amounts.set(String(g.groupId), Math.max(0, amount));
   });
+
+  // Once a shipment is booked, the amount the carrier was told to collect is fixed: later
+  // partial cancellations of OTHER parts change the order's pending COD, but never what this
+  // courier collects at the door. Use the stored booking amount whenever it exists.
+  for (const g of active) {
+    const stored = g.thirdPartyOrderDetails?.codAmount;
+    if (typeof stored === "number" && Number.isFinite(stored)) amounts.set(String(g.groupId), round2(Math.max(0, stored)));
+  }
   return amounts;
 };
 
