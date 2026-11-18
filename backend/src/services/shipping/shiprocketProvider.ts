@@ -43,6 +43,7 @@ const SHIPROCKET_STATUS_MAP: Record<string, string> = {
   'OUT FOR DELIVERY': 'Out for Delivery',
   DELIVERED: 'Delivered',
   CANCELLED: 'Cancelled',
+  CANCELED: 'Cancelled', // Shiprocket's own spelling (seen in its order API/dashboard)
   RTO_INITIATED: 'Returned',
   RTO_PICKED_UP: 'Returned',
   RTO_IN_TRANSIT: 'Returned',
