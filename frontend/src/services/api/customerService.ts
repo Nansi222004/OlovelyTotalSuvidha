@@ -44,9 +44,11 @@ export interface UpdateLanguageResponse {
 /**
  * Get customer profile
  */
-export const getProfile = async (options?: { signal?: AbortSignal }): Promise<GetProfileResponse> => {
+export const getProfile = async (options?: { signal?: AbortSignal; token?: string }): Promise<GetProfileResponse> => {
   const response = await api.get<GetProfileResponse>('/customer/profile', {
     signal: options?.signal,
+    // An explicit customer token is never replaced by another panel's token (see interceptor step 1).
+    ...(options?.token ? { headers: { Authorization: `Bearer ${options.token}` } } : {}),
   });
   return response.data;
 };

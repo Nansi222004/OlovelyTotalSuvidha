@@ -1430,6 +1430,67 @@ export default function OrderDetail() {
             })}
           </div>
         )}
+        {/* Bill details: the full amount of the order (shipment cards above only show item prices) */}
+        {order && Number(order.total ?? order.totalAmount) > 0 && (() => {
+          const money = (value: any) => `₹${Number(value || 0).toFixed(2)}`;
+          const subtotal = Number(order.subtotal || 0);
+          const delivery = Number(order.shipping ?? order.deliveryFee ?? 0);
+          const platformFee = Number(order.platformFee || 0);
+          const tip = Number(order.tipAmount || 0);
+          const discount = Number(order.discount || 0);
+          const total = Number(order.total ?? order.totalAmount ?? 0);
+          const wallet = Number(order.walletAmountUsed || 0);
+          const isCod = String(order.paymentMethod || "").toUpperCase() === "COD";
+          const refunded = order.paymentStatus === "Refunded";
+          const paid = order.paymentStatus === "Paid" || order.paymentStatus === "Completed";
+          const rows: Array<[string, string, string?]> = [
+            ["Item total", money(subtotal)],
+            ["Delivery", delivery > 0 ? money(delivery) : "Free"],
+            ...(platformFee > 0 ? [["Handling", money(platformFee)] as [string, string]] : []),
+            ...(tip > 0 ? [["Delivery partner tip", money(tip)] as [string, string]] : []),
+            ...(discount > 0 ? [["Coupon discount", `−${money(discount)}`, "text-green-700"] as [string, string, string]] : []),
+          ];
+          return (
+            <motion.div
+              className="bg-white rounded-xl p-4 shadow-sm"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-neutral-800 uppercase tracking-wider">Bill details</h3>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                  refunded ? "bg-blue-50 text-blue-700" : paid ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+                }`}>
+                  {refunded ? "Refunded" : paid ? "Paid" : isCod ? "Cash on delivery" : "Payment pending"}
+                </span>
+              </div>
+              <div className="space-y-1.5 text-sm">
+                {rows.map(([label, value, cls]) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-neutral-600">{label}</span>
+                    <span className={cls || "text-neutral-900"}>{value}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between pt-2 mt-1 border-t border-neutral-100 font-bold text-neutral-900">
+                  <span>Total</span>
+                  <span>{money(total)}</span>
+                </div>
+                {wallet > 0 && (
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Paid from wallet</span>
+                    <span>{money(wallet)}</span>
+                  </div>
+                )}
+                {refunded && (
+                  <p className="text-xs text-blue-700 pt-1">
+                    The amount you paid has been refunded{wallet > 0 ? " (wallet part to your Olovely wallet)" : ""}.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
+
         {/* Payment Pending */}
         {order?.paymentStatus !== "Paid" && order?.paymentStatus !== "Completed" && order?.paymentStatus !== "Refunded" && (
           <motion.div

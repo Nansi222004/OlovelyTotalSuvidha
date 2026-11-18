@@ -190,6 +190,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // validate against backend so deleted customers are immediately cleared and redirected to login.
   useEffect(() => {
     let isMounted = true;
+    // Only validate the customer session on customer pages. On /seller, /admin or /delivery pages
+    // the active session belongs to that panel: replacing it with the customer profile (or letting a
+    // wrong-panel 401 clear it) logged sellers out on every refresh when a customer was also logged in.
+    if (currentPanel !== "customer") return;
     const currentToken = getAuthToken("customer");
     const currentUser = getStoredUserData("customer");
     const isCustomer =
@@ -200,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (currentToken && isCustomer) {
       import("../services/api/customerService").then(({ getProfile }) => {
         if (!isMounted) return;
-        getProfile()
+        getProfile({ token: currentToken })
           .then((res) => {
             if (!isMounted) return;
             if (res && res.success && res.data) {
@@ -244,6 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // validate against backend so deleted delivery partners are immediately cleared and redirected to login.
   useEffect(() => {
     let isMounted = true;
+    // Same rule for the delivery session: only validate it on delivery pages.
+    if (currentPanel !== "delivery") return;
     const currentToken = getAuthToken("delivery");
     const currentUser = getStoredUserData("delivery");
     const isDelivery =

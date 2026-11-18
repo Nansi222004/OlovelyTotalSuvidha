@@ -14,10 +14,19 @@ import { asyncHandler } from "../../../utils/asyncHandler";
 export const getProfile = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
-  if (!userId || (req as any).user?.userType !== "Customer") {
+  if (!userId) {
     return res.status(401).json({
       success: false,
-      message: "Unauthorized or not a customer",
+      message: "Unauthorized",
+    });
+  }
+  // A valid seller/admin/delivery token is NOT an expired session: 403, so clients never treat it
+  // as a logout (a 401 here used to log sellers out when the browser also had a customer session).
+  if ((req as any).user?.userType !== "Customer") {
+    return res.status(403).json({
+      success: false,
+      code: "WRONG_USER_TYPE",
+      message: "Not a customer account",
     });
   }
 
@@ -99,8 +108,9 @@ export const updateLanguagePreference = asyncHandler(
     const targetLang = language || preferredLanguage;
 
     if (!userId || (req as any).user?.userType !== "Customer") {
-      return res.status(401).json({
+      return res.status(userId ? 403 : 401).json({
         success: false,
+        code: userId ? "WRONG_USER_TYPE" : "TOKEN_MISSING",
         message: "Unauthorized or not a customer",
       });
     }
@@ -160,8 +170,9 @@ export const updateProfile = asyncHandler(
 
 
     if (!userId || (req as any).user?.userType !== "Customer") {
-      return res.status(401).json({
+      return res.status(userId ? 403 : 401).json({
         success: false,
+        code: userId ? "WRONG_USER_TYPE" : "TOKEN_MISSING",
         message: "Unauthorized or not a customer",
       });
     }
@@ -262,8 +273,9 @@ export const updateLocation = asyncHandler(
     const { latitude, longitude, address, city, state, pincode } = req.body;
 
     if (!userId || (req as any).user?.userType !== "Customer") {
-      return res.status(401).json({
+      return res.status(userId ? 403 : 401).json({
         success: false,
+        code: userId ? "WRONG_USER_TYPE" : "TOKEN_MISSING",
         message: "Unauthorized or not a customer",
       });
     }
@@ -319,8 +331,9 @@ export const getLocation = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId || (req as any).user?.userType !== "Customer") {
-    return res.status(401).json({
+    return res.status(userId ? 403 : 401).json({
       success: false,
+      code: userId ? "WRONG_USER_TYPE" : "TOKEN_MISSING",
       message: "Unauthorized or not a customer",
     });
   }
