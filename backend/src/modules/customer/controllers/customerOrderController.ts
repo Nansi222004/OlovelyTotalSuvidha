@@ -27,7 +27,7 @@ import {
   sanitizeTipAmount,
   ICouponLine,
 } from "../../../services/couponService";
-import { createEcommerceShipment, cancelEcommerceShipment, checkPincode } from "../../../services/shipping/shippingService";
+import { createEcommerceShipment, checkPincode, isCourierGroupPastPickup, requestCourierGroupCancellation } from "../../../services/shipping/shippingService";
 import { IFulfillmentGroup } from "../../../models/Order";
 import InventoryTransaction from "../../../models/InventoryTransaction";
 import { mutateStock } from "../../../services/inventoryService";
@@ -1783,19 +1783,43 @@ export const cancelOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // Check Ecommerce fulfillment group cancellation boundary
+    // Check Ecommerce fulfillment group cancellation boundary.
+    // A courier group is labelled 'Shipped' as soon as its AWB is booked, so the boundary is the
+    // carrier's real progress (picked up / in transit / delivered), not that label.
     if (order.fulfillmentGroups && order.fulfillmentGroups.length > 0) {
-      const dispatchedEcomGroup = order.fulfillmentGroups.find(
-        (g: any) =>
-          g.fulfillmentType === 'COURIER_SHIPPING' &&
-          ['Shipped', 'In Transit', 'Out for Delivery', 'OutForDelivery', 'Delivered'].includes(g.status)
-      );
+      const dispatchedEcomGroup: any = order.fulfillmentGroups.find((g: any) => isCourierGroupPastPickup(g));
       if (dispatchedEcomGroup) {
         if (session) await session.abortTransaction();
         return res.status(400).json({
           success: false,
-          message: `Ecommerce items cannot be cancelled after dispatch (Carrier Status: ${dispatchedEcomGroup.status})`,
+          message: `Ecommerce items cannot be cancelled after the courier has picked them up (Carrier Status: ${dispatchedEcomGroup.thirdPartyOrderDetails?.status || dispatchedEcomGroup.status})`,
         });
+      }
+
+      // Cancel every booked courier shipment with the carrier BEFORE cancelling locally, so the
+      // order is never shown as cancelled while a courier still has a pickup booked.
+      const carrierCancelledGroupIds: string[] = [];
+      for (const group of order.fulfillmentGroups as any[]) {
+        const carrierResult = await requestCourierGroupCancellation(group, reason);
+        if (!carrierResult.success) {
+          if (session) await session.abortTransaction();
+          // Groups already cancelled with the carrier in this attempt must not stay "active" locally.
+          for (const cancelledGroupId of carrierCancelledGroupIds) {
+            await Order.updateOne(
+              { _id: order._id, 'fulfillmentGroups.groupId': cancelledGroupId },
+              { $set: { 'fulfillmentGroups.$.status': 'Cancelled', 'fulfillmentGroups.$.thirdPartyOrderDetails.status': 'Cancelled' } }
+            );
+          }
+          console.error(`[Customer Cancel] Carrier refused cancellation for order ${order.orderNumber} group ${group.groupId}: ${carrierResult.message}`);
+          return res.status(400).json({
+            success: false,
+            message: "This order can no longer be cancelled because the courier shipment could not be cancelled. Please contact support.",
+          });
+        }
+        if (!carrierResult.skipped) {
+          carrierCancelledGroupIds.push(String(group.groupId));
+          if (group.thirdPartyOrderDetails) group.thirdPartyOrderDetails.status = 'Cancelled';
+        }
       }
     }
 
@@ -1912,18 +1936,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Cancel provider shipment with Shiprocket / active provider if shipment was created
-    if (order.fulfillmentGroups) {
-      for (const group of order.fulfillmentGroups) {
-        if (group.fulfillmentType === 'COURIER_SHIPPING' && (group.shippingDetails?.awbNumber || group.thirdPartyOrderDetails?.externalOrderId)) {
-          try {
-            await cancelEcommerceShipment(order._id.toString(), group.groupId, reason);
-          } catch (shipCancelErr) {
-            console.error(`Error notifying shipping provider of cancellation for group ${group.groupId}:`, shipCancelErr);
-          }
-        }
-      }
-    }
+    // Courier shipments were already cancelled with the carrier before the local cancellation above.
 
     // Mark DeliveryAssignment as Cancelled so delivery boy is available for new orders
     if (order.deliveryBoy) {

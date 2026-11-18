@@ -1119,6 +1119,11 @@ export default function DeliveryOrderDetail() {
                             <div>
                                 <p className="text-xs text-amber-800 font-bold uppercase tracking-wider">Collect Cash from Customer</p>
                                 <p className="text-[11px] text-amber-600">QC assigned delivery responsibility</p>
+                                {order.codAmountToCollect != null && order.codAmountToCollect - displayedTotal > 0.005 && (
+                                    <p className="text-[11px] text-amber-700 font-semibold">
+                                        Includes tip / fees ₹{(order.codAmountToCollect - displayedTotal).toFixed(2)}
+                                    </p>
+                                )}
                             </div>
                             <span className="text-xl font-extrabold text-amber-900">
                                 ₹{(order.codAmountToCollect != null ? order.codAmountToCollect : displayedTotal).toFixed(2)}

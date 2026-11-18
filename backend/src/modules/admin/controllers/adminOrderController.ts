@@ -465,6 +465,30 @@ export const updateOrderStatus = asyncHandler(
         });
       }
 
+      // Cancel booked courier shipments with the carrier BEFORE refunding/cancelling locally.
+      const { cancelCourierShipmentsForOrder, isCourierGroupPastPickup } = await import(
+        "../../../services/shipping/shippingService"
+      );
+      const pickedUpGroup: any = (existingOrder.fulfillmentGroups || []).find((g: any) => isCourierGroupPastPickup(g));
+      if (pickedUpGroup) {
+        return res.status(400).json({
+          success: false,
+          code: "COURIER_ALREADY_PICKED_UP",
+          message: `Order cannot be cancelled: the courier has already picked up the shipment (Carrier Status: ${pickedUpGroup.thirdPartyOrderDetails?.status || pickedUpGroup.status})`,
+        });
+      }
+      const courierResults = await cancelCourierShipmentsForOrder(existingOrder._id.toString(), {
+        reason: adminNotes || "Order cancelled by Admin",
+      });
+      const failedCourier = courierResults.find((r) => !r.success);
+      if (failedCourier) {
+        return res.status(400).json({
+          success: false,
+          code: "COURIER_CANCELLATION_FAILED",
+          message: `Admin cancellation stopped: the courier shipment could not be cancelled (${failedCourier.message}). Nothing was refunded.`,
+        });
+      }
+
       const { handleOnlineOrderCancellation } = await import(
         "../../../services/refundSettlementService"
       );
@@ -500,6 +524,14 @@ export const updateOrderStatus = asyncHandler(
           } else if (canonicalStatus === "Cancelled") {
             fgObj.status = "Cancelled";
           }
+        } else if (
+          canonicalStatus === "Cancelled" &&
+          (fgObj.fulfillmentType === "COURIER_SHIPPING" || fgObj.fulfillmentType === "THIRD_PARTY_API")
+        ) {
+          // Courier bookings were cancelled with the carrier above; this array is written back
+          // wholesale, so it must carry that state or it would overwrite it with stale values.
+          fgObj.status = "Cancelled";
+          if (fgObj.thirdPartyOrderDetails) fgObj.thirdPartyOrderDetails.status = "Cancelled";
         }
         return fgObj;
       });

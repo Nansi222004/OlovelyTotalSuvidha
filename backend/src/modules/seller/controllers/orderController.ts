@@ -6,6 +6,7 @@ import Product from "../../../models/Product";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import { recomputeOrderFulfillment } from "../../../services/orderFulfillmentOrchestrator";
+import { cancelCourierShipmentsForOrder, isCourierGroupPastPickup } from "../../../services/shipping/shippingService";
 import { Server as SocketIOServer } from "socket.io";
 import { buildSellerOrderEarning } from "../../../services/sellerSettlementService";
 import { getSellerPendingOrderAlerts } from "../../../services/orderAlertService";
@@ -724,6 +725,26 @@ export const updateOrderStatus = asyncHandler(
       });
     }
 
+    // A whole-order cancellation must first cancel every booked courier shipment with the
+    // carrier; if that is impossible (already picked up / carrier refused) nothing is cancelled.
+    if (status === "Cancelled") {
+      const pickedUpGroup: any = (order.fulfillmentGroups || []).find((g: any) => isCourierGroupPastPickup(g));
+      if (pickedUpGroup) {
+        return res.status(400).json({
+          success: false,
+          message: `Order cannot be cancelled: the courier has already picked up the shipment (Carrier Status: ${pickedUpGroup.thirdPartyOrderDetails?.status || pickedUpGroup.status})`,
+        });
+      }
+      const courierResults = await cancelCourierShipmentsForOrder(order._id.toString(), { reason: "Order cancelled by seller" });
+      const failedCourier = courierResults.find((r) => !r.success);
+      if (failedCourier) {
+        return res.status(400).json({
+          success: false,
+          message: `Order cannot be cancelled because the courier shipment could not be cancelled: ${failedCourier.message}`,
+        });
+      }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // MULTI-SELLER ACCEPTANCE / REJECTION LOGIC
     // ─────────────────────────────────────────────────────────────────────────
@@ -806,6 +827,15 @@ export const updateOrderStatus = asyncHandler(
 
       const io: SocketIOServer = req.app?.get ? (req.app.get("io") as SocketIOServer) : (null as any);
       const fulfillment = await recomputeOrderFulfillment(id, io);
+
+      // A rejecting seller will not hand over the parcel: cancel that seller's booked courier
+      // shipment(s) so no pickup is attempted and the freight is released.
+      if (status === "Rejected") {
+        await cancelCourierShipmentsForOrder(order._id.toString(), {
+          sellerId: sellerIdStr,
+          reason: "Seller rejected the order",
+        });
+      }
 
       if (fulfillment.outcome === "all_rejected") {
         console.log(`❌ [MULTI-SELLER] All sellers rejected order ${order.orderNumber}. Fully cancelled.`);

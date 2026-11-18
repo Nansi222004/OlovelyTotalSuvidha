@@ -110,6 +110,8 @@ export function buildShiprocketReturnPayload(request: ReturnRequest) {
   };
 }
 
+const round2Money = (value: number): number => Math.round((Number(value) || 0) * 100) / 100;
+
 /** One payload mapper for normal orders and post-QC exchange replacements. */
 export function buildShiprocketForwardPayload(request: ShipmentRequest) {
   const now = new Date();
@@ -119,6 +121,24 @@ export function buildShiprocketForwardPayload(request: ShipmentRequest) {
     (sum, item) => sum + (item.weightKg || 0.5) * item.quantity,
     0
   ) || 0.5;
+
+  // Shiprocket collects sub_total + shipping_charges + transaction_charges − total_discount on COD.
+  // When the exact COD amount is known, express the difference to items + shipping as a discount
+  // (coupon / wallet share) or as an extra charge (platform fee), so the courier collects exactly it.
+  const baseAmount = round2Money(Number(request.subtotal || 0) + Number(request.shippingCharges || 0));
+  let totalDiscount = Number(request.totalDiscount || 0);
+  let transactionCharges = 0;
+  let isCod = request.paymentMethod === 'COD';
+  if (isCod && typeof request.codAmount === 'number' && Number.isFinite(request.codAmount)) {
+    if (request.codAmount <= 0) {
+      // Coupon/wallet already covered this shipment: nothing to collect at the door.
+      isCod = false;
+    } else {
+      const difference = round2Money(request.codAmount - baseAmount);
+      totalDiscount = difference < 0 ? -difference : 0;
+      transactionCharges = difference > 0 ? difference : 0;
+    }
+  }
 
   return {
     order_id: request.idempotencyKey,
@@ -147,10 +167,11 @@ export function buildShiprocketForwardPayload(request: ShipmentRequest) {
       tax: item.taxRate || 0,
       hsn: item.hsnCode || '',
     })),
-    payment_method: request.paymentMethod === 'COD' ? 'COD' : 'Prepaid',
+    payment_method: isCod ? 'COD' : 'Prepaid',
     sub_total: request.subtotal,
     shipping_charges: request.shippingCharges || 0,
-    total_discount: request.totalDiscount || 0,
+    transaction_charges: transactionCharges,
+    total_discount: totalDiscount,
     length: dimensions.length || 20,
     breadth: dimensions.width || 15,
     height: dimensions.height || 10,
@@ -481,12 +502,21 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
       return { success: true, message: 'Shiprocket shipment cancelled in local mode' };
     }
 
+    // Shiprocket's cancel API takes its own numeric order ids ({ ids: [...] }), not AWBs.
+    const shiprocketOrderId = Number(String(shipmentIdOrAwb).trim());
+    if (!Number.isInteger(shiprocketOrderId) || shiprocketOrderId <= 0) {
+      return {
+        success: false,
+        message: `Shiprocket cancellation needs the Shiprocket order id; got '${shipmentIdOrAwb}'`,
+      };
+    }
+
     try {
       const response = await shiprocketHttpClient.request({
         method: 'POST',
         url: '/v1/external/orders/cancel',
         data: {
-          awbs: [shipmentIdOrAwb],
+          ids: [shiprocketOrderId],
         },
       });
 

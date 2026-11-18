@@ -216,10 +216,15 @@ export function getDeliveryPartnerQcContext(
         // Pure QC single-rider order: full COD pending belongs to this rider
         assignedQcCodAmount = fullCodPending;
       } else {
-        // Mixed/multi-group orders are explicit fulfillment partitions. The
-        // local rider collects no more than the assigned QC items + QC shipping;
-        // Ecommerce and parent-level charges never enter this amount.
-        assignedQcCodAmount = Math.min(assignedQcTotal, fullCodPending);
+        // Mixed/multi-group orders are explicit fulfillment partitions. The local rider
+        // collects the assigned QC items + QC shipping, plus the customer's tip (B-1: the
+        // tip is 100% the rider's, so the rider collects it in person). The tip is collected
+        // once, by the rider of the first QC group. Ecommerce items, the platform fee and
+        // coupon/wallet reductions belong to the courier's share (see courierCodService).
+        const tipAmount = Math.max(0, Number(orderObj.tipAmount) || 0);
+        const tipOwnerGroup = qcGroups[0];
+        const collectsTip = !tipOwnerGroup || assignedQcGroups.includes(tipOwnerGroup);
+        assignedQcCodAmount = Math.min(assignedQcTotal + (collectsTip ? tipAmount : 0), fullCodPending);
       }
       // Safety cap: cannot exceed full COD pending or assigned gross
       assignedQcCodAmount = Math.min(assignedQcCodAmount, fullCodPending);

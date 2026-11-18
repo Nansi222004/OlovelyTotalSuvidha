@@ -28,10 +28,16 @@ import { ensureSellerCommissions, isQcItem, settleSellerCommissions, commissionN
 
 const isCod = (order: any) => String(order?.paymentMethod || "").toUpperCase() === "COD";
 
-/** Cash the rider collects for the QC part (same rule as the rider app), 0 if none. */
+const isCourierGroup = (g: any) => g?.fulfillmentType === "COURIER_SHIPPING" || g?.fulfillmentType === "THIRD_PARTY_API";
+
+/**
+ * Cash the rider collects for the QC part (same rule as the rider app), 0 if none.
+ * Mixed orders (decision 2026-11-18, option c): QC items + QC shipping + the tip.
+ */
 const riderCodShare = async (order: any): Promise<number> => {
   const groups: any[] = Array.isArray(order.fulfillmentGroups) ? order.fulfillmentGroups : [];
-  const qcGroup = groups.find((g) => g.fulfillmentType === "LOCAL_DELIVERY");
+  const qcGroups = groups.filter((g) => g.fulfillmentType === "LOCAL_DELIVERY");
+  const qcGroup = qcGroups[0];
   const hasQcItems = (order.items || []).some((i: any) => isQcItem(i));
   if (!hasQcItems) return 0;
   const fullPending = Number(order.codAmountPending ?? order.total ?? 0);
@@ -41,14 +47,52 @@ const riderCodShare = async (order: any): Promise<number> => {
     const ctx = getDeliveryPartnerQcContext(order, riderId);
     if (ctx.isAuthorized) return round2(Math.min(ctx.assignedQcCodAmount, fullPending));
   }
-  if (qcGroup) return round2(Math.min(Number(qcGroup.subtotal || 0) + Number(qcGroup.shippingFee || 0), fullPending));
+  // No rider yet (e.g. at courier booking time): same rule as the rider app will apply.
+  if (qcGroups.length > 0) {
+    const qcTotal = qcGroups.reduce((s, g) => s + Number(g.subtotal || 0) + Number(g.shippingFee || 0), 0);
+    const tip = Math.max(0, Number(order.tipAmount) || 0);
+    return round2(Math.min(qcTotal + tip, fullPending));
+  }
   return 0;
 };
 
-/** Courier share of the COD cash = everything the rider does not collect. */
+/**
+ * Courier share of the COD cash = everything the rider does not collect: courier items +
+ * courier shipping + the platform fee, minus coupon and wallet reductions.
+ */
 export const computeCourierCodAmount = async (order: any): Promise<number> => {
   const fullPending = Number(order.codAmountPending ?? order.total ?? 0);
   return Math.max(0, round2(fullPending - (await riderCodShare(order))));
+};
+
+/**
+ * Exact cash each courier shipment must collect, so Shiprocket is told the same amount the
+ * platform expects it to remit. The courier share is split across ALL courier groups by value
+ * (items + shipping); a cancelled group's share is never collected (its refund/adjustment is
+ * handled by partial cancellation). Returns groupId -> amount for non-cancelled courier groups.
+ * `order.items` must be populated (product types decide the rider share).
+ */
+export const computeCourierGroupCodAmounts = async (order: any): Promise<Map<string, number>> => {
+  const amounts = new Map<string, number>();
+  if (!isCod(order)) return amounts;
+  const courierGroups: any[] = (order.fulfillmentGroups || []).filter(isCourierGroup);
+  if (courierGroups.length === 0) return amounts;
+
+  const courierTotal = await computeCourierCodAmount(order);
+  const weightOf = (g: any) => Math.max(0, Number(g.subtotal || 0) + Number(g.shippingFee || 0));
+  const totalWeight = courierGroups.reduce((s, g) => s + weightOf(g), 0);
+  const shareOf = (g: any) =>
+    totalWeight > 0 ? (courierTotal * weightOf(g)) / totalWeight : courierTotal / courierGroups.length;
+
+  const active = courierGroups.filter((g) => g.status !== "Cancelled");
+  const activeTotal = round2(active.reduce((s, g) => s + shareOf(g), 0));
+  let allocated = 0;
+  active.forEach((g, index) => {
+    const amount = index === active.length - 1 ? round2(activeTotal - allocated) : round2(shareOf(g));
+    allocated = round2(allocated + amount);
+    amounts.set(String(g.groupId), Math.max(0, amount));
+  });
+  return amounts;
 };
 
 const pushHistory = (action: string, by?: string, note?: string) => ({
@@ -70,7 +114,17 @@ export const recordCourierCodPending = async (
   const order = await Order.findById(orderId).populate("items").session(session || null);
   if (!order || !isCod(order)) return { created: false };
   const items: any[] = (order.items as any[]) || [];
-  const courierItems = items.filter((i) => !isQcItem(i));
+  const courierGroups: any[] = ((order as any).fulfillmentGroups || []).filter(isCourierGroup);
+  // Items of cancelled courier shipments (seller-rejected, or cancelled at the carrier) were never
+  // delivered by the courier: no cash for them and no seller payable.
+  const cancelledGroupItemIds = new Set(
+    courierGroups
+      .filter((g) => g.status === "Cancelled")
+      .flatMap((g) => (g.items || []).map((id: any) => String(id))),
+  );
+  const courierItems = items.filter(
+    (i) => !isQcItem(i) && i.status !== "Cancelled" && !cancelledGroupItemIds.has(String(i._id)),
+  );
   if (courierItems.length === 0) return { created: false };
 
   const existing = await CourierCodSettlement.findOne({ order: order._id }).session(session || null);
@@ -79,12 +133,16 @@ export const recordCourierCodPending = async (
   const commissionIds = await ensureSellerCommissions(orderId, courierItems, "COURIER_COD", session);
   const comms = await Commission.find({ _id: { $in: commissionIds } }).session(session || null);
   const sellerPayable = round2(comms.reduce((s, c) => s + commissionNet(c), 0));
-  const codAmount = await computeCourierCodAmount(order);
-  // Tip cash collected by the courier on a MIXED order belongs to the rider (B-1), not the platform.
-  const tipInCourierCash = order.orderType === "MIXED" ? round2(Number(order.tipAmount) || 0) : 0;
+  // Exactly what the courier was told to collect for its non-cancelled shipments. The tip is
+  // collected by the rider (decision 2026-11-18, option c), so none of this cash is a tip.
+  // Orders without courier fulfillment groups (legacy shape) carry the whole courier share.
+  const codAmount =
+    courierGroups.length > 0
+      ? round2([...(await computeCourierGroupCodAmounts(order)).values()].reduce((s, a) => s + a, 0))
+      : await computeCourierCodAmount(order);
   const awbCodes = ((order as any).fulfillmentGroups || [])
-    .filter((g: any) => g.fulfillmentType === "COURIER_SHIPPING")
-    .map((g: any) => g.awbCode || g.trackingNumber)
+    .filter((g: any) => isCourierGroup(g) && g.status !== "Cancelled")
+    .map((g: any) => g.shippingDetails?.awbNumber || g.shippingDetails?.trackingNumber)
     .filter(Boolean);
 
   try {
@@ -97,7 +155,7 @@ export const recordCourierCodPending = async (
           awbCodes,
           codAmount,
           sellerPayable,
-          platformEarning: round2(codAmount - sellerPayable - tipInCourierCash),
+          platformEarning: round2(codAmount - sellerPayable),
           sellerCommissions: commissionIds,
           status: "PENDING_REMITTANCE",
           deliveredAt: order.deliveredAt || new Date(),

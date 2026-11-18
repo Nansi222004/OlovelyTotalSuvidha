@@ -35,17 +35,21 @@ export const getFulfillmentTrackingMessage = (
     return "Quick local delivery";
   }
 
+  // Terminal states first: a cancelled/delivered shipment must never show an expected-delivery date.
+  if (status === "Cancelled") return "Courier shipment cancelled";
+  if (status === "Delivered") return "Courier shipment delivered";
   const expected = formatExpectedDelivery(group.shippingDetails?.estimatedDelivery);
   if (expected) return `Expected delivery: ${expected}`;
-  if (status === "Delivered") return "Courier shipment delivered";
   if (["OutForDelivery", "Out for Delivery"].includes(status)) return "Courier shipment is out for delivery";
   if (["Shipped", "In Transit"].includes(status)) return "Courier shipment is in transit";
   if (["Processing", "ReadyForPickup"].includes(status)) return "Courier shipment is being prepared";
-  if (status === "Cancelled") return "Courier shipment cancelled";
   return "Courier shipment is awaiting dispatch";
 };
 
 export const getOrderTrackingHeader = (order: any, estimatedMinutes: number) => {
+  // A cancelled/returned order uses the order-level header ("Order cancelled"), never a shipment header.
+  if (["Cancelled", "Rejected", "Returned"].includes(order?.status)) return null;
+
   const groups: FulfillmentGroup[] = Array.isArray(order?.fulfillmentGroups) ? order.fulfillmentGroups : [];
   const activeLocal = groups.find((group) => group.fulfillmentType === "LOCAL_DELIVERY" && !["Delivered", "Completed", "Cancelled"].includes(group.status || ""));
   const courier = groups.find(isCourierGroup);
@@ -63,9 +67,13 @@ export const getOrderTrackingHeader = (order: any, estimatedMinutes: number) => 
     const group = courier || { fulfillmentType: "COURIER_SHIPPING", status: order?.status };
     const status = group.status || order?.status;
     return {
-      title: status === "Delivered" ? "Courier shipment delivered" : status === "Shipped" ? "Courier shipment in transit" : "Courier shipment update",
+      title:
+        status === "Cancelled" ? "Courier shipment cancelled"
+        : status === "Delivered" ? "Courier shipment delivered"
+        : status === "Shipped" ? "Courier shipment in transit"
+        : "Courier shipment update",
       subtitle: getFulfillmentTrackingMessage(group, order),
-      color: status === "Delivered" ? "bg-emerald-600" : "bg-blue-700",
+      color: status === "Cancelled" ? "bg-rose-600" : status === "Delivered" ? "bg-emerald-600" : "bg-blue-700",
       isLocalEta: false,
     };
   }

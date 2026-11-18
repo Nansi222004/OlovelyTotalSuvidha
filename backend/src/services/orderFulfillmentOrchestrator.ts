@@ -173,6 +173,15 @@ export async function recomputeOrderFulfillment(
     order.deliveryAssignmentResolvedAt = new Date();
     await order.save();
 
+    // Nobody will hand over the parcels: cancel every booked courier shipment with the carrier
+    // (idempotent; already-cancelled groups are skipped, failures are logged for manual action).
+    try {
+      const { cancelCourierShipmentsForOrder } = await import("./shipping/shippingService");
+      await cancelCourierShipmentsForOrder(order._id.toString(), { reason: order.cancellationReason });
+    } catch (courierErr) {
+      console.error("Error cancelling courier shipments on all_rejected:", courierErr);
+    }
+
     // Trigger online payment refund if order was online paid
     if ((order.paymentMethod === "Online" || (order.onlineAmountPaid && order.onlineAmountPaid > 0)) && order.paymentStatus !== "Refunded") {
       try {

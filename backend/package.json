@@ -16,6 +16,8 @@
     "test:thermal-printing": "node scripts/runTypeScriptTest.cjs src/scripts/testThermalPrinting4x6.ts",
     "test:shiprocket-integration": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketIntegration.ts",
     "test:shiprocket-return-exchange": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketReturnExchange.ts",
+    "test:shiprocket-cancellation": "node scripts/runTypeScriptTest.cjs src/scripts/testShiprocketCancellation.ts",
+    "test:courier-cod-amounts": "node scripts/runTypeScriptTest.cjs src/scripts/testCourierCodAmounts.ts",
     "test:vendor-approval": "tsx src/scripts/test-vendor-approval.ts",
     "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
     "test:financial-audit": "node scripts/runTypeScriptTest.cjs src/scripts/testFinancialAuditRegressionIsolated.ts",

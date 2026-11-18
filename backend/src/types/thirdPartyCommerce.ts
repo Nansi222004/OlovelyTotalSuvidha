@@ -66,6 +66,11 @@ export interface ShipmentRequest {
   subtotal: number;
   shippingCharges?: number;
   totalDiscount?: number;
+  /**
+   * COD only: exact cash the courier must collect for this shipment (courier items + shipping +
+   * platform fee − coupon − wallet share). When set, the carrier payload is adjusted to it.
+   */
+  codAmount?: number;
   totalWeightKg?: number;
   dimensionsCm?: { length: number; width: number; height: number };
 }

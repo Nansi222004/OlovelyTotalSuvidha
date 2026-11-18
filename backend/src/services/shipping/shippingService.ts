@@ -233,6 +233,19 @@ export async function createEcommerceShipment(
   }
   const dimensionsCm = maxLen > 0 && maxWid > 0 && maxHgt > 0 ? { length: maxLen, width: maxWid, height: maxHgt } : undefined;
 
+  // COD: the courier must collect exactly the courier share the platform expects it to remit
+  // (courier items + shipping + platform fee − coupon − wallet; the tip is collected by the rider).
+  let codAmount: number | undefined;
+  if (String(order.paymentMethod || '').toUpperCase() === 'COD') {
+    const { computeCourierGroupCodAmounts } = await import('../courierCodService');
+    const orderWithItems = await Order.findById(order._id).populate('items').lean();
+    const groupAmounts = await computeCourierGroupCodAmounts(orderWithItems);
+    codAmount = groupAmounts.get(String(group.groupId));
+    if (codAmount === undefined) {
+      throw new Error(`COD amount could not be determined for courier group '${group.groupId}'`);
+    }
+  }
+
   const shipmentRequest: ShipmentRequest = {
     source: 'CUSTOMER_ORDER',
     idempotencyKey,
@@ -252,6 +265,7 @@ export async function createEcommerceShipment(
     subtotal: group.subtotal,
     shippingCharges: group.shippingFee,
     paymentMethod: order.paymentMethod,
+    codAmount,
     totalWeightKg,
     dimensionsCm,
   };
@@ -300,41 +314,145 @@ export async function getShipmentTracking(awb: string, providerId?: string) {
   return provider.getTrackingDetails(awb);
 }
 
+// ─── Courier shipment cancellation ─────────────────────────────────────────
+
+const isCourierGroup = (group: any): boolean =>
+  group?.fulfillmentType === 'COURIER_SHIPPING' || group?.fulfillmentType === 'THIRD_PARTY_API';
+
+/** Carrier statuses (as stored from webhooks) that mean the parcel has left the seller. */
+const CARRIER_PAST_PICKUP_STATUSES = new Set([
+  'Picked Up', 'In Transit', 'Out for Delivery', 'Delivered', 'Returned', 'Action Required',
+]);
+
 /**
- * Cancel an Ecommerce Shipment
+ * True once the courier has physically collected the parcel. Uses the real carrier
+ * status, not the group's own 'Shipped' label (which is set as soon as an AWB is booked).
+ */
+export function isCourierGroupPastPickup(group: any): boolean {
+  if (!isCourierGroup(group)) return false;
+  if (['OutForDelivery', 'Delivered', 'ActionRequired'].includes(group.status)) return true;
+  return CARRIER_PAST_PICKUP_STATUSES.has(String(group.thirdPartyOrderDetails?.status || ''));
+}
+
+export type CourierCancellationResult = {
+  groupId: string;
+  success: boolean;
+  /** true when nothing had to be sent to the carrier (never booked / already cancelled). */
+  skipped?: boolean;
+  message: string;
+};
+
+/**
+ * Asks the carrier to cancel one courier group's order. Does NOT write to the database,
+ * so it is safe to call inside a caller's transaction before the caller commits.
+ */
+export async function requestCourierGroupCancellation(
+  group: any,
+  reason?: string
+): Promise<CourierCancellationResult> {
+  const groupId = String(group?.groupId || '');
+  if (!isCourierGroup(group)) {
+    return { groupId, success: true, skipped: true, message: 'Not a courier shipment' };
+  }
+  if (group.status === 'Cancelled') {
+    return { groupId, success: true, skipped: true, message: 'Courier shipment already cancelled' };
+  }
+  if (group.status === 'Delivered') {
+    return { groupId, success: false, message: 'Courier shipment is already delivered' };
+  }
+
+  // Shiprocket cancels by its own order id; the AWB is only a fallback for older providers.
+  const externalOrderId = group.thirdPartyOrderDetails?.externalOrderId;
+  const identifier = externalOrderId || group.shippingDetails?.awbNumber;
+  if (!identifier) {
+    return { groupId, success: true, skipped: true, message: 'No carrier booking exists; cancelled locally' };
+  }
+
+  try {
+    const provider = getShippingProvider(group.thirdPartyOrderDetails?.providerId);
+    const result = await provider.cancelShipment(String(identifier), reason);
+    return { groupId, success: Boolean(result?.success), message: result?.message || '' };
+  } catch (error: any) {
+    return { groupId, success: false, message: error?.message || 'Carrier cancellation failed' };
+  }
+}
+
+/**
+ * Cancels the carrier booking of every active courier group of an order (optionally only
+ * one seller's groups) and marks each successfully cancelled group 'Cancelled' with an
+ * atomic per-group update. Never throws; failures are returned and logged.
+ */
+export async function cancelCourierShipmentsForOrder(
+  orderId: string,
+  options: { sellerId?: string; reason?: string } = {}
+): Promise<CourierCancellationResult[]> {
+  const order = await Order.findById(orderId).select('fulfillmentGroups orderNumber').lean();
+  if (!order) return [];
+
+  const sellerId = options.sellerId ? String(options.sellerId) : undefined;
+  let sellerItemIds: Set<string> | undefined;
+  if (sellerId) {
+    const sellerItems = await OrderItem.find({ order: orderId, seller: sellerId }).select('_id').lean();
+    sellerItemIds = new Set(sellerItems.map((item: any) => String(item._id)));
+  }
+
+  const results: CourierCancellationResult[] = [];
+  for (const group of (order as any).fulfillmentGroups || []) {
+    if (!isCourierGroup(group) || group.status === 'Cancelled') continue;
+    if (sellerId) {
+      const ownsGroup =
+        (group.seller && String(group.seller) === sellerId) ||
+        (Array.isArray(group.items) && group.items.some((itemId: any) => sellerItemIds!.has(String(itemId))));
+      if (!ownsGroup) continue;
+    }
+
+    const result = await requestCourierGroupCancellation(group, options.reason);
+    if (result.success) {
+      await Order.updateOne(
+        { _id: orderId, 'fulfillmentGroups.groupId': group.groupId },
+        {
+          $set: {
+            'fulfillmentGroups.$.status': 'Cancelled',
+            ...(group.thirdPartyOrderDetails ? { 'fulfillmentGroups.$.thirdPartyOrderDetails.status': 'Cancelled' } : {}),
+          },
+        }
+      );
+    } else {
+      console.error(
+        `[Shipping] Courier cancellation FAILED for order ${(order as any).orderNumber || orderId} group ${group.groupId}: ${result.message}. ` +
+        'Cancel it manually in the Shiprocket dashboard to avoid a pickup and freight charge.'
+      );
+    }
+    results.push(result);
+  }
+  return results;
+}
+
+/**
+ * Cancel one Ecommerce shipment group (kept for existing callers).
  */
 export async function cancelEcommerceShipment(
   orderId: string,
   groupId: string,
   reason?: string
 ) {
-  const order = await Order.findById(orderId);
+  const order = await Order.findById(orderId).select('fulfillmentGroups').lean();
   if (!order) {
     throw new Error(`Order not found: ${orderId}`);
   }
-
-  const group = order.fulfillmentGroups?.find((g) => g.groupId === groupId);
+  const group = (order as any).fulfillmentGroups?.find((g: any) => g.groupId === groupId);
   if (!group) {
     throw new Error(`Group not found: ${groupId}`);
   }
 
-  const awb = group.shippingDetails?.awbNumber;
-  if (!awb) {
-    // Hasn't been shipped with carrier yet, cancel locally
-    group.status = 'Cancelled';
-    await order.save();
-    return { success: true, message: 'Fulfillment group cancelled locally' };
+  const result = await requestCourierGroupCancellation(group, reason);
+  if (result.success && group.status !== 'Cancelled') {
+    await Order.updateOne(
+      { _id: orderId, 'fulfillmentGroups.groupId': groupId },
+      { $set: { 'fulfillmentGroups.$.status': 'Cancelled' } }
+    );
   }
-
-  const provider = getShippingProvider(group.thirdPartyOrderDetails?.providerId);
-  const cancelResult = await provider.cancelShipment(awb, reason);
-
-  if (cancelResult.success) {
-    group.status = 'Cancelled';
-    await order.save();
-  }
-
-  return cancelResult;
+  return { success: result.success, message: result.message };
 }
 
 /**
@@ -479,6 +597,9 @@ export async function handleShippingWebhook(payload: any, signature?: string, pr
     // Map carrier status to IFulfillmentGroup status
     const statusMap: Record<string, IFulfillmentGroup['status']> = {
       Manifested: 'Processing',
+      // Same group status as In Transit; recording it stores carrier status 'Picked Up',
+      // which is what blocks customer cancellation once the courier has the parcel.
+      'Picked Up': 'Shipped',
       'In Transit': 'Shipped',
       'Out for Delivery': 'OutForDelivery',
       Delivered: 'Delivered',
