@@ -123,7 +123,7 @@ export class MockCommerceProvider implements IThirdPartyCommerceProvider {
   /**
    * Create Shipment with STRICT IDEMPOTENCY
    *
-   * Idempotency Key Format: OLOVELY_<ORDER_ID>_<FULFILLMENT_GROUP_ID>
+   * Idempotency Key Format: OLV-<ORDER_ID>-<GROUP_HASH> (see shiprocketOrderIds.ts)
    * If a shipment with this key already exists, the existing record is returned.
    */
   async createShipment(request: ShipmentRequest): Promise<ExternalOrderResult> {

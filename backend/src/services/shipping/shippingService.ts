@@ -16,6 +16,7 @@ import { mockCommerceProvider } from './mockCommerceProvider';
 import { shiprocketProvider } from './shiprocketProvider';
 import { areAllFulfillmentGroupsDelivered } from '../../utils/fulfillmentStatus';
 import { buildShiprocketPickupLocationName, isShiprocketPickupRequired } from './shiprocketPickupService';
+import { buildForwardShipmentOrderId } from './shiprocketOrderIds';
 
 /**
  * Provider Registry
@@ -140,7 +141,7 @@ export async function checkPincode(pincode: string, providerId?: string) {
 /**
  * Dispatch / Create Ecommerce Shipment for a Fulfillment Group
  *
- * Uses Idempotency Key: OLOVELY_<ORDER_ID>_<GROUP_ID>
+ * Uses Idempotency Key: OLV-<ORDER_ID>-<GROUP_HASH> (see shiprocketOrderIds.ts; Shiprocket max 50 chars)
  */
 export async function createEcommerceShipment(
   orderId: string,
@@ -189,7 +190,7 @@ export async function createEcommerceShipment(
   }
 
   const provider = getShippingProvider(providerId || group.thirdPartyOrderDetails?.providerId);
-  const idempotencyKey = `OLOVELY_${order._id.toString()}_${group.groupId}`;
+  const idempotencyKey = buildForwardShipmentOrderId(order._id.toString(), group.groupId);
 
   // Fetch items for shipment payload
   const orderItems = await OrderItem.find({ _id: { $in: group.items } }).populate('product');

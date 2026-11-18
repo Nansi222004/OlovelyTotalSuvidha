@@ -11,6 +11,7 @@ import {
   getShippingProvider,
 } from './shipping/shippingService';
 import { mutateStock, recordReturn } from './inventoryService';
+import { buildReplacementShipmentOrderId, buildReturnShipmentOrderId } from './shipping/shiprocketOrderIds';
 import { triggerReturnFinancialSettlement } from './returnLifecycleService';
 
 export class ReturnLogisticsError extends Error {
@@ -134,7 +135,7 @@ export async function createApprovedReturnLogistics(
       fulfillmentGroupId: order.fulfillmentGroups?.find((g: any) =>
         g.items?.some((id: any) => id.toString() === orderItem._id.toString()))?.groupId,
       returnId,
-      idempotencyKey: `return:${returnId}:shiprocket:create`,
+      idempotencyKey: buildReturnShipmentOrderId(String(returnId)),
       item: {
         productId: product._id.toString(),
         productName: orderItem.productName,
@@ -285,7 +286,7 @@ export async function processReturnQc(
     if (!seller || !product) throw new ReturnLogisticsError('EXCHANGE_SELLER_UNAVAILABLE', 'Replacement shipment requires manual intervention because the original seller is unavailable.');
     const request: Omit<ShipmentRequest, 'pickupDetails'> = {
       source: 'EXCHANGE_REPLACEMENT',
-      idempotencyKey: `exchange:${returnId}:replacement:create`,
+      idempotencyKey: buildReplacementShipmentOrderId(String(returnId)),
       orderId: order._id.toString(),
       fulfillmentGroupId: replacement.fulfillmentGroupId || `EXCHANGE_${returnId}`,
       customerName: order.customerName,

@@ -46,6 +46,7 @@ import {
   PLATFORM_QC_NOT_CONFIGURED,
 } from "../../../services/productServiceabilityService";
 import { buildExchangeReplacement, ReturnLogisticsError } from "../../../services/returnShippingService";
+import { buildForwardShipmentOrderId, buildReplacementShipmentOrderId } from "../../../services/shipping/shiprocketOrderIds";
 
 // Create a new order
 export const createOrder = async (req: Request, res: Response) => {
@@ -1254,7 +1255,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
           thirdPartyOrderDetails: {
             providerId: isShiprocket ? 'shiprocket' : 'mock_provider',
             status: 'Processing',
-            idempotencyKey: `OLOVELY_${newOrder._id.toString()}_${fgId}`,
+            idempotencyKey: buildForwardShipmentOrderId(newOrder._id.toString(), fgId),
           },
         });
 
@@ -2128,7 +2129,7 @@ export const requestItemReturn = async (req: Request, res: Response) => {
       }),
     });
     if (newReturn.replacement) {
-      newReturn.replacement.idempotencyKey = `exchange:${newReturn._id}:replacement:create`;
+      newReturn.replacement.idempotencyKey = buildReplacementShipmentOrderId(newReturn._id.toString());
       newReturn.replacement.inventoryIdempotencyKey = `exchange:${newReturn._id}:replacement:inventory`;
       await newReturn.save();
     }

@@ -8,6 +8,7 @@ import Seller from '../models/Seller';
 import Return from '../models/Return';
 import ProcessedWebhookEvent from '../models/ProcessedWebhookEvent';
 import { shiprocketHttpClient } from '../services/shipping/shiprocketHttpClient';
+import { buildForwardShipmentOrderId, buildReplacementShipmentOrderId, buildReturnShipmentOrderId, SHIPROCKET_ORDER_ID_MAX_LENGTH } from '../services/shipping/shiprocketOrderIds';
 import {
   buildShiprocketForwardPayload,
   buildShiprocketReturnPayload,
@@ -159,7 +160,7 @@ function restore() {
 }
 
 const completeReturnRequest: any = {
-  orderId, fulfillmentGroupId: 'ECOM-1', returnId, idempotencyKey: `return:${returnId}:shiprocket:create`,
+  orderId, fulfillmentGroupId: 'ECOM-1', returnId, idempotencyKey: buildReturnShipmentOrderId(String(returnId)),
   item: { productId, productName: 'Isolated Product', sku: 'ISO-SKU', quantity: 1, unitPrice: 100, weightKg: 0.5 },
   pickupAddress: { customerName: 'Mock Customer', email: 'customer@example.invalid', phone: '9000000000', address: 'Mock customer address', city: 'Delhi', state: 'Delhi', country: 'India', pincode: '110002' },
   destinationAddress: { name: 'Isolated Seller', email: 'seller@example.invalid', phone: '9999999999', address: 'Mock seller address', city: 'Delhi', state: 'Delhi', country: 'India', pincode: '110001' },
@@ -168,7 +169,7 @@ const completeReturnRequest: any = {
 
 const completeForwardRequest: any = {
   source: 'CUSTOMER_ORDER',
-  idempotencyKey: `OLOVELY_${orderId}_ECOM-1`, orderId, fulfillmentGroupId: 'ECOM-1',
+  idempotencyKey: buildForwardShipmentOrderId(String(orderId), 'ECOM-1'), orderId, fulfillmentGroupId: 'ECOM-1',
   customerName: 'Mock Customer', customerEmail: 'customer@example.invalid', customerPhone: '9000000000',
   shippingAddress: { address: 'Mock customer address', city: 'Delhi', state: 'Delhi', pincode: '110002' },
   pickupDetails: {
@@ -258,7 +259,7 @@ test('normal orders and replacements share one dispatcher and one Shiprocket pay
   const replacement: any = buildShiprocketForwardPayload({
     ...completeForwardRequest,
     source: 'EXCHANGE_REPLACEMENT',
-    idempotencyKey: `exchange:${returnId}:replacement:create`,
+    idempotencyKey: buildReplacementShipmentOrderId(String(returnId)),
     paymentMethod: 'PREPAID',
     shippingCharges: 0,
   });
@@ -379,7 +380,8 @@ test('Ecommerce approval creates one reverse leg with a stable idempotency key',
     throw new Error(`approval failed after ${requests.length} provider calls: ${error instanceof Error ? error.message : String(error)}`);
   }
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].idempotencyKey, `return:${returnId}:shiprocket:create`);
+  assert.equal(requests[0].idempotencyKey, buildReturnShipmentOrderId(String(returnId)));
+  assert.ok(requests[0].idempotencyKey.length <= SHIPROCKET_ORDER_ID_MAX_LENGTH);
   assert.equal(result.reverseLogisticsStatus, 'CREATED');
 });
 
@@ -478,7 +480,8 @@ test('QC approval restores original stock, reserves exact replacement and create
   assert.equal(returns, 1);
   assert.equal(mutations[0].variationId, 'variant-1');
   assert.equal(mutations[0].idempotencyKey, `exchange:${returnId}:replacement:inventory`);
-  assert.equal(shipments[0].idempotencyKey, `exchange:${returnId}:replacement:create`);
+  assert.equal(shipments[0].idempotencyKey, buildReplacementShipmentOrderId(String(returnId)));
+  assert.ok(shipments[0].idempotencyKey.length <= SHIPROCKET_ORDER_ID_MAX_LENGTH);
   assert.equal(shipments[0].source, 'EXCHANGE_REPLACEMENT');
   assert.equal(shipments[0].pickupDetails.pickupLocationId, '101');
   assert.equal(shipments[0].pickupDetails.pickupLocationName, `OLOVELY-${sellerId.toUpperCase()}`);

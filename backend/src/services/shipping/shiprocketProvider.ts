@@ -21,6 +21,7 @@ import {
 } from '../../types/thirdPartyCommerce';
 import { shiprocketHttpClient } from './shiprocketHttpClient';
 import { buildShiprocketPickupLocationName, shiprocketPickupApi } from './shiprocketPickupService';
+import { assertValidShiprocketOrderId } from './shiprocketOrderIds';
 import crypto from 'node:crypto';
 
 export const SHIPROCKET_RETURN_ENDPOINT = '/v1/external/orders/create/return';
@@ -256,6 +257,7 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
     if (!idempotencyKey) {
       throw new Error('Idempotency key is required for Shiprocket shipment creation');
     }
+    assertValidShiprocketOrderId(idempotencyKey);
 
     // 1. Strict Package and Address Validation (Section 9)
     this.validateShipmentPayload(request);
@@ -545,6 +547,7 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
    * POST /v1/external/orders/create/return
    */
   async createReturn(request: ReturnRequest): Promise<ExternalReturnResult> {
+    assertValidShiprocketOrderId(request.idempotencyKey);
     if (!shiprocketHttpClient.hasCredentials()) {
       const retAwb = `SR-RET-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
       const pickupDate = new Date();
