@@ -4,10 +4,23 @@ import {
   createFAQ,
   updateFAQ,
   deleteFAQ,
+  updateFAQStatus,
   type FAQ,
+  type FAQAudience,
   type CreateFAQData,
   type UpdateFAQData,
 } from "../../../services/api/admin/adminContentService";
+
+const AUDIENCE_LABELS: Record<FAQAudience, string> = {
+  customer: "Customer app",
+  seller: "Seller panel",
+  delivery: "Delivery partner app",
+};
+const EMPTY_TRANSLATIONS = (): Record<string, Record<string, string>> => ({
+  hi: { question: "", answer: "" },
+  mr: { question: "", answer: "" },
+  gu: { question: "", answer: "" },
+});
 import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmationModal from "../../../components/ConfirmationModal";
@@ -19,11 +32,10 @@ export default function AdminFAQ() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
-  const [translations, setTranslations] = useState<Record<string, Record<string, string>>>({
-    hi: { question: "", answer: "" },
-    mr: { question: "", answer: "" },
-    gu: { question: "", answer: "" },
-  });
+  const [translations, setTranslations] = useState<Record<string, Record<string, string>>>(EMPTY_TRANSLATIONS);
+  // Which app's FAQs are listed, and which app the FAQ in the form is for.
+  const [audienceFilter, setAudienceFilter] = useState<FAQAudience>("customer");
+  const [faqAudience, setFaqAudience] = useState<FAQAudience>("customer");
   const [activeTab, setActiveTab] = useState<"en" | "hi" | "mr" | "gu">("en");
   const [translating, setTranslating] = useState(false);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -52,6 +64,7 @@ export default function AdminFAQ() {
           search: searchTerm,
           page: currentPage,
           limit: rowsPerPage,
+          audience: audienceFilter,
           sortBy: sortColumn || undefined,
           sortOrder: sortDirection,
         });
@@ -81,6 +94,7 @@ export default function AdminFAQ() {
     rowsPerPage,
     sortColumn,
     sortDirection,
+    audienceFilter,
   ]);
 
   // Note: Filtering is done server-side, so we just use the faqs as is
@@ -150,26 +164,35 @@ export default function AdminFAQ() {
         const updateData: UpdateFAQData & { translations?: any } = {
           question: faqQuestion.trim(),
           answer: faqAnswer.trim(),
+          audience: faqAudience,
           translations,
         };
 
         const response = await updateFAQ(editingFAQ._id, updateData as any);
 
         if (response.success) {
-          // Update local state
+          // Update local state (an FAQ moved to another app leaves this list)
           setFaqs((prev) =>
-            prev.map((faq) =>
-              faq._id === editingFAQ._id
-                ? {
-                  ...faq,
-                  question: faqQuestion.trim(),
-                  answer: faqAnswer.trim(),
-                  translations,
-                }
-                : faq
-            )
+            faqAudience !== audienceFilter
+              ? prev.filter((faq) => faq._id !== editingFAQ._id)
+              : prev.map((faq) =>
+                faq._id === editingFAQ._id
+                  ? {
+                    ...faq,
+                    question: faqQuestion.trim(),
+                    answer: faqAnswer.trim(),
+                    audience: faqAudience,
+                    translations,
+                  }
+                  : faq
+              )
           );
-          showToast("FAQ updated successfully!", "success");
+          showToast(
+            faqAudience !== audienceFilter
+              ? `FAQ updated and moved to ${AUDIENCE_LABELS[faqAudience]}`
+              : "FAQ updated successfully!",
+            "success"
+          );
           setEditingFAQ(null);
         } else {
           showToast(
@@ -182,6 +205,7 @@ export default function AdminFAQ() {
         const faqData: CreateFAQData & { translations?: any } = {
           question: faqQuestion.trim(),
           answer: faqAnswer.trim(),
+          audience: faqAudience,
           isActive: true,
           translations,
         };
@@ -189,9 +213,9 @@ export default function AdminFAQ() {
         const response = await createFAQ(faqData as any);
 
         if (response.success) {
-          // Add to local state
-          setFaqs((prev) => [...prev, response.data]);
-          showToast("FAQ added successfully!", "success");
+          // Add to local state only if it belongs to the list being viewed
+          if (faqAudience === audienceFilter) setFaqs((prev) => [...prev, response.data]);
+          showToast(`FAQ added to ${AUDIENCE_LABELS[faqAudience]}!`, "success");
         } else {
           showToast("Failed to add FAQ: " + (response.message || "Unknown error"), "error");
         }
@@ -200,6 +224,8 @@ export default function AdminFAQ() {
       // Reset form
       setFaqQuestion("");
       setFaqAnswer("");
+      setTranslations(EMPTY_TRANSLATIONS());
+      setFaqAudience(audienceFilter);
     } catch (err: any) {
       console.error("Error saving FAQ:", err);
       showToast(
@@ -215,7 +241,45 @@ export default function AdminFAQ() {
   const handleEdit = (faq: FAQ) => {
     setFaqQuestion(faq.question);
     setFaqAnswer(faq.answer);
+    // Load the saved translations, otherwise saving the edit would overwrite them with blanks.
+    setTranslations({ ...EMPTY_TRANSLATIONS(), ...(faq.translations || {}) });
+    setFaqAudience(faq.audience || "customer");
     setEditingFAQ(faq);
+  };
+
+  const resetForm = () => {
+    setEditingFAQ(null);
+    setFaqQuestion("");
+    setFaqAnswer("");
+    setTranslations(EMPTY_TRANSLATIONS());
+    setFaqAudience(audienceFilter);
+  };
+
+  // Show / hide an FAQ in its app without deleting it.
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const handleToggleStatus = async (faq: FAQ) => {
+    const next = (faq.status || "Active") === "Active" ? "Inactive" : "Active";
+    try {
+      setTogglingId(faq._id);
+      const response = await updateFAQStatus(faq._id, next);
+      if (response.success) {
+        setFaqs((prev) => prev.map((f) => (f._id === faq._id ? { ...f, status: next } : f)));
+        showToast(next === "Active" ? "FAQ is now shown in the app" : "FAQ is now hidden from the app", "success");
+      } else {
+        showToast("Failed to update FAQ: " + (response.message || "Unknown error"), "error");
+      }
+    } catch (err: any) {
+      showToast("Failed to update FAQ: " + (err.response?.data?.message || "Please try again."), "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  /** Switching the listed app also makes it the default target for new FAQs. */
+  const handleAudienceFilter = (audience: FAQAudience) => {
+    setAudienceFilter(audience);
+    setCurrentPage(1);
+    if (!editingFAQ) setFaqAudience(audience);
   };
 
   const confirmDelete = async () => {
@@ -232,9 +296,7 @@ export default function AdminFAQ() {
 
         // Reset form if editing this FAQ
         if (editingFAQ?._id === deleteId) {
-          setEditingFAQ(null);
-          setFaqQuestion("");
-          setFaqAnswer("");
+          resetForm();
         }
         setDeleteId(null);
       } else {
@@ -328,6 +390,18 @@ export default function AdminFAQ() {
               </div>
 
               <div className="space-y-4 flex-1">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">Show this FAQ in *</label>
+                  <select
+                    value={faqAudience}
+                    onChange={(e) => setFaqAudience(e.target.value as FAQAudience)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  >
+                    {(Object.keys(AUDIENCE_LABELS) as FAQAudience[]).map((a) => (
+                      <option key={a} value={a}>{AUDIENCE_LABELS[a]}</option>
+                    ))}
+                  </select>
+                </div>
                 {activeTab === "en" ? (
                   <>
                     <div>
@@ -412,11 +486,7 @@ export default function AdminFAQ() {
                 </button>
                 {editingFAQ && (
                   <button
-                    onClick={() => {
-                      setEditingFAQ(null);
-                      setFaqQuestion("");
-                      setFaqAnswer("");
-                    }}
+                    onClick={resetForm}
                     className="w-full mt-2 bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded font-medium transition-colors">
                     Cancel
                   </button>
@@ -429,6 +499,24 @@ export default function AdminFAQ() {
           <div className="lg:col-span-7 min-w-0 bg-white rounded-lg shadow-sm border border-neutral-200 flex flex-col">
             <div className="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
               <h2 className="text-lg font-semibold">View FAQ</h2>
+            </div>
+
+            {/* Which app's FAQs are listed */}
+            <div className="px-4 pt-4 flex flex-wrap gap-2">
+              {(Object.keys(AUDIENCE_LABELS) as FAQAudience[]).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => handleAudienceFilter(a)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    audienceFilter === a
+                      ? "bg-teal-600 text-white border-teal-600"
+                      : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+                  }`}
+                >
+                  {AUDIENCE_LABELS[a]}
+                </button>
+              ))}
             </div>
 
             {/* Controls */}
@@ -510,13 +598,14 @@ export default function AdminFAQ() {
                         FAQ Answer <SortIcon column="answer" />
                       </div>
                     </th>
+                    <th className="p-4 border border-neutral-200">Shown</th>
                     <th className="p-4 border border-neutral-200">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center">
+                      <td colSpan={5} className="p-8 text-center">
                         <div className="flex items-center justify-center">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mr-2"></div>
                           Loading FAQs...
@@ -525,14 +614,14 @@ export default function AdminFAQ() {
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-red-600">
+                      <td colSpan={5} className="p-8 text-center text-red-600">
                         {error}
                       </td>
                     </tr>
                   ) : displayedFAQs.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={5}
                         className="p-8 text-center text-neutral-400 border border-neutral-200">
                         No FAQs found.
                       </td>
@@ -550,6 +639,30 @@ export default function AdminFAQ() {
                         </td>
                         <td className="p-4 align-middle border border-neutral-200">
                           {faq.answer}
+                        </td>
+                        <td className="p-4 align-middle border border-neutral-200">
+                          {(() => {
+                            const shown = (faq.status || "Active") === "Active";
+                            return (
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={shown}
+                                onClick={() => handleToggleStatus(faq)}
+                                disabled={togglingId === faq._id}
+                                title={shown ? "Shown in the app. Click to hide." : "Hidden from the app. Click to show."}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+                                  shown ? "bg-teal-600" : "bg-neutral-300"
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                    shown ? "translate-x-6" : "translate-x-1"
+                                  }`}
+                                />
+                              </button>
+                            );
+                          })()}
                         </td>
                         <td className="p-4 align-middle border border-neutral-200">
                           <div className="flex items-center gap-2">

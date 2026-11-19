@@ -7,6 +7,8 @@ import { useLocation as useLocationContext } from "../../hooks/useLocation";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useAppSettings } from "../../context/AppSettingsContext";
+import { getSupportContact } from "../../utils/supportContact";
+import api from "../../services/api/config";
 
 // import { products } from '../../data/products'; // Removed
 import { OrderAddress, Order } from "../../types/order";
@@ -58,6 +60,7 @@ export default function Checkout() {
   const { addWishlistProduct } = useWishlistContext();
   const { user, updateUser } = useAuth();
   const { settings: appSettings } = useAppSettings();
+  const supportContact = getSupportContact(appSettings);
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const [tipAmount, setTipAmount] = useState<number | null>(null);
@@ -114,6 +117,22 @@ export default function Checkout() {
   const [similarProducts, setSimilarProducts] = useState<any[]>([]);
 
   const [showCancellationPolicy, setShowCancellationPolicy] = useState(false);
+  // Customer policy from Admin → Policies, loaded the first time the policy sheet is opened.
+  const [customerPolicyText, setCustomerPolicyText] = useState<string>("");
+  const customerPolicyLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!showCancellationPolicy || customerPolicyLoadedRef.current) return;
+    customerPolicyLoadedRef.current = true;
+    api
+      .get("/customer/policy")
+      .then((res) => {
+        const content = res?.data?.data?.content;
+        if (typeof content === "string" && content.trim()) setCustomerPolicyText(content.trim());
+      })
+      .catch(() => {
+        customerPolicyLoadedRef.current = false; // retry next time the sheet opens
+      });
+  }, [showCancellationPolicy]);
 
   // Profile completion modal state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -3524,6 +3543,27 @@ export default function Checkout() {
           </SheetHeader>
 
           <div className="px-4 pb-4 overflow-y-auto max-h-[calc(85vh-80px)]">
+            {/* The policy published in Admin → Policies (Customer) */}
+            {customerPolicyText && (
+              <div className="mt-4 text-sm text-neutral-700 space-y-3">
+                <div className="whitespace-pre-line leading-relaxed">{customerPolicyText}</div>
+                <p className="text-xs text-neutral-500">
+                  Questions? Contact {supportContact.email} or call {supportContact.phoneDisplay}.{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCancellationPolicy(false);
+                      navigate("/customer-policy");
+                    }}
+                    className="text-teal-700 font-semibold underline"
+                  >
+                    Open full policy
+                  </button>
+                </p>
+              </div>
+            )}
+            {/* Fallback only when no customer policy is published */}
+            {!customerPolicyText && (
             <div className="space-y-4 mt-4 text-sm text-neutral-700">
               <div>
                 <h3 className="font-bold text-neutral-900 mb-2">
@@ -3566,11 +3606,12 @@ export default function Checkout() {
                 </h3>
                 <p>
                   For any cancellation requests or queries, please contact our
-                  customer support team at {appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'} or call
-                  +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
+                  customer support team at {supportContact.email} or call{' '}
+                  {supportContact.phoneDisplay}
                 </p>
               </div>
             </div>
+            )}
           </div>
         </SheetContent>
       </Sheet>

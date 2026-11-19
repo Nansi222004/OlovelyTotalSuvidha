@@ -145,6 +145,11 @@ export default function DeliveryHelp() {
                 </h2>
               </div>
               <div className="divide-y divide-neutral-200">
+                {faqs.length === 0 && (
+                  <p className="p-4 text-sm text-neutral-500">
+                    No FAQs have been added yet. Use the contact options above if you need help.
+                  </p>
+                )}
                 {faqs.map((item, index) => (
                   <div key={index} className="p-4">
                     <p className="mb-2 text-sm font-medium text-neutral-900">{item.question}</p>

@@ -139,6 +139,19 @@ router.get("/delivery/help", async (req, res, next) => {
   }
 });
 
+// Public Seller FAQs (the /seller/faq page is reachable before login)
+router.get("/seller/faqs", async (_req, res) => {
+  try {
+    const { default: FAQ, activeFaqQuery } = await import("../models/FAQ");
+    const faqs = await FAQ.find(activeFaqQuery("seller"))
+      .select("question answer category translations order")
+      .sort({ order: 1, createdAt: -1 });
+    return res.status(200).json({ success: true, data: faqs });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Public Seller Policy endpoint (accessible without authentication)
 router.get("/seller/policy", async (_req, res) => {
   try {

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAppSettings } from '../../context/AppSettingsContext';
+import { getSupportContact } from '../../utils/supportContact';
 import SupportModal from '../../components/SupportModal';
 import api from '../../services/api/config';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -12,62 +13,6 @@ interface FAQItem {
   translations?: Record<string, Record<string, string>>;
 }
 
-const defaultFaqData: FAQItem[] = [
-  {
-    id: '1',
-    question: 'How do I place an order?',
-    answer: 'To place an order, simply browse our products, add items to your cart, and proceed to checkout. You\'ll need to provide your delivery address and payment details. Once confirmed, your order will be processed and delivered to you.',
-  },
-  {
-    id: '2',
-    question: 'What are the delivery charges?',
-    answer: 'Delivery charges vary based on your location and order value. We offer free delivery on orders above ₹199. For orders below this threshold, a nominal delivery fee applies. You can check the exact charges during checkout.',
-  },
-  {
-    id: '3',
-    question: 'How long does delivery take?',
-    answer: 'We typically deliver within 17-20 minutes for most locations. Delivery time may vary based on your location, order size, and current demand. You\'ll receive real-time updates about your order status.',
-  },
-  {
-    id: '4',
-    question: 'Can I cancel my order?',
-    answer: 'Yes, you can cancel your order before it\'s confirmed by the seller. Once confirmed, cancellation may not be possible. Please check our cancellation policy for more details. Refunds are processed within 5-7 business days.',
-  },
-  {
-    id: '5',
-    question: 'What payment methods do you accept?',
-    answer: 'We accept various payment methods including credit/debit cards, UPI, net banking, and digital wallets. Cash on delivery (COD) is also available for select locations.',
-  },
-];
-
-const sellerFaqData: FAQItem[] = [
-  {
-    id: 'seller-1',
-    question: 'How do I manage products and stock?',
-    answer: 'Use the Products and Stock sections in the Seller dashboard to add products, update variants, prices, availability, and inventory quantities.',
-  },
-  {
-    id: 'seller-2',
-    question: 'How do I process a new order?',
-    answer: 'Open the Orders section, review the order details, and use the available order actions to accept and process it. The dashboard will show each order’s current fulfillment status.',
-  },
-  {
-    id: 'seller-3',
-    question: 'Where can I review settlements and earnings?',
-    answer: 'Open Settlement, Wallet, or Sales Reports from the Seller dashboard to review applicable order earnings, deductions, and settlement information.',
-  },
-  {
-    id: 'seller-4',
-    question: 'How do I update my store or account details?',
-    answer: 'Use Profile and Account Settings in the Seller dashboard. Some approval-sensitive details may require review before they become active.',
-  },
-  {
-    id: 'seller-5',
-    question: 'How can I contact Seller Support?',
-    answer: 'Open Seller Support to call, email, or submit the support form with details about your catalog, orders, settlements, or account.',
-  },
-];
-
 interface FAQProps {
   audience?: 'customer' | 'seller';
 }
@@ -76,18 +21,20 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
   const navigate = useNavigate();
   const { t, getTranslatedField } = useTranslation();
   const { settings: appSettings } = useAppSettings();
+  const supportContact = getSupportContact(appSettings);
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const isSellerFaq = audience === 'seller';
-  const [faqs, setFaqs] = useState<FAQItem[]>(isSellerFaq ? sellerFaqData : defaultFaqData);
+  // FAQs come only from Admin → FAQ (audience Customer app / Seller panel); nothing is built in.
+  const [faqs, setFaqs] = useState<FAQItem[]>([]);
+  const [loadingFaqs, setLoadingFaqs] = useState(true);
+  const [faqLoadFailed, setFaqLoadFailed] = useState(false);
 
   useEffect(() => {
-    if (isSellerFaq) return;
-
     const fetchFaqs = async () => {
       try {
-        const response = await api.get('/customer/faqs');
-        if (response.data && response.data.success && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        const response = await api.get(isSellerFaq ? '/seller/faqs' : '/customer/faqs');
+        if (response.data && response.data.success && Array.isArray(response.data.data)) {
           const mappedFaqs = response.data.data.map((f: any) => ({
             id: f._id,
             question: f.question,
@@ -97,7 +44,10 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
           setFaqs(mappedFaqs);
         }
       } catch (err) {
-        console.error("Failed to fetch customer FAQs:", err);
+        console.error(`Failed to fetch ${audience} FAQs:`, err);
+        setFaqLoadFailed(true);
+      } finally {
+        setLoadingFaqs(false);
       }
     };
     fetchFaqs();
@@ -167,6 +117,16 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
       <div className="px-4 md:px-6 lg:px-8 py-6">
         <div className="max-w-3xl mx-auto">
           <div className="space-y-3">
+            {loadingFaqs && (
+              <p className="text-sm text-neutral-500 text-center py-6">Loading FAQs…</p>
+            )}
+            {!loadingFaqs && faqs.length === 0 && (
+              <p className="text-sm text-neutral-500 text-center py-6">
+                {faqLoadFailed
+                  ? 'Could not load FAQs right now. Please try again or contact support below.'
+                  : 'No FAQs have been added yet. Contact support below if you need help.'}
+              </p>
+            )}
             {faqs.map((item) => {
               const isOpen = openItems.has(item.id);
               return (
@@ -279,7 +239,7 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
                   {isSellerFaq ? 'Seller Support' : 'Contact Support'}
                 </button>
                 <a
-                  href={`tel:${appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}`}
+                  href={`tel:${supportContact.phoneTel}`}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-green-600 border-2 border-green-600 rounded-lg font-semibold hover:bg-green-50 transition-colors text-sm"
                 >
                   <svg
@@ -296,7 +256,7 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  Call +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
+                  Call {supportContact.phoneDisplay}
                 </a>
               </div>
             </div>

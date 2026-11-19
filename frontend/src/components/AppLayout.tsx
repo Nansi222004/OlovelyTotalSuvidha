@@ -478,7 +478,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   color: currentTheme.headerTextColor || '#ffffff'
                 }}
               >
-                {t("customer.deliveringIn", "Delivering in 10–15 mins")}
+                {t("customer.deliveringIn", "Delivering in {time}").replace("{time}", appSettings?.estimatedDeliveryTime || "12-15 mins")}
               </div>
 
               {/* Location line - only show if user has provided location */}

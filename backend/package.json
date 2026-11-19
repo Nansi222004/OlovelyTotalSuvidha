@@ -23,6 +23,8 @@
     "test:pos-unit": "tsx src/scripts/testPosBillingUnit.ts",
     "test:financial-audit": "node scripts/runTypeScriptTest.cjs src/scripts/testFinancialAuditRegressionIsolated.ts",
     "test:pos-isolated": "tsx src/scripts/testPosCheckoutIsolated.ts",
+    "test:pos-upi": "node scripts/runTypeScriptTest.cjs src/scripts/testPosUpiQrIsolated.ts",
+    "test:faq-audience": "node scripts/runTypeScriptTest.cjs src/scripts/testFaqAudienceIsolated.ts",
     "test:pos-invoice-ui": "tsx ../frontend/src/scripts/testPosInvoiceRendering.tsx",
     "test:pos-barcode": "node scripts/runTypeScriptTest.cjs src/scripts/testPosBarcodeIsolated.ts",
     "test:pos-barcode-ui": "node scripts/runTypeScriptTest.cjs ../frontend/src/scripts/testPosBarcodeRendering.tsx",

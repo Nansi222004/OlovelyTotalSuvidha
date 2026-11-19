@@ -1,6 +1,8 @@
 import React from 'react';
 import type { OrderDetail, OrderItem } from '../../../services/api/orderService';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
+import { useAppSettings } from '../../../context/AppSettingsContext';
+import { getSupportContact } from '../../../utils/supportContact';
 
 export interface SellerInvoiceProps {
   orderDetail: OrderDetail;
@@ -9,6 +11,8 @@ export interface SellerInvoiceProps {
 
 export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps>(
   ({ orderDetail, className = '' }, ref) => {
+    const { settings: appSettings } = useAppSettings();
+    const supportContact = getSupportContact(appSettings);
     const formatDate = (dateString?: string) => {
       if (!dateString) return 'N/A';
       const date = new Date(dateString);
@@ -443,7 +447,7 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
             This is an authoritative computer-generated tax invoice. No physical signature is required.
           </p>
           <p className="text-[10px] text-neutral-400 mt-1">
-            Questions? Contact support at support@olovely.com | Helpline: 9876543210
+            Questions? Contact support at {supportContact.email} | Helpline: {supportContact.phoneDisplay}
           </p>
         </div>
       </div>

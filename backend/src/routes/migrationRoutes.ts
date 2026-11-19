@@ -29,13 +29,20 @@ router.get(
 );
 
 /**
- * GET /api/v1/admin/fix-image-domain
- * Update image URLs in DB to target domain (default: https://api.dhakadsnazzy.com)
+ * GET /api/v1/admin/fix-image-domain?domain=https://your-api-domain
+ * Rewrites image URLs in the DB to the given domain. The domain is required: there is no default,
+ * so the tool can never point images at a server you did not name explicitly.
  */
 router.get(
   "/fix-image-domain",
   asyncHandler(async (req: Request, res: Response) => {
-    const domain = (req.query.domain as string) || "https://api.dhakadsnazzy.com";
+    const domain = String(req.query.domain || "").trim().replace(/\/+$/, "");
+    if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(domain)) {
+      return res.status(400).json({
+        success: false,
+        message: "Pass the target domain explicitly, e.g. ?domain=https://api.example.com",
+      });
+    }
     const result = await updateImageUrlsDomain(domain);
     return res.status(200).json({
       success: true,

@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useAppSettings } from '../../context/AppSettingsContext';
+import { getSupportContact } from '../../utils/supportContact';
 import { submitCustomerSupport } from '../../services/api/customerService';
 
 export default function Support() {
@@ -94,8 +95,8 @@ export default function Support() {
     }
   };
 
-  const supportPhone = appSettings?.supportPhone || appSettings?.contactPhone || '9601715367';
-  const supportEmail = appSettings?.supportEmail || appSettings?.contactEmail || 'olovelytotalsuvidha@gmail.com';
+  const supportContact = getSupportContact(appSettings);
+  const supportEmail = supportContact.email;
   const companyAddress = appSettings?.companyAddress || [appSettings?.companyCity, appSettings?.companyState, appSettings?.companyCountry].filter(Boolean).join(', ') || 'India';
 
   return (
@@ -164,7 +165,7 @@ export default function Support() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Phone */}
           <a
-            href={`tel:${supportPhone}`}
+            href={`tel:${supportContact.phoneTel}`}
             className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs hover:border-teal-400 hover:shadow-md transition-all flex items-start gap-4 group"
           >
             <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-600 group-hover:scale-105 transition-transform flex-shrink-0">
@@ -174,7 +175,7 @@ export default function Support() {
             </div>
             <div className="min-w-0">
               <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Call Us</h2>
-              <p className="text-sm font-bold text-neutral-900 mt-0.5 truncate">+91 {supportPhone}</p>
+              <p className="text-sm font-bold text-neutral-900 mt-0.5 truncate">{supportContact.phoneDisplay}</p>
               <p className="text-xs text-teal-600 font-medium mt-1">Tap to call</p>
             </div>
           </a>

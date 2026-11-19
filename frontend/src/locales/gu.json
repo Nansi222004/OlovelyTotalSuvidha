@@ -77,7 +77,7 @@
   },
   "customer": {
     "deliverTo": "ડિલિવરી સરનામું",
-    "deliveringIn": "10-15 મિનિટમાં ડિલિવરી",
+    "deliveringIn": "{time} માં ડિલિવરી",
     "searchPlaceholder": "કરિયાણું, નાસ્તો, ઘરગથ્થુ સામાન શોધો...",
     "bestSellers": "શ્રેષ્ઠ વિક્રેતાઓ",
     "lowestPrices": "સૌથી ઓછી કિંમતની ગેરંટી",

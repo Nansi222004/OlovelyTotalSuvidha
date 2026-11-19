@@ -293,12 +293,13 @@ router.delete(
 
 // ==================== FAQ Routes ====================
 router.get("/faqs", faqController.getFAQs);
+// Must be registered before "/faqs/:id", otherwise "order" is taken as an FAQ id.
+router.put("/faqs/order", faqController.updateFAQOrder);
 router.get("/faqs/:id", faqController.getFAQById);
 router.post("/faqs", faqController.createFAQ);
 router.put("/faqs/:id", faqController.updateFAQ);
 router.patch("/faqs/:id/status", faqController.updateFAQStatus);
 router.delete("/faqs/:id", faqController.deleteFAQ);
-router.put("/faqs/order", faqController.updateFAQOrder);
 
 // ==================== Support Ticket Routes ====================
 router.get("/support/tickets", supportController.getAllTickets);

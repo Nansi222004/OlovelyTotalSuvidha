@@ -284,8 +284,8 @@ export const getHelpSupport = asyncHandler(
   async (_req: Request, res: Response) => {
     let faqItems: any[] = [];
     try {
-      const { default: FAQ } = await import("../../../models/FAQ");
-      const dbFaqs = await FAQ.find({ status: "Active" }).sort({ order: 1, createdAt: -1 });
+      const { default: FAQ, activeFaqQuery } = await import("../../../models/FAQ");
+      const dbFaqs = await FAQ.find(activeFaqQuery("delivery")).sort({ order: 1, createdAt: -1 });
       if (dbFaqs.length > 0) {
         faqItems = dbFaqs.map((f) => ({
           question: f.question,
@@ -297,33 +297,11 @@ export const getHelpSupport = asyncHandler(
       console.error("Error fetching FAQs for delivery support:", faqErr);
     }
 
-    if (faqItems.length === 0) {
-      faqItems = [
-        {
-          question: "How do I accept a new order?",
-          answer:
-            'When you receive a new order notification, tap on it to view order details. Click "Accept Order" to confirm.',
-        },
-        {
-          question: "What should I do if I cannot deliver an order?",
-          answer:
-            'Contact the customer first. If unable to reach them, mark the order as "Unable to Deliver" and contact support.',
-        },
-        {
-          question: "How are my earnings calculated?",
-          answer:
-            "You earn delivery commissions based on configured distance or percentage rates. View details in Wallet.",
-        },
-        {
-          question: "How do I update my profile information?",
-          answer:
-            'Go to Menu > Profile and tap "Edit Profile" to update your personal details, vehicle information, and UPI ID.',
-        },
-      ];
-    }
+    // FAQs come only from Admin → FAQ (audience "Delivery partner app"); nothing is built in.
 
-    let phone = "+91 7846940429";
-    let email = "support@dhakadsnazzy.com";
+    // Last-resort contact details, used only when Admin → Settings has none.
+    let phone = "+91 96017 15367";
+    let email = "olovelytotalsuvidha@gmail.com";
 
     try {
       const { default: AppSettings } = await import("../../../models/AppSettings");
@@ -343,7 +321,6 @@ export const getHelpSupport = asyncHandler(
     const contactOptions = [
       { label: "Call Support", value: phone, icon: "phone" },
       { label: "Email Support", value: email, icon: "email" },
-      { label: "Live Chat", value: "Available 24/7", icon: "chat" },
     ];
 
     return res.status(200).json({

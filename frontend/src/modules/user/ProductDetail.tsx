@@ -12,6 +12,7 @@ import { useToast } from '../../context/ToastContext';
 import { useLocation } from '../../hooks/useLocation';
 import { useLoading } from '../../context/LoadingContext';
 import { useAppSettings } from '../../context/AppSettingsContext';
+import { getSupportContact } from '../../utils/supportContact';
 import Button from '../../components/ui/button';
 import Badge from '../../components/ui/badge';
 import { getProductById } from '../../services/api/customerProductService';
@@ -60,6 +61,7 @@ export default function ProductDetail() {
 
   const { startLoading, stopLoading } = useLoading();
   const { settings: appSettings } = useAppSettings();
+  const supportContact = getSupportContact(appSettings);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isProductDetailsExpanded, setIsProductDetailsExpanded] =
     useState(false);
@@ -1244,7 +1246,7 @@ export default function ProductDetail() {
                         Customer Care Details:
                       </span>
                       <span className="text-xs text-neutral-600">
-                        Email: {appSettings?.supportEmail || appSettings?.contactEmail || 'OLOVELYTOTALSUVIDHA@GMAIL.COM'} | Phone: +91 {appSettings?.supportPhone || appSettings?.contactPhone || '9601715367'}
+                        Email: {supportContact.email} | Phone: {supportContact.phoneDisplay}
                       </span>
                     </div>
                     <div className="flex items-start">

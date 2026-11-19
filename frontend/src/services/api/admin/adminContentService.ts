@@ -3,13 +3,20 @@ import api from "../config";
 
 import { ApiResponse } from "./types";
 
+export type FAQAudience = "customer" | "seller" | "delivery";
+
 export interface FAQ {
   _id: string;
   question: string;
   answer: string;
   category?: string;
-  isActive: boolean;
+  /** Which app shows the FAQ; missing on old FAQs = customer. */
+  audience?: FAQAudience;
+  /** Shown in the app only when "Active". */
+  status?: "Active" | "Inactive";
+  isActive?: boolean;
   order: number;
+  translations?: Record<string, Record<string, string>>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -18,6 +25,7 @@ export interface CreateFAQData {
   question: string;
   answer: string;
   category?: string;
+  audience?: FAQAudience;
   isActive?: boolean;
   order?: number;
 }
@@ -26,6 +34,7 @@ export interface UpdateFAQData {
   question?: string;
   answer?: string;
   category?: string;
+  audience?: FAQAudience;
   isActive?: boolean;
   order?: number;
 }
@@ -62,6 +71,8 @@ export interface GetContentParams {
   search?: string;
   isActive?: boolean;
   type?: string;
+  /** FAQs only: which app's FAQs to list. */
+  audience?: "customer" | "seller" | "delivery";
   sortBy?: string;
   sortOrder?: "asc" | "desc";
 }
@@ -88,6 +99,15 @@ export const updateFAQ = async (
   data: UpdateFAQData
 ): Promise<ApiResponse<FAQ>> => {
   const response = await api.put<ApiResponse<FAQ>>(`/admin/faqs/${id}`, data);
+  return response.data;
+};
+
+/** Shows (Active) or hides (Inactive) an FAQ in its app. */
+export const updateFAQStatus = async (
+  id: string,
+  status: "Active" | "Inactive"
+): Promise<ApiResponse<FAQ>> => {
+  const response = await api.patch<ApiResponse<FAQ>>(`/admin/faqs/${id}/status`, { status });
   return response.data;
 };
 

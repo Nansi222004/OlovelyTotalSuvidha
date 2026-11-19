@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useThemeContext } from "../../../context/ThemeContext";
+import { useAppSettings } from "../../../context/AppSettingsContext";
 import { useCustomerChannel, CustomerChannel } from "../../../context/CustomerChannelContext";
 import {
   getCustomerBanners,
@@ -42,10 +43,10 @@ const FALLBACK_MODE_CONFIGS: ModeSlideConfig[] = [
   {
     mode: "QUICK_COMMERCE",
     defaultTitle: "Quick Commerce",
-    defaultSubtitle: "Everyday essentials delivered in 10-30 minutes",
+    defaultSubtitle: "Everyday essentials delivered in {time}",
     defaultCta: "Shop Quick Commerce →",
     icon: "⚡",
-    badge: "10-30 Mins Delivery",
+    badge: "{time} Delivery",
     fallbackImage: "/assets/fallback-quick-commerce.jpg",
   },
   {
@@ -98,6 +99,8 @@ function FallbackShopYourWaySwiper({
   autoSlideInterval = 4000,
 }: FallbackSwiperProps) {
   const { currentTheme } = useThemeContext();
+  const { settings: appSettings } = useAppSettings();
+  const deliveryEta = appSettings?.estimatedDeliveryTime || "12-15 mins";
   const { setActiveChannel, quickCommerceEnabled, ecommerceEnabled } = useCustomerChannel();
 
   const availableConfigs = FALLBACK_MODE_CONFIGS.filter((cfg) => {
@@ -249,7 +252,7 @@ function FallbackShopYourWaySwiper({
               <div className="mb-1 sm:mb-1.5">
                 <span className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] md:text-xs font-bold px-2 py-0.5 rounded-full bg-black/5 text-neutral-700 tracking-tight">
                   <span>{activeConfig.icon}</span>
-                  <span>{activeConfig.badge}</span>
+                  <span>{activeConfig.badge.replace("{time}", deliveryEta)}</span>
                 </span>
               </div>
 
@@ -258,7 +261,7 @@ function FallbackShopYourWaySwiper({
               </h3>
 
               <p className="text-[11px] sm:text-xs md:text-sm text-neutral-600 font-medium line-clamp-2 mt-0.5 sm:mt-1 leading-tight sm:leading-relaxed max-w-[220px] sm:max-w-sm md:max-w-md">
-                {activeConfig.defaultSubtitle}
+                {activeConfig.defaultSubtitle.replace("{time}", deliveryEta)}
               </p>
 
               <div className="mt-2 sm:mt-3 md:mt-4">

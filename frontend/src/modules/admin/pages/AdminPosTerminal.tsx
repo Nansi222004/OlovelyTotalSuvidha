@@ -4,8 +4,12 @@ import {
   lookupBarcode,
   posCheckout,
   searchPosProducts,
+  createPosUpiQr,
+  getPosUpiQrStatus,
+  closePosUpiQr,
   type PosSearchResult,
   type PosCheckoutResponse,
+  type PosUpiQr,
 } from "../../../services/api/admin/adminInventoryService";
 import { getAllCustomers, type Customer } from "../../../services/api/admin/adminCustomerService";
 import { resolveImageUrl } from "../../../utils/imageUrl";
@@ -160,7 +164,12 @@ export default function AdminPosTerminal() {
   const [pendingVariantProduct, setPendingVariantProduct] = useState<any | null>(null);
 
   // Payment & Checkout
-  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "UPI" | "Card" | "Wallet" | "Other">("Cash");
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "UPI" | "Card">("Cash");
+  // UPI via Razorpay QR: the QR on screen, and the captured payment once Razorpay reports it.
+  const [upiQr, setUpiQr] = useState<PosUpiQr | null>(null);
+  const [upiPaid, setUpiPaid] = useState<{ paymentId: string; amountPaid: number } | null>(null);
+  const [upiLoading, setUpiLoading] = useState(false);
+  const upiAutoCheckoutRef = useRef<string | null>(null);
   const [tenderAmount, setTenderAmount] = useState<string>("");
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState<PosCheckoutResponse["data"] | null>(null);
@@ -178,6 +187,20 @@ export default function AdminPosTerminal() {
     setTimeout(() => {
       setAlertBanner(null);
     }, 4500);
+  };
+
+  // While a UPI QR is on screen the bill is frozen: the QR is for a fixed amount, so any change to
+  // items, quantities, discount or customer could make the paid amount differ from the bill.
+  const isCartLocked = Boolean(upiQr);
+  const blockIfCartLocked = (): boolean => {
+    if (!isCartLocked) return false;
+    showAlert(
+      upiPaid
+        ? "UPI payment received for this bill. Complete the sale before changing the cart."
+        : "A UPI QR is on screen. Cancel the QR before changing the cart.",
+      "error"
+    );
+    return true;
   };
 
   // Auto-focus barcode scanner input
@@ -282,6 +305,7 @@ export default function AdminPosTerminal() {
     variation?: any,
     qty = 1
   ) => {
+    if (blockIfCartLocked()) return;
     if (!businessConfigReady) {
       showAlert("Configure valid business billing settings before adding POS items.", "error");
       return;
@@ -420,6 +444,7 @@ export default function AdminPosTerminal() {
   // Barcode / Hardware Scanner Submission
   const handleBarcodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (blockIfCartLocked()) return;
     if (!businessConfigReady) {
       showAlert("Configure valid business billing settings before adding POS items.", "error");
       return;
@@ -473,6 +498,7 @@ export default function AdminPosTerminal() {
 
   // Cart item modifications
   const updateQuantity = (cartItemId: string, newQty: number) => {
+    if (blockIfCartLocked()) return;
     if (newQty <= 0) {
       removeFromCart(cartItemId);
       return;
@@ -492,11 +518,13 @@ export default function AdminPosTerminal() {
   };
 
   const removeFromCart = (cartItemId: string) => {
+    if (blockIfCartLocked()) return;
     setCart(prev => prev.filter(item => item.cartItemId !== cartItemId));
   };
 
   const clearCart = () => {
     if (cart.length === 0) return;
+    if (blockIfCartLocked()) return;
     if (window.confirm("Clear all items from current cart?")) {
       setCart([]);
       setBillDiscount(0);
@@ -579,6 +607,95 @@ export default function AdminPosTerminal() {
   const tenderedNum = parseFloat(tenderAmount) || 0;
   const changeToReturn = paymentMethod === "Cash" && tenderedNum >= calculations.netPayable ? tenderedNum - calculations.netPayable : 0;
 
+  // ── UPI via Razorpay QR ────────────────────────────────────────────────────
+  const resetUpi = () => {
+    setUpiQr(null);
+    setUpiPaid(null);
+    upiAutoCheckoutRef.current = null;
+  };
+
+  /** Cancels an unpaid QR at Razorpay (so it can no longer be paid) and clears it from the screen. */
+  const cancelUpiQr = async (reason?: string) => {
+    const active = upiQr;
+    const paid = upiPaid;
+    if (!active) return;
+    if (paid) {
+      // Money was already received: never discard silently.
+      showAlert("This UPI payment is already received. Complete the sale, or refund it from the Razorpay dashboard.", "error");
+      return;
+    }
+    resetUpi();
+    try {
+      await closePosUpiQr(active.qrCodeId);
+    } catch {
+      // The QR also expires on its own after 15 minutes.
+    }
+    if (reason) showAlert(reason, "info");
+  };
+
+  const handleShowUpiQr = async () => {
+    if (cart.length === 0 || calculations.netPayable < 1) {
+      showAlert("Add items to the cart before showing the UPI QR.", "error");
+      return;
+    }
+    setUpiLoading(true);
+    try {
+      const qr = await createPosUpiQr(calculations.netPayable);
+      setUpiPaid(null);
+      setUpiQr(qr);
+    } catch (err: any) {
+      showAlert(err?.response?.data?.message || err?.message || "Could not create the UPI QR", "error");
+    } finally {
+      setUpiLoading(false);
+    }
+  };
+
+  // Poll Razorpay (through the backend) every 3 s until the customer has paid.
+  useEffect(() => {
+    if (!upiQr || upiPaid) return;
+    let stopped = false;
+    const check = async () => {
+      try {
+        const status = await getPosUpiQrStatus(upiQr.qrCodeId);
+        if (stopped) return;
+        if (status.paid && status.paymentId) {
+          sounds.success();
+          setUpiPaid({ paymentId: status.paymentId, amountPaid: status.amountPaid });
+        } else if (status.qrStatus === "closed") {
+          resetUpi();
+          showAlert("The UPI QR expired before payment. Show a new QR.", "info");
+        }
+      } catch {
+        // Temporary network/Razorpay issue: keep polling.
+      }
+    };
+    const timer = setInterval(check, 3000);
+    check();
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [upiQr?.qrCodeId, upiPaid]);
+
+  // The QR is for a fixed amount: if the bill changes (or another method is chosen) before
+  // payment, cancel it so the customer cannot pay a stale amount.
+  useEffect(() => {
+    if (!upiQr || upiPaid) return;
+    if (paymentMethod !== "UPI") {
+      cancelUpiQr();
+    } else if (Math.round(upiQr.amount * 100) !== Math.round(calculations.netPayable * 100)) {
+      cancelUpiQr("The bill changed, so the UPI QR was cancelled. Show a new QR for the new amount.");
+    }
+  }, [paymentMethod, calculations.netPayable]);
+
+  // Never leave a payable QR behind when leaving the POS screen.
+  const upiQrRef = useRef<{ qr: PosUpiQr | null; paid: boolean }>({ qr: null, paid: false });
+  upiQrRef.current = { qr: upiQr, paid: Boolean(upiPaid) };
+  useEffect(() => () => {
+    const { qr, paid } = upiQrRef.current;
+    if (qr && !paid) closePosUpiQr(qr.qrCodeId).catch(() => undefined);
+  }, []);
+
   // Search registered customers
   const handleSearchCustomers = async (query: string) => {
     setCustomerSearchQuery(query);
@@ -619,6 +736,11 @@ export default function AdminPosTerminal() {
       return;
     }
 
+    if (paymentMethod === "UPI" && (!upiQr || !upiPaid)) {
+      showAlert("Show the UPI QR and wait until the customer's payment is received.", "error");
+      return;
+    }
+
     setIsCheckingOut(true);
     try {
       const checkoutFingerprint = JSON.stringify({
@@ -655,6 +777,7 @@ export default function AdminPosTerminal() {
           method: paymentMethod,
           amountPaid: paymentMethod === "Cash" && tenderedNum >= calculations.netPayable ? tenderedNum : calculations.netPayable,
           changeReturned: changeToReturn,
+          ...(paymentMethod === "UPI" && upiQr ? { razorpayQrCodeId: upiQr.qrCodeId } : {}),
         },
         discount: calculations.discount,
         notes: orderNotes.trim() || undefined,
@@ -675,6 +798,7 @@ export default function AdminPosTerminal() {
         setOrderNotes("");
         setTenderAmount("");
         setCustomer(DEFAULT_CUSTOMER);
+        resetUpi();
         checkoutAttemptRef.current = null;
         showAlert(`Sale Completed! Order #${res.data.order?.orderNumber}`, "success");
       } else {
@@ -687,6 +811,14 @@ export default function AdminPosTerminal() {
       setIsCheckingOut(false);
     }
   };
+
+  // UPI received → complete the sale automatically (once per QR; the cashier can retry with CHARGE).
+  useEffect(() => {
+    if (!upiPaid || !upiQr || paymentMethod !== "UPI" || isCheckingOut) return;
+    if (upiAutoCheckoutRef.current === upiQr.qrCodeId) return;
+    upiAutoCheckoutRef.current = upiQr.qrCodeId;
+    handleDirectCheckout();
+  }, [upiPaid]);
 
   // Print helper for Thermal / A4 receipt
   const handlePrint = () => {
@@ -1052,7 +1184,10 @@ export default function AdminPosTerminal() {
               {!customer.isWalkIn && (
                 <button
                   type="button"
-                  onClick={() => setCustomer(DEFAULT_CUSTOMER)}
+                  onClick={() => {
+                    if (blockIfCartLocked()) return;
+                    setCustomer(DEFAULT_CUSTOMER);
+                  }}
                   className="text-xs text-slate-400 hover:text-rose-600"
                   title="Reset to Walk-in"
                 >
@@ -1078,6 +1213,8 @@ export default function AdminPosTerminal() {
                 <div className="flex items-center gap-1">
                   <select
                     value={discountType}
+                    disabled={isCartLocked}
+                    title={isCartLocked ? "Cancel the UPI QR to change the discount" : undefined}
                     onChange={e => setDiscountType(e.target.value as any)}
                     className="text-xs border border-slate-300 rounded px-1.5 py-1 bg-white focus:outline-none"
                   >
@@ -1088,6 +1225,8 @@ export default function AdminPosTerminal() {
                     type="number"
                     min="0"
                     value={billDiscount || ""}
+                    disabled={isCartLocked}
+                    title={isCartLocked ? "Cancel the UPI QR to change the discount" : undefined}
                     onChange={e => setBillDiscount(parseFloat(e.target.value) || 0)}
                     placeholder="0"
                     className="w-16 border border-slate-300 rounded px-2 py-1 text-right text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -1155,11 +1294,12 @@ export default function AdminPosTerminal() {
             <h3 className="font-bold text-slate-900 text-sm">Payment Method</h3>
 
             {/* Payment Mode Selector Buttons */}
-            <div className="grid grid-cols-4 gap-2">
-              {(["Cash", "UPI", "Card", "Wallet"] as const).map(mode => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["Cash", "UPI", "Card"] as const).map(mode => (
                 <button
                   key={mode}
                   type="button"
+                  disabled={Boolean(upiPaid) && mode !== "UPI"}
                   onClick={() => setPaymentMethod(mode)}
                   className={`py-2.5 px-1 rounded-xl text-xs font-bold transition-all border flex flex-col items-center justify-center gap-1 ${
                     paymentMethod === mode
@@ -1168,7 +1308,7 @@ export default function AdminPosTerminal() {
                   }`}
                 >
                   <span className="text-base">
-                    {mode === "Cash" ? "💵" : mode === "UPI" ? "📱" : mode === "Card" ? "💳" : "👛"}
+                    {mode === "Cash" ? "💵" : mode === "UPI" ? "📱" : "💳"}
                   </span>
                   <span>{mode}</span>
                 </button>
@@ -1225,14 +1365,65 @@ export default function AdminPosTerminal() {
               </div>
             )}
 
-            {/* UPI QR Hint */}
+            {/* UPI: real Razorpay QR for the exact bill amount; the sale completes when payment arrives */}
             {paymentMethod === "UPI" && (
-              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-center space-y-1">
-                <p className="text-xs font-semibold text-indigo-900">Scan QR to Pay via PhonePe / GPay / Paytm</p>
-                <div className="w-24 h-24 mx-auto bg-white p-2 rounded-lg border border-indigo-200 shadow-xs flex items-center justify-center text-4xl">
-                  📱
-                </div>
-                <p className="text-[11px] text-indigo-700">Confirm payment in the configured UPI application before completing the sale.</p>
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-center space-y-2">
+                {!upiQr && (
+                  <>
+                    <p className="text-xs font-semibold text-indigo-900">Customer pays by scanning a QR (PhonePe / GPay / Paytm / any UPI app)</p>
+                    <button
+                      type="button"
+                      onClick={handleShowUpiQr}
+                      disabled={upiLoading || cart.length === 0 || calculations.netPayable < 1}
+                      className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-bold"
+                    >
+                      {upiLoading ? "Creating QR..." : `Show UPI QR for ₹${calculations.netPayable.toLocaleString()}`}
+                    </button>
+                  </>
+                )}
+
+                {upiQr && !upiPaid && (
+                  <>
+                    <p className="text-xs font-semibold text-indigo-900">Ask the customer to scan and pay ₹{upiQr.amount.toLocaleString()}</p>
+                    {upiQr.imageUrl ? (
+                      <img
+                        src={upiQr.imageUrl}
+                        alt={`UPI QR for ₹${upiQr.amount}`}
+                        className="w-56 max-w-full mx-auto bg-white rounded-lg border border-indigo-200"
+                      />
+                    ) : (
+                      <p className="text-xs text-rose-700">QR image unavailable. Cancel and try again.</p>
+                    )}
+                    <p className="text-[11px] text-indigo-700 flex items-center justify-center gap-1.5">
+                      <span className="inline-block w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></span>
+                      Waiting for payment… the sale completes automatically.
+                    </p>
+                    <p className="text-[11px] font-semibold text-slate-600">
+                      🔒 Cart, discount and customer are locked until the QR is paid or cancelled.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => cancelUpiQr("UPI QR cancelled.")}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 underline"
+                    >
+                      Cancel QR
+                    </button>
+                  </>
+                )}
+
+                {upiQr && upiPaid && (
+                  <div className="bg-emerald-100 border border-emerald-300 rounded-lg p-2 text-emerald-900">
+                    <p className="text-sm font-bold">✓ ₹{upiPaid.amountPaid.toLocaleString()} received via UPI</p>
+                    <p className="text-[11px]">Payment {upiPaid.paymentId}{isCheckingOut ? " — completing sale…" : ". Press CHARGE if the sale did not complete."}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Card: payment is taken on the separate card machine */}
+            {paymentMethod === "Card" && (
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-[11px] text-slate-600">
+                Take the payment on the card machine first. Press CHARGE only after the machine shows the payment as approved.
               </div>
             )}
 
@@ -1249,7 +1440,10 @@ export default function AdminPosTerminal() {
             <button
               type="button"
               onClick={handleDirectCheckout}
-              disabled={isCheckingOut || cart.length === 0 || !businessConfigReady || calculations.taxModel === "UNKNOWN"}
+              disabled={
+                isCheckingOut || cart.length === 0 || !businessConfigReady || calculations.taxModel === "UNKNOWN" ||
+                (paymentMethod === "UPI" && !upiPaid)
+              }
               className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-base tracking-wide shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               {isCheckingOut ? (
@@ -1350,6 +1544,7 @@ export default function AdminPosTerminal() {
             <button
               type="button"
               onClick={() => {
+                if (blockIfCartLocked()) return;
                 setCustomer(DEFAULT_CUSTOMER);
                 setShowCustomerModal(false);
               }}
@@ -1382,6 +1577,7 @@ export default function AdminPosTerminal() {
                   <div
                     key={c._id}
                     onClick={() => {
+                      if (blockIfCartLocked()) return;
                       setCustomer({
                         customerId: c._id,
                         name: c.name || c.phone,
@@ -1450,6 +1646,7 @@ export default function AdminPosTerminal() {
                     showAlert("Please select the customer's billing state", "error");
                     return;
                   }
+                  if (blockIfCartLocked()) return;
                   setCustomer({
                     name: nameInput || "Customer",
                     phone: phoneInput || "0000000000",

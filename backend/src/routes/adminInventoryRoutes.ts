@@ -10,6 +10,9 @@ import {
   getLowStockProducts,
   notifyVendorLowStock,
   posCheckout,
+  createPosUpiQrCode,
+  getPosUpiQrCodeStatus,
+  closePosUpiQrCode,
 } from '../modules/admin/controllers/adminInventoryController';
 
 const router = Router();
@@ -37,5 +40,10 @@ router.post('/notify-vendor', notifyVendorLowStock);
 
 // POS counter sale checkout
 router.post('/pos-checkout', posCheckout);
+
+// POS UPI payment via Razorpay QR (single-use, fixed amount)
+router.post('/pos-upi-qr', createPosUpiQrCode);
+router.get('/pos-upi-qr/:qrCodeId', getPosUpiQrCodeStatus);
+router.post('/pos-upi-qr/:qrCodeId/close', closePosUpiQrCode);
 
 export default router;

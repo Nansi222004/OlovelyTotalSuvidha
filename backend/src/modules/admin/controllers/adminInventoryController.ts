@@ -38,6 +38,14 @@ import {
   validateStateIdentity,
 } from '../../../utils/indianStates';
 import { splitPosGst, toPosInvoiceItem, validatePosBusinessSettings } from '../../../utils/posBilling';
+import {
+  closePosUpiQr,
+  createPosUpiQr,
+  getPosUpiQrStatus,
+  posAmountsMatch,
+  PosUpiQrError,
+  verifyPosUpiQrPayment,
+} from '../../../services/posUpiQrService';
 
 // ---------------------------------------------------------------------------
 // GET /admin/inventory/transactions?productId=...&page=1&limit=50
@@ -858,6 +866,50 @@ const waitForCompletedPosAttempt = async (idempotencyKey: string, requestHash: s
   throw new PosCheckoutError(409, 'This POS checkout is still processing. Retry with the same idempotency key.');
 };
 
+// Counter payment methods. "Wallet" was removed: it charged nothing yet marked the sale Paid.
+const POS_PAYMENT_METHODS = ['Cash', 'UPI', 'Card'] as const;
+
+const sendPosUpiError = (res: Response, error: any) => {
+  if (error instanceof PosUpiQrError) {
+    return res.status(error.statusCode).json({ success: false, message: error.message });
+  }
+  throw error;
+};
+
+// POST /admin/inventory/pos-upi-qr  { amount } → single-use Razorpay UPI QR for the bill amount
+export const createPosUpiQrCode = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const settings: any = await AppSettings.getSettings();
+    const qr = await createPosUpiQr(Number(req.body?.amount), {
+      businessName: settings?.businessName || settings?.appName,
+      createdBy: (req as any).user?.userId,
+    });
+    return res.status(201).json({ success: true, data: qr });
+  } catch (error) {
+    return sendPosUpiError(res, error);
+  }
+});
+
+// GET /admin/inventory/pos-upi-qr/:qrCodeId → { paid, paymentId, amountPaid, qrStatus }
+export const getPosUpiQrCodeStatus = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const status = await getPosUpiQrStatus(String(req.params.qrCodeId));
+    return res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    return sendPosUpiError(res, error);
+  }
+});
+
+// POST /admin/inventory/pos-upi-qr/:qrCodeId/close → cancel an unpaid QR
+export const closePosUpiQrCode = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const result = await closePosUpiQr(String(req.params.qrCodeId));
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    return sendPosUpiError(res, error);
+  }
+});
+
 export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
   const adminId = (req as any).user?.userId;
   const { items, customer, payment, discount = 0, notes } = req.body;
@@ -868,6 +920,28 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
   }
   if (!idempotencyKey || idempotencyKey.length > 128) {
     throw new PosCheckoutError(400, 'A valid POS idempotency key is required.');
+  }
+
+  const paymentMethod = String(payment?.method || 'Cash').trim();
+  if (!(POS_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) {
+    throw new PosCheckoutError(400, `Unsupported POS payment method "${paymentMethod}". Use Cash, UPI or Card.`);
+  }
+
+  // UPI: the money must already be captured by Razorpay on this POS QR, and the payment must not
+  // have been used for another sale. The amount is matched against the server bill below.
+  let upiPayment: { qrCodeId: string; paymentId: string; amountPaid: number } | null = null;
+  if (paymentMethod === 'UPI') {
+    const qrCodeId = String(payment?.razorpayQrCodeId || '').trim();
+    if (!qrCodeId) {
+      throw new PosCheckoutError(400, 'Show the UPI QR and wait for the payment before completing a UPI sale.');
+    }
+    try {
+      const verified = await verifyPosUpiQrPayment(qrCodeId);
+      upiPayment = { qrCodeId, ...verified };
+    } catch (error: any) {
+      if (error instanceof PosUpiQrError) throw new PosCheckoutError(error.statusCode, error.message);
+      throw error;
+    }
   }
 
   const settings = await AppSettings.getSettings();
@@ -1097,6 +1171,19 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
       const totalTaxable = Number(validatedItems.reduce((sum, item) => sum + item.taxableAmount, 0).toFixed(2));
       const totalDiscount = Number(Math.min(subtotal, Math.max(0, Number(discount) || 0)).toFixed(2));
       const grandTotal = Number((subtotal - totalDiscount).toFixed(2));
+      if (upiPayment) {
+        if (!posAmountsMatch(upiPayment.amountPaid, grandTotal)) {
+          throw new PosCheckoutError(
+            409,
+            `UPI payment of ₹${upiPayment.amountPaid.toFixed(2)} does not match the bill of ₹${grandTotal.toFixed(2)}. ` +
+            'No sale was recorded; refund the payment from the Razorpay dashboard and start again.'
+          );
+        }
+        const alreadyUsed = await Order.exists({ isPosOrder: true, paymentId: upiPayment.paymentId }).session(session);
+        if (alreadyUsed) {
+          throw new PosCheckoutError(409, 'This UPI payment was already used for another POS sale.');
+        }
+      }
       const taxSplit = splitPosGst(totalTax, Boolean(settings.gstEnabled), businessState, customerState);
       const { cgst, sgst, igst } = taxSplit;
 
@@ -1125,7 +1212,8 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
         discount: totalDiscount,
         total: grandTotal,
         grandTotal,
-        paymentMethod: payment?.method || 'Cash',
+        paymentMethod,
+        ...(upiPayment ? { paymentId: upiPayment.paymentId } : {}),
         paymentStatus: 'Paid',
         status: 'Delivered',
         deliveredAt: new Date(),
@@ -1151,7 +1239,9 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
           totalTax,
         },
         deliveryOption: 'Instant',
-        adminNotes: notes ? `POS Counter Sale: ${notes}` : 'POS In-Store Counter Sale',
+        adminNotes:
+          (notes ? `POS Counter Sale: ${notes}` : 'POS In-Store Counter Sale') +
+          (upiPayment ? ` | UPI via Razorpay QR ${upiPayment.qrCodeId} (payment ${upiPayment.paymentId})` : ''),
       });
       await newOrder.save({ session });
 

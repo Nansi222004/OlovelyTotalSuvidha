@@ -68,7 +68,7 @@ router.get("/support/tickets/:idOrNumber", authenticate, requireUserType("Custom
 router.post("/support/tickets/:id/messages", authenticate, requireUserType("Customer"), supportController.sendCustomerMessage);
 router.post("/support/tickets/:id/close", authenticate, requireUserType("Customer"), supportController.closeCustomerTicket);
 
-import FAQ from "../models/FAQ";
+import FAQ, { activeFaqQuery } from "../models/FAQ";
 import Policy from "../models/Policy";
 import {
   checkPincodeServiceability,
@@ -83,7 +83,8 @@ router.get("/shipping/track/:awbNumber", getTracking);
 // Get active FAQs for customer app
 router.get("/faqs", async (_req, res) => {
   try {
-    const faqs = await FAQ.find({ status: "Active" }).sort({ order: 1, createdAt: -1 });
+    // Only customer FAQs (seller/delivery FAQs have their own endpoints)
+    const faqs = await FAQ.find(activeFaqQuery("customer")).sort({ order: 1, createdAt: -1 });
     return res.status(200).json({
       success: true,
       data: faqs,

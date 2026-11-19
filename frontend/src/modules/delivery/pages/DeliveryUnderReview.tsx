@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
+import { useAppSettings } from '../../../context/AppSettingsContext';
+import { getSupportContact } from '../../../utils/supportContact';
 import { getDeliveryProfile } from '../../../services/api/auth/deliveryAuthService';
 import deliveryLogo from '@assets/delivery_logo.jpg';
 
 export default function DeliveryUnderReview() {
+  const { settings: appSettings } = useAppSettings();
+  const supportContact = getSupportContact(appSettings);
   const navigate = useNavigate();
   const { user, updateUser, logout } = useAuth();
   const [checking, setChecking] = useState(false);
@@ -202,9 +206,13 @@ export default function DeliveryUnderReview() {
       {/* Footer Info */}
       <div className="relative z-10 text-center text-xs text-slate-500 pt-4">
         Need assistance? Contact{' '}
-        <span className="text-teal-700 font-medium hover:underline cursor-pointer">
-          support@olovely.com
-        </span>
+        <a href={`mailto:${supportContact.email}`} className="text-teal-700 font-medium hover:underline">
+          {supportContact.email}
+        </a>{' '}
+        or call{' '}
+        <a href={`tel:${supportContact.phoneTel}`} className="text-teal-700 font-medium hover:underline">
+          {supportContact.phoneDisplay}
+        </a>
       </div>
     </div>
   );

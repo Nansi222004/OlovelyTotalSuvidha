@@ -171,9 +171,11 @@ export interface PosCheckoutPayload {
     isWalkIn?: boolean;
   };
   payment?: {
-    method: "Cash" | "Card" | "UPI" | "Wallet" | "Other";
+    method: "Cash" | "Card" | "UPI";
     amountPaid?: number;
     changeReturned?: number;
+    /** UPI only: the Razorpay QR the customer paid; the server verifies the captured payment. */
+    razorpayQrCodeId?: string;
   };
   discount?: number;
   notes?: string;
@@ -244,4 +246,34 @@ export interface PosCheckoutResponse {
 export const posCheckout = async (data: PosCheckoutPayload): Promise<PosCheckoutResponse> => {
   const response = await api.post(`/admin/inventory/pos-checkout`, data);
   return response.data;
+};
+
+export interface PosUpiQr {
+  qrCodeId: string;
+  imageUrl: string;
+  amount: number;
+  closeBy: string;
+}
+
+export interface PosUpiQrStatus {
+  qrCodeId: string;
+  qrStatus: string;
+  paid: boolean;
+  paymentId?: string;
+  amountPaid: number;
+}
+
+/** Creates a single-use Razorpay UPI QR for exactly `amount` rupees. */
+export const createPosUpiQr = async (amount: number): Promise<PosUpiQr> => {
+  const response = await api.post(`/admin/inventory/pos-upi-qr`, { amount });
+  return response.data.data;
+};
+
+export const getPosUpiQrStatus = async (qrCodeId: string): Promise<PosUpiQrStatus> => {
+  const response = await api.get(`/admin/inventory/pos-upi-qr/${encodeURIComponent(qrCodeId)}`);
+  return response.data.data;
+};
+
+export const closePosUpiQr = async (qrCodeId: string): Promise<void> => {
+  await api.post(`/admin/inventory/pos-upi-qr/${encodeURIComponent(qrCodeId)}/close`);
 };

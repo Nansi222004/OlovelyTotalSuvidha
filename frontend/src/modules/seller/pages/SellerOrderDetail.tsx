@@ -8,10 +8,14 @@ import SellerAssignDeliveryBoyModal from '../components/SellerAssignDeliveryBoyM
 import { SellerInvoice } from '../components/SellerInvoice';
 import { exportElementToPdf } from '../../../utils/invoicePdfExport';
 import { ThermalPrintModal } from '../components/ThermalPrintModal';
+import { useAppSettings } from '../../../context/AppSettingsContext';
+import { getSupportContact } from '../../../utils/supportContact';
 
 export default function SellerOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { settings: appSettings } = useAppSettings();
+  const supportContact = getSupportContact(appSettings);
   const { showToast } = useToast();
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -439,16 +443,19 @@ export default function SellerOrderDetail() {
                   <div className="text-[10px] text-green-600">Total Suvidha</div>
                 </div>
               </div>
-              <h1 className="text-2xl font-bold text-neutral-900 mb-2">Olovely Total Suvidha</h1>
+              <h1 className="text-2xl font-bold text-neutral-900 mb-2">{supportContact.businessName}</h1>
               <div className="text-sm text-neutral-600 mb-1">
-                <span className="font-medium">From:</span> Olovely Total Suvidha
+                <span className="font-medium">From:</span> {supportContact.businessName}
               </div>
               <div className="text-sm text-neutral-600 space-y-1">
                 <div>
-                  <span className="font-medium">Email:</span> info@olovely.com
+                  <span className="font-medium">Email:</span> {supportContact.email}
                 </div>
                 <div>
-                  <span className="font-medium">Website:</span> https://olovely.com
+                  <span className="font-medium">Phone:</span> {supportContact.phoneDisplay}
+                </div>
+                <div>
+                  <span className="font-medium">Website:</span> {typeof window !== "undefined" ? window.location.origin : ""}
                 </div>
               </div>
             </div>
