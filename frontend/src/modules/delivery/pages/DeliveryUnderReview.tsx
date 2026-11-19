@@ -204,16 +204,28 @@ export default function DeliveryUnderReview() {
       </div>
 
       {/* Footer Info */}
-      <div className="relative z-10 text-center text-xs text-slate-500 pt-4">
-        Need assistance? Contact{' '}
-        <a href={`mailto:${supportContact.email}`} className="text-teal-700 font-medium hover:underline">
-          {supportContact.email}
-        </a>{' '}
-        or call{' '}
-        <a href={`tel:${supportContact.phoneTel}`} className="text-teal-700 font-medium hover:underline">
-          {supportContact.phoneDisplay}
-        </a>
-      </div>
+      {(supportContact.email || supportContact.phoneTel) && (
+        <div className="relative z-10 text-center text-xs text-slate-500 pt-4">
+          Need assistance?{' '}
+          {supportContact.email && (
+            <>
+              Email{' '}
+              <a href={`mailto:${supportContact.email}`} className="text-teal-700 font-medium hover:underline">
+                {supportContact.email}
+              </a>
+            </>
+          )}
+          {supportContact.email && supportContact.phoneTel && ' or '}
+          {supportContact.phoneTel && (
+            <>
+              call{' '}
+              <a href={`tel:${supportContact.phoneTel}`} className="text-teal-700 font-medium hover:underline">
+                {supportContact.phoneDisplay}
+              </a>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

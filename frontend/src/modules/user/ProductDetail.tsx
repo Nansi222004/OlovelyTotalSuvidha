@@ -12,7 +12,7 @@ import { useToast } from '../../context/ToastContext';
 import { useLocation } from '../../hooks/useLocation';
 import { useLoading } from '../../context/LoadingContext';
 import { useAppSettings } from '../../context/AppSettingsContext';
-import { getSupportContact } from '../../utils/supportContact';
+import { getSupportContact, joinContactParts } from '../../utils/supportContact';
 import Button from '../../components/ui/button';
 import Badge from '../../components/ui/badge';
 import { getProductById } from '../../services/api/customerProductService';
@@ -1246,7 +1246,10 @@ export default function ProductDetail() {
                         Customer Care Details:
                       </span>
                       <span className="text-xs text-neutral-600">
-                        Email: {supportContact.email} | Phone: {supportContact.phoneDisplay}
+                        {joinContactParts([
+                          supportContact.email && `Email: ${supportContact.email}`,
+                          supportContact.phoneDisplay && `Phone: ${supportContact.phoneDisplay}`,
+                        ]) || "—"}
                       </span>
                     </div>
                     <div className="flex items-start">

@@ -299,9 +299,9 @@ export const getHelpSupport = asyncHandler(
 
     // FAQs come only from Admin → FAQ (audience "Delivery partner app"); nothing is built in.
 
-    // Last-resort contact details, used only when Admin → Settings has none.
-    let phone = "+91 96017 15367";
-    let email = "olovelytotalsuvidha@gmail.com";
+    // Contact details come only from Admin → Settings (nothing built in).
+    let phone = "";
+    let email = "";
 
     try {
       const { default: AppSettings } = await import("../../../models/AppSettings");
@@ -321,7 +321,7 @@ export const getHelpSupport = asyncHandler(
     const contactOptions = [
       { label: "Call Support", value: phone, icon: "phone" },
       { label: "Email Support", value: email, icon: "email" },
-    ];
+    ].filter((option) => Boolean(option.value));
 
     return res.status(200).json({
       success: true,

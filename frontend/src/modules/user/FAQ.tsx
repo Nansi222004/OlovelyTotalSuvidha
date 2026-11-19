@@ -238,6 +238,7 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
                   </svg>
                   {isSellerFaq ? 'Seller Support' : 'Contact Support'}
                 </button>
+                {supportContact.phoneTel && (
                 <a
                   href={`tel:${supportContact.phoneTel}`}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-green-600 border-2 border-green-600 rounded-lg font-semibold hover:bg-green-50 transition-colors text-sm"
@@ -258,6 +259,7 @@ export default function FAQ({ audience = 'customer' }: FAQProps) {
                   </svg>
                   Call {supportContact.phoneDisplay}
                 </a>
+                )}
               </div>
             </div>
           </div>

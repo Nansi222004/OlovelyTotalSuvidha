@@ -2,7 +2,7 @@ import React from 'react';
 import type { OrderDetail, OrderItem } from '../../../services/api/orderService';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
 import { useAppSettings } from '../../../context/AppSettingsContext';
-import { getSupportContact } from '../../../utils/supportContact';
+import { getSupportContact, joinContactParts } from '../../../utils/supportContact';
 
 export interface SellerInvoiceProps {
   orderDetail: OrderDetail;
@@ -446,9 +446,15 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
           <p className="mt-0.5">
             This is an authoritative computer-generated tax invoice. No physical signature is required.
           </p>
-          <p className="text-[10px] text-neutral-400 mt-1">
-            Questions? Contact support at {supportContact.email} | Helpline: {supportContact.phoneDisplay}
-          </p>
+          {(supportContact.email || supportContact.phoneDisplay) && (
+            <p className="text-[10px] text-neutral-400 mt-1">
+              Questions? Contact support:{' '}
+              {joinContactParts([
+                supportContact.email,
+                supportContact.phoneDisplay && `Helpline: ${supportContact.phoneDisplay}`,
+              ])}
+            </p>
+          )}
         </div>
       </div>
     );

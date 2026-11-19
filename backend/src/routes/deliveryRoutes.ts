@@ -59,7 +59,7 @@ router.get("/app-info", async (_req, res) => {
         appName: settings?.appName || "Olovely Total Suvidha Delivery",
         appLogo: settings?.appLogo || "",
         version: "1.0.0",
-        contactEmail: settings?.supportEmail || settings?.contactEmail || "olovelytotalsuvidha@gmail.com",
+        contactEmail: settings?.supportEmail || settings?.contactEmail || "",
         contactPhone: settings?.supportPhone || settings?.contactPhone || "+91 7846940429",
         address: `${settings?.companyAddress || 'Jaipur'}, ${settings?.companyCity || 'Jaipur'}`,
       },

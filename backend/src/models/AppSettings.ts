@@ -625,8 +625,6 @@ AppSettingsSchema.statics.getSettings = async function () {
       appName: "Olovely Total Suvidha",
       appLogo: "/assets/olovelylogo_transparent.png",
       estimatedDeliveryTime: "12-15 mins",
-      contactEmail: "contact@olovely.com",
-      contactPhone: "9876543210",
     });
   }
   return settings;

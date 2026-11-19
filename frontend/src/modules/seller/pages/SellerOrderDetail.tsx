@@ -448,12 +448,16 @@ export default function SellerOrderDetail() {
                 <span className="font-medium">From:</span> {supportContact.businessName}
               </div>
               <div className="text-sm text-neutral-600 space-y-1">
-                <div>
-                  <span className="font-medium">Email:</span> {supportContact.email}
-                </div>
-                <div>
-                  <span className="font-medium">Phone:</span> {supportContact.phoneDisplay}
-                </div>
+                {supportContact.email && (
+                  <div>
+                    <span className="font-medium">Email:</span> {supportContact.email}
+                  </div>
+                )}
+                {supportContact.phoneDisplay && (
+                  <div>
+                    <span className="font-medium">Phone:</span> {supportContact.phoneDisplay}
+                  </div>
+                )}
                 <div>
                   <span className="font-medium">Website:</span> {typeof window !== "undefined" ? window.location.origin : ""}
                 </div>

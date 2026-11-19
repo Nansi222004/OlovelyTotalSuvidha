@@ -164,6 +164,7 @@ export default function Support() {
         {/* Quick Contact Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Phone */}
+          {supportContact.phoneTel && (
           <a
             href={`tel:${supportContact.phoneTel}`}
             className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs hover:border-teal-400 hover:shadow-md transition-all flex items-start gap-4 group"
@@ -179,8 +180,10 @@ export default function Support() {
               <p className="text-xs text-teal-600 font-medium mt-1">Tap to call</p>
             </div>
           </a>
+          )}
 
           {/* Email */}
+          {supportEmail && (
           <a
             href={`mailto:${supportEmail}`}
             className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs hover:border-teal-400 hover:shadow-md transition-all flex items-start gap-4 group"
@@ -197,6 +200,7 @@ export default function Support() {
               <p className="text-xs text-emerald-600 font-medium mt-1">Tap to send email</p>
             </div>
           </a>
+          )}
 
           {/* Office / Hours */}
           <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs flex items-start gap-4">

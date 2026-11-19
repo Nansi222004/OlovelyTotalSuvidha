@@ -1,10 +1,10 @@
 /**
  * Support contact details shown to customers, sellers and delivery partners.
- * Always read from Admin → Settings (support first, then general contact); the built-in values
- * are only a last resort when settings are not loaded.
+ * Read ONLY from Admin → Settings (support email/phone first, then the general contact ones).
+ * Nothing is built in: when a value is not configured it is an empty string, and pages hide it.
  */
-const FALLBACK_EMAIL = "olovelytotalsuvidha@gmail.com";
-const FALLBACK_PHONE = "9601715367";
+const FALLBACK_EMAIL = "";
+const FALLBACK_PHONE = "";
 
 type ContactSettings = {
   supportEmail?: string;
@@ -17,7 +17,7 @@ type ContactSettings = {
 
 /**
  * Formats a stored phone number for display and for tel: links. Handles numbers saved with or
- * without the country code ("9601715367", "+91 96017 15367", "919601715367"), so the page never
+ * without the country code ("98XXXXXXXX", "+91 98XXX XXXXX", "9198XXXXXXXX"), so the page never
  * shows "+91 +91 …".
  */
 export function formatIndianPhone(raw?: string | null): { display: string; tel: string } {
@@ -40,4 +40,9 @@ export function getSupportContact(settings: ContactSettings) {
     phoneTel: phone.tel,
     businessName: String(settings?.businessName || settings?.appName || "Olovely Total Suvidha").trim(),
   };
+}
+
+/** Joins only the configured parts, e.g. joinContactParts("Email: a@b.c", "" ) → "Email: a@b.c". */
+export function joinContactParts(parts: Array<string | false | null | undefined>, separator = " | "): string {
+  return parts.filter((part): part is string => typeof part === "string" && part.trim() !== "").join(separator);
 }

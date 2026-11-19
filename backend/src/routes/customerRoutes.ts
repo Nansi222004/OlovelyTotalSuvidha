@@ -14,8 +14,6 @@ router.get("/app-settings", async (_req, res) => {
         appName: "Olovely Total Suvidha",
         appLogo: "/assets/olovelylogo_transparent.png",
         estimatedDeliveryTime: "12-15 mins",
-        contactEmail: "contact@olovely.com",
-        contactPhone: "9876543210",
       });
     }
     return res.status(200).json({

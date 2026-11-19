@@ -7,7 +7,7 @@ import { useLocation as useLocationContext } from "../../hooks/useLocation";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useAppSettings } from "../../context/AppSettingsContext";
-import { getSupportContact } from "../../utils/supportContact";
+import { getSupportContact, joinContactParts } from "../../utils/supportContact";
 import api from "../../services/api/config";
 
 // import { products } from '../../data/products'; // Removed
@@ -3548,7 +3548,15 @@ export default function Checkout() {
               <div className="mt-4 text-sm text-neutral-700 space-y-3">
                 <div className="whitespace-pre-line leading-relaxed">{customerPolicyText}</div>
                 <p className="text-xs text-neutral-500">
-                  Questions? Contact {supportContact.email} or call {supportContact.phoneDisplay}.{' '}
+                  {(supportContact.email || supportContact.phoneDisplay) && (
+                    <>
+                      Questions?{' '}
+                      {joinContactParts([
+                        supportContact.email && `Email ${supportContact.email}`,
+                        supportContact.phoneDisplay && `call ${supportContact.phoneDisplay}`,
+                      ], " or ")}.{' '}
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -3606,8 +3614,12 @@ export default function Checkout() {
                 </h3>
                 <p>
                   For any cancellation requests or queries, please contact our
-                  customer support team at {supportContact.email} or call{' '}
-                  {supportContact.phoneDisplay}
+                  customer support team
+                  {(supportContact.email || supportContact.phoneDisplay) ? ": " : "."}
+                  {joinContactParts([
+                    supportContact.email && `email ${supportContact.email}`,
+                    supportContact.phoneDisplay && `call ${supportContact.phoneDisplay}`,
+                  ], " or ")}
                 </p>
               </div>
             </div>

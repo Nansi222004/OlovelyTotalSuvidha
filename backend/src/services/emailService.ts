@@ -15,7 +15,7 @@ export function getTransporter(): nodemailer.Transporter {
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === "true", // false for port 587
     auth: {
-      user: process.env.SMTP_USER || "olovelytotalsuvidha@gmail.com",
+      user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || "",
     },
   });
@@ -39,7 +39,7 @@ export async function sendEmail(options: ISendEmailOptions): Promise<{ success: 
 
     const transporter = getTransporter();
     const mailOptions = {
-      from: `"${process.env.MAIL_FROM_NAME || 'Olovely Total Suvidha'}" <${process.env.MAIL_FROM || 'olovelytotalsuvidha@gmail.com'}>`,
+      from: `"${process.env.MAIL_FROM_NAME || 'Olovely Total Suvidha'}" <${process.env.MAIL_FROM || process.env.SMTP_USER || ''}>`,
       to: options.to,
       replyTo: options.replyTo,
       subject: options.subject,
@@ -65,13 +65,22 @@ export interface ISupportEmailPayload {
   submittedAt?: Date;
 }
 
+/** Where support-form messages are delivered: Admin → Settings support email, then contact email. */
+async function getSupportInboxAddress(): Promise<string> {
+  const { default: AppSettings } = await import("../models/AppSettings");
+  const settings: any = await AppSettings.findOne().select("supportEmail contactEmail").lean();
+  const address = String(settings?.supportEmail || settings?.contactEmail || process.env.SMTP_USER || "").trim();
+  if (!address) throw new Error("No support email is configured in Admin → Settings");
+  return address;
+}
+
 export async function sendSupportEmail(payload: ISupportEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const transporter = getTransporter();
 
     const mailOptions = {
-      from: `"${process.env.MAIL_FROM_NAME || 'Olovely Total Suvidha'}" <${process.env.MAIL_FROM || 'olovelytotalsuvidha@gmail.com'}>`,
-      to: "olovelytotalsuvidha@gmail.com",
+      from: `"${process.env.MAIL_FROM_NAME || 'Olovely Total Suvidha'}" <${process.env.MAIL_FROM || process.env.SMTP_USER || ''}>`,
+      to: await getSupportInboxAddress(),
       replyTo: payload.email,
       subject: `[Olovely Support] ${payload.subject}`,
       html: `
