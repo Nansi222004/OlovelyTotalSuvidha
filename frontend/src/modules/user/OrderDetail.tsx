@@ -309,96 +309,6 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
   </motion.svg>
 );
 
-// Promotional banner carousel
-const PromoCarousel = () => {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const promos = [
-    {
-      bank: "HDFC BANK",
-      offer: "10% cashback on all orders",
-      subtext: "Extraordinary Rewards | Zero Joining Fee | T&C apply",
-      color: "from-blue-50 to-indigo-50",
-    },
-    {
-      bank: "ICICI BANK",
-      offer: "15% instant discount",
-      subtext: "Valid on orders above ₹299 | Use code ICICI15",
-      color: "from-orange-50 to-red-50",
-    },
-    {
-      bank: "SBI CARD",
-      offer: "Flat ₹75 off",
-      subtext: "On all orders | No minimum order value",
-      color: "from-purple-50 to-pink-50",
-    },
-    {
-      bank: "AXIS BANK",
-      offer: "20% cashback up to ₹100",
-      subtext: "Valid on first order | T&C apply",
-      color: "from-teal-50 to-cyan-50",
-    },
-  ];
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % promos.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <motion.div
-      className="bg-white rounded-xl p-4 shadow-sm"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4 }}>
-      <div className="overflow-hidden relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentSlide}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            transition={{ duration: 0.3 }}
-            className={`flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r ${promos[currentSlide].color}`}>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold bg-blue-900 text-white px-2 py-0.5 rounded">
-                  {promos[currentSlide].bank}
-                </span>
-              </div>
-              <p className="font-semibold text-gray-900">
-                {promos[currentSlide].offer}
-              </p>
-              <p className="text-xs text-gray-600 mt-1">
-                {promos[currentSlide].subtext}
-              </p>
-              <button className="text-green-700 font-medium text-sm mt-2 flex items-center gap-1">
-                Apply now <ChevronRightIcon className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-2xl">💳</span>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* Dots indicator */}
-      <div className="flex justify-center gap-2 mt-3">
-        {promos.map((_, index) => (
-          <button
-            key={index}
-            onClick={() => setCurrentSlide(index)}
-            className={`w-2 h-2 rounded-full transition-all duration-300 ${index === currentSlide ? "bg-green-600 w-4" : "bg-gray-300"
-              }`}
-          />
-        ))}
-      </div>
-    </motion.div>
-  );
-};
-
 // Tip selection component
 const TipSection = () => {
   const [selectedTip, setSelectedTip] = useState<number | "other" | null>(null);
@@ -1518,11 +1428,6 @@ export default function OrderDetail() {
               </Button>
             </div>
           </motion.div>
-        )}
-
-        {/* Promo Carousel - Only for active orders */}
-        {!["Delivered", "Completed", "Cancelled", "Returned"].includes(orderStatus) && (
-          <PromoCarousel />
         )}
 
         {/* Delivery Partner Assignment - Only show if no partner assigned yet during active delivery */}
