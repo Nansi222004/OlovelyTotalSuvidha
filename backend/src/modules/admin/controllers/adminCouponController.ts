@@ -9,6 +9,8 @@ export const createCoupon = asyncHandler(
   async (req: Request, res: Response) => {
     const {
       code,
+      title,
+      image,
       description,
       discountType,
       discountValue,
@@ -20,6 +22,7 @@ export const createCoupon = asyncHandler(
       usageLimitPerUser,
       applicableTo,
       applicableIds,
+      isActive,
     } = req.body;
 
     if (!code || !discountType || !discountValue || !startDate || !endDate) {
@@ -46,6 +49,8 @@ export const createCoupon = asyncHandler(
 
     const coupon = await Coupon.create({
       code: code.toUpperCase(),
+      title,
+      image,
       description,
       discountType,
       discountValue,
@@ -58,7 +63,8 @@ export const createCoupon = asyncHandler(
       applicableTo: applicableTo || "All",
       applicableIds,
       createdBy: req.user?.userId,
-      isActive: true,
+      // Draft coupons are saved inactive; defaults to active when not specified.
+      isActive: isActive !== false,
     });
 
     return res.status(201).json({

@@ -61,7 +61,8 @@ export default function AdminProductEdit() {
 
   const [formData, setFormData] = useState({
     sellerId: "admin",
-    productType: "QUICK_COMMERCE" as "QUICK_COMMERCE" | "ECOMMERCE",
+    // "BOTH" is add-mode only: it creates two linked copies (one per channel) on submit.
+    productType: "QUICK_COMMERCE" as "QUICK_COMMERCE" | "ECOMMERCE" | "BOTH",
     productName: "",
     headerCategory: "",
     category: "",
@@ -349,7 +350,7 @@ export default function AdminProductEdit() {
             try {
               const subRes = await getSubcategories(categoryId);
               if (subRes.success) {
-                setSubcategories(subRes.data);
+                setSubcategories(Array.isArray(subRes.data) ? subRes.data : []);
               }
             } catch (e) {
               console.error("Error loading subcategories:", e);
@@ -361,7 +362,7 @@ export default function AdminProductEdit() {
             try {
               const subSubRes = await getSubSubCategories(subcatId);
               if (subSubRes.success) {
-                setSubSubCategories(subSubRes.data);
+                setSubSubCategories(Array.isArray(subSubRes.data) ? subSubRes.data : []);
               }
             } catch (e) {
               console.error("Error loading sub-subcategories:", e);
@@ -381,14 +382,29 @@ export default function AdminProductEdit() {
     fetchProduct();
   }, [id]);
 
-  // Root categories compatible with the selected productType (QUICK_COMMERCE or ECOMMERCE)
+  // Channels the selected productType requires; "BOTH" needs categories enabled for both.
+  const requiredChannels = useMemo<("QUICK_COMMERCE" | "ECOMMERCE")[]>(
+    () =>
+      formData.productType === "BOTH"
+        ? ["QUICK_COMMERCE", "ECOMMERCE"]
+        : [formData.productType],
+    [formData.productType]
+  );
+  const productTypeLabel =
+    formData.productType === "BOTH"
+      ? "both Quick Commerce and Ecommerce"
+      : formData.productType === "QUICK_COMMERCE"
+        ? "Quick Commerce"
+        : "Ecommerce";
+
+  // Root categories compatible with the selected productType
   const channelCompatibleRootCategories = useMemo(() => {
     return categories.filter((cat) => {
       if (cat.parentId) return false;
       const channels = cat.commerceChannels || [];
-      return channels.includes(formData.productType);
+      return requiredChannels.every((ch) => channels.includes(ch));
     });
-  }, [categories, formData.productType]);
+  }, [categories, requiredChannels]);
 
   // Header categories that contain at least one compatible category for this productType
   const filteredHeaderCategories = useMemo(() => {
@@ -417,7 +433,7 @@ export default function AdminProductEdit() {
     );
 
     // If "All" is selected as header category, show all channel-compatible root categories
-    if (selectedHeaderCat && selectedHeaderCat.name.toLowerCase() === "all") {
+    if (selectedHeaderCat && selectedHeaderCat.name?.toLowerCase() === "all") {
       return channelCompatibleRootCategories;
     }
 
@@ -441,8 +457,9 @@ export default function AdminProductEdit() {
 
   const isCategoryIncompatible = useMemo(() => {
     if (!selectedCategoryObj || !selectedCategoryObj.commerceChannels) return false;
-    return !selectedCategoryObj.commerceChannels.includes(formData.productType);
-  }, [selectedCategoryObj, formData.productType]);
+    const channels = selectedCategoryObj.commerceChannels;
+    return !requiredChannels.every((ch) => channels.includes(ch));
+  }, [selectedCategoryObj, requiredChannels]);
 
   // Load subcategories when category changes
   useEffect(() => {
@@ -454,7 +471,7 @@ export default function AdminProductEdit() {
       try {
         const res = await getSubcategories(formData.category);
         if (res.success) {
-          setSubcategories(res.data);
+          setSubcategories(Array.isArray(res.data) ? res.data : []);
         }
       } catch (err) {
         console.error("Error fetching subcategories:", err);
@@ -473,7 +490,7 @@ export default function AdminProductEdit() {
       try {
         const res = await getSubSubCategories(formData.subcategory);
         if (res.success) {
-          setSubSubCategories(res.data);
+          setSubSubCategories(Array.isArray(res.data) ? res.data : []);
         }
       } catch (err) {
         console.error("Error fetching sub-subcategories:", err);
@@ -497,7 +514,7 @@ export default function AdminProductEdit() {
 
       if (currentCat) {
         const selectedHc = headerCategories.find((h) => h._id === headerCatId);
-        if (!headerCatId || (selectedHc && selectedHc.name.toLowerCase() === "all")) {
+        if (!headerCatId || (selectedHc && selectedHc.name?.toLowerCase() === "all")) {
           keepCategory = true;
         } else {
           const catHc = currentCat.headerCategoryId as any;
@@ -738,9 +755,7 @@ export default function AdminProductEdit() {
       }
       if (isCategoryIncompatible && selectedCategoryObj) {
         setUploadError(
-          `Selected category "${selectedCategoryObj.name}" is not compatible with ${
-            formData.productType === "QUICK_COMMERCE" ? "Quick Commerce" : "Ecommerce"
-          }. Please select a compatible category.`
+          `Selected category "${selectedCategoryObj.name}" is not compatible with ${productTypeLabel}. Please select a compatible category.`
         );
         return;
       }
@@ -842,6 +857,54 @@ export default function AdminProductEdit() {
         sellerId: formData.sellerId === "admin" || !formData.sellerId ? "admin" : formData.sellerId,
         productType: formData.productType,
       };
+
+      // "Both channels": create a Quick Commerce copy, then an Ecommerce copy.
+      // SKU and barcode are globally unique, so the Ecommerce copy gets "-EC"
+      // suffixed SKUs and no barcodes (barcodes stay on the Quick Commerce copy for POS).
+      if (isAddMode && formData.productType === "BOTH") {
+        const withEcSuffix = (sku?: string) => (sku ? `${sku}-EC` : undefined);
+        const qcPayload = { ...productPayload, productType: "QUICK_COMMERCE" };
+        const ecPayload = {
+          ...productPayload,
+          productType: "ECOMMERCE",
+          sku: withEcSuffix(productPayload.sku),
+          barcode: undefined,
+          variations: productPayload.variations.map((v: { sku?: string }) => ({
+            ...v,
+            sku: withEcSuffix(v.sku),
+            barcode: undefined,
+          })),
+        };
+
+        const qcRes = await createProduct(qcPayload);
+        if (!qcRes.success) {
+          setUploadError(`Quick Commerce copy failed: ${qcRes.message || "Failed to save product"}`);
+          return;
+        }
+
+        let ecError = "";
+        try {
+          const ecRes = await createProduct(ecPayload);
+          if (!ecRes.success) ecError = ecRes.message || "Failed to save product";
+        } catch (ecErr) {
+          const e = ecErr as { response?: { data?: { message?: string } }; message?: string };
+          ecError = e.response?.data?.message || e.message || "Failed to save product";
+        }
+
+        if (ecError) {
+          // QC copy already exists; don't let a resubmit duplicate it.
+          showToast("Quick Commerce product created, but the Ecommerce copy failed.", "error");
+          setUploadError(
+            `Quick Commerce product was created, but the Ecommerce copy failed: ${ecError}. ` +
+              `Add the Ecommerce copy separately (choose "Ecommerce") instead of resubmitting this form.`
+          );
+          return;
+        }
+
+        showToast("Product created for both Quick Commerce and Ecommerce!", "success");
+        navigate("/admin/product/list");
+        return;
+      }
 
       const res = isAddMode
         ? await createProduct(productPayload)
@@ -1002,15 +1065,20 @@ export default function AdminProductEdit() {
                   className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
                   <option value="QUICK_COMMERCE">Quick Commerce — local radius delivery</option>
                   <option value="ECOMMERCE">Ecommerce — pincode / courier shipping</option>
+                  {isAddMode && (
+                    <option value="BOTH">Both — Quick Commerce + Ecommerce</option>
+                  )}
                 </select>
                 <p className="mt-1 text-xs text-neutral-500">
-                  Ecommerce never uses the Platform Quick Commerce radius. Wholesale remains a selling mode on the selected channel.
+                  {formData.productType === "BOTH"
+                    ? "Creates two separate products (one per channel) with their own stock. The Ecommerce copy gets \"-EC\" added to its SKUs and no barcode; barcodes stay on the Quick Commerce copy."
+                    : "Ecommerce never uses the Platform Quick Commerce radius. Wholesale remains a selling mode on the selected channel."}
                 </p>
               </div>
 
               {shouldShowPlatformQcAdminWarning(
                 formData.sellerId,
-                formData.productType,
+                formData.productType === "BOTH" ? "QUICK_COMMERCE" : formData.productType,
                 platformQcConfigured
               ) && (
                 <div className="md:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
@@ -1069,7 +1137,7 @@ export default function AdminProductEdit() {
                 </select>
                 {isCategoryIncompatible && selectedCategoryObj && (
                   <p className="mt-1.5 text-xs text-red-600 font-medium">
-                    ⚠️ Selected category "{selectedCategoryObj.name}" only supports {selectedCategoryObj.commerceChannels?.join(", ")}. Please select a category compatible with {formData.productType === "QUICK_COMMERCE" ? "Quick Commerce" : "Ecommerce"}.
+                    ⚠️ Selected category "{selectedCategoryObj.name}" only supports {selectedCategoryObj.commerceChannels?.join(", ")}. Please select a category compatible with {productTypeLabel}.
                   </p>
                 )}
               </div>

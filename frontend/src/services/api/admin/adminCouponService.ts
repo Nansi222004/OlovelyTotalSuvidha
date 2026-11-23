@@ -6,6 +6,8 @@ import { ApiResponse } from "./types";
 export interface Coupon {
   _id: string;
   code: string;
+  title?: string;
+  image?: string;
   description?: string;
   discountType: "Percentage" | "Fixed";
   discountValue: number;
@@ -26,6 +28,8 @@ export interface Coupon {
 
 export interface CreateCouponData {
   code: string;
+  title?: string;
+  image?: string;
   description?: string;
   discountType: "Percentage" | "Fixed";
   discountValue: number;
@@ -37,6 +41,7 @@ export interface CreateCouponData {
   usageLimitPerUser?: number;
   applicableTo?: "All" | "Category" | "Product" | "Seller";
   applicableIds?: string[];
+  isActive?: boolean;
 }
 
 export interface GetCouponsParams {

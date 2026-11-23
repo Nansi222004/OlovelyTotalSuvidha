@@ -171,8 +171,18 @@ async function migrateSubCategoriesToCategories() {
   }
 }
 
-// Run migration if this file is executed directly
+// DEPRECATED — do not run. This version moves products out of their main category
+// (sets product.category to the subcategory and clears product.subcategory) and ignores
+// commerce channels. Use src/scripts/migrateLegacySubCategories.ts instead.
 if (require.main === module) {
+  console.error(
+    "This script is deprecated and unsafe. Use: npx tsx src/scripts/migrateLegacySubCategories.ts"
+  );
+  process.exit(1);
+}
+
+// Run migration if this file is executed directly
+if (false as boolean) {
   migrateSubCategoriesToCategories()
     .then(() => {
       console.log("Migration script finished.");

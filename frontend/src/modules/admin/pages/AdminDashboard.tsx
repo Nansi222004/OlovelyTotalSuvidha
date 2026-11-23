@@ -505,7 +505,7 @@ export default function AdminDashboard() {
           title={t("admin.totalSubcategory", "Total Subcategory")}
           value={stats.totalSubcategory ?? 0}
           accentColor="#ec4899"
-          to="/admin/subcategory"
+          to="/admin/category"
         />
         <DashboardCard
           icon={productIcon}

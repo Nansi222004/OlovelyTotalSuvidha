@@ -556,7 +556,12 @@ function installWebhookDb(returnRequest: any) {
   (ProcessedWebhookEvent.updateOne as any) = async () => ({ modifiedCount: 1 });
   (ProcessedWebhookEvent.deleteOne as any) = async () => ({ deletedCount: 1 });
   (Return.findOne as any) = async () => returnRequest;
-  (Order.findOne as any) = async () => { orderLookups++; return null; };
+  // Count only the forward-order AWB routing lookup (by fulfillmentGroups). Read-only order
+  // lookups (e.g. findById from background return emails) are not forward-leg mutations.
+  (Order.findOne as any) = async (filter: any) => {
+    if (filter && 'fulfillmentGroups' in filter) orderLookups++;
+    return null;
+  };
   return () => orderLookups;
 }
 

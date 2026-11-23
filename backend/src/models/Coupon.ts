@@ -2,6 +2,8 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface ICoupon extends Document {
   code: string;
+  title?: string;
+  image?: string;
   description?: string;
 
   // Discount Type
@@ -41,6 +43,14 @@ const CouponSchema = new Schema<ICoupon>(
       unique: true,
       trim: true,
       uppercase: true,
+    },
+    title: {
+      type: String,
+      trim: true,
+    },
+    image: {
+      type: String,
+      trim: true,
     },
     description: {
       type: String,

@@ -308,10 +308,10 @@ export const getHelpSupport = asyncHandler(
       const settings = await AppSettings.findOne();
       if (settings) {
         if (settings.supportPhone || settings.contactPhone) {
-          phone = settings.supportPhone || settings.contactPhone;
+          phone = settings.supportPhone || settings.contactPhone || phone;
         }
         if (settings.supportEmail || settings.contactEmail) {
-          email = settings.supportEmail || settings.contactEmail;
+          email = settings.supportEmail || settings.contactEmail || email;
         }
       }
     } catch (settingsErr) {

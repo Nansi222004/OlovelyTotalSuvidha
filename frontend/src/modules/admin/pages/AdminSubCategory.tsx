@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { uploadImage } from "../../../services/api/uploadService";
 import {
   validateImageFile,
@@ -268,9 +269,35 @@ export default function AdminSubCategory() {
         <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
           <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
             <h2 className="text-base sm:text-lg font-semibold">
-              Add SubCategory
+              {editingId ? "Edit SubCategory" : "Add SubCategory"}
             </h2>
           </div>
+          {/* New subcategories must be created in the Categories tree (Category with parentId);
+              entries made here go to the legacy SubCategory collection, which the category
+              tree and the customer category page do not show. This page only edits/deletes
+              those legacy entries. */}
+          {!editingId ? (
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm space-y-2">
+                <p className="font-semibold">Add subcategories from the Categories page</p>
+                <p>
+                  Go to <strong>Categories</strong>, find the parent category, and click{" "}
+                  <strong>+ Add Subcategory</strong>. Subcategories added there show up in the
+                  category tree, in the product forms and in the customer app.
+                </p>
+                <p className="text-xs text-amber-800">
+                  The list on the right shows older subcategories, which customers don't see as
+                  subcategories. You can edit or delete them here. To fix one, add it again under
+                  its category, then delete it here (move its products first if it has any).
+                </p>
+              </div>
+              <Link
+                to="/admin/category"
+                className="block w-full py-2.5 rounded text-sm font-medium text-center bg-teal-600 hover:bg-teal-700 text-white transition-colors">
+                Go to Categories
+              </Link>
+            </div>
+          ) : (
           <div className="p-4 sm:p-6 space-y-4">
             {uploadError && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -396,6 +423,7 @@ export default function AdminSubCategory() {
               </button>
             )}
           </div>
+          )}
         </div>
 
         {/* Right Panel - View SubCategory */}

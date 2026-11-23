@@ -133,7 +133,12 @@ async function runTests() {
           pincode: "221005",
         },
       };
-      return await Order.create({ ...defaultOrder, ...overrides });
+      const merged: any = { ...defaultOrder, ...overrides };
+      // Mirror checkout: an unpaid COD order records the cash still owed in codAmountPending.
+      if (merged.codAmountPending === undefined && merged.paymentMethod === "COD" && merged.paymentStatus !== "Paid") {
+        merged.codAmountPending = merged.total;
+      }
+      return await Order.create(merged);
     };
 
     const createOrderItem = async (overrides: Record<string, any>) => {

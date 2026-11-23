@@ -20,7 +20,7 @@ export default function AdminCoupon() {
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    userType: "",
+    userType: "All Users",
     numberOfTimes: "Single Time Valid",
     couponImageUrl: "",
     couponExpiryDate: "",
@@ -147,14 +147,19 @@ export default function AdminCoupon() {
       const today = new Date().toISOString().split("T")[0];
       const couponData = {
         code: formData.couponCode.toUpperCase(),
+        title: formData.couponTitle.trim(),
+        image: imageUrl || undefined,
         description: formData.couponDescription,
         discountType: formData.couponType === "Percentage" ? "Percentage" as const : "Fixed" as const,
         discountValue: parseFloat(formData.couponValue),
         minimumPurchase: parseFloat(formData.couponMinOrderAmount),
         startDate: today,
         endDate: formData.couponExpiryDate,
-        usageLimit: formData.numberOfTimes === "Single Time Valid" ? 1 : undefined,
-        applicableTo: formData.userType === "All Users" ? "All" as const : "All" as const,
+        // "Single Time Valid" = each customer can use it once. (A total usageLimit of 1 would
+        // let only the first customer in the whole app use the coupon.)
+        usageLimitPerUser: formData.numberOfTimes === "Single Time Valid" ? 1 : undefined,
+        applicableTo: "All" as const,
+        isActive: formData.couponStatus === "Published",
       };
 
       const response = await createCoupon(couponData);
@@ -165,7 +170,7 @@ export default function AdminCoupon() {
 
         // Reset form
         setFormData({
-          userType: "",
+          userType: "All Users",
           numberOfTimes: "Single Time Valid",
           couponImageUrl: "",
           couponExpiryDate: "",
@@ -307,9 +312,7 @@ export default function AdminCoupon() {
                   required
                   className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white"
                   disabled={uploading}>
-                  <option value="">Select User Type</option>
                   <option value="All Users">All Users</option>
-                  <option value="Specific User">Specific User</option>
                 </select>
               </div>
 

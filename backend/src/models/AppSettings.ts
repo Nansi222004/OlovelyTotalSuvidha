@@ -8,8 +8,8 @@ export interface IAppSettings extends Document {
   estimatedDeliveryTime?: string;
 
   // Contact Info
-  contactEmail: string;
-  contactPhone: string;
+  contactEmail?: string;
+  contactPhone?: string;
   supportEmail?: string;
   supportPhone?: string;
 
@@ -224,14 +224,16 @@ const AppSettingsSchema = new Schema<IAppSettings>(
     },
 
     // Contact Info
+    // Optional: getSettings() auto-creates the settings record on a fresh database without
+    // hard-coded contact values, so these must not be required (admin fills them in App Settings).
     contactEmail: {
       type: String,
-      required: [true, "Contact email is required"],
+      default: "",
       trim: true,
     },
     contactPhone: {
       type: String,
-      required: [true, "Contact phone is required"],
+      default: "",
       trim: true,
     },
     supportEmail: {
