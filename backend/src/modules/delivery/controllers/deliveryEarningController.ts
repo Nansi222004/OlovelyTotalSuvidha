@@ -41,22 +41,20 @@ export const getEarningsHistory = asyncHandler(async (req: Request, res: Respons
         { $limit: 30 } // Last 30 days
     ]);
 
-    const formattedEarnings = earnings.map(day => {
-        // Humanize date labels like "Today", "Yesterday"
-        const date = new Date(day._id);
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
+    // Labels use the same IST calendar day as the grouping above. Comparing against the server
+    // clock (UTC) made today's earnings show as "1 days ago" between 00:00 and 05:30 IST.
+    const istDayKey = (d: Date) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+    const dayNumber = (key: string) => Math.round(Date.UTC(+key.slice(0, 4), +key.slice(5, 7) - 1, +key.slice(8, 10)) / 86400000);
+    const todayNumber = dayNumber(istDayKey(new Date()));
 
+    const formattedEarnings = earnings.map(day => {
+        // Humanize date labels like "Today", "Yesterday", "3 days ago"
+        const diffDays = todayNumber - dayNumber(String(day._id));
         let dateLabel = day._id;
-        if (date.toDateString() === today.toDateString()) dateLabel = "Today";
-        else if (date.toDateString() === yesterday.toDateString()) dateLabel = "Yesterday";
-        else {
-            // Calculate "X days ago" if needed or leave date string
-            const diffTime = Math.abs(today.getTime() - date.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            if (diffDays <= 7) dateLabel = `${diffDays} days ago`;
-        }
+        if (diffDays === 0) dateLabel = "Today";
+        else if (diffDays === 1) dateLabel = "Yesterday";
+        else if (diffDays > 1 && diffDays <= 7) dateLabel = `${diffDays} days ago`;
 
         return {
             date: dateLabel,

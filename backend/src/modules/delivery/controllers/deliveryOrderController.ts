@@ -823,6 +823,14 @@ export const verifyDeliveryOtpController = asyncHandler(
           updatedOrder.deliveredAt = new Date();
         }
 
+        // Same rule as the manual "Delivered" status path: once the whole order is delivered,
+        // COD cash has been collected by the rider, so the order is Paid. Previously the OTP
+        // path left COD orders "Pending" forever (customer saw unpaid; dashboard revenue,
+        // which counts Delivered + Paid, skipped them).
+        if (updatedOrder.status === "Delivered" && updatedOrder.paymentStatus !== "Refunded") {
+          updatedOrder.paymentStatus = "Paid";
+        }
+
         updatedOrder.deliveryBoyStatus = "Delivered";
         await updatedOrder.save();
         await DeliveryAssignment.findOneAndUpdate(
