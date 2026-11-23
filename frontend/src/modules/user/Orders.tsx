@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useOrders } from '../../hooks/useOrders';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -69,11 +70,15 @@ const getOrderChannelBadge = (order: any) => {
 };
 
 export default function Orders() {
-  const { orders } = useOrders();
+  const { orders, refreshOrders } = useOrders();
   const { t } = useTranslation();
 
-  console.log('📋 Orders component - orders:', orders);
-  console.log('📋 Orders count:', orders.length);
+  // Orders were loaded only once at app start, so orders placed or updated afterwards (another
+  // device, the website, status changes) did not appear here. Re-fetch each time the page opens.
+  useEffect(() => {
+    refreshOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (orders.length === 0) {
     return (
@@ -99,7 +104,8 @@ export default function Orders() {
 
       <div className="px-4 md:px-6 lg:px-8 space-y-4 md:space-y-6">
         {orders.map((order) => {
-          const shortId = order.id.split('-').slice(-1)[0];
+          // Show the customer-facing order number (ORD…) used everywhere else, not the database id.
+          const shortId = (order as any).orderNumber || order.id.split('-').slice(-1)[0];
           const channelBadge = getOrderChannelBadge(order);
           return (
             <Link

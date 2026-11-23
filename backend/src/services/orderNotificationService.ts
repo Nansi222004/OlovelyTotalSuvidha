@@ -528,11 +528,14 @@ export async function handleOrderAcceptance(
         if (existingOrder && existingOrder.deliveryBoy && existingOrder.deliveryBoy.toString() === normalizedDeliveryBoyId) {
             console.log(`✅ [ACCEPT] Idempotent success. Order already assigned to this driver.`);
             await markDeliveryOfferAccepted(orderId, normalizedDeliveryBoyId).catch(() => undefined);
-            if (existingOrder.status !== 'Processed') {
-                existingOrder.status = 'Processed';
-                (existingOrder as any).deliveryAssignmentStatus = 'Assigned';
-                (existingOrder as any).deliveryAssignmentResolvedAt = new Date();
-                await existingOrder.save();
+            // Re-accepting (e.g. a stale "New Order" popup) must never move the order backwards.
+            // Only orders that have not progressed past assignment are set to Processed.
+            const PRE_ASSIGNMENT = ['Received', 'Pending', 'Accepted', 'Processing'];
+            if (PRE_ASSIGNMENT.includes(String(existingOrder.status))) {
+                await Order.updateOne(
+                    { _id: orderId, status: existingOrder.status },
+                    { $set: { status: 'Processed', deliveryAssignmentStatus: 'Assigned', deliveryAssignmentResolvedAt: new Date() } }
+                );
             }
             return { success: true, message: 'Order accepted successfully' };
         }

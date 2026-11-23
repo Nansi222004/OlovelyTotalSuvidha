@@ -929,7 +929,8 @@ export default function OrderDetail() {
   };
 
   const displayStatus = getCustomerDisplayStatus(order, orderStatus);
-  const fulfillmentHeader = getOrderTrackingHeader(order, estimatedTime);
+  // Use the live route ETA (same number as the rider card), not only the settings estimate.
+  const fulfillmentHeader = getOrderTrackingHeader(order, displayEtaMins);
   const currentStatus = fulfillmentHeader || statusConfig[displayStatus] || statusConfig["Received"];
   const showActiveLocalDelivery = localDeliveryState.isActive && socketLocalDeliveryStatus !== "Delivered";
 

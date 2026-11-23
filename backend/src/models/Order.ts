@@ -688,7 +688,9 @@ const OrderSchema = new Schema<IOrder>(
 
 // Generate order number before validation
 OrderSchema.pre("validate", async function (this: IOrder, next) {
-  if (!this.orderNumber) {
+  // Only for brand-new orders. An existing order loaded with .select() that omits orderNumber
+  // and then saved would otherwise get a NEW order number (seen when a rider re-accepted an order).
+  if (this.isNew && !this.orderNumber) {
     const timestamp = Date.now().toString();
     const random = Math.floor(Math.random() * 1000)
       .toString()

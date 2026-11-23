@@ -7,6 +7,8 @@ export interface OrdersContextType {
   getOrderById: (id: string) => Order | undefined;
   fetchOrderById: (id: string) => Promise<Order | undefined>;
   updateOrderStatus: (id: string, status: Order["status"]) => void;
+  /** Re-fetch the customer's orders (e.g. when the Orders page opens). */
+  refreshOrders: () => Promise<void>;
   loading: boolean;
 }
 

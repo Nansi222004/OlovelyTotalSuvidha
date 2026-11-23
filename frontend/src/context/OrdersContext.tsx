@@ -215,6 +215,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         getOrderById,
         fetchOrderById,
         updateOrderStatus,
+        refreshOrders: fetchOrders,
         loading,
       }}>
       {children}
