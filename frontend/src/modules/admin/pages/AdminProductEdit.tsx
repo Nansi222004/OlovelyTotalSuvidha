@@ -1826,8 +1826,8 @@ export default function AdminProductEdit() {
           </div>
         </div>
 
-        {/* SEO Metadata */}
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+        {/* SEO Metadata — temporarily hidden (not yet used on storefront) */}
+        <div className="hidden bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
           <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
             <h2 className="text-base sm:text-lg font-semibold">SEO & Search Optimization</h2>
           </div>
