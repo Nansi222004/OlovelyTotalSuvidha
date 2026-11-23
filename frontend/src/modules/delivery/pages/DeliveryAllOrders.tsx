@@ -107,7 +107,7 @@ export default function DeliveryAllOrders() {
                       {order.items?.length || 0} {(order.items?.length || 0) === 1 ? t("delivery.item", "item") : t("delivery.items", "items")}
                     </p>
                     <div className="text-right">
-                      <p className="text-neutral-900 font-bold">₹ {order.totalAmount}</p>
+                      <p className="text-neutral-900 font-bold">{String((order as any).paymentMethod || "").toUpperCase() === "COD" ? `Collect ₹ ${(order as any).codAmountToCollect ?? order.totalAmount}` : (order as any).paymentMethod ? "Prepaid" : `₹ ${order.totalAmount}`}</p>
                       {order.deliveryEarning > 0 && (
                         <p className="text-green-600 text-xs font-semibold">+ ₹{order.deliveryEarning}</p>
                       )}

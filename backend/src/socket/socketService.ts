@@ -185,6 +185,26 @@ export const initializeSocket = (httpServer: HttpServer) => {
                     orderId,
                     message: 'Live tracking started',
                 });
+
+                // Send the rider's last known position right away. Live updates only reach
+                // viewers already in the room, so a customer opening tracking saw no rider until
+                // the next GPS update (none at all while the rider app was in the background).
+                // The timestamp is the real fix time, so the map's "weak GPS" notice still works.
+                const isActiveDelivery = !['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(String(order.status));
+                if (isActiveDelivery && order.deliveryBoy) {
+                    const tracking: any = await DeliveryTracking.findOne({ order: orderId }).lean();
+                    const loc = tracking?.currentLocation;
+                    const fixTime = loc?.timestamp ? new Date(loc.timestamp).getTime() : 0;
+                    if (loc?.latitude && loc?.longitude && Date.now() - fixTime < 30 * 60 * 1000) {
+                        socket.emit('location-update', {
+                            orderId,
+                            location: { latitude: loc.latitude, longitude: loc.longitude, timestamp: loc.timestamp },
+                            eta: tracking.eta ?? 0,
+                            distance: tracking.distance ?? 0,
+                            status: tracking.status || 'in_transit',
+                        });
+                    }
+                }
             } catch (error) {
                 console.error(`❌ Error in track-order for order ${orderId}:`, error);
                 socket.emit('tracking-error', { message: 'Internal server error' });

@@ -121,6 +121,9 @@ export const getAllOrdersHistory = asyncHandler(
         totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
+        // Cash the rider must collect (0 when prepaid); list cards show this, not totalAmount.
+        codAmountToCollect: qcCtx.assignedQcCodAmount,
+        paymentMethod: order.paymentMethod,
         deliveryEarning: commissionMap.get(order._id.toString()) || 0, // Add Earning
         items: mapOrderItems(qcCtx.assignedQcItems),
         createdAt: order.createdAt,
@@ -189,6 +192,9 @@ export const getTodayOrders = asyncHandler(
         totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
+        // Cash the rider must collect (0 when prepaid); list cards show this, not totalAmount.
+        codAmountToCollect: qcCtx.assignedQcCodAmount,
+        paymentMethod: order.paymentMethod,
         estimatedDeliveryTime: order.estimatedDeliveryDate
           ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
             hour: "2-digit",
@@ -247,6 +253,9 @@ export const getPendingOrders = asyncHandler(
         totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
+        // Cash the rider must collect (0 when prepaid); list cards show this, not totalAmount.
+        codAmountToCollect: qcCtx.assignedQcCodAmount,
+        paymentMethod: order.paymentMethod,
         estimatedDeliveryTime: order.estimatedDeliveryDate
           ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
             hour: "2-digit",
@@ -571,6 +580,9 @@ export const getReturnOrders = asyncHandler(
         totalAmount: qcCtx.assignedQcTotal,
         subtotal: qcCtx.assignedQcSubtotal,
         assignedSubtotal: qcCtx.assignedQcSubtotal,
+        // Cash the rider must collect (0 when prepaid); list cards show this, not totalAmount.
+        codAmountToCollect: qcCtx.assignedQcCodAmount,
+        paymentMethod: order.paymentMethod,
         createdAt: order.createdAt,
         distance: null,
       });

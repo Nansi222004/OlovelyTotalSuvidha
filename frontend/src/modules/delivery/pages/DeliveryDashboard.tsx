@@ -475,7 +475,7 @@ export default function DeliveryDashboard() {
                   </p>
                   <div className="flex items-center justify-between">
                     <p className="text-neutral-900 font-bold">
-                      ₹ {order.totalAmount}
+                      {String((order as any).paymentMethod || "").toUpperCase() === "COD" ? `Collect ₹ ${(order as any).codAmountToCollect ?? order.totalAmount}` : (order as any).paymentMethod ? "Prepaid" : `₹ ${order.totalAmount}`}
                     </p>
                     {order.estimatedDeliveryTime && (
                       <p className="text-neutral-500 text-xs">

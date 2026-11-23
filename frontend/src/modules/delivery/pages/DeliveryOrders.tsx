@@ -112,7 +112,7 @@ export default function DeliveryOrders() {
                     <p className="text-neutral-500 text-xs">
                       {order.items.length} item{order.items.length > 1 ? 's' : ''}
                     </p>
-                    <p className="text-neutral-900 font-bold">₹ {order.totalAmount}</p>
+                    <p className="text-neutral-900 font-bold">{String((order as any).paymentMethod || "").toUpperCase() === "COD" ? `Collect ₹ ${(order as any).codAmountToCollect ?? order.totalAmount}` : (order as any).paymentMethod ? "Prepaid" : `₹ ${order.totalAmount}`}</p>
                   </div>
                   {order.estimatedDeliveryTime && (
                     <p className="text-neutral-500 text-xs">
