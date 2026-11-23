@@ -366,7 +366,7 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
         <div
           ref={topSectionRef}
           className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-1"
-          style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
+          style={{ paddingTop: 'calc(0.5rem + var(--app-sat))' }}
         >
           <div className="flex items-center gap-3 mb-1.5">
             {/* Left: App Logo - Solid white background with fixed compact size */}

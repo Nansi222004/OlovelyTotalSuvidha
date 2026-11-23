@@ -274,7 +274,7 @@ export default function TicketDetail() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 min-h-0 max-w-4xl w-full mx-auto px-3 md:px-6 py-3 flex flex-col gap-3 overflow-hidden pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <div className="flex-1 min-h-0 max-w-4xl w-full mx-auto px-3 md:px-6 py-3 flex flex-col gap-3 overflow-hidden pb-[calc(0.75rem+var(--app-sab))]">
         {/* Linked Order Snapshot if applicable */}
         {ticket.orderNumber && (
           <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3">

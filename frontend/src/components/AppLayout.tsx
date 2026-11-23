@@ -271,7 +271,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
   return (
     <div
       className="flex flex-col min-h-screen min-h-[100dvh] w-full overflow-x-hidden customer-app-root"
-      style={{ backgroundColor: isHomePage ? currentTheme.primary[0] : '#ffffff' }}
+      // Home: green only behind the top (hero / pull-down area); white below so no green
+      // strip shows between the last section and the bottom navigation bar.
+      style={{
+        background: isHomePage
+          ? `linear-gradient(to bottom, ${currentTheme.primary[0]} 0, ${currentTheme.primary[0]} 40vh, #ffffff 40vh)`
+          : '#ffffff',
+      }}
     >
       {/* Foreground In-App Push Notification Banner Alert */}
       <AnimatePresence>
@@ -579,7 +585,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {showFooter && (
             <nav
               className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200/10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)] z-50 md:hidden"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+              style={{ paddingBottom: 'var(--app-sab)' }}
             >
               <div className="flex justify-around items-center h-16">
                 {/* Home */}

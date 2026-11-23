@@ -111,6 +111,19 @@
    Applies strictly on mobile screens (max-width: 768px) within their root classes.
    Does NOT affect Desktop or Admin app.
    ========================================================================== */
+/* Safe-area spacing for the phone's status bar (top) and navigation bar (bottom).
+   In a normal browser these are the real insets. Inside the Android app the native wrapper
+   already reserves both bars, so adding the inset again left an empty band at the top and
+   bottom; index.html marks that case with .in-android-app and the spacing becomes 0. */
+:root {
+  --app-sat: env(safe-area-inset-top, 0px);
+  --app-sab: env(safe-area-inset-bottom, 0px);
+}
+html.in-android-app {
+  --app-sat: 0px;
+  --app-sab: 0px;
+}
+
 @media (max-width: 768px) {
   /* 1. Accidental Zoom & Gesture Stability:
      Allows native vertical scrolling (pan-y) and horizontal scrolling/carousels (pan-x)
@@ -126,16 +139,16 @@
   }
 
   .app-safe-area-top {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--app-sat);
   }
 
   .app-login-shell {
-    padding-top: calc(2rem + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+    padding-top: calc(2rem + var(--app-sat));
+    padding-bottom: calc(2rem + var(--app-sab));
   }
 
   .app-login-back-button {
-    top: calc(1rem + env(safe-area-inset-top, 0px));
+    top: calc(1rem + var(--app-sat));
   }
 
   /* 2. Prevent accidental text selection on mobile app chrome & interactive controls */

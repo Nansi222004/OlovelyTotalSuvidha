@@ -1593,7 +1593,7 @@ export default function ProductDetail() {
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-neutral-200 shadow-lg">
         <div
           className="px-3 sm:px-4 pt-2.5 flex items-center justify-between gap-2"
-          style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
+          style={{ paddingBottom: 'max(0.625rem, var(--app-sab))' }}>
           {/* Left side - Product details */}
           <div className="min-w-0 flex-1">
             {/* First line - Pack size */}

@@ -170,7 +170,7 @@ export default function OrderNotificationCard({
             onTouchStart={handleUserInteraction}
             style={{
                 // Support for safe area insets (iOS notches, etc.)
-                paddingTop: 'env(safe-area-inset-top, 0)',
+                paddingTop: 'var(--app-sat)',
             }}
         >
             <div className="bg-white rounded-xl shadow-2xl border-2 border-teal-500 p-4 sm:p-6">

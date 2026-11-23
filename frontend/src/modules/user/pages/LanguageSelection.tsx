@@ -86,8 +86,8 @@ export const LanguageSelection: React.FC = () => {
       className="min-h-[100dvh] w-full bg-white flex flex-col justify-between items-center relative overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 select-none customer-app-root"
       style={{
         minHeight: "100dvh",
-        paddingTop: "calc(1.5rem + env(safe-area-inset-top))",
-        paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))",
+        paddingTop: "calc(1.5rem + var(--app-sat))",
+        paddingBottom: "calc(1.5rem + var(--app-sab))",
       }}
     >
       {/* Background Soft Mint & Emerald Ambient Accents */}
