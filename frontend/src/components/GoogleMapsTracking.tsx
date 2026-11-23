@@ -3,7 +3,8 @@ import { useCallback, useRef, useEffect, useState } from 'react'
 import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api'
 import { motion } from 'framer-motion'
 // Use direct public path which is more reliable in this setup
-const getDeliveryIconUrl = () => '/assets/deliveryboy/deliveryIcon.png';
+// Small (80x120, ~7 KB) copy of deliveryIcon.png made for the map marker; the original is 2 MB.
+const getDeliveryIconUrl = () => '/assets/deliveryboy/deliveryIcon-map.png';
 
 interface Location {
     lat: number
@@ -615,8 +616,9 @@ export default function GoogleMapsTracking({
                         position={animatedDeliveryLocation}
                         icon={{
                             url: getDeliveryIconUrl(),
-                            scaledSize: window.google?.maps?.Size ? new window.google.maps.Size(60, 60) : undefined,
-                            anchor: window.google?.maps?.Point ? new window.google.maps.Point(30, 30) : undefined
+                            // Keep the icon's 2:3 proportions (was squashed into a square).
+                            scaledSize: window.google?.maps?.Size ? new window.google.maps.Size(40, 60) : undefined,
+                            anchor: window.google?.maps?.Point ? new window.google.maps.Point(20, 30) : undefined
                         } as any}
                         title="Delivery Partner"
                     />

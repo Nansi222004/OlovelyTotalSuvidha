@@ -118,7 +118,6 @@ export default function AdminCoupon() {
 
     // Validation
     if (
-      !formData.userType ||
       !formData.couponTitle ||
       !formData.couponCode ||
       !formData.couponExpiryDate ||
@@ -300,22 +299,7 @@ export default function AdminCoupon() {
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              {/* Row 1 */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Select User Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="userType"
-                  value={formData.userType}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white"
-                  disabled={uploading}>
-                  <option value="All Users">All Users</option>
-                </select>
-              </div>
-
+              {/* Row 1 — coupons apply to all customers, so there is no user-type picker. */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Number of Times <span className="text-red-500">*</span>
@@ -327,8 +311,8 @@ export default function AdminCoupon() {
                   required
                   className="w-full px-3 py-2 border border-neutral-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none bg-white"
                   disabled={uploading}>
-                  <option value="Single Time Valid">Single Time Valid</option>
-                  <option value="Multi Time Valid">Multi Time Valid</option>
+                  <option value="Single Time Valid">Single Time Valid (once per customer)</option>
+                  <option value="Multi Time Valid">Multi Time Valid (unlimited uses)</option>
                 </select>
               </div>
 

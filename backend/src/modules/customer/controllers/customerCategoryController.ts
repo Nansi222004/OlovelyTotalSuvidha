@@ -21,7 +21,7 @@ export const getCategories = async (_req: Request, res: Response) => {
     }
 
     const stateKey = `qc${channels.quickCommerceEnabled ? 1 : 0}-ec${channels.ecommerceEnabled ? 1 : 0}`;
-    const cacheKey = channel ? `customer-categories-list-v2-${channel}-${stateKey}` : `customer-categories-list-v2-${stateKey}`;
+    const cacheKey = channel ? `customer-categories-list-v3-${channel}-${stateKey}` : `customer-categories-list-v3-${stateKey}`;
 
     // Try cache first
     let categories = cache.get(cacheKey);
@@ -42,7 +42,9 @@ export const getCategories = async (_req: Request, res: Response) => {
 
       categories = await Category.find(filter)
         .sort({ order: 1 })
-        .select("name image icon description color slug _id headerCategoryId order translations commerceChannels")
+        // parentId is required: the customer Categories page uses it to show only main
+        // categories, so without it subcategories appeared as top-level tiles.
+        .select("name image icon description color slug _id parentId headerCategoryId order translations commerceChannels")
         .lean(); // Use lean() for better performance
 
       // Cache for 10 minutes

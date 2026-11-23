@@ -16,6 +16,7 @@ import StarRating from "../../components/ui/StarRating";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useAppSettings } from "../../context/AppSettingsContext";
 import { formatDeliveryAddress } from "../../utils/addressUtils";
 import SupportModal from "../../components/SupportModal";
 import { getFulfillmentTrackingMessage, getOrderTrackingHeader, isCourierGroup } from "../../utils/orderTrackingMessaging";
@@ -420,7 +421,8 @@ export default function OrderDetail() {
   const [orderStatus, setOrderStatus] = useState<string>(
     order?.status || "Received"
   );
-  const [estimatedTime, setEstimatedTime] = useState(29);
+  const [estimatedTime, setEstimatedTime] = useState(15);
+  const { settings: appSettings } = useAppSettings();
   const [routeInfo, setRouteInfo] = useState<{
     distance: string;
     duration: string;
@@ -704,15 +706,33 @@ export default function OrderDetail() {
     }
   }, [confirmed, order]);
 
-  // Countdown timer
+  // Fallback estimate (before a rider is live) comes from App Settings, e.g. "12-15 mins" → 15,
+  // instead of a hard-coded 29 minutes.
+  const settingsEtaMins = (() => {
+    const nums = String(appSettings?.estimatedDeliveryTime || "").match(/\d+/g);
+    return nums && nums.length ? Math.max(...nums.map(Number)) : 15;
+  })();
+  useEffect(() => {
+    setEstimatedTime(settingsEtaMins);
+  }, [settingsEtaMins]);
+
+  // Countdown timer (fallback only; replaced by the live route ETA once the rider is tracked)
   useEffect(() => {
     if (orderStatus === "Accepted" || orderStatus === "On the way") {
       const timer = setInterval(() => {
-        setEstimatedTime((prev) => Math.max(0, prev - 1));
+        setEstimatedTime((prev) => Math.max(1, prev - 1));
       }, 60000);
       return () => clearInterval(timer);
     }
   }, [orderStatus]);
+
+  // Live ETA: Google route time from the map (rider → you), else the socket ETA, else the estimate.
+  const liveEtaMins = routeInfo
+    ? Math.max(1, Math.ceil(routeInfo.durationValue / 60))
+    : typeof eta === "number" && eta > 0
+      ? Math.ceil(eta)
+      : null;
+  const displayEtaMins = liveEtaMins ?? estimatedTime;
 
   // Handler functions
   const handleRefresh = async () => {
@@ -857,12 +877,12 @@ export default function OrderDetail() {
     },
     Accepted: {
       title: "Preparing your order",
-      subtitle: `Arriving in ${estimatedTime} mins`,
+      subtitle: `Arriving in ${displayEtaMins} mins`,
       color: "bg-emerald-700",
     },
     "On the way": {
       title: "Out for delivery",
-      subtitle: `Arriving in ${estimatedTime} mins`,
+      subtitle: `Arriving in ${displayEtaMins} mins`,
       color: "bg-emerald-700",
     },
     Delivered: {
@@ -893,7 +913,7 @@ export default function OrderDetail() {
     },
     "Out for Delivery": {
       title: "Out for delivery",
-      subtitle: `Arriving in ${estimatedTime} mins`,
+      subtitle: `Arriving in ${displayEtaMins} mins`,
       color: "bg-emerald-700",
     },
     Cancelled: {

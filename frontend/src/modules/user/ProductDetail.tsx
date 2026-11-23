@@ -503,9 +503,11 @@ export default function ProductDetail() {
       </div>
 
       {/* Scrollable content */}
-      <div className="pt-16">
+      <div className="pt-16 lg:max-w-6xl lg:mx-auto">
+        {/* Desktop (lg+): gallery and details side by side; mobile keeps the stacked layout. */}
+        <div className="lg:grid lg:grid-cols-2 lg:gap-10 lg:items-start lg:px-8 lg:pt-4">
         {/* Product Image Gallery */}
-        <div className="relative w-full bg-gradient-to-br from-neutral-100 to-neutral-200 overflow-hidden">
+        <div className="relative w-full bg-gradient-to-br from-neutral-100 to-neutral-200 overflow-hidden lg:rounded-2xl lg:sticky lg:top-20">
           {/* Main Product Image - Swipeable on mobile */}
           <div
             className="w-full aspect-square relative overflow-hidden"
@@ -566,7 +568,7 @@ export default function ProductDetail() {
                 <img
                   src={currentImage}
                   alt={product.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain bg-white"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     const target = e.currentTarget;
@@ -716,7 +718,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Product Details Card - White section */}
-        <div className="bg-white rounded-t-3xl -mt-6 relative z-10 px-4 md:px-6 lg:px-8 pt-2.5 md:pt-4 pb-2 md:pb-4">
+        <div className="bg-white rounded-t-3xl -mt-6 relative z-10 px-4 md:px-6 lg:px-0 pt-2.5 md:pt-4 pb-2 md:pb-4 lg:mt-0 lg:rounded-none lg:pt-0">
           {/* Delivery channel badge */}
           {isEcommerce ? (
             <div className="flex items-center gap-1.5 mb-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full w-fit border border-blue-200">
@@ -1004,6 +1006,8 @@ export default function ProductDetail() {
             </svg>
           </button>
         </div>
+        </div>
+        {/* End desktop gallery + details grid */}
 
         {/* Expanded Product Details Section */}
         {isProductDetailsExpanded && (
