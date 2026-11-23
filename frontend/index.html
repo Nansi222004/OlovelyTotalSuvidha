@@ -13,9 +13,20 @@
     <meta name="description" content="Olovely Total Suvidha - Fast Quick Commerce & Grocery Delivery" />
     <title>Olovely - Olovely Total Suvidha</title>
     <script>
-      // Android app (WebView, user agent contains "; wv)"): the native wrapper already reserves
-      // the status and navigation bars, so the page must not add safe-area spacing again.
-      if (/; wv\)/.test(navigator.userAgent)) document.documentElement.classList.add("in-android-app");
+      // Inside the Olovely mobile apps the native (Flutter) wrapper already reserves the status
+      // and navigation bars (SafeArea), so the page must not add safe-area spacing again.
+      // The Flutter apps send a plain Chrome user agent (no "; wv)"), so also detect the
+      // flutter_inappwebview bridge, which the plugin injects at document start, and re-check
+      // when its "platform ready" event fires.
+      (function () {
+        var mark = function () { document.documentElement.classList.add("in-android-app"); };
+        var isApp = function () {
+          return /; wv\)/.test(navigator.userAgent) || typeof window.flutter_inappwebview !== "undefined";
+        };
+        if (isApp()) mark();
+        window.addEventListener("flutterInAppWebViewPlatformReady", mark);
+        document.addEventListener("DOMContentLoaded", function () { if (isApp()) mark(); });
+      })();
     </script>
   </head>
   <body>
