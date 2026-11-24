@@ -24,7 +24,7 @@ const isMockIdentifier = (razorpayOrderId?: string, razorpayPaymentId?: string, 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Initialize Razorpay instance
-const getRazorpayInstance = () => {
+export const getRazorpayInstance = () => {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
@@ -690,7 +690,8 @@ export const handleWebhook = async (
 };
 
 // Helper functions for webhook events with strict idempotency protection
-const handlePaymentCaptured = async (payload: any, io?: any) => {
+/** Exported for scripts/reconcileRazorpayPayment.ts (same path the payment.captured webhook uses). */
+export const handlePaymentCaptured = async (payload: any, io?: any) => {
     try {
         const razorpayPaymentId = payload.id;
         const razorpayOrderId = payload.order_id;
