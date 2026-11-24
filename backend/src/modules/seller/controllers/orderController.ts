@@ -640,11 +640,15 @@ export const getOrderById = asyncHandler(
     (orderDetail as any).sellerDetails = sellerDoc
       ? {
           storeName: sellerDoc.storeName || sellerDoc.sellerName || "",
+          // Add city/state/pincode only when the saved address doesn't already contain them.
           address: [sellerDoc.address, sellerDoc.city, sellerDoc.shippingConfig?.pickupState, sellerDoc.shippingConfig?.pickupPincode]
-            .filter((part: any) => part && String(part).trim())
-            .join(", "),
+            .map((part: any) => String(part || "").trim())
+            .filter(Boolean)
+            .reduce((acc: string, part: string) =>
+              !acc ? part : acc.toLowerCase().includes(part.toLowerCase()) ? acc : `${acc}, ${part}`, ""),
           phone: sellerDoc.mobile || "",
-          email: sellerDoc.email || "",
+          // Auto-generated placeholder emails (…@olovely.temp) are not real contact details.
+          email: /@olovely\.temp$/i.test(String(sellerDoc.email || "")) ? "" : (sellerDoc.email || ""),
           gstin: formattedItems[0]?.billingEntityGstin || sellerDoc.taxNumber || "",
           fssaiLicNo: sellerDoc.fssaiLicNo || "",
         }
