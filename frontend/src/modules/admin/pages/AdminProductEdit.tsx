@@ -1083,6 +1083,12 @@ export default function AdminProductEdit() {
                     ? "Creates two separate products (one per channel) with their own stock. The Ecommerce copy gets \"-EC\" added to its SKUs and no barcode; barcodes stay on the Quick Commerce copy."
                     : "Ecommerce never uses the Platform Quick Commerce radius. Wholesale remains a selling mode on the selected channel."}
                 </p>
+                {!isAddMode && (
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    You are editing only this {formData.productType === "ECOMMERCE" ? "Ecommerce" : "Quick Commerce"} product.
+                    If it was added with "Both", the other channel is a separate product with its own stock and price; edit it separately.
+                  </p>
+                )}
               </div>
 
               {shouldShowPlatformQcAdminWarning(

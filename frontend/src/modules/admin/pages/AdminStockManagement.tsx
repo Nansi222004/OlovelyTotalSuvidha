@@ -25,6 +25,8 @@ interface ProductVariation {
   status: "Published" | "Unpublished";
   category: string;
   categoryId: string;
+  /** QUICK_COMMERCE | ECOMMERCE (a "Both" product is saved as two products, one per channel). */
+  channel?: string;
 }
 
 const STATUS_OPTIONS = ["All Products", "Published", "Unpublished"];
@@ -226,6 +228,7 @@ export default function AdminStockManagement() {
             status: product.publish ? "Published" : "Unpublished",
             category: categoryName,
             categoryId: categoryId,
+            channel: (product as any).productType,
           });
         });
       } else {
@@ -242,6 +245,7 @@ export default function AdminStockManagement() {
           status: product.publish ? "Published" : "Unpublished",
           category: categoryName,
           categoryId: categoryId,
+          channel: (product as any).productType,
         });
       }
     });
@@ -377,6 +381,7 @@ export default function AdminStockManagement() {
     const headers = [
       "Variation Id",
       "Name",
+      "Channel",
       "Seller",
       "Variation",
       "Stock",
@@ -388,6 +393,7 @@ export default function AdminStockManagement() {
         [
           product.id,
           `"${product.name}"`,
+          product.channel === "ECOMMERCE" ? "Ecommerce" : product.channel ? "Quick Commerce" : "",
           `"${product.seller}"`,
           `"${product.variation}"`,
           product.stock === "Unlimited" ? "Unlimited" : product.stock,
@@ -661,7 +667,20 @@ export default function AdminStockManagement() {
                       <td className="p-4 align-middle">
                         {product.id.slice(-6)}
                       </td>
-                      <td className="p-4 align-middle">{product.name}</td>
+                      <td className="p-4 align-middle">
+                        <div>{product.name}</div>
+                        {product.channel && (
+                          <span
+                            className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              product.channel === "ECOMMERCE"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : "bg-amber-50 text-amber-800 border border-amber-200"
+                            }`}
+                          >
+                            {product.channel === "ECOMMERCE" ? "📦 Ecommerce" : "⚡ Quick Commerce"}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 align-middle">{product.seller}</td>
                       <td className="p-4 align-middle">
                         <div
