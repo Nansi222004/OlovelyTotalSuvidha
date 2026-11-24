@@ -141,7 +141,7 @@ export default function AdminAllOrders() {
           `"${(order.deliveryAddress?.address || '').replace(/"/g, '""')}"`,
           `"${order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-IN') : ''}"`,
           `"${order.status || ""}"`,
-          `"${order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || "Not Assigned")}"`,
+          `"${((order as any).isPosOrder || String(order.orderNumber || '').startsWith('POS-')) ? 'In-Store (POS)' : order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || "Not Assigned")}"`,
           `"${order.total?.toFixed(2) || "0.00"}"`,
         ].join(",")
       ),
@@ -602,7 +602,8 @@ export default function AdminAllOrders() {
                   const custPhone = order.customerPhone || (typeof order.customer === 'object' ? order.customer?.phone : '');
                   const fullAddress = order.deliveryAddress?.address || 'No address provided';
                   const statusInfo = getStatusBadge(order.status);
-                  const deliveryStatus = order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || 'Not Assigned');
+                  const isPosSale = Boolean((order as any).isPosOrder) || String(order.orderNumber || '').startsWith('POS-');
+                  const deliveryStatus = isPosSale ? 'In-Store' : order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || 'Not Assigned');
 
                   return (
                     <tr key={order._id} className="hover:bg-neutral-50/80 transition-colors group">
@@ -679,7 +680,9 @@ export default function AdminAllOrders() {
                       {/* Delivery Boy Assign Status */}
                       <td className="px-4 py-3.5 text-center whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          deliveryStatus === 'Assigned' || deliveryStatus === 'Self Assigned'
+                          isPosSale
+                            ? 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                            : deliveryStatus === 'Assigned' || deliveryStatus === 'Self Assigned'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-red-50 text-red-600 border border-red-100'
                         }`}>

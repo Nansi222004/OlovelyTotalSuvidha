@@ -1729,16 +1729,16 @@ export default function AdminPosTerminal() {
                 /* --- 79MM THERMAL RECEIPT VIEW --- */
                 <div className="space-y-3 leading-tight">
                   <div className="text-center space-y-1">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex flex-col items-center justify-center gap-1">
                       {businessSettings?.appLogo && (
                         <img
                           src={resolveImageUrl(businessSettings.appLogo)}
                           alt="Business logo"
-                          className="w-9 h-9 object-contain shrink-0"
+                          className="w-16 h-16 object-contain mx-auto"
                           onError={(event) => { event.currentTarget.style.display = "none"; }}
                         />
                       )}
-                      <p className="font-extrabold text-base tracking-wider uppercase">
+                      <p className="font-extrabold text-base tracking-wider uppercase text-center">
                         {lastCompletedSale.business.businessName}
                       </p>
                     </div>
@@ -1849,6 +1849,7 @@ export default function AdminPosTerminal() {
                     <p className="text-[9px] text-slate-400">
                       Goods once sold cannot be returned without original cash memo.
                     </p>
+                    <p className="text-sm font-bold text-slate-900 pt-1">॥ शुभ लाभ ॥</p>
                   </div>
                 </div>
               ) : (

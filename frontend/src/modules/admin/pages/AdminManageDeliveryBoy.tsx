@@ -8,9 +8,33 @@ import {
 } from '../../../services/api/admin/adminDeliveryService';
 import { useAuth } from '../../../context/AuthContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
+import { getAppSettings } from '../../../services/api/admin/adminSettingsService';
+
+/**
+ * Rider pay actually used by the backend (commissionService.computeRiderCommission):
+ * distance-based → km × deliveryBoyKmRate; otherwise rider's commissionRate % (default 5%) of order subtotal.
+ */
+function riderPayLabel(
+    deliveryConfig: { isDistanceBased?: boolean; deliveryBoyKmRate?: number } | null,
+    deliveryBoy: DeliveryBoy
+): { main: string; sub: string } {
+    if (deliveryConfig?.isDistanceBased && Number(deliveryConfig.deliveryBoyKmRate) > 0) {
+        return { main: `₹${deliveryConfig.deliveryBoyKmRate}/km`, sub: 'Distance based' };
+    }
+    const pct = deliveryBoy.commissionRate ?? 5;
+    return { main: `${pct}% of order`, sub: 'Percentage' };
+}
 
 export default function AdminManageDeliveryBoy() {
     const { isAuthenticated, token } = useAuth();
+    const [deliveryConfig, setDeliveryConfig] = useState<{ isDistanceBased?: boolean; deliveryBoyKmRate?: number } | null>(null);
+
+    useEffect(() => {
+        if (!isAuthenticated || !token) return;
+        getAppSettings()
+            .then((res: any) => setDeliveryConfig(res?.data?.deliveryConfig || null))
+            .catch(() => setDeliveryConfig(null));
+    }, [isAuthenticated, token]);
     const [deliveryBoys, setDeliveryBoys] = useState<DeliveryBoy[]>([]);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -249,9 +273,7 @@ export default function AdminManageDeliveryBoy() {
                 deliveryBoy.mobile,
                 `"${deliveryBoy.address}"`,
                 `"${deliveryBoy.city}"`,
-                deliveryBoy.commissionType === 'Percentage'
-                    ? `"Commission ${deliveryBoy.commission}%"`
-                    : 'Fixed',
+                `"${(() => { const p = riderPayLabel(deliveryConfig, deliveryBoy); return `${p.main} (${p.sub})`; })()}"`,
                 deliveryBoy.balance,
                 deliveryBoy.cashCollected,
                 deliveryBoy.status,
@@ -531,19 +553,15 @@ export default function AdminManageDeliveryBoy() {
                                             <td className="p-4 align-middle">{deliveryBoy.address}</td>
                                             <td className="p-4 align-middle">{deliveryBoy.city}</td>
                                             <td className="p-4 align-middle">
-                                                {deliveryBoy.commissionType === 'Percentage' ? (
-                                                    <div className="text-xs">
-                                                        <div className="font-medium">Commission {deliveryBoy.commission}%</div>
-                                                        <div className="text-neutral-500 mt-1">
-                                                            Min Amt: {deliveryBoy.minAmount}
+                                                {(() => {
+                                                    const pay = riderPayLabel(deliveryConfig, deliveryBoy);
+                                                    return (
+                                                        <div className="text-xs">
+                                                            <div className="font-semibold text-neutral-800">{pay.main}</div>
+                                                            <div className="text-neutral-500 mt-0.5">{pay.sub}</div>
                                                         </div>
-                                                        <div className="text-neutral-500">
-                                                            Max Amt: {deliveryBoy.maxAmount}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs">Fixed</span>
-                                                )}
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="p-4 align-middle">₹{deliveryBoy.balance.toFixed(2)}</td>
                                             <td className="p-4 align-middle">₹{deliveryBoy.cashCollected.toFixed(2)}</td>

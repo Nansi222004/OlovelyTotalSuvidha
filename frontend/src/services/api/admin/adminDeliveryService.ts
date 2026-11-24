@@ -22,6 +22,8 @@ export interface DeliveryBoy {
   bonusType?: string;
   commissionType: "Percentage" | "Fixed";
   commission?: number;
+  /** Per-rider % used when delivery is NOT distance-based (backend default 5%). */
+  commissionRate?: number;
   minAmount?: number;
   maxAmount?: number;
   balance: number;

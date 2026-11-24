@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   getOrderById,
   updateOrderStatus,
@@ -302,37 +303,42 @@ export default function AdminOrderDetail() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      {/* Hidden Invoice Component for Direct PDF Export and Print */}
-      <div id="admin-invoice-print-root" className="absolute left-[-9999px] top-[-9999px]">
-        <SellerInvoice
-          ref={invoicePrintRef}
-          orderDetail={invoiceOrderDetail}
-        />
-      </div>
+      {/* Hidden invoice for PDF export and Print. Rendered straight into <body> (portal)
+          so that, when printing, everything else can be removed with display:none and
+          the long order page no longer adds blank pages after the invoice. */}
+      {createPortal(
+        <div id="admin-invoice-print-root" className="absolute left-[-9999px] top-[-9999px]">
+          <SellerInvoice
+            ref={invoicePrintRef}
+            orderDetail={invoiceOrderDetail}
+          />
+        </div>,
+        document.body
+      )}
 
-      {/* Print only the invoice (not the sidebar, header or order page), same as the seller app. */}
+      {/* Print only the invoice (no sidebar, header, order page, or browser URL/date lines). */}
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 12mm; }
+          @page { size: A4 portrait; margin: 0; }
           html, body {
             background: #ffffff !important;
             margin: 0 !important;
             padding: 0 !important;
             height: auto !important;
+            min-height: 0 !important;
             overflow: visible !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          body * { visibility: hidden !important; }
-          #admin-invoice-print-root,
-          #admin-invoice-print-root * { visibility: visible !important; }
+          body > *:not(#admin-invoice-print-root) { display: none !important; }
           #admin-invoice-print-root {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
             width: 100% !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 10mm 12mm !important;
+            box-sizing: border-box !important;
             background: #ffffff !important;
           }
         }
