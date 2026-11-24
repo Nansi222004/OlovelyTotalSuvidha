@@ -20,8 +20,11 @@ import Order from "../models/Order";
 import Payment from "../models/Payment";
 import { getRazorpayInstance, handlePaymentCaptured } from "../services/paymentService";
 import { getOnlineAmountDue } from "../services/financeMath";
+import { applyRazorpayMode } from "../config/razorpayEnv";
 
 dotenv.config();
+// Same key selection as server.ts (RAZORPAY_LIVE_MODE -> RAZORPAY_LIVE_* keys).
+applyRazorpayMode();
 
 const [orderNumber, payId] = process.argv.slice(2);
 const apply = process.argv.includes("--apply");
