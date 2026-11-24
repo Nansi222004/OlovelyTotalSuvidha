@@ -1733,14 +1733,21 @@ export default function AdminPosTerminal() {
                 <div className="space-y-3 leading-tight">
                   <div className="text-center space-y-1">
                     <div className="flex flex-col items-center justify-center gap-1">
-                      {businessSettings?.appLogo && (
-                        <img
-                          src={resolveImageUrl(businessSettings.appLogo)}
-                          alt="Business logo"
-                          className="w-16 h-16 object-contain mx-auto"
-                          onError={(event) => { event.currentTarget.style.display = "none"; }}
-                        />
-                      )}
+                      {/* शुभ (left) · logo (centre) · लाभ (right) */}
+                      <div className="w-full flex items-center justify-between">
+                        <span className="text-sm font-bold text-slate-900 w-12 text-left">शुभ</span>
+                        {businessSettings?.appLogo ? (
+                          <img
+                            src={resolveImageUrl(businessSettings.appLogo)}
+                            alt="Business logo"
+                            className="w-16 h-16 object-contain mx-auto"
+                            onError={(event) => { event.currentTarget.style.display = "none"; }}
+                          />
+                        ) : (
+                          <span />
+                        )}
+                        <span className="text-sm font-bold text-slate-900 w-12 text-right">लाभ</span>
+                      </div>
                       <p className="font-extrabold text-base tracking-wider uppercase text-center">
                         {lastCompletedSale.business.businessName}
                       </p>
@@ -1851,9 +1858,7 @@ export default function AdminPosTerminal() {
                     </p>
                     <p className="text-[9px] text-slate-400">
                       Goods once sold cannot be returned without original cash memo.
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 pt-1">॥ शुभ लाभ ॥</p>
-                  </div>
+                    </p>                  </div>
                 </div>
               ) : (
                 /* --- A4 FULL GST TAX INVOICE VIEW --- */
