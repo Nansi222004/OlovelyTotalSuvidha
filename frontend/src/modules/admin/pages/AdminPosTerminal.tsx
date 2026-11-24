@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   lookupBarcode,
@@ -1666,9 +1667,11 @@ export default function AdminPosTerminal() {
       )}
 
       {/* --- MODAL 3: THERMAL BILL & GST INVOICE RECEIPT MODAL --- */}
-      {showReceiptModal && lastCompletedSale && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
+      {/* Portalled into <body> so printing can drop the rest of the POS screen with display:none
+          (visibility:hidden kept its height → the printer fed a second receipt-length of paper). */}
+      {showReceiptModal && lastCompletedSale && createPortal(
+        <div id="pos-receipt-print-host" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:static print:block print:bg-white print:p-0 print:overflow-visible print:backdrop-blur-none">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8 print:m-0 print:p-0 print:max-w-none print:shadow-none print:border-0 print:rounded-none print:space-y-0">
             {/* Modal Controls Bar */}
             <div className="flex items-center justify-between border-b pb-3 print:hidden">
               <div className="flex items-center gap-2">
@@ -1963,27 +1966,33 @@ export default function AdminPosTerminal() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Print CSS Injection */}
+      {/* Print CSS Injection: only the receipt, exactly once */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden;
+          @page {
+            margin: 0;
+            size: auto;
           }
-          #printable-pos-receipt, #printable-pos-receipt * {
-            visibility: visible;
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            background: #ffffff !important;
+          }
+          body > *:not(#pos-receipt-print-host) {
+            display: none !important;
           }
           #printable-pos-receipt {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
             margin: 0 !important;
-            padding: 4mm !important;
+            padding: 3mm !important;
             box-shadow: none !important;
             border: none !important;
+            border-radius: 0 !important;
           }
           #printable-pos-receipt[data-format="thermal"] {
             width: 79mm !important;
@@ -1994,10 +2003,6 @@ export default function AdminPosTerminal() {
             width: 190mm !important;
             max-width: 190mm !important;
             padding: 10mm !important;
-          }
-          @page {
-            margin: 0;
-            size: auto;
           }
         }
       `}</style>

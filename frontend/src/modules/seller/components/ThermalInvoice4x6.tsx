@@ -51,8 +51,11 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
     const sellerStoreName = items[0]?.soldBy && items[0].soldBy !== 'N/A'
       ? items[0].soldBy
       : defaultStoreName;
-    const billingEntityName = items[0]?.billingEntityName || sellerStoreName;
-    const billingEntityGstin = items[0]?.billingEntityGstin;
+    const seller = orderDetail.sellerDetails;
+    const billingEntityName = seller?.storeName || items[0]?.billingEntityName || sellerStoreName;
+    const billingEntityGstin = seller?.gstin || items[0]?.billingEntityGstin;
+    const sellerAddress = seller?.address || '';
+    const sellerPhone = seller?.phone || '';
 
     // Subtotal and tax calculations
     const itemsSubtotal = items.reduce(
@@ -115,7 +118,7 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
           minHeight: '6in',
           padding: '4mm',
           margin: '0 auto',
-          fontSize: '9pt',
+          fontSize: '10pt',
           lineHeight: '1.25',
           color: '#000000',
           backgroundColor: '#ffffff',
@@ -124,20 +127,20 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
       >
         {/* Header: Brand & Document Heading */}
         <div className="text-center border-b-2 border-black pb-2 mb-2">
-          <div className="text-base font-black tracking-tight uppercase leading-tight">
+          <div className="text-[15pt] font-black tracking-tight uppercase leading-tight">
             OLOVELY TOTAL SUVIDHA
           </div>
-          <div className="text-[7.5pt] uppercase tracking-wider font-semibold">
+          <div className="text-[9.5pt] uppercase tracking-wider font-semibold">
             {docTitle}
           </div>
-          <div className="text-[7pt] mt-0.5">
+          <div className="text-[9pt] mt-0.5">
             Your Trusted Hyperlocal & E-Commerce Partner
           </div>
         </div>
 
         {/* Metadata Grid: Invoice & Order */}
-        <div className="border border-black p-1.5 mb-2 text-[7.5pt]">
-          <div className="flex justify-between items-center border-b border-gray-400 pb-1 mb-1">
+        <div className="border border-black p-1.5 mb-2 text-[9.5pt]">
+          <div className="flex flex-wrap gap-x-2 justify-between items-center border-b border-gray-400 pb-1 mb-1">
             <span>
               <strong className="uppercase">Doc #:</strong>{' '}
               <span className="font-mono font-bold">{invoiceNum}</span>
@@ -146,10 +149,10 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
               <strong>Date:</strong> {formatDate(orderDetail.orderDate)}
             </span>
           </div>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap gap-x-2 justify-between items-center">
             <span>
               <strong className="uppercase">Order ID:</strong>{' '}
-              <span className="font-mono">{orderDetail.id}</span>
+              <span className="font-mono">{orderDetail.orderNumber || orderDetail.id}</span>
             </span>
             <span>
               <strong>Pay Mode:</strong>{' '}
@@ -162,27 +165,28 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
         </div>
 
         {/* Seller & Customer Information Side-by-Side */}
-        <div className="grid grid-cols-2 gap-1.5 border border-black p-1.5 mb-2 text-[7pt]">
+        <div className="grid grid-cols-2 gap-1.5 border border-black p-1.5 mb-2 text-[9pt]">
           {/* Seller / Billing Entity */}
           <div className="border-r border-gray-400 pr-1">
-            <div className="font-bold uppercase tracking-wider border-b border-gray-300 pb-0.5 mb-0.5 text-[6.5pt]">
+            <div className="font-bold uppercase tracking-wider border-b border-gray-300 pb-0.5 mb-0.5 text-[8.5pt]">
               Sold By (Seller)
             </div>
-            <div className="font-bold text-[7.5pt]">{billingEntityName}</div>
+            <div className="font-bold text-[9.5pt]">{billingEntityName}</div>
             {billingEntityGstin && (
               <div>
                 GSTIN: <span className="font-mono font-bold">{billingEntityGstin}</span>
               </div>
             )}
-            <div className="text-gray-700">Patna, Bihar, India</div>
+            {sellerAddress && <div className="text-gray-700 leading-tight">{sellerAddress}</div>}
+            {sellerPhone && <div>Ph: {sellerPhone}</div>}
           </div>
 
           {/* Customer / Delivery Details */}
           <div className="pl-1">
-            <div className="font-bold uppercase tracking-wider border-b border-gray-300 pb-0.5 mb-0.5 text-[6.5pt]">
+            <div className="font-bold uppercase tracking-wider border-b border-gray-300 pb-0.5 mb-0.5 text-[8.5pt]">
               Customer (Ship To)
             </div>
-            <div className="font-bold text-[7.5pt]">{orderDetail.customerName || 'Customer'}</div>
+            <div className="font-bold text-[9.5pt]">{orderDetail.customerName || 'Customer'}</div>
             {orderDetail.customerPhone && (
               <div>Phone: {orderDetail.customerPhone}</div>
             )}
@@ -194,9 +198,9 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
 
         {/* Itemized Products Table */}
         <div className="border border-black mb-2">
-          <table className="w-full text-left text-[7pt] border-collapse">
+          <table className="w-full text-left text-[9pt] border-collapse">
             <thead>
-              <tr className="border-b border-black bg-gray-100 font-bold uppercase text-[6.5pt]">
+              <tr className="border-b border-black bg-gray-100 font-bold uppercase text-[8.5pt]">
                 <th className="py-1 px-1 text-center w-5">#</th>
                 <th className="py-1 px-1">Item Description</th>
                 <th className="py-1 px-1 text-center w-7">Qty</th>
@@ -217,12 +221,12 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
                     className="border-b border-gray-300 last:border-b-0"
                     style={{ pageBreakInside: 'avoid' }}
                   >
-                    <td className="py-1 px-1 text-center font-mono text-[6.5pt] align-top">
+                    <td className="py-1 px-1 text-center font-mono text-[8.5pt] align-top">
                       {idx + 1}
                     </td>
                     <td className="py-1 px-1 align-top">
                       <div className="font-semibold leading-tight">{item.product}</div>
-                      <div className="text-[6.5pt] text-gray-700 flex flex-wrap gap-1">
+                      <div className="text-[8.5pt] text-gray-700 flex flex-wrap gap-1">
                         {item.unit && item.unit !== 'N/A' && <span>Var: {item.unit}</span>}
                         {isWholesale && (
                           <span className="font-bold uppercase">[Wholesale]</span>
@@ -246,7 +250,7 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
         </div>
 
         {/* Summary Totals Box */}
-        <div className="border border-black p-1.5 mb-2 text-[7.5pt]">
+        <div className="border border-black p-1.5 mb-2 text-[9.5pt]">
           <div className="flex justify-between py-0.5">
             <span>Items Subtotal:</span>
             <span className="font-mono">{formatCurrency(itemsSubtotal)}</span>
@@ -257,11 +261,11 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
               <span className="font-mono">{formatCurrency(shippingCharge)}</span>
             </div>
           )}
-          <div className="flex justify-between py-1 border-t border-black mt-1 font-bold text-[8.5pt]">
+          <div className="flex justify-between py-1 border-t border-black mt-1 font-bold text-[11pt]">
             <span className="uppercase">Final Total:</span>
             <span className="font-mono">{formatCurrency(grandTotal)}</span>
           </div>
-          <div className="text-[6pt] text-gray-600 text-right mt-0.5">
+          <div className="text-[8pt] text-gray-600 text-right mt-0.5">
             *All taxes included under applicable GST laws
           </div>
         </div>
@@ -271,13 +275,13 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
           <div className="mx-auto" style={{ maxWidth: '85%' }}>
             <BarcodeGraphic value={orderDetail.orderNumber || orderDetail.id} height={36} />
           </div>
-          <div className="font-mono text-[7pt] font-bold tracking-wider mt-0.5">
+          <div className="font-mono text-[9pt] font-bold tracking-wider mt-0.5">
             *{orderDetail.orderNumber || orderDetail.id}*
           </div>
-          <div className="text-[6pt] text-gray-700 mt-1 uppercase font-semibold">
+          <div className="text-[8pt] text-gray-700 mt-1 uppercase font-semibold">
             Thank you for shopping on Olovely Total Suvidha!
           </div>
-          <div className="text-[5.5pt] text-gray-500">
+          <div className="text-[7.5pt] text-gray-500">
             Support: Contact store via Olovely App • Returns valid as per policy
           </div>
         </div>

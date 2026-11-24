@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { ThermalPrintModal } from '../../seller/components/ThermalPrintModal';
 import {
   getOrderById,
   updateOrderStatus,
@@ -58,6 +58,7 @@ export default function AdminOrderDetail() {
   const [order, setOrder] = useState<Order | null>(null);
   const [earningBreakdown, setEarningBreakdown] = useState<EarningBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showThermalPrint, setShowThermalPrint] = useState(false);
   const [error, setError] = useState<string>('');
   const [updating, setUpdating] = useState(false);
   const [markingCodPaid, setMarkingCodPaid] = useState(false);
@@ -159,7 +160,7 @@ export default function AdminOrderDetail() {
   };
 
   const handlePrint = () => {
-    window.print();
+    setShowThermalPrint(true);
   };
 
   if (loading) {
@@ -303,46 +304,21 @@ export default function AdminOrderDetail() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      {/* Hidden invoice for PDF export and Print. Rendered straight into <body> (portal)
-          so that, when printing, everything else can be removed with display:none and
-          the long order page no longer adds blank pages after the invoice. */}
-      {createPortal(
-        <div id="admin-invoice-print-root" className="absolute left-[-9999px] top-[-9999px]">
-          <SellerInvoice
-            ref={invoicePrintRef}
-            orderDetail={invoiceOrderDetail}
-          />
-        </div>,
-        document.body
-      )}
+      {/* Hidden A4 invoice, used only by "Download Invoice" (PDF export). */}
+      <div className="absolute left-[-9999px] top-[-9999px]" aria-hidden="true">
+        <SellerInvoice
+          ref={invoicePrintRef}
+          orderDetail={invoiceOrderDetail}
+        />
+      </div>
 
-      {/* Print only the invoice (no sidebar, header, order page, or browser URL/date lines). */}
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 0; }
-          html, body {
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            height: auto !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body > *:not(#admin-invoice-print-root) { display: none !important; }
-          #admin-invoice-print-root {
-            position: static !important;
-            left: auto !important;
-            top: auto !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 10mm 12mm !important;
-            box-sizing: border-box !important;
-            background: #ffffff !important;
-          }
-        }
-      `}</style>
+      {/* Print → 4×6 thermal invoice / shipping label (parcel printer), same as the seller app. */}
+      <ThermalPrintModal
+        isOpen={showThermalPrint}
+        onClose={() => setShowThermalPrint(false)}
+        orderDetail={invoiceOrderDetail}
+        initialMode="INVOICE"
+      />
 
       {/* Top Header & Actions Bar */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { OrderDetail, ShippingLabelData } from '../../../services/api/orderService';
 import { getOrderShippingLabel } from '../../../services/api/orderService';
 import { ThermalInvoice4x6 } from './ThermalInvoice4x6';
@@ -90,8 +91,11 @@ export const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
   const activeLabel = labels[selectedGroupIndex] || labels[0];
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-3 sm:p-4 print:p-0 print:bg-white print:static">
+  // Rendered directly into <body> so that while printing every other part of the app can be
+  // removed with display:none. (Hiding with visibility kept the page height, which made the
+  // printer feed extra blank / duplicate 4x6 labels.)
+  return createPortal(
+    <div id="thermal-print-host" className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-3 sm:p-4 print:block print:p-0 print:bg-white print:static print:overflow-visible">
       {/* Modal Dialog Card (hidden during print) */}
       <div className="bg-white rounded-xl shadow-2xl border border-neutral-300 max-w-2xl w-full flex flex-col max-h-[92vh] overflow-hidden print:hidden">
         {/* Top Title Bar */}
@@ -279,27 +283,29 @@ export const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          /* Hide all application chrome, modals, headers, sidebars */
-          body * {
-            visibility: hidden !important;
-          }
-          /* Show ONLY the designated 4x6 print area */
-          #thermal-print-area,
-          #thermal-print-area * {
-            visibility: visible !important;
+          /* Remove the rest of the app entirely (not just hide it) so nothing adds extra pages */
+          body > *:not(#thermal-print-host) {
+            display: none !important;
           }
           #thermal-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            display: block !important;
             width: 4in !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
-            display: block !important;
+          }
+          #thermal-print-area .thermal-4x6-document,
+          #thermal-print-area .thermal-4x6-label {
+            margin: 0 !important;
+            /* exactly-6in min-height + rounding was spilling onto a 2nd label */
+            min-height: 0 !important;
+            border: none !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
