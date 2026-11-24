@@ -2,6 +2,7 @@ import React from 'react';
 import type { OrderDetail, OrderItem } from '../../../services/api/orderService';
 import { formatDeliveryAddress } from '../../../utils/addressUtils';
 import { useAppSettings } from '../../../context/AppSettingsContext';
+import olovelyLogo from '@assets/olovelylogo.jpeg';
 import { getSupportContact, joinContactParts } from '../../../utils/supportContact';
 
 export interface SellerInvoiceProps {
@@ -166,9 +167,12 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
         <div className="border-b-2 border-emerald-600 pb-4 mb-5">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-black text-2xl shadow-sm">
-                O
-              </div>
+              {/* Brand logo (bundled asset, so it also renders in the PDF export) */}
+              <img
+                src={olovelyLogo}
+                alt="Olovely Total Suvidha"
+                className="w-14 h-14 object-contain rounded-lg border border-neutral-200 bg-white flex-shrink-0"
+              />
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-neutral-900 leading-tight">
                   OLOVELY TOTAL SUVIDHA

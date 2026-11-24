@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Button from "../../components/ui/button";
 import { useOrders } from "../../hooks/useOrders";
 import { useShowSellerDetails } from "../../hooks/useShowSellerDetails";
+import olovelyLogo from "@assets/olovelylogo.jpeg";
 import { exportElementToPdf } from "../../utils/invoicePdfExport";
 import { getOrderTipAmount, getOrderGiftPackagingFee } from "../../utils/orderMoney";
 
@@ -462,6 +463,13 @@ export default function Invoice() {
           {/* Header Section */}
           <div className="border-b border-gray-200 pb-6 mb-6">
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+              <div className="flex items-start gap-3">
+              {/* Brand logo (bundled asset, so it also renders in the PDF export) */}
+              <img
+                src={olovelyLogo}
+                alt="Olovely Total Suvidha"
+                className="w-14 h-14 object-contain rounded-lg border border-gray-200 bg-white flex-shrink-0"
+              />
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
                   Olovely Total Suvidha
@@ -472,6 +480,7 @@ export default function Invoice() {
                 <div className="inline-block mt-2 px-2.5 py-0.5 bg-green-50 border border-green-200 rounded text-xs font-bold text-green-700 uppercase tracking-wider">
                   Customer Tax Invoice
                 </div>
+              </div>
               </div>
               <div className="text-left sm:text-right space-y-1">
                 <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
