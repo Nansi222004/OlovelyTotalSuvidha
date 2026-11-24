@@ -1032,7 +1032,7 @@ export default function DeliveryOrderDetail() {
                 </div>
 
                 {/* Delivery Earning Card - Show only if delivered or has earning */}
-                {(order.status === 'Delivered' || (order.deliveryEarning && order.deliveryEarning > 0)) && (
+                {(order.status === 'Delivered' || Number(order.deliveryEarning || 0) > 0) && (
                     <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-5 shadow-sm text-white mb-4">
                         <div className="flex justify-between items-center">
                             <div>

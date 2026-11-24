@@ -13,6 +13,44 @@ import { getDeliveryPendingOrderAlerts } from "../../../services/orderAlertServi
 import { formatDeliveryAddress } from "../../../utils/addressUtils";
 import { getDeliveryPartnerQcContext } from "../utils/deliveryOrderScopingHelper";
 import DeliveryAssignment from "../../../models/DeliveryAssignment";
+import AppSettings from "../../../models/AppSettings";
+import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
+
+/**
+ * Pickup point for a seller on a QC delivery. Vendor sellers use their own saved location.
+ * The platform/admin "seller" has no map location of its own; its stock ships from the
+ * platform Quick Commerce warehouse (Admin settings), so use that.
+ */
+const resolveSellerPickupLocation = async (
+  sellerId: string,
+): Promise<{ sellerId: string; storeName: string; address: string; city: string; latitude: number; longitude: number } | null> => {
+  const seller: any = await Seller.findById(sellerId)
+    .select("storeName sellerName address city latitude longitude isPlatform category email")
+    .lean();
+  if (!seller) return null;
+  if (seller.latitude && seller.longitude) {
+    return {
+      sellerId: String(seller._id),
+      storeName: seller.storeName,
+      address: seller.address,
+      city: seller.city,
+      latitude: parseFloat(seller.latitude),
+      longitude: parseFloat(seller.longitude),
+    };
+  }
+  if (!resolveInventoryOwner(seller).isPlatform) return null;
+  const settings: any = await AppSettings.findOne().select("platformQuickCommerceFulfillment").lean();
+  const wh = settings?.platformQuickCommerceFulfillment;
+  if (!wh?.latitude || !wh?.longitude) return null;
+  return {
+    sellerId: String(seller._id),
+    storeName: wh.warehouseName || seller.storeName || "Olovely Warehouse",
+    address: wh.warehouseAddress || "",
+    city: wh.city || "",
+    latitude: Number(wh.latitude),
+    longitude: Number(wh.longitude),
+  };
+};
 import { areAllFulfillmentGroupsDelivered } from "../../../utils/fulfillmentStatus";
 
 /**
@@ -646,22 +684,10 @@ export const getSellerLocationsForOrder = asyncHandler(
     // Get unique seller IDs from assigned QC items only
     const sellerIds = qcCtx.qcSellerIds;
 
-    // Get seller details including locations
-    const sellers = await Seller.find({ _id: { $in: sellerIds } }).select(
-      "storeName address city latitude longitude",
-    );
-
-    // Format seller locations
-    const sellerLocations = sellers
-      .filter((seller) => seller.latitude && seller.longitude) // Only include sellers with location data
-      .map((seller) => ({
-        sellerId: seller._id.toString(),
-        storeName: seller.storeName,
-        address: seller.address,
-        city: seller.city,
-        latitude: parseFloat(seller.latitude || "0"),
-        longitude: parseFloat(seller.longitude || "0"),
-      }));
+    // Pickup points (platform stock -> platform QC warehouse); sellers with no location are skipped
+    const sellerLocations = (
+      await Promise.all(sellerIds.map((sid: any) => resolveSellerPickupLocation(String(sid))))
+    ).filter(Boolean);
 
     return res.status(200).json({
       success: true,
@@ -966,10 +992,8 @@ export const checkSellerProximity = asyncHandler(
     }
 
     // Get seller location
-    const seller = await Seller.findById(sellerId).select(
-      "latitude longitude storeName",
-    );
-    if (!seller || !seller.latitude || !seller.longitude) {
+    const seller = await resolveSellerPickupLocation(String(sellerId));
+    if (!seller) {
       return res
         .status(404)
         .json({ success: false, message: "Seller location not found" });
@@ -980,8 +1004,8 @@ export const checkSellerProximity = asyncHandler(
     const distance = calculateDistance(
       latitude,
       longitude,
-      parseFloat(seller.latitude),
-      parseFloat(seller.longitude),
+      seller.latitude,
+      seller.longitude,
     );
 
     const withinRange = distance <= 0.5; // 500m = 0.5km
@@ -1051,10 +1075,8 @@ export const confirmSellerPickup = asyncHandler(
     }
 
     // Verify proximity to seller
-    const seller = await Seller.findById(sellerId).select(
-      "latitude longitude storeName",
-    );
-    if (!seller || !seller.latitude || !seller.longitude) {
+    const seller = await resolveSellerPickupLocation(String(sellerId));
+    if (!seller) {
       return res
         .status(404)
         .json({ success: false, message: "Seller location not found" });
@@ -1064,8 +1086,8 @@ export const confirmSellerPickup = asyncHandler(
     const distance = calculateDistance(
       latitude,
       longitude,
-      parseFloat(seller.latitude),
-      parseFloat(seller.longitude),
+      seller.latitude,
+      seller.longitude,
     );
 
     if (distance > 0.5) {
