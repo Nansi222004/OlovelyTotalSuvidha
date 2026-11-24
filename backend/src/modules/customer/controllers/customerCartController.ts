@@ -85,7 +85,8 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
         // Global Free Delivery Threshold: waives ALL delivery charges (Standard and Instant distance-based)
         if (freeDeliveryThreshold > 0 && total >= freeDeliveryThreshold) {
             estimatedDeliveryFee = 0;
-        } else if (deliveryOption === 'Instant' && settings?.deliveryConfig) {
+        } else if (deliveryOption === 'Instant' && settings?.deliveryConfig?.isDistanceBased) {
+            // Admin "Distance Based" mode; "Fixed Price" mode uses deliveryCharges below.
             const config = settings.deliveryConfig;
             estimatedDeliveryFee = config.baseCharge || 0;
 
@@ -139,7 +140,8 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
                 }
             }
         } else {
-            estimatedDeliveryFee = settings?.deliveryCharges ?? 25;
+            // Same default as order placement (customerOrderController), so preview == charge.
+            estimatedDeliveryFee = settings?.deliveryCharges ?? 0;
         }
     } catch (err) {
         console.error("Error calculating delivery stuff:", err);

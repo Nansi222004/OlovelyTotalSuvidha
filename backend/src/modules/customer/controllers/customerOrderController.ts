@@ -947,7 +947,8 @@ export const createOrder = async (req: Request, res: Response) => {
             console.warn("Distance lookup warning for free instant delivery:", distanceErr);
           }
         }
-      } else if (resolvedQcOption === "Instant" && settings?.deliveryConfig) {
+      } else if (resolvedQcOption === "Instant" && settings?.deliveryConfig?.isDistanceBased) {
+        // Admin "Distance Based" mode; "Fixed Price" mode falls to the flat deliveryCharges below.
         // Instant Delivery flow: Distance Based calculation (below free-delivery threshold)
         const config = settings.deliveryConfig;
         deliveryFee = config.baseCharge || 0;
