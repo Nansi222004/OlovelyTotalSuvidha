@@ -302,13 +302,41 @@ export default function AdminOrderDetail() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      {/* Hidden Invoice Component for Direct PDF Export */}
-      <div className="absolute left-[-9999px] top-[-9999px]">
+      {/* Hidden Invoice Component for Direct PDF Export and Print */}
+      <div id="admin-invoice-print-root" className="absolute left-[-9999px] top-[-9999px]">
         <SellerInvoice
           ref={invoicePrintRef}
           orderDetail={invoiceOrderDetail}
         />
       </div>
+
+      {/* Print only the invoice (not the sidebar, header or order page), same as the seller app. */}
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 12mm; }
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * { visibility: hidden !important; }
+          #admin-invoice-print-root,
+          #admin-invoice-print-root * { visibility: visible !important; }
+          #admin-invoice-print-root {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+          }
+        }
+      `}</style>
 
       {/* Top Header & Actions Bar */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
