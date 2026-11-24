@@ -128,7 +128,7 @@ export const getAllOrdersHistory = asyncHandler(
         items: mapOrderItems(qcCtx.assignedQcItems),
         createdAt: order.createdAt,
         estimatedDeliveryTime: order.estimatedDeliveryDate
-          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
           })
@@ -196,7 +196,7 @@ export const getTodayOrders = asyncHandler(
         codAmountToCollect: qcCtx.assignedQcCodAmount,
         paymentMethod: order.paymentMethod,
         estimatedDeliveryTime: order.estimatedDeliveryDate
-          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
           })
@@ -257,7 +257,7 @@ export const getPendingOrders = asyncHandler(
         codAmountToCollect: qcCtx.assignedQcCodAmount,
         paymentMethod: order.paymentMethod,
         estimatedDeliveryTime: order.estimatedDeliveryDate
-          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
           })

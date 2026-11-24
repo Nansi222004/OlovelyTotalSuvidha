@@ -99,6 +99,15 @@ export interface OrderDetail {
   paymentMethod: string;
   paymentStatus: string;
   deliveryAddress: DeliveryAddress;
+  /** "Sold by" seller details printed on the invoice. */
+  sellerDetails?: {
+    storeName: string;
+    address: string;
+    phone: string;
+    email: string;
+    gstin: string;
+    fssaiLicNo: string;
+  };
   deliveryOption?: 'Instant' | 'Standard' | 'Courier';
   deliverySelections?: Record<string, string>;
   deliveryPreference?: 'Self' | 'Admin' | string;

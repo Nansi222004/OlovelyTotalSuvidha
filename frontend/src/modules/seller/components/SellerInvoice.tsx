@@ -177,11 +177,26 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
                   Hyperlocal Quick Commerce & E-Commerce Platform
                 </p>
                 <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                  Sold by: <span className="font-bold">{billingEntityName}</span>
+                  Sold by: <span className="font-bold">{orderDetail.sellerDetails?.storeName || billingEntityName}</span>
                 </p>
-                {billingEntityGstin && (
+                {orderDetail.sellerDetails?.address && (
+                  <p className="text-[11px] text-neutral-600 mt-0.5">{orderDetail.sellerDetails.address}</p>
+                )}
+                {(orderDetail.sellerDetails?.phone || orderDetail.sellerDetails?.email) && (
+                  <p className="text-[11px] text-neutral-600 mt-0.5">
+                    {orderDetail.sellerDetails?.phone && <>Phone: {orderDetail.sellerDetails.phone}</>}
+                    {orderDetail.sellerDetails?.phone && orderDetail.sellerDetails?.email && " · "}
+                    {orderDetail.sellerDetails?.email && <>Email: {orderDetail.sellerDetails.email}</>}
+                  </p>
+                )}
+                {(orderDetail.sellerDetails?.gstin || billingEntityGstin) && (
                   <p className="text-[11px] text-neutral-700 font-semibold mt-0.5">
-                    GSTIN: <span className="font-mono font-bold">{billingEntityGstin}</span>
+                    GSTIN: <span className="font-mono font-bold">{orderDetail.sellerDetails?.gstin || billingEntityGstin}</span>
+                  </p>
+                )}
+                {orderDetail.sellerDetails?.fssaiLicNo && (
+                  <p className="text-[11px] text-neutral-700 font-semibold mt-0.5">
+                    FSSAI Lic. No: <span className="font-mono font-bold">{orderDetail.sellerDetails.fssaiLicNo}</span>
                   </p>
                 )}
               </div>

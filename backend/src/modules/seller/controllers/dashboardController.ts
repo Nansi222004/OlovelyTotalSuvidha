@@ -111,7 +111,7 @@ export const getDashboardStats = asyncHandler(
             id: order._id.toString(),
             orderId: order.orderNumber || order._id.toString(),
             orderNumber: order.orderNumber || order._id.toString(),
-            orderDate: new Date(order.orderDate).toLocaleDateString('en-GB'),
+            orderDate: new Date(order.orderDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }),
             status: order.status === 'Out for Delivery' ? 'Out For Delivery' : order.status,
             amount: sellerTotalByOrder.get(order._id.toString()) ?? 0,
         }));

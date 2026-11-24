@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Order from "../../../models/Order";
 import OrderItem from "../../../models/OrderItem";
 import Product from "../../../models/Product";
+import Seller from "../../../models/Seller";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
 import { recomputeOrderFulfillment } from "../../../services/orderFulfillmentOrchestrator";
@@ -218,23 +219,21 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     return {
       id: order._id,
       orderId: order.orderNumber,
-      deliveryDate: order.estimatedDeliveryDate
-        ? order.estimatedDeliveryDate.toLocaleDateString("en-US", {
-          month: "2-digit",
-          day: "2-digit",
-          year: "numeric",
-        })
-        : order.orderDate.toLocaleDateString("en-US", {
-          month: "2-digit",
-          day: "2-digit",
-          year: "numeric",
-        }),
-      orderDate: order.orderDate.toLocaleString("en-US", {
-        month: "2-digit",
+      // Indian date format in India time. The server clock is UTC, so "en-US" without a time
+      // zone showed e.g. 11/23/2026 08:34 PM for an order placed at 24/11/2026 02:04 am IST.
+      deliveryDate: (order.estimatedDeliveryDate || order.orderDate).toLocaleDateString("en-IN", {
         day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: "Asia/Kolkata",
+      }),
+      orderDate: order.orderDate.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "2-digit",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "Asia/Kolkata",
       }),
       status: order.status === "On the way" ? "On the way" : order.status,
       amount: sellerTotal > 0 ? sellerTotal : order.total,
@@ -632,6 +631,24 @@ export const getOrderById = asyncHandler(
       hasEcomItems: sellerHasEcom,
       requiresLocalDelivery: sellerHasQc,
     };
+
+    // Seller ("Sold by") details printed on the invoice: store, address, contact, GSTIN, FSSAI.
+    const sellerDoc: any = await Seller
+      .findById(sellerId)
+      .select("storeName sellerName mobile email address city taxNumber fssaiLicNo shippingConfig.pickupState shippingConfig.pickupPincode")
+      .lean();
+    (orderDetail as any).sellerDetails = sellerDoc
+      ? {
+          storeName: sellerDoc.storeName || sellerDoc.sellerName || "",
+          address: [sellerDoc.address, sellerDoc.city, sellerDoc.shippingConfig?.pickupState, sellerDoc.shippingConfig?.pickupPincode]
+            .filter((part: any) => part && String(part).trim())
+            .join(", "),
+          phone: sellerDoc.mobile || "",
+          email: sellerDoc.email || "",
+          gstin: formattedItems[0]?.billingEntityGstin || sellerDoc.taxNumber || "",
+          fssaiLicNo: sellerDoc.fssaiLicNo || "",
+        }
+      : undefined;
 
     return res.status(200).json({
       success: true,

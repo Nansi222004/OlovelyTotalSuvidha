@@ -202,7 +202,7 @@ export const getDashboardStats = asyncHandler(
         address: order.deliveryAddress ? `${order.deliveryAddress.address}, ${order.deliveryAddress.city}` : "N/A",
         totalAmount: displayTotal,
         estimatedDeliveryTime: order.estimatedDeliveryDate
-          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString([], {
+          ? new Date(order.estimatedDeliveryDate).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
           })
