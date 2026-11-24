@@ -1042,7 +1042,7 @@ export default function OrderDetail() {
           sellerLocations={sellerLocations.map(s => ({
             lat: s.latitude,
             lng: s.longitude,
-            name: s.storeName
+            name: appSettings?.features?.showSellerDetails !== false ? s.storeName : "Store"
           }))}
           customerLocation={{
             lat: order?.deliveryAddress?.latitude || order?.address?.latitude || 0,
@@ -1205,7 +1205,7 @@ export default function OrderDetail() {
                   </div>
 
                   {/* Seller / Source Information */}
-                  {group.seller && (
+                  {group.seller && appSettings?.features?.showSellerDetails !== false && (
                     <div className="mb-3 px-3 py-2 bg-white/70 rounded-xl border border-neutral-200/60 text-xs">
                       <span className="text-neutral-500 font-medium">Dispatched by: </span>
                       <strong className="text-neutral-800">

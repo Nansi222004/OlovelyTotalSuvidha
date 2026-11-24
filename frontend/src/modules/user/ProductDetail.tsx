@@ -1287,7 +1287,7 @@ export default function ProductDetail() {
                           : "This product is non-returnable."}
                       </span>
                     </div>
-                    {product.showSellerDetails !== false && (product.seller || product.sellerId) && (typeof product.seller !== 'object' || (product.seller as any).viewCustomerDetails !== false) && (
+                    {appSettings?.features?.showSellerDetails !== false && product.showSellerDetails !== false && (product.seller || product.sellerId) && (typeof product.seller !== 'object' || (product.seller as any).viewCustomerDetails !== false) && (
                       <>
                         <div className="flex items-start">
                           <span className="text-xs font-semibold text-neutral-800 w-[180px] flex-shrink-0">

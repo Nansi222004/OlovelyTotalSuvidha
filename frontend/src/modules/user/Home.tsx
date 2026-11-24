@@ -491,8 +491,8 @@ export default function Home() {
             {/* Featured this week Section */}
             <FeaturedThisWeek products={homeData.featuredThisWeek || homeData.promoStrip?.featuredProducts || []} />
 
-            {/* Shop by Store Section */}
-            {(homeData.shops || []).length > 0 && (
+            {/* Shop by Store Section (lists seller stores; hidden when admin turned off "Show Seller Details") */}
+            {appSettings?.features?.showSellerDetails !== false && (homeData.shops || []).length > 0 && (
               <div className="mb-6 mt-6 md:mb-8 md:mt-8">
                 <div className="flex items-center justify-between mb-3 md:mb-4 px-4 md:px-6 lg:px-8">
                   <div>

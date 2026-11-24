@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { getAllStores } from "../../services/api/customerHomeService";
 import { useLocation } from "../../hooks/useLocation";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useShowSellerDetails } from "../../hooks/useShowSellerDetails";
 
 interface StoreItem {
   id: string;
@@ -23,6 +24,11 @@ interface StoreItem {
 
 export default function AllStores() {
   const navigate = useNavigate();
+  // Seller store list is hidden when admin turned off "Show Seller Details".
+  const showSellerDetails = useShowSellerDetails();
+  useEffect(() => {
+    if (!showSellerDetails) navigate("/", { replace: true });
+  }, [showSellerDetails, navigate]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { location } = useLocation();
   const { t } = useTranslation();

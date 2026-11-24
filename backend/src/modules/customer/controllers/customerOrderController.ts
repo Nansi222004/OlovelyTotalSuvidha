@@ -890,6 +890,34 @@ export const createOrder = async (req: Request, res: Response) => {
     let deliveryFee = Number(fees?.deliveryFee) || 0;
     let deliveryDistanceKm = 0;
 
+    // Pickup points for the Quick Commerce items: each seller's shop, or the platform warehouse
+    // for platform (admin) products. Previously this read an empty `sellerIds` set, so no
+    // distance was ever computed: customers always paid only the base charge and the order
+    // stored 0 km (so the rider fell back to % pay instead of the per-km rate).
+    const collectQcOriginLocations = async (): Promise<{ lat: number; lng: number }[]> => {
+      const ids = Array.from(qcSellerIds).map((id) => new mongoose.Types.ObjectId(id));
+      if (ids.length === 0) return [];
+      const sellers = await Seller.find({ _id: { $in: ids } }).select("location latitude longitude storeName isPlatform");
+      const platformWarehouse: any = (settings as any)?.platformQuickCommerceFulfillment;
+      const locations: { lat: number; lng: number }[] = [];
+      sellers.forEach((seller: any) => {
+        if (seller.isPlatform && platformWarehouse?.latitude && platformWarehouse?.longitude) {
+          locations.push({ lat: Number(platformWarehouse.latitude), lng: Number(platformWarehouse.longitude) });
+          return;
+        }
+        let lat, lng;
+        if (seller.location?.coordinates?.length === 2) {
+          lng = seller.location.coordinates[0];
+          lat = seller.location.coordinates[1];
+        } else if (seller.latitude && seller.longitude) {
+          lat = parseFloat(seller.latitude);
+          lng = parseFloat(seller.longitude);
+        }
+        if (lat && lng) locations.push({ lat, lng });
+      });
+      return locations;
+    };
+
     // --- Delivery Charge Calculation (Standard vs Instant) ---
     const freeDeliveryThreshold = Number(settings?.freeDeliveryThreshold) || 0;
     const isEligibleForFreeDelivery = freeDeliveryThreshold > 0 && calculatedSubtotal >= freeDeliveryThreshold;
@@ -903,25 +931,7 @@ export const createOrder = async (req: Request, res: Response) => {
         if (resolvedQcOption === "Instant" && settings?.deliveryConfig && deliveryLat && deliveryLng) {
           try {
             const config = settings.deliveryConfig;
-            const sellerLocations: { lat: number; lng: number }[] = [];
-            const uniqueSellerIds = Array.from(sellerIds).map(
-              (id) => new mongoose.Types.ObjectId(id),
-            );
-            const sellers = await Seller.find({
-              _id: { $in: uniqueSellerIds },
-            }).select("location latitude longitude storeName");
-
-            sellers.forEach((seller) => {
-              let lat, lng;
-              if (seller.location?.coordinates?.length === 2) {
-                lng = seller.location.coordinates[0];
-                lat = seller.location.coordinates[1];
-              } else if (seller.latitude && seller.longitude) {
-                lat = parseFloat(seller.latitude);
-                lng = parseFloat(seller.longitude);
-              }
-              if (lat && lng) sellerLocations.push({ lat, lng });
-            });
+            const sellerLocations = await collectQcOriginLocations();
 
             if (sellerLocations.length > 0) {
               const distances = await getRoadDistances(
@@ -942,29 +952,8 @@ export const createOrder = async (req: Request, res: Response) => {
         const config = settings.deliveryConfig;
         deliveryFee = config.baseCharge || 0;
 
-        // Collect seller locations
-        const sellerLocations: { lat: number; lng: number }[] = [];
-        const uniqueSellerIds = Array.from(sellerIds).map(
-          (id) => new mongoose.Types.ObjectId(id),
-        );
-        const sellers = await Seller.find({
-          _id: { $in: uniqueSellerIds },
-        }).select("location latitude longitude storeName");
-
-        sellers.forEach((seller) => {
-          let lat, lng;
-          if (seller.location?.coordinates?.length === 2) {
-            lng = seller.location.coordinates[0];
-            lat = seller.location.coordinates[1];
-          } else if (seller.latitude && seller.longitude) {
-            lat = parseFloat(seller.latitude);
-            lng = parseFloat(seller.longitude);
-          }
-
-          if (lat && lng) {
-            sellerLocations.push({ lat, lng });
-          }
-        });
+        // Collect pickup locations (seller shops / platform warehouse)
+        const sellerLocations = await collectQcOriginLocations();
 
         if (sellerLocations.length > 0 && deliveryLat && deliveryLng) {
           // Get distances (Road or Air based on API Key presence)

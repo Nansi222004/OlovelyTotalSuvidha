@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import Button from "../../components/ui/button";
 import { useOrders } from "../../hooks/useOrders";
+import { useShowSellerDetails } from "../../hooks/useShowSellerDetails";
 import { exportElementToPdf } from "../../utils/invoicePdfExport";
 import { getOrderTipAmount, getOrderGiftPackagingFee } from "../../utils/orderMoney";
 
@@ -77,6 +78,8 @@ export default function Invoice() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getOrderById, fetchOrderById } = useOrders();
+  // Admin "Show Seller Details" off → no seller names/GSTIN on the customer invoice.
+  const showSellerDetails = useShowSellerDetails();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -363,7 +366,7 @@ export default function Invoice() {
     const isWholesale = Boolean(item.isWholesale || item.wholesalePrice != null);
     const productImage = item.productImage || item.product?.mainImage || item.product?.image;
     const packOrVariant = formatPackOrVariant(item);
-    const sellerStore = item.seller?.storeName || item.seller?.sellerName;
+    const sellerStore = showSellerDetails ? (item.seller?.storeName || item.seller?.sellerName) : undefined;
 
     return (
       <tr key={item._id || index} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
@@ -560,7 +563,7 @@ export default function Invoice() {
             </div>
           </div>
 
-          {billingEntities.length > 0 && (
+          {showSellerDetails && billingEntities.length > 0 && (
             <div className="mb-8 border border-gray-200 rounded-lg overflow-hidden">
               <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
                 Supplying / Billing Entities

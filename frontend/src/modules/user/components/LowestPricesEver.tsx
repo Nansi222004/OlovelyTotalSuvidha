@@ -9,6 +9,7 @@ import { useCart } from '../../../context/CartContext';
 import { Product } from '../../../types/domain';
 import { useWishlist } from '../../../hooks/useWishlist';
 import { calculateProductPrice } from '../../../utils/priceUtils';
+import { useShowSellerDetails } from '../../../hooks/useShowSellerDetails';
 
 interface LowestPricesEverProps {
   activeTab?: string;
@@ -49,9 +50,10 @@ const ProductCard = memo(({
   productName = productName.replace(/\s*-\s*(Fresh|Quality|Assured|Premium|Best|Top|Hygienic|Carefully|Selected).*$/i, '').trim();
   const displayName = truncateText(productName, 60);
 
-  // Resolve shop/store name
+  // Resolve shop/store name (hidden when admin turned off "Show Seller Details")
+  const showSellerDetails = useShowSellerDetails();
   const shopName = useMemo(() => {
-    if ((product as any).showSellerDetails === false) return null;
+    if (!showSellerDetails || (product as any).showSellerDetails === false) return null;
     if (product.seller && typeof product.seller === 'object') {
       if ((product.seller as any).viewCustomerDetails === false) return null;
       if (product.seller.storeName) return product.seller.storeName;
@@ -67,7 +69,7 @@ const ProductCard = memo(({
       return product.seller;
     }
     return null;
-  }, [product]);
+  }, [product, showSellerDetails]);
 
   const isPackRedundant = useMemo(() => {
     const pack = product.pack || '';

@@ -99,10 +99,16 @@ const calculateDeliveryStuff = async (total: number, items: any[], userLat: numb
 
                 if (sellerIds.size > 0) {
                     const uniqueSellerIds = Array.from(sellerIds).map(id => new mongoose.Types.ObjectId(id));
-                    const sellers = await Seller.find({ _id: { $in: uniqueSellerIds } }).select('location latitude longitude');
+                    const sellers = await Seller.find({ _id: { $in: uniqueSellerIds } }).select('location latitude longitude isPlatform');
+                    // Platform (admin) products are dispatched from the platform warehouse (same rule as order placement).
+                    const platformWarehouse: any = (settings as any)?.platformQuickCommerceFulfillment;
 
                     const sellerLocations: { lat: number; lng: number }[] = [];
-                    sellers.forEach(seller => {
+                    sellers.forEach((seller: any) => {
+                        if (seller.isPlatform && platformWarehouse?.latitude && platformWarehouse?.longitude) {
+                            sellerLocations.push({ lat: Number(platformWarehouse.latitude), lng: Number(platformWarehouse.longitude) });
+                            return;
+                        }
                         let lat, lng;
                         if (seller.location?.coordinates?.length === 2) {
                             lng = seller.location.coordinates[0];

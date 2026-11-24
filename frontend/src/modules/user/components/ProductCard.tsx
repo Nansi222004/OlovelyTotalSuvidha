@@ -13,6 +13,7 @@ import { useCustomerChannel } from '../../../context/CustomerChannelContext';
 
 import { calculateProductPrice } from '../../../utils/priceUtils';
 import { getProductImage, getProductFallback } from '../../../utils/productImageHelper';
+import { useShowSellerDetails } from '../../../hooks/useShowSellerDetails';
 
 interface ProductCardProps {
   product: Product;
@@ -82,9 +83,10 @@ export default function ProductCard({
     return product.productType === 'ECOMMERCE';
   }, [product.productType]);
 
-  // Resolve shop/store name cleanly
+  // Resolve shop/store name cleanly (hidden when admin turned off "Show Seller Details")
+  const showSellerDetails = useShowSellerDetails();
   const shopName = useMemo(() => {
-    if ((product as any).showSellerDetails === false) return null;
+    if (!showSellerDetails || (product as any).showSellerDetails === false) return null;
     if (product.seller && typeof product.seller === 'object') {
       if ((product.seller as any).viewCustomerDetails === false) return null;
       if (product.seller.storeName) return product.seller.storeName;
@@ -100,7 +102,7 @@ export default function ProductCard({
       return product.seller;
     }
     return null;
-  }, [product]);
+  }, [product, showSellerDetails]);
 
   const packText = useMemo(() => {
     return product.variations?.[0]?.value || product.pack || '';
