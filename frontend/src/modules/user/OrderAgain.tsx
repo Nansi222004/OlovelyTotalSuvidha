@@ -95,7 +95,17 @@ export default function OrderAgain() {
               pack: p.variations?.[0]?.title || p.smallDescription || 'Standard'
             };
           });
-          setBestsellerProducts(mapped);
+          // A product added with channel "Both" exists twice (Quick Commerce + Ecommerce copy).
+          // Show it once, preferring the Quick Commerce copy.
+          const byName = new Map<string, any>();
+          for (const p of mapped) {
+            const key = String(p.name || '').trim().toLowerCase();
+            const existing = byName.get(key);
+            if (!existing || (existing.productType === 'ECOMMERCE' && p.productType !== 'ECOMMERCE')) {
+              byName.set(key, p);
+            }
+          }
+          setBestsellerProducts(Array.from(byName.values()));
         }
       } catch (error) {
         console.error('Failed to fetch bestsellers:', error);
@@ -145,7 +155,7 @@ export default function OrderAgain() {
           <h2 className="text-sm font-semibold text-neutral-900 mb-2">{t("customer.previousOrders", "Your Previous Orders")}</h2>
           <div className="space-y-1.5">
             {orders.map((order) => {
-              const shortId = order.id.split('-').slice(-1)[0];
+              const shortId = (order as any).orderNumber || order.id.split('-').slice(-1)[0];
               const previewItems = order.items.slice(0, 3);
 
               return (

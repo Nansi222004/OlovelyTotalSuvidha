@@ -217,6 +217,9 @@ export async function getDeliveryPendingOrderAlerts(
     $or: [
       { deliveryBoy: { $exists: false } },
       { deliveryBoy: null },
+      // Admin/seller assigned it directly to this rider and he has not answered yet
+      // (shows the Accept / Reject popup when he opens the app from the push).
+      { deliveryBoy: deliveryObjectId },
     ],
     status: { $nin: ["Cancelled", "Rejected", "Returned", "Delivered"] },
   }).lean();
@@ -229,12 +232,19 @@ export async function getDeliveryPendingOrderAlerts(
   for (const order of orders) {
     const orderId = order._id.toString();
 
-    // Skip if order is already assigned to any delivery boy
-    if (order.deliveryBoy) {
-      continue;
-    }
-
     const offer = offerMap.get(orderId);
+
+    // Assigned orders: only an unanswered direct assignment to THIS rider, before pickup.
+    const isManualAssignment = Boolean(order.deliveryBoy);
+    if (isManualAssignment) {
+      const assignedToMe = order.deliveryBoy?.toString() === deliveryBoyId;
+      const notPickedUp =
+        !["Picked Up", "In Transit", "Delivered"].includes(String((order as any).deliveryBoyStatus)) &&
+        !["Picked up", "Shipped", "Out for Delivery"].includes(String(order.status));
+      if (!assignedToMe || !offer || offer.status !== "pending" || !notPickedUp) {
+        continue;
+      }
+    }
 
     // Skip if offer is not pending (e.g. accepted, rejected, or expired)
     if (offer && offer.status !== "pending") {
@@ -277,6 +287,7 @@ export async function getDeliveryPendingOrderAlerts(
       deliveryBoyEarning,
       createdAt: order.createdAt?.toISOString?.() || new Date().toISOString(),
       type: order.deliveryOption,
+      isManualAssignment,
     });
   }
 

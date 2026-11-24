@@ -436,6 +436,32 @@ export const updateOrderStatus = asyncHandler(
         .json({ success: false, message: "This order is not assigned to you" });
     }
 
+    // Riders may only move an order through pickup. "Delivered" must go through the customer's
+    // OTP (verify-otp endpoint) and "Picked up" through the at-the-store pickup check.
+    const RIDER_SETTABLE_STATUSES = ["Ready for pickup", "Picked up", "Out for Delivery"];
+    if (status === "Delivered") {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery must be confirmed with the customer's OTP.",
+      });
+    }
+    if (!RIDER_SETTABLE_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: `Riders cannot set status "${status}".` });
+    }
+    if (status === "Picked up" || status === "Out for Delivery") {
+      const qcSellerIds = (qcCtx.qcSellerIds || []).map((s: any) => String(s));
+      const pickups = ((order as any).sellerPickups || []).filter((p: any) =>
+        qcSellerIds.includes(String(p.seller)),
+      );
+      // Legacy orders without pickup records keep working; otherwise every store must be confirmed.
+      if (pickups.length > 0 && !pickups.every((p: any) => p.pickedUpAt)) {
+        return res.status(400).json({
+          success: false,
+          message: "Confirm pickup at each store first (you must be within 500 m of the store).",
+        });
+      }
+    }
+
     // Save previous status before updating
     const previousStatus = order.status;
 

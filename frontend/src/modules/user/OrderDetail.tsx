@@ -1792,7 +1792,7 @@ export default function OrderDetail() {
           </div>
 
           {/* Cancel Order — ONLY shown if in cancellable state */}
-          {["Pending", "Received", "Accepted", "Processed", "Shipped"].includes(orderStatus) && (
+          {["Pending", "Received", "Accepted", "Processed"].includes(orderStatus) && (
             <SectionItem
               icon={CircleSlashIcon}
               title="Cancel order"

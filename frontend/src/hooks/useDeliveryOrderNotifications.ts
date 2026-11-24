@@ -434,7 +434,19 @@ export const useDeliveryOrderNotifications = () => {
 
         const socket = connectSocket();
 
+        // Opening the app from a push (or switching back to it) may not reconnect the socket,
+        // so re-check the server for orders waiting for this rider's Accept / Reject.
+        const handleVisible = () => {
+            if (document.visibilityState === 'visible') {
+                rehydratePendingAlerts();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisible);
+        window.addEventListener('focus', handleVisible);
+
         return () => {
+            document.removeEventListener('visibilitychange', handleVisible);
+            window.removeEventListener('focus', handleVisible);
             if (reconnectTimeoutRef.current) {
                 clearTimeout(reconnectTimeoutRef.current);
             }

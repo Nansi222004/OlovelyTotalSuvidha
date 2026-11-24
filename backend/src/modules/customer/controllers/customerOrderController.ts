@@ -1762,6 +1762,8 @@ export const cancelOrder = async (req: Request, res: Response) => {
         "Cancelled",
         "Returned",
         "Rejected",
+        // Quick Commerce: the rider already has the parcel
+        "Picked up",
         "Out for Delivery",
         "Shipped",
       ].includes(order.status)

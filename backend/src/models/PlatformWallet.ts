@@ -39,7 +39,9 @@ const PlatformWalletSchema = new Schema<IPlatformWallet, IPlatformWalletModel>(
         currentPlatformBalance: {
             type: Number,
             default: 0,
-            min: [0, "Current platform balance cannot be negative"],
+            // No min: the admin wallet computes cash held − liabilities and intentionally keeps a
+            // negative result (platform owes more than it holds). A min:0 here made every save fail
+            // with "Current platform balance cannot be negative".
         },
         totalAdminEarning: {
             type: Number,

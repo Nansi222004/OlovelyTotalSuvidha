@@ -632,12 +632,116 @@ export async function handleOrderAcceptance(
 /**
  * Handle order rejection by a delivery boy
  */
+/**
+ * Rider rejected an order that admin/seller had assigned directly to him.
+ * Un-assigns him (order goes back to "needs a rider") and alerts admins + sellers to pick
+ * another rider. The customer's order is NOT rejected.
+ * Returns null when the order is not directly assigned to this rider (normal broadcast flow applies).
+ */
+async function releaseManualAssignmentOnRejection(
+    io: SocketIOServer,
+    orderId: string,
+    deliveryBoyId: string
+): Promise<{ success: boolean; message: string; allRejected: boolean } | null> {
+    const order: any = await Order.findById(orderId);
+    if (!order || !order.deliveryBoy || order.deliveryBoy.toString() !== deliveryBoyId) return null;
+
+    // Once the parcel is picked up the rider cannot hand it back from the app.
+    const pickedUp =
+        ['Picked Up', 'In Transit', 'Delivered'].includes(String(order.deliveryBoyStatus)) ||
+        ['Picked up', 'Shipped', 'Out for Delivery', 'Delivered'].includes(String(order.status));
+    if (pickedUp) {
+        return { success: false, message: 'This order is already picked up. Please contact admin.', allRejected: false };
+    }
+
+    const groups = (order.fulfillmentGroups || []).map((fg: any) => {
+        const g = fg.toObject ? fg.toObject() : { ...fg };
+        if (g.fulfillmentType === 'LOCAL_DELIVERY' && g.deliveryBoy && g.deliveryBoy.toString() === deliveryBoyId) {
+            g.deliveryBoy = null;
+        }
+        return g;
+    });
+
+    const note = `[${new Date().toISOString()}] Rider ${deliveryBoyId} rejected the assignment; order needs a new rider.`;
+    const released: any = await Order.findOneAndUpdate(
+        { _id: order._id, deliveryBoy: order.deliveryBoy },
+        {
+            $set: {
+                deliveryBoy: null,
+                deliveryAssignmentStatus: 'NotStarted',
+                fulfillmentGroups: groups,
+                // assignment moved Pending/Received/Accepted -> Processed; hand it back as Accepted
+                ...(order.status === 'Processed' ? { status: 'Accepted' } : {}),
+                adminNotes: order.adminNotes ? `${order.adminNotes}\n${note}` : note,
+            },
+            $unset: { deliveryBoyStatus: '', assignedAt: '' },
+        },
+        { new: true }
+    );
+    if (!released) {
+        return { success: false, message: 'Order assignment changed. Please refresh.', allRejected: false };
+    }
+
+    await markDeliveryOfferRejected(orderId, deliveryBoyId).catch(() => undefined);
+    try {
+        const DeliveryAssignment = (await import('../models/DeliveryAssignment')).default;
+        await DeliveryAssignment.updateOne({ order: order._id, deliveryBoy: deliveryBoyId }, { $set: { status: 'Cancelled' } });
+    } catch (e: any) {
+        console.error('[Manual reject] DeliveryAssignment update failed:', e?.message);
+    }
+
+    const rider: any = await Delivery.findById(deliveryBoyId).select('name').lean();
+    const riderName = rider?.name || 'Rider';
+    const message = `${riderName} rejected order #${released.orderNumber}. Please assign another rider.`;
+
+    if (io) {
+        io.to(`order-${orderId}`).emit('order-updated', {
+            orderId,
+            deliveryBoy: null,
+            status: released.status,
+            deliveryAssignmentStatus: 'NotStarted',
+        });
+        try {
+            notifySellersOfOrderUpdate(io, released, 'STATUS_UPDATE');
+        } catch {
+            /* ignore */
+        }
+    }
+    try {
+        const Admin = (await import('../models/Admin')).default;
+        const admins = await Admin.find().select('_id').lean();
+        for (const admin of admins) {
+            const eventId = `order:${orderId}:admin:${admin._id}:rider_rejected:${deliveryBoyId}:${Date.now()}`;
+            sendNotification('Admin', String(admin._id), 'Rider rejected order', message, {
+                type: 'Order',
+                link: `/admin/orders/${orderId}`,
+                priority: 'High',
+                eventId,
+                data: { orderId, orderNumber: released.orderNumber, role: 'admin', panel: 'admin', type: 'RIDER_REJECTED', eventId },
+            }).catch((err: any) => console.error('[Manual reject] admin notification failed:', err?.message));
+        }
+    } catch (e: any) {
+        console.error('[Manual reject] admin lookup failed:', e?.message);
+    }
+
+    console.log(`↩️ [Manual reject] ${message}`);
+    return { success: true, message: 'Order rejected. Admin will assign another rider.', allRejected: false };
+}
+
 export async function handleOrderRejection(
     io: SocketIOServer,
     orderId: string,
     deliveryBoyId: string
 ): Promise<{ success: boolean; message: string; allRejected: boolean }> {
     try {
+        // Admin/seller assigned this order directly to this rider: hand it back, never reject
+        // the customer's order. (The "all notified riders rejected" rule below is for broadcast offers.)
+        const manualResult = await releaseManualAssignmentOnRejection(io, orderId, String(deliveryBoyId).trim());
+        if (manualResult) {
+            notificationStates.delete(orderId);
+            return manualResult;
+        }
+
         let state = notificationStates.get(orderId);
 
         if (!state) {
