@@ -35,6 +35,7 @@ import {
   getCustomerServiceabilityTitle,
   shouldShowQuickDelivery,
 } from '../../utils/productServiceabilityUi';
+import { isUnlimitedStock } from "../../utils/stockDisplay";
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -843,7 +844,7 @@ export default function ProductDetail() {
           {isVariantAvailable ? (
             <div>
               <p className="text-sm text-neutral-600 mb-1">
-                {variantStock} in stock
+                {isUnlimitedStock(variantStock) ? "In stock" : `${variantStock} in stock`}
               </p>
               {isWholesaleMoqUnavailable && (
                 <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">

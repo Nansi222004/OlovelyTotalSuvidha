@@ -11,6 +11,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import { resolveImageUrl } from "../../../utils/imageUrl";
+import { isUnlimitedStock } from "../../../utils/stockDisplay";
 
 interface ProductVariation {
   id: string;
@@ -218,10 +219,10 @@ export default function AdminStockManagement() {
             sellerId: sellerId,
             image: productImage,
             variation: `${variation.name}: ${variation.value}`,
-            stock:
-              variation.stock !== undefined
-                ? variation.stock
-                : product.stock || 0,
+            stock: (() => {
+              const raw = variation.stock !== undefined ? variation.stock : product.stock || 0;
+              return (variation as any).unlimitedStock || isUnlimitedStock(raw) ? "Unlimited" : raw;
+            })(),
             status: product.publish ? "Published" : "Unpublished",
             category: categoryName,
             categoryId: categoryId,
@@ -237,7 +238,7 @@ export default function AdminStockManagement() {
           sellerId: sellerId,
           image: productImage,
           variation: "Default",
-          stock: product.stock || 0,
+          stock: (product as any).unlimitedStock || isUnlimitedStock(product.stock) ? "Unlimited" : product.stock || 0,
           status: product.publish ? "Published" : "Unpublished",
           category: categoryName,
           categoryId: categoryId,

@@ -4,6 +4,7 @@ import { getProducts, updateStock, Product } from '../../../services/api/product
 import { getCategories } from '../../../services/api/categoryService';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
+import { isUnlimitedStock } from "../../../utils/stockDisplay";
 
 interface StockItem {
     variationId: string;
@@ -118,7 +119,7 @@ export default function SellerStockManagement() {
                                 seller: user?.storeName || '',
                                 image: resolveImageUrl(product.mainImage || product.mainImageUrl),
                                 variation: variation.title || variation.value || variation.name || 'Default',
-                                stock: variation.stock,
+                                stock: (variation as any).unlimitedStock || isUnlimitedStock(variation.stock) ? 'Unlimited' : variation.stock,
                                 status: product.publish ? 'Published' : 'Unpublished',
                                 category: (product.category as any)?.name || 'Uncategorized',
                             });

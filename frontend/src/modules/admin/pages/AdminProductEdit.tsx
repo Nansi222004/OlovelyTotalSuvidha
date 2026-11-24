@@ -40,6 +40,8 @@ interface VariationItem {
   price: number;
   discPrice: number;
   stock: number;
+  /** Never runs out (backend keeps stock topped up). */
+  unlimitedStock?: boolean;
   status: "Available" | "Sold out" | "In stock";
   sku?: string;
   barcode?: string;
@@ -103,6 +105,7 @@ export default function AdminProductEdit() {
     price: "",
     discPrice: "0",
     stock: "0",
+    unlimitedStock: false,
     status: "Available" as "Available" | "Sold out",
     sku: "",
     barcode: "",
@@ -327,7 +330,8 @@ export default function AdminProductEdit() {
                 price: Number(v.price) || 0,
                 discPrice: Number(v.discPrice) || 0,
                 stock: Number(v.stock) || 0,
-                status: v.status || (v.stock > 0 ? "Available" : "Sold out"),
+                unlimitedStock: Boolean(v.unlimitedStock),
+                status: v.status || (v.stock > 0 || v.unlimitedStock ? "Available" : "Sold out"),
                 sku: v.sku || "",
                 barcode: v.barcode || "",
               }))
@@ -340,6 +344,7 @@ export default function AdminProductEdit() {
                 price: Number(product.price) || 0,
                 discPrice: Number(product.discPrice) || 0,
                 stock: Number(product.stock) || 0,
+                unlimitedStock: Boolean(product.unlimitedStock),
                 status: "Available",
               },
             ]);
@@ -633,7 +638,8 @@ export default function AdminProductEdit() {
 
     const price = parseFloat(variationForm.price);
     const discPrice = parseFloat(variationForm.discPrice || "0");
-    const stock = parseInt(variationForm.stock || "0", 10);
+    const unlimitedStock = Boolean(variationForm.unlimitedStock);
+    const stock = unlimitedStock ? 0 : parseInt(variationForm.stock || "0", 10);
 
     if (discPrice > price) {
       setUploadError("Discounted price cannot be greater than regular price");
@@ -646,6 +652,7 @@ export default function AdminProductEdit() {
       price,
       discPrice,
       stock,
+      unlimitedStock,
       status: variationForm.status,
       sku: variationForm.sku?.trim() || undefined,
       barcode: variationForm.barcode?.trim() || undefined,
@@ -657,6 +664,7 @@ export default function AdminProductEdit() {
       price: "",
       discPrice: "0",
       stock: "0",
+      unlimitedStock: false,
       status: "Available",
       sku: "",
       barcode: "",
@@ -847,6 +855,7 @@ export default function AdminProductEdit() {
           price: v.price,
           discPrice: v.discPrice || 0,
           stock: v.stock || 0,
+          unlimitedStock: Boolean(v.unlimitedStock),
           status: v.status || "Available",
           sku: v.sku ? v.sku.trim() : undefined,
           barcode: v.barcode ? v.barcode.trim() : undefined,
@@ -1476,16 +1485,26 @@ export default function AdminProductEdit() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Stock (0 = Unlimited)
+                  Stock
                 </label>
                 <input
                   type="number"
                   min="0"
-                  value={variationForm.stock}
+                  value={variationForm.unlimitedStock ? "" : variationForm.stock}
                   onChange={(e) => setVariationForm({ ...variationForm, stock: e.target.value })}
-                  placeholder="0"
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder={variationForm.unlimitedStock ? "Unlimited" : "0"}
+                  disabled={variationForm.unlimitedStock}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-neutral-100 disabled:text-neutral-500"
                 />
+                <label className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-neutral-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={variationForm.unlimitedStock}
+                    onChange={(e) => setVariationForm({ ...variationForm, unlimitedStock: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-teal-600"
+                  />
+                  Unlimited stock (never goes out of stock)
+                </label>
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
@@ -1564,8 +1583,27 @@ export default function AdminProductEdit() {
                         {variation.barcode && <button type="button" onClick={() => printBarcodeLabel({ productName: formData.productName || "Product", variantName: variation.title || variation.value, sku: variation.sku, barcode: variation.barcode! })} className="px-2 py-1.5 text-teal-700 font-semibold">Print Label</button>}
                         <span>
                           Stock:{" "}
-                          <strong>{variation.stock === 0 ? "Unlimited" : variation.stock}</strong>
+                          {variation.unlimitedStock ? (
+                            <strong>Unlimited</strong>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              value={variation.stock}
+                              onChange={(event) => setVariations((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Math.max(0, parseInt(event.target.value || "0", 10) || 0) } : item))}
+                              className="w-20 px-2 py-1 border rounded font-semibold"
+                            />
+                          )}
                         </span>
+                        <label className="flex items-center gap-1 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(variation.unlimitedStock)}
+                            onChange={(event) => setVariations((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, unlimitedStock: event.target.checked, stock: event.target.checked ? item.stock : 0, status: event.target.checked ? "Available" : item.status } : item))}
+                            className="h-3.5 w-3.5 accent-teal-600"
+                          />
+                          Unlimited
+                        </label>
                         <span
                           className={`px-2 py-0.5 rounded-full ${
                             variation.status === "Available" || variation.status === "In stock"

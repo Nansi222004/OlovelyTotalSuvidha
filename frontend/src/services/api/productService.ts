@@ -20,6 +20,8 @@ export interface ProductVariation {
   price: number;
   discPrice: number;
   stock: number;
+  /** Never runs out (backend keeps stock topped up). */
+  unlimitedStock?: boolean;
   status: "Available" | "Sold out" | "In stock"; // Added In stock
   sku?: string;
   barcode?: string;

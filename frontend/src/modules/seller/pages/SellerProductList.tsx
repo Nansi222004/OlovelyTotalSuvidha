@@ -14,6 +14,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useSellerChannel } from "../../../context/SellerChannelContext";
 import { useToast } from "../../../context/ToastContext";
 import StarRating from "../../../components/ui/StarRating";
+import { isUnlimitedStock } from "../../../utils/stockDisplay";
 
 // ... (interfaces remain same)
 
@@ -745,7 +746,7 @@ export default function SellerProductList() {
                               ? "bg-amber-50 text-amber-700 border border-amber-200"
                               : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                         }`}>
-                          {variation.stock === 0 ? "0 (Out of stock)" : variation.stock < 10 ? `${variation.stock} (Low)` : variation.stock}
+                          {isUnlimitedStock(variation.stock) || (variation as any).unlimitedStock ? "Unlimited" : variation.stock === 0 ? "0 (Out of stock)" : variation.stock < 10 ? `${variation.stock} (Low)` : variation.stock}
                         </span>
                       </td>
                       <td className="p-3 align-middle border border-neutral-200 whitespace-nowrap">

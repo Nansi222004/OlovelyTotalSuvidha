@@ -1,5 +1,8 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+/** Stored stock for products/variants marked "Unlimited stock". */
+export const UNLIMITED_STOCK = 999999;
+
 export interface IProduct extends Document {
   // Basic Info
   productName: string;
@@ -26,6 +29,8 @@ export interface IProduct extends Document {
   discPrice?: number;
   compareAtPrice?: number;
   stock: number;
+  /** Never runs out. Stock is pinned to UNLIMITED_STOCK on save (see pre-validate hook). */
+  unlimitedStock?: boolean;
   sku?: string;
   barcode?: string;
 
@@ -39,6 +44,7 @@ export interface IProduct extends Document {
     price?: number;
     discPrice?: number;
     stock?: number;
+    unlimitedStock?: boolean;
     sku?: string;
     barcode?: string;
     status?: string;
@@ -217,6 +223,10 @@ const ProductSchema = new Schema<IProduct>(
       default: 0,
       min: [0, "Stock cannot be negative"],
     },
+    unlimitedStock: {
+      type: Boolean,
+      default: false,
+    },
     sku: {
       type: String,
       trim: true,
@@ -245,6 +255,7 @@ const ProductSchema = new Schema<IProduct>(
           price: Number,
           discPrice: { type: Number, default: 0 },
           stock: Number,
+          unlimitedStock: { type: Boolean, default: false },
           status: {
             type: String,
             enum: ["Available", "Sold out", "In stock"],
@@ -454,6 +465,26 @@ const ProductSchema = new Schema<IProduct>(
 // Virtual for mrp (alias for compareAtPrice to match frontend)
 ProductSchema.virtual("mrp").get(function () {
   return this.compareAtPrice;
+});
+
+// "Unlimited stock": keep the stored stock at a very large number so every existing
+// stock check (cart, checkout, POS, product cards) treats the item as always available.
+// Sales still go through mutateStock and the inventory ledger; each save tops it back up.
+ProductSchema.pre("validate", function (next) {
+  const doc: any = this;
+  const variations: any[] = Array.isArray(doc.variations) ? doc.variations : [];
+  if (variations.length > 0) {
+    for (const v of variations) {
+      if (v.unlimitedStock === true) {
+        v.stock = UNLIMITED_STOCK;
+        if (v.status === "Sold out") v.status = "Available";
+      }
+    }
+    doc.unlimitedStock = variations.every((v: any) => v.unlimitedStock === true);
+  } else if (doc.unlimitedStock === true) {
+    doc.stock = UNLIMITED_STOCK;
+  }
+  next();
 });
 
 // Calculate discount and sync stock/price from variations before saving

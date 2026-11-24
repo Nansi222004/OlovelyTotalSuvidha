@@ -17,6 +17,7 @@ import { resolveImageUrl } from "../../../utils/imageUrl";
 import { getAppSettings, type AppSettings } from "../../../services/api/admin/adminSettingsService";
 import { areSameIndianState, getStateByName, INDIAN_STATES, normalizeStateCode } from "../../../utils/indianStates";
 import { PosInvoiceItemRows, PosInvoiceTaxLines } from "../components/PosInvoiceParts";
+import { formatStock } from "../../../utils/stockDisplay";
 
 // --- SOUND EFFECTS (Web Audio API - no external assets required) ---
 class SoundManager {
@@ -1088,7 +1089,7 @@ export default function AdminPosTerminal() {
                             {item.sku && <span>SKU: {item.sku}</span>}
                             {item.barcode && <span>Barcode: {item.barcode}</span>}
                             <span className="text-slate-400">•</span>
-                            <span className="text-emerald-700 font-medium">In Stock: {item.stock}</span>
+                            <span className="text-emerald-700 font-medium">In Stock: {formatStock(item.stock)}</span>
                           </div>
                         </div>
                       </div>

@@ -14,6 +14,7 @@ import {
 import { getProductById } from "../../../services/api/admin/adminProductService";
 import { getAllSellers } from "../../../services/api/sellerService";
 import { resolveImageUrl } from "../../../utils/imageUrl";
+import { formatStock } from "../../../utils/stockDisplay";
 
 const TRANSACTION_TYPES = ["ALL", "SALE", "RETURN", "ADJUSTMENT", "STOCK_IN", "DAMAGE", "STOCK_OUT"];
 const TYPE_COLORS: Record<string, string> = {
@@ -845,7 +846,7 @@ export default function AdminInventoryLedger() {
                               {barcodeResult.selectedVariation.name}: {barcodeResult.selectedVariation.value}
                             </p>
                             <p className="text-xs text-amber-700 mt-0.5">
-                              Variation Stock: <strong>{barcodeResult.selectedVariation.stock}</strong>
+                              Variation Stock: <strong>{formatStock(barcodeResult.selectedVariation.stock)}</strong>
                               {barcodeResult.selectedVariation.sku && ` | SKU: ${barcodeResult.selectedVariation.sku}`}
                             </p>
                           </div>

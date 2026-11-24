@@ -88,6 +88,7 @@ export default function SellerAddProduct() {
     price: "",
     discPrice: "0",
     stock: "0",
+    unlimitedStock: false,
     status: "Available" as "Available" | "Sold out",
     barcode: "",
   });
@@ -507,7 +508,8 @@ export default function SellerAddProduct() {
 
     const price = parseFloat(variationForm.price);
     const discPrice = parseFloat(variationForm.discPrice || "0");
-    const stock = parseInt(variationForm.stock || "0");
+    const unlimitedStock = Boolean(variationForm.unlimitedStock);
+    const stock = unlimitedStock ? 0 : parseInt(variationForm.stock || "0");
 
     if (discPrice > price) {
       setUploadError("Discounted price cannot be greater than price");
@@ -519,6 +521,7 @@ export default function SellerAddProduct() {
       price,
       discPrice,
       stock,
+      unlimitedStock,
       status: variationForm.status,
       barcode: variationForm.barcode?.trim() || undefined,
     };
@@ -530,6 +533,7 @@ export default function SellerAddProduct() {
       price: "",
       discPrice: "0",
       stock: "0",
+      unlimitedStock: false,
       status: "Available",
       barcode: "",
     });
@@ -575,7 +579,8 @@ export default function SellerAddProduct() {
           title: variationForm.title.trim(),
           price: parsedPrice,
           discPrice: parseFloat(variationForm.discPrice || "0") || 0,
-          stock: parseInt(variationForm.stock || "0", 10) || 0,
+          stock: variationForm.unlimitedStock ? 0 : parseInt(variationForm.stock || "0", 10) || 0,
+          unlimitedStock: Boolean(variationForm.unlimitedStock),
           status: variationForm.status || "Available",
           barcode: variationForm.barcode ? variationForm.barcode.trim() : undefined,
         };
@@ -1616,20 +1621,31 @@ export default function SellerAddProduct() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Stock (0 = Unlimited)
+                    Stock
                   </label>
                   <input
                     type="number"
-                    value={variationForm.stock}
+                    min="0"
+                    disabled={variationForm.unlimitedStock}
+                    value={variationForm.unlimitedStock ? "" : variationForm.stock}
                     onChange={(e) =>
                       setVariationForm({
                         ...variationForm,
                         stock: e.target.value,
                       })
                     }
-                    placeholder="0"
-                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder={variationForm.unlimitedStock ? "Unlimited" : "0"}
+                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-neutral-100"
                   />
+                  <label className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-neutral-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={variationForm.unlimitedStock}
+                      onChange={(e) => setVariationForm({ ...variationForm, unlimitedStock: e.target.checked })}
+                      className="h-3.5 w-3.5 accent-teal-600"
+                    />
+                    Unlimited stock (never goes out of stock)
+                  </label>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -1684,7 +1700,7 @@ export default function SellerAddProduct() {
                           )}
                           <span className="ml-4 text-sm text-neutral-600">
                             Stock:{" "}
-                            {variation.stock === 0
+                            {variation.unlimitedStock
                               ? "Unlimited"
                               : variation.stock}{" "}
                             | Status: {variation.status}
