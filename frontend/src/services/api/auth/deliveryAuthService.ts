@@ -33,7 +33,8 @@ export interface RegisterData {
   mobile: string;
   email: string;
   dateOfBirth?: string;
-  password: string;
+  /** Optional: delivery partners log in with OTP; backend generates one if omitted. */
+  password?: string;
   address: string;
   city: string;
   pincode?: string;

@@ -9,6 +9,7 @@ import { removeAuthToken } from "../../../services/api/config";
 import { uploadDocument } from "../../../services/api/uploadService";
 import { validateDocumentFile, compressImage } from "../../../utils/imageUpload";
 import OTPInput from "../../../components/OTPInput";
+import TypeableDateInput from "../../../components/TypeableDateInput";
 import deliveryLogo from "@assets/delivery_logo.jpg";
 
 export default function DeliverySignUp() {
@@ -18,7 +19,6 @@ export default function DeliverySignUp() {
     mobile: "",
     email: "",
     dateOfBirth: "",
-    password: "",
     address: "",
     city: "",
     pincode: "",
@@ -156,7 +156,6 @@ export default function DeliverySignUp() {
       !formData.name ||
       !formData.mobile ||
       !formData.email ||
-      !formData.password ||
       !formData.address ||
       !formData.city
     ) {
@@ -166,11 +165,6 @@ export default function DeliverySignUp() {
 
     if (formData.mobile.length !== 10) {
       setError("Please enter a valid 10-digit mobile number");
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters");
       return;
     }
 
@@ -215,7 +209,6 @@ export default function DeliverySignUp() {
         mobile: formData.mobile,
         email: formData.email,
         dateOfBirth: formData.dateOfBirth || undefined,
-        password: formData.password,
         address: formData.address,
         city: formData.city,
         pincode: formData.pincode || undefined,
@@ -391,28 +384,11 @@ export default function DeliverySignUp() {
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Date of Birth
                   </label>
-                  <input
-                    type="date"
+                  <TypeableDateInput
                     name="dateOfBirth"
                     value={formData.dateOfBirth}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Enter password (min 6 characters)"
-                    required
-                    minLength={4}
+                    onChange={(iso) => setFormData((prev) => ({ ...prev, dateOfBirth: iso }))}
+                    max={new Date().toISOString().slice(0, 10)}
                     className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                     disabled={loading}
                   />

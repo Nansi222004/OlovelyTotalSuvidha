@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import crypto from "crypto";
 import Delivery from "../../../models/Delivery";
 import {
   sendSmsOtp as sendSmsOtpService,
@@ -146,13 +147,16 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     bonusType,
   } = req.body;
 
-  // Validation
-  if (!name || !mobile || !email || !password) {
+  // Validation (delivery partners log in with mobile OTP only, so no password is asked for)
+  if (!name || !mobile || !email) {
     return res.status(400).json({
       success: false,
-      message: "Name, mobile, email, and password are required",
+      message: "Name, mobile and email are required",
     });
   }
+  // The schema still stores a (hashed) password; OTP login never uses it, so generate a random one when absent.
+  const effectivePassword =
+    typeof password === "string" && password.length >= 6 ? password : crypto.randomBytes(24).toString("hex");
 
   if (!/^[0-9]{10}$/.test(mobile)) {
     return res.status(400).json({
@@ -179,7 +183,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     mobile,
     email,
     dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-    password,
+    password: effectivePassword,
     address,
     city,
     pincode,

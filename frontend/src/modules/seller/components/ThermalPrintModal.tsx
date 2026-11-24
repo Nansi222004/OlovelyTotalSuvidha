@@ -287,6 +287,12 @@ export const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
           body > *:not(#thermal-print-host) {
             display: none !important;
           }
+          /* Pages that open this modal (e.g. Seller Order Detail) have their own A4 print rule
+             "body * { visibility: hidden }". Undo it for the 4x6 area, or the label prints blank. */
+          #thermal-print-host,
+          #thermal-print-host * {
+            visibility: visible !important;
+          }
           #thermal-print-area {
             display: block !important;
             width: 4in !important;
