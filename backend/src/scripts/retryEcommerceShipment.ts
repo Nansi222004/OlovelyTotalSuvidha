@@ -12,6 +12,12 @@ import dotenv from "dotenv";
 dotenv.config();
 import mongoose from "mongoose";
 import Order from "../models/Order";
+// Register every model the shipping code populates (a standalone script does not load the app's models).
+import "../models/Product";
+import "../models/OrderItem";
+import "../models/Seller";
+import "../models/Customer";
+import "../models/Category";
 import { createEcommerceShipment } from "../services/shipping/shippingService";
 
 const [orderNumber] = process.argv.slice(2);
