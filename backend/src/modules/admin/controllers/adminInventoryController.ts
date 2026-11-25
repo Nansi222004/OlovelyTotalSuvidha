@@ -1053,6 +1053,10 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
           variation = variations.find(
             (value: any) => value._id?.toString() === String(inputItem.variationId)
           );
+          // Single-size product whose size id changed (edited while the bill was open): use that size.
+          if (!variation && variations.length === 1) {
+            variation = variations[0];
+          }
           if (!variation) {
             throw new PosCheckoutError(404, `Variation not found on product "${product.productName}".`);
           }
@@ -1093,7 +1097,8 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
         validatedItems.push({
           product,
           variation,
-          variationId: inputItem.variationId || undefined,
+          // the id actually matched above (may differ from the client's stale id)
+          variationId: variation?._id ? String(variation._id) : inputItem.variationId || undefined,
           variationTitle,
           hsnCode: String((product as any).hsnCode || '').trim() || undefined,
           quantity,
