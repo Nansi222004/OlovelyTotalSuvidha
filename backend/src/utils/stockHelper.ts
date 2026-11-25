@@ -78,6 +78,11 @@ export function resolveAvailableStock(
       // Priority 1: Match strictly by ID if an explicit ID was supplied
       if (varId) {
         selectedVariation = product.variations.find((v: any) => v._id && v._id.toString() === varId);
+        // Single-variant product whose variant id changed (older admin edits re-created ids):
+        // there is only one possible variant, so use it instead of showing "out of stock".
+        if (!selectedVariation && product.variations.length === 1) {
+          selectedVariation = product.variations[0];
+        }
         // If an explicit ID was supplied and not found, NEVER fall back to another variant or label!
         if (!selectedVariation) {
           return {

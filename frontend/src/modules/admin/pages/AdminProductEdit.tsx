@@ -849,6 +849,9 @@ export default function AdminProductEdit() {
         price: variations[0]?.price || 0,
         category: formData.category || undefined,
         variations: variations.map((v) => ({
+          // Keep the existing variant id: without it every save created new ids, so customers'
+          // carts (which store the variant id) showed the item as "out of stock".
+          ...(v._id ? { _id: v._id } : {}),
           name: v.name || "Variation",
           value: v.value || v.title || "Default",
           title: v.title || v.value || "Default",
