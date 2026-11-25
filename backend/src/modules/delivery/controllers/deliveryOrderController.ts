@@ -453,8 +453,12 @@ export const updateOrderStatus = asyncHandler(
       const pickups = ((order as any).sellerPickups || []).filter((p: any) =>
         qcSellerIds.includes(String(p.seller)),
       );
+      // Admin/seller already marked the order "Picked up" (e.g. rider GPS was off): the rider may
+      // continue to "Out for Delivery" without the at-the-store check.
+      const pickupConfirmedByStaff =
+        status === "Out for Delivery" && (order.status === "Picked up" || qcCtx.displayStatus === "Picked up");
       // Legacy orders without pickup records keep working; otherwise every store must be confirmed.
-      if (pickups.length > 0 && !pickups.every((p: any) => p.pickedUpAt)) {
+      if (!pickupConfirmedByStaff && pickups.length > 0 && !pickups.every((p: any) => p.pickedUpAt)) {
         return res.status(400).json({
           success: false,
           message: "Confirm pickup at each store first (you must be within 500 m of the store).",

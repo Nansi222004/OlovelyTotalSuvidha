@@ -6,6 +6,7 @@ import {
   type OrderItem,
 } from "../../../services/api/admin/adminOrderService";
 import { useAuth } from "../../../context/AuthContext";
+import AdminRiderTrackingModal from "../components/AdminRiderTrackingModal";
 
 type SortField =
   | "orderId"
@@ -17,6 +18,7 @@ type SortDirection = "asc" | "desc";
 
 export default function AdminDeliveryTracking() {
   const navigate = useNavigate();
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
   const { isAuthenticated, token } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,11 +246,18 @@ export default function AdminDeliveryTracking() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => navigate(`/admin/orders/${order._id}`)}
-                        className="text-blue-600 hover:text-blue-900">
-                        View Details
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setTrackingOrderId(order._id)}
+                          className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">
+                          🛵 Track
+                        </button>
+                        <button
+                          onClick={() => navigate(`/admin/orders/${order._id}`)}
+                          className="text-blue-600 hover:text-blue-900">
+                          View Details
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -276,6 +285,9 @@ export default function AdminDeliveryTracking() {
           </div>
         </div>
       </div>
+      {trackingOrderId && (
+        <AdminRiderTrackingModal orderId={trackingOrderId} onClose={() => setTrackingOrderId(null)} />
+      )}
     </div>
   );
 }

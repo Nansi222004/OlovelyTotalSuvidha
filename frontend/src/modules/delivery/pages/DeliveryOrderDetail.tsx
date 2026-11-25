@@ -1228,7 +1228,8 @@ export default function DeliveryOrderDetail() {
 
             {/* Floating Glassmorphic Action Button Dock - Order Taken button or status update */}
             {/* Hide this button when order is "Out for Delivery" because OTP section is shown instead */}
-            {nextStatus && hasQcItems && order.status !== 'Picked up' && order.status !== 'Out for Delivery' && !showOtpInput && (
+            {/* "Picked up" set by admin/seller: rider continues with "Start Delivery" (-> Out for Delivery -> OTP) */}
+            {nextStatus && hasQcItems && order.status !== 'Out for Delivery' && !showOtpInput && (
                 <div className="fixed bottom-24 left-6 right-6 z-30">
                     <button
                         onClick={() => handleStatusChange(nextStatus)}
@@ -1236,7 +1237,7 @@ export default function DeliveryOrderDetail() {
                         disabled={loading}
                     >
                         <span className="relative z-10">
-                            {loading ? 'Updating...' : nextStatus === 'Picked up' ? t("delivery.orderTaken", "Order Taken") : `Mark as ${getTranslatedDeliveryStatus(nextStatus, t)}`}
+                            {loading ? 'Updating...' : nextStatus === 'Picked up' ? t("delivery.orderTaken", "Order Taken") : nextStatus === 'Out for Delivery' ? t("delivery.startDelivery", "Start Delivery") : `Mark as ${getTranslatedDeliveryStatus(nextStatus, t)}`}
                         </span>
                         {!loading && <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center relative z-10 group-hover:bg-white/30 transition-colors">
                             <Icons.ChevronLeft className="rotate-180" size={18} />

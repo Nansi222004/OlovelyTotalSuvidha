@@ -8,6 +8,7 @@ import {
 } from '../../../services/api/admin/adminDeliveryService';
 import { useAuth } from '../../../context/AuthContext';
 import ConfirmationModal from '../../../components/ConfirmationModal';
+import AdminDeliveryBoyDetailsModal from '../components/AdminDeliveryBoyDetailsModal';
 import { getAppSettings } from '../../../services/api/admin/adminSettingsService';
 
 /**
@@ -37,6 +38,7 @@ export default function AdminManageDeliveryBoy() {
     }, [isAuthenticated, token]);
     const [deliveryBoys, setDeliveryBoys] = useState<DeliveryBoy[]>([]);
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [viewId, setViewId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState<string | null>(null);
@@ -584,6 +586,16 @@ export default function AdminManageDeliveryBoy() {
                                             <td className="p-4 align-middle">
                                                 <div className="flex items-center gap-2">
                                                     <button
+                                                        onClick={() => setViewId(deliveryBoy._id)}
+                                                        className="p-1.5 rounded transition-colors text-blue-600 hover:bg-blue-50"
+                                                        title="View details & documents"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                                            <circle cx="12" cy="12" r="3"></circle>
+                                                        </svg>
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleStatusChange(deliveryBoy._id, deliveryBoy.status === 'Active' ? 'Inactive' : 'Active')}
                                                         disabled={processing === deliveryBoy._id}
                                                         className={`p-1.5 rounded transition-colors ${deliveryBoy.status === 'Active'
@@ -731,6 +743,13 @@ export default function AdminManageDeliveryBoy() {
                 <a href="#" className="text-blue-600 hover:underline">Olovely Total Suvidha</a>
             </footer>
 
+            {viewId && (
+                <AdminDeliveryBoyDetailsModal
+                    deliveryBoyId={viewId}
+                    onClose={() => setViewId(null)}
+                    onStatusChange={handleStatusChange}
+                />
+            )}
             <ConfirmationModal
                 isOpen={!!deleteId}
                 title="Delete Delivery Boy"

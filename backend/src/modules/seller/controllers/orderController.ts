@@ -635,8 +635,26 @@ export const getOrderById = asyncHandler(
     // Seller ("Sold by") details printed on the invoice: store, address, contact, GSTIN, FSSAI.
     const sellerDoc: any = await Seller
       .findById(sellerId)
-      .select("storeName sellerName mobile email address city taxNumber fssaiLicNo shippingConfig.pickupState shippingConfig.pickupPincode")
+      .select("storeName sellerName mobile email address city taxNumber fssaiLicNo isPlatform category shippingConfig.pickupState shippingConfig.pickupPincode")
       .lean();
+    // Platform (admin) stock: the built-in "Olovely Admin Store" account only has placeholder
+    // contact data (mobile 9999999999). Use the real business details from Admin settings.
+    if (sellerDoc) {
+      const { resolveInventoryOwner } = await import("../../../utils/inventoryHelper");
+      if (resolveInventoryOwner(sellerDoc).isPlatform) {
+        const AppSettings = (await import("../../../models/AppSettings")).default;
+        const s: any = await AppSettings.findOne()
+          .select("appName businessName contactPhone supportPhone contactEmail companyAddress gstin platformQuickCommerceFulfillment")
+          .lean();
+        const wh = s?.platformQuickCommerceFulfillment || {};
+        const isPlaceholderPhone = /^9{10}$/.test(String(sellerDoc.mobile || ""));
+        sellerDoc.storeName = s?.businessName || wh.warehouseName || sellerDoc.storeName;
+        sellerDoc.mobile = s?.contactPhone || s?.supportPhone || (isPlaceholderPhone ? "" : sellerDoc.mobile);
+        sellerDoc.email = s?.contactEmail || sellerDoc.email;
+        sellerDoc.address = wh.warehouseAddress || s?.companyAddress || sellerDoc.address;
+        sellerDoc.taxNumber = s?.gstin || sellerDoc.taxNumber;
+      }
+    }
     (orderDetail as any).sellerDetails = sellerDoc
       ? {
           storeName: sellerDoc.storeName || sellerDoc.sellerName || "",
