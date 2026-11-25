@@ -23,6 +23,11 @@ export const getWishlist = async (req: Request, res: Response) => {
         if (!wishlist) {
             // Return empty if not created yet
             wishlist = new Wishlist({ customer: userId, products: [] });
+        } else if ((wishlist.products as any[]).some((p: any) => !p)) {
+            // Products deleted by admin/seller populate as null: drop them from the saved wishlist.
+            const kept = (wishlist.products as any[]).filter(Boolean);
+            await Wishlist.updateOne({ _id: wishlist._id }, { $set: { products: kept.map((p: any) => p._id) } });
+            (wishlist as any).products = kept;
         }
 
         return res.status(200).json({

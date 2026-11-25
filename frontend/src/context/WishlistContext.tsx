@@ -30,7 +30,8 @@ const WishlistContext = createContext<WishlistContextValue | undefined>(
 );
 
 const normalizeWishlistProducts = (products: any[]): Product[] =>
-  products.map((product) => ({
+  // Deleted products come back as null; skip them instead of crashing.
+  (Array.isArray(products) ? products : []).filter(Boolean).map((product) => ({
     ...product,
     id: product._id || product.id,
     name: product.productName || product.name,
