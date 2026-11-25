@@ -1130,6 +1130,12 @@ export const recordDeliveryFinancials = async (orderId: string, riderIdHint?: st
     const riderId = riderIdHint || resolveQcRiderId(order);
     if (riderId) await processCODOrderDelivery(orderId, undefined, riderId);
   }
+  // A delivered COD order means the customer has paid (the rider OTP path already sets this).
+  // Admin/seller "Delivered" left it "Pending", which hid the sale from revenue (counts Delivered + Paid).
+  // Cash hand-over to admin is tracked separately (codPaidToAdminAt), so this does not affect it.
+  if (isCod && order.status === "Delivered" && !["Paid", "Refunded"].includes(String(order.paymentStatus))) {
+    await Order.updateOne({ _id: order._id, paymentStatus: order.paymentStatus }, { $set: { paymentStatus: "Paid" } });
+  }
   if (order.status === "Delivered") return distributeCommissions(orderId);
   return { success: true, message: "Partial delivery recorded; settlement runs when the order is fully delivered" };
 };
