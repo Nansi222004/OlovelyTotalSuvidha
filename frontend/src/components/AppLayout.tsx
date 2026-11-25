@@ -344,12 +344,36 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   }}
                 />
                 <span
-                  className="font-bold text-base tracking-tight"
+                  className="font-bold text-base tracking-tight hidden lg:inline"
                   style={{ color: currentTheme.headerTextColor || '#ffffff' }}
                 >
                   {appSettings?.appName || 'Olovely Total Suvidha'}
                 </span>
               </Link>
+
+              {/* Delivery location pill (single header on desktop: replaces the second logo block) */}
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('openLocationChangeModal'))}
+                className="ml-3 mr-auto flex items-center gap-2 max-w-[340px] bg-white/95 hover:bg-white rounded-full pl-3 pr-2.5 py-1.5 shadow-sm border border-white transition-colors"
+                title="Change delivery location"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={currentTheme.accentColor || '#e11d48'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                  <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span className="flex flex-col items-start leading-tight min-w-0">
+                  <span className="text-[10px] font-bold text-emerald-700">
+                    ⚡ {appSettings?.estimatedDeliveryTime || '12-15 mins'}
+                  </span>
+                  <span className="text-xs font-semibold text-neutral-800 truncate max-w-[260px]">
+                    {userLocation?.address || [userLocation?.city, userLocation?.state].filter(Boolean).join(', ') || t('customer.selectLocation', 'Select location')}
+                  </span>
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 text-neutral-500">
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
 
               {/* Navigation Links */}
               <div className="flex items-center gap-4 lg:gap-6">

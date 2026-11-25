@@ -254,8 +254,11 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
       if (topSectionRef.current && stickyRef.current) {
         const topSectionBottom = topSectionRef.current.getBoundingClientRect().bottom;
         const topSectionHeight = topSectionRef.current.offsetHeight;
-        // When the top section has scrolled up, transition to white
-        const progress = Math.min(Math.max(1 - (topSectionBottom / topSectionHeight), 0), 1);
+        // When the top section has scrolled up, transition to white.
+        // Desktop hides the top section (height 0): fall back to page scroll distance.
+        const progress = topSectionHeight > 0
+          ? Math.min(Math.max(1 - (topSectionBottom / topSectionHeight), 0), 1)
+          : Math.min(Math.max(window.scrollY / 80, 0), 1);
         setScrollProgress(progress);
         setIsSticky(topSectionBottom <= 0);
       }
@@ -361,8 +364,9 @@ export default function HomeHero({ activeTab = 'all', onTabChange, channelFilter
         marginBottom: 0,
       }}
     >
-      {/* Top section with logo on left, delivery info and name on right - NOT sticky */}
-      <div>
+      {/* Top section with logo on left, delivery info and name on right - NOT sticky.
+          Mobile/app only: on desktop the top bar already shows the logo + location pill. */}
+      <div className="md:hidden">
         <div
           ref={topSectionRef}
           className="px-4 md:px-6 lg:px-8 pt-2 md:pt-3 pb-1"
