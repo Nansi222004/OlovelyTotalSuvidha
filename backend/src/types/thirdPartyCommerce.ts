@@ -61,6 +61,8 @@ export interface ShipmentRequest {
     pickupPincode: string;
     pickupLocationId?: string;
     pickupLocationName?: string;
+    /** True only for the platform (admin) store: its own warehouse may be the Shiprocket PRIMARY address. */
+    isPlatformPickup?: boolean;
   };
   items: ShipmentItem[];
   subtotal: number;

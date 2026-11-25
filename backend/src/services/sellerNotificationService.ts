@@ -79,6 +79,17 @@ export async function notifySellersOfOrderUpdate(
             }
         }
 
+        // Platform Ecommerce items need no Accept/Reject (they go straight to the courier), but admin
+        // still gets an information popup + sound + bell so a new courier order is never missed.
+        const platformEcomItems = orderItems.filter(
+            (item: any) => item?.ownerType === 'PLATFORM' && item?.productType === 'ECOMMERCE',
+        );
+        if (type === 'NEW_ORDER' && platformEcomItems.length > 0) {
+            await notifyAdminsOfCourierEvent(io, order, 'NEW_COURIER_ORDER',
+                `New courier order #${order.orderNumber} (${order.paymentMethod || ''}). It is booked with the courier automatically.`,
+                platformEcomItems);
+        }
+
         for (const sellerId of sellerIds) {
             // Get only items belonging to this seller
             const sellerSpecificItems = vendorItems.filter((item: any) => extractSellerId(item) === sellerId);
@@ -174,5 +185,66 @@ export async function notifySellersOfOrderUpdate(
         }
     } catch (error) {
         console.error('Error in notifySellersOfOrderUpdate:', error);
+    }
+}
+
+/**
+ * Information-only admin alert (popup + sound in the admin panel, bell entry and push):
+ * NEW_COURIER_ORDER (platform Ecommerce order placed) or COURIER_BOOKING_FAILED (Shiprocket refused it).
+ */
+export async function notifyAdminsOfCourierEvent(
+    io: SocketIOServer | null | undefined,
+    order: any,
+    kind: 'NEW_COURIER_ORDER' | 'COURIER_BOOKING_FAILED',
+    message: string,
+    items?: any[],
+): Promise<void> {
+    try {
+        let alertItems = items;
+        if (!alertItems) {
+            alertItems = await OrderItem.find({ order: order._id, ownerType: 'PLATFORM', productType: 'ECOMMERCE' }).lean();
+        }
+        const base: any = buildAdminOrderAlert(order, []);
+        const eventId = `order:${order._id}:admin:${kind.toLowerCase()}`;
+        const payload = {
+            ...base,
+            type: kind,
+            message,
+            eventId,
+            items: (alertItems || []).map((item: any) => ({
+                productName: item.productName,
+                quantity: item.quantity,
+                price: item.unitPrice,
+                total: item.total,
+                variation: item.variation,
+                productType: 'ECOMMERCE',
+                fulfillmentType: 'COURIER_SHIPPING',
+                ownerType: 'PLATFORM',
+            })),
+            totalAmount: (alertItems || []).reduce((sum: number, item: any) => sum + (item.total || 0), 0),
+            hasQcItems: false,
+            hasEcomItems: true,
+            requiresLocalDelivery: false,
+            fulfillmentType: 'COURIER_SHIPPING',
+            ownerType: 'PLATFORM',
+        };
+        if (io) io.to('admin').emit('admin-notification', payload);
+
+        const Admin = (await import('../models/Admin')).default;
+        const admins = await Admin.find().select('_id').lean();
+        const title = kind === 'NEW_COURIER_ORDER' ? 'New Courier Order' : 'Courier Booking Failed';
+        for (const admin of admins as any[]) {
+            const scopedEventId = `${eventId}:${admin._id}`;
+            sendNotification('Admin', String(admin._id), title, message, {
+                type: 'Order',
+                link: `/admin/orders/${order._id}`,
+                priority: 'High',
+                eventId: scopedEventId,
+                data: { orderId: String(order._id), orderNumber: order.orderNumber, role: 'admin', panel: 'admin', type: kind, eventId: scopedEventId },
+            }).catch((err: any) => console.error(`❌ [Admin courier alert] ${admin._id}:`, err?.message));
+        }
+        console.log(`📤 [Admin courier alert] ${kind} for order ${order.orderNumber}`);
+    } catch (error: any) {
+        console.error('Error in notifyAdminsOfCourierEvent:', error?.message || error);
     }
 }

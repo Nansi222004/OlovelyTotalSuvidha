@@ -76,12 +76,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, []);
 
   const enqueueNotification = useCallback((notification: AdminOrderAlertNotification) => {
-    if (
+    const isInfoAlert = notification.type === 'NEW_COURIER_ORDER' || notification.type === 'COURIER_BOOKING_FAILED';
+    if (!isInfoAlert && (
       notification.type !== 'NEW_ORDER' ||
       notification.ownerType !== 'PLATFORM' ||
       notification.items.length === 0 ||
       notification.items.some((item) => item.ownerType !== 'PLATFORM' || item.productType !== 'QUICK_COMMERCE')
-    ) return;
+    )) return;
     clearDismissedOrderId(notification.orderId);
 
     setActiveNotification((current) => {

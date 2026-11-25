@@ -337,11 +337,16 @@ export class ShiprocketProvider implements IThirdPartyCommerceProvider {
     const remoteName = String(remotePickup?.pickup_location || '').trim();
     const protectedName = ['home', 'primary', 'default', 'admin', 'admin warehouse', 'main warehouse']
       .includes(remoteName.toLowerCase());
+    const isPrimary =
+      remotePickup?.is_primary === true || remotePickup?.is_primary === 1 ||
+      remotePickup?.is_primary_location === true || remotePickup?.is_primary_location === 1;
+    // Vendors must never ship from the account's PRIMARY (platform) address. The platform store
+    // itself may: its own verified OLOVELY-<id> warehouse is often the primary address.
+    const primaryAllowed = pickupDetails!.isPlatformPickup === true;
     if (
       !remotePickup ||
       remoteName !== pickupDetails!.pickupLocationName ||
-      remotePickup.is_primary === true || remotePickup.is_primary === 1 ||
-      remotePickup.is_primary_location === true || remotePickup.is_primary_location === 1 ||
+      (isPrimary && !primaryAllowed) ||
       protectedName
     ) {
       throw new Error('Package validation failed: stored seller pickup ID did not resolve to the verified vendor pickup location');

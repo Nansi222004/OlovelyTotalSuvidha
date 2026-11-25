@@ -6,7 +6,10 @@ import { getSocketBaseURL } from '../../../services/api/config';
 export const ADMIN_SUPPORT_BROWSER_EVENT = 'olovely:admin-support-event';
 
 export interface AdminOrderAlertNotification {
-  type: 'NEW_ORDER' | 'STATUS_UPDATE';
+  /** NEW_ORDER = Platform QC (Accept/Reject). NEW_COURIER_ORDER / COURIER_BOOKING_FAILED = information only. */
+  type: 'NEW_ORDER' | 'STATUS_UPDATE' | 'NEW_COURIER_ORDER' | 'COURIER_BOOKING_FAILED';
+  /** Extra text for information alerts (e.g. the courier error). */
+  message?: string;
   orderId: string;
   orderNumber: string;
   status: string;

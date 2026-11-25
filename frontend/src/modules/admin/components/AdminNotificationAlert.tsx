@@ -94,7 +94,7 @@ const AdminNotificationAlert: React.FC<AdminNotificationAlertProps> = ({
       <audio ref={audioRef} src="/assets/sound/seller_alert.mp3" preload="auto" />
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-300">
         {/* Header */}
-        <div className={`px-6 py-4 flex items-center justify-between ${notification.type === 'NEW_ORDER' ? 'bg-emerald-700' : 'bg-blue-700'} text-white`}>
+        <div className={`px-6 py-4 flex items-center justify-between ${notification.type === 'NEW_ORDER' ? 'bg-emerald-700' : notification.type === 'COURIER_BOOKING_FAILED' ? 'bg-red-600' : 'bg-blue-700'} text-white`}>
           <div className="flex items-center gap-3">
             <div className="bg-white bg-opacity-20 p-2 rounded-full">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +105,13 @@ const AdminNotificationAlert: React.FC<AdminNotificationAlertProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold">
-                  {notification.type === 'NEW_ORDER' ? 'New Order Received!' : 'Platform Order Updated'}
+                  {notification.type === 'NEW_ORDER'
+                    ? 'New Order Received!'
+                    : notification.type === 'NEW_COURIER_ORDER'
+                      ? 'New Courier Order (Ecommerce)'
+                      : notification.type === 'COURIER_BOOKING_FAILED'
+                        ? 'Courier Booking Failed'
+                        : 'Platform Order Updated'}
                 </h2>
                 <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-amber-400 text-amber-950 rounded">
                   Admin Action
@@ -127,6 +133,11 @@ const AdminNotificationAlert: React.FC<AdminNotificationAlertProps> = ({
 
         {/* Content */}
         <div className="p-6 max-h-[70vh] overflow-y-auto">
+          {notification.message && (
+            <div className={`mb-4 rounded-lg p-3 text-sm font-medium ${notification.type === 'COURIER_BOOKING_FAILED' ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+              {notification.message}
+            </div>
+          )}
           {/* Volume Control */}
           <div className="mb-6 bg-neutral-50 p-3 rounded-lg flex items-center gap-4">
             <span className="text-neutral-500">
@@ -268,12 +279,20 @@ const AdminNotificationAlert: React.FC<AdminNotificationAlertProps> = ({
               </button>
             </div>
           ) : (
-            <button
-              onClick={onClose}
-              className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 bg-blue-600 hover:bg-blue-700"
-            >
-              Acknowledge & Dismiss
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => { onClose(); navigate(`/admin/orders/${notification.orderId}`); }}
+                className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 bg-emerald-700 hover:bg-emerald-800"
+              >
+                View Order
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 bg-blue-600 hover:bg-blue-700"
+              >
+                Acknowledge & Dismiss
+              </button>
+            </div>
           )}
         </div>
       </div>

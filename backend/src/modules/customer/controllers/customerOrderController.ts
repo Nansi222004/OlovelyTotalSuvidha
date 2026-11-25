@@ -1297,6 +1297,11 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
           await createEcommerceShipment(newOrder._id.toString(), ecomGroup.groupId);
         } catch (shipErr) {
           console.error(`Error creating ecommerce shipment for group ${ecomGroup.groupId} on order placement:`, shipErr);
+          try {
+            const { notifyAdminsOfCourierEvent } = await import("../../../services/sellerNotificationService");
+            await notifyAdminsOfCourierEvent((req.app as any).get("io"), newOrder, "COURIER_BOOKING_FAILED",
+              `Courier booking failed for order #${newOrder.orderNumber}: ${(shipErr as any)?.message || shipErr}. Fix it, then retry the shipment from the order page.`);
+          } catch { /* alert is best-effort */ }
         }
       }
     }

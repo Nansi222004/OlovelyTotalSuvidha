@@ -401,6 +401,11 @@ export const capturePayment = async (
                             await createEcommerceShipment(order._id.toString(), group.groupId);
                         } catch (shipErr) {
                             console.error('Failed to create ecommerce shipment after payment capture:', shipErr);
+                            try {
+                                const { notifyAdminsOfCourierEvent } = await import('./sellerNotificationService');
+                                await notifyAdminsOfCourierEvent(io, order, 'COURIER_BOOKING_FAILED',
+                                    `Courier booking failed for order #${order.orderNumber}: ${(shipErr as any)?.message || shipErr}. Fix it, then retry the shipment from the order page.`);
+                            } catch { /* alert is best-effort */ }
                         }
                     }
                 }
@@ -832,6 +837,11 @@ export const handlePaymentCaptured = async (payload: any, io?: any) => {
                             await createEcommerceShipment(order._id.toString(), group.groupId);
                         } catch (shipErr) {
                             console.error('Failed to create ecommerce shipment after webhook payment capture:', shipErr);
+                            try {
+                                const { notifyAdminsOfCourierEvent } = await import('./sellerNotificationService');
+                                await notifyAdminsOfCourierEvent(io, order, 'COURIER_BOOKING_FAILED',
+                                    `Courier booking failed for order #${order.orderNumber}: ${(shipErr as any)?.message || shipErr}. Fix it, then retry the shipment from the order page.`);
+                            } catch { /* alert is best-effort */ }
                         }
                     }
                 }

@@ -95,6 +95,14 @@ export function getActiveSellerShiprocketPickupName(
  * Single provider-agnostic boundary for every forward Ecommerce shipment.
  * Normal orders and post-QC exchange replacements both pass through here.
  */
+/** Platform (admin) store, same rules as utils/inventoryHelper.resolveInventoryOwner. */
+const isPlatformSellerDoc = (seller: any): boolean =>
+  seller?.isPlatform === true ||
+  seller?.category === 'Admin' ||
+  seller?.email === 'admin-store@olovely.com' ||
+  seller?.sellerName === 'Olovely Admin' ||
+  seller?.storeName === 'Olovely Admin Store';
+
 export async function dispatchForwardEcommerceShipment(
   request: Omit<ShipmentRequest, 'pickupDetails'>,
   seller: Pick<ISeller, '_id' | 'vendorType' | 'storeName' | 'shippingConfig'> | null,
@@ -120,6 +128,7 @@ export async function dispatchForwardEcommerceShipment(
         ? String(seller.shippingConfig.shiprocketPickupLocationId)
         : undefined,
       pickupLocationName,
+      isPlatformPickup: isPlatformSellerDoc(seller),
     },
   };
 
@@ -207,7 +216,7 @@ export async function createEcommerceShipment(
   }));
 
   const seller = group.seller
-    ? await Seller.findById(group.seller).select('storeName address vendorType shippingConfig')
+    ? await Seller.findById(group.seller).select('storeName address vendorType shippingConfig isPlatform category email sellerName')
     : null;
 
   // Strict pre-dispatch validation (Section 9)
