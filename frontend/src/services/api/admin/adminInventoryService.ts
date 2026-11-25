@@ -261,6 +261,10 @@ export interface PosUpiQrStatus {
   paid: boolean;
   paymentId?: string;
   amountPaid: number;
+  /** Server also returns these. */
+  isPos?: boolean;
+  fixedAmount?: number;
+  capturedPayments?: number;
 }
 
 /** Creates a single-use Razorpay UPI QR for exactly `amount` rupees. */

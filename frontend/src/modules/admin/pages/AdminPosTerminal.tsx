@@ -170,6 +170,11 @@ export default function AdminPosTerminal() {
   // UPI via Razorpay QR: the QR on screen, and the captured payment once Razorpay reports it.
   const [upiQr, setUpiQr] = useState<PosUpiQr | null>(null);
   const [upiPaid, setUpiPaid] = useState<{ paymentId: string; amountPaid: number } | null>(null);
+  // Last error from the automatic payment check (shown on screen instead of being swallowed).
+  const [upiCheckError, setUpiCheckError] = useState<string>("");
+  const [upiChecking, setUpiChecking] = useState(false);
+  const [showRecoverQr, setShowRecoverQr] = useState(false);
+  const [recoverQrId, setRecoverQrId] = useState("");
   const [upiLoading, setUpiLoading] = useState(false);
   const upiAutoCheckoutRef = useRef<string | null>(null);
   const [tenderAmount, setTenderAmount] = useState<string>("");
@@ -613,6 +618,7 @@ export default function AdminPosTerminal() {
   const resetUpi = () => {
     setUpiQr(null);
     setUpiPaid(null);
+    setUpiCheckError("");
     upiAutoCheckoutRef.current = null;
   };
 
@@ -660,6 +666,7 @@ export default function AdminPosTerminal() {
       try {
         const status = await getPosUpiQrStatus(upiQr.qrCodeId);
         if (stopped) return;
+        setUpiCheckError("");
         if (status.paid && status.paymentId) {
           sounds.success();
           setUpiPaid({ paymentId: status.paymentId, amountPaid: status.amountPaid });
@@ -667,8 +674,14 @@ export default function AdminPosTerminal() {
           resetUpi();
           showAlert("The UPI QR expired before payment. Show a new QR.", "info");
         }
-      } catch {
-        // Temporary network/Razorpay issue: keep polling.
+      } catch (error: any) {
+        // Keep polling (often a temporary network/Razorpay issue) but show why it is not confirming.
+        if (!stopped) {
+          const msg = error?.response?.data?.message || error?.message || "Network error";
+          const code = error?.response?.status ? ` (HTTP ${error.response.status})` : "";
+          setUpiCheckError(`${msg}${code}`);
+          console.error("[POS UPI] payment check failed:", error);
+        }
       }
     };
     const timer = setInterval(check, 3000);
@@ -678,6 +691,62 @@ export default function AdminPosTerminal() {
       clearInterval(timer);
     };
   }, [upiQr?.qrCodeId, upiPaid]);
+
+  // Manual "Check payment now": same check as the automatic one, with a visible result.
+  const checkUpiPaymentNow = async () => {
+    if (!upiQr || upiPaid) return;
+    setUpiChecking(true);
+    try {
+      const status = await getPosUpiQrStatus(upiQr.qrCodeId);
+      setUpiCheckError("");
+      if (status.paid && status.paymentId) {
+        sounds.success();
+        setUpiPaid({ paymentId: status.paymentId, amountPaid: status.amountPaid });
+      } else {
+        showAlert(`Payment not received yet (QR status: ${status.qrStatus || "active"}).`, "info");
+      }
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || error?.message || "Network error";
+      setUpiCheckError(`${msg}${error?.response?.status ? ` (HTTP ${error.response.status})` : ""}`);
+    } finally {
+      setUpiChecking(false);
+    }
+  };
+
+  /**
+   * Recovery: the customer already paid a POS QR but the sale was not completed (page closed,
+   * refreshed, or the check failed). Re-attach that paid QR to the current bill; the normal
+   * checkout then runs. The server still checks it is a POS QR, captured, unused and the exact amount.
+   */
+  const recoverPaidUpiQr = async () => {
+    const id = recoverQrId.trim();
+    if (!/^qr_[A-Za-z0-9]+$/.test(id)) {
+      showAlert("Enter the QR ID from Razorpay (starts with qr_).", "error");
+      return;
+    }
+    if (cart.length === 0) {
+      showAlert("Add the same items to the bill first.", "error");
+      return;
+    }
+    setUpiChecking(true);
+    try {
+      const status = await getPosUpiQrStatus(id);
+      if (!status.isPos) throw new Error("This QR was not created by the POS.");
+      if (!status.paid || !status.paymentId) throw new Error("This QR has no captured payment.");
+      if (Math.round(status.amountPaid * 100) !== Math.round(calculations.netPayable * 100)) {
+        throw new Error(`Paid ₹${status.amountPaid} but the bill is ₹${calculations.netPayable}. Make the bill the same amount.`);
+      }
+      setUpiCheckError("");
+      setUpiQr({ qrCodeId: id, imageUrl: "", amount: status.amountPaid, closeBy: new Date().toISOString() });
+      setUpiPaid({ paymentId: status.paymentId, amountPaid: status.amountPaid });
+      setShowRecoverQr(false);
+      setRecoverQrId("");
+    } catch (error: any) {
+      showAlert(error?.response?.data?.message || error?.message || "Could not use this QR", "error");
+    } finally {
+      setUpiChecking(false);
+    }
+  };
 
   // The QR is for a fixed amount: if the bill changes (or another method is chosen) before
   // payment, cancel it so the customer cannot pay a stale amount.
@@ -1381,6 +1450,31 @@ export default function AdminPosTerminal() {
                     >
                       {upiLoading ? "Creating QR..." : `Show UPI QR for ₹${calculations.netPayable.toLocaleString()}`}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRecoverQr((v) => !v)}
+                      className="text-[11px] font-semibold text-indigo-700 hover:underline"
+                    >
+                      Customer already paid but the sale did not complete?
+                    </button>
+                    {showRecoverQr && (
+                      <div className="flex gap-2">
+                        <input
+                          value={recoverQrId}
+                          onChange={(e) => setRecoverQrId(e.target.value)}
+                          placeholder="Paid QR ID from Razorpay, e.g. qr_U4Nl..."
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-indigo-200 text-xs font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={recoverPaidUpiQr}
+                          disabled={upiChecking}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-60"
+                        >
+                          {upiChecking ? "Checking…" : "Use paid QR"}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -1400,6 +1494,19 @@ export default function AdminPosTerminal() {
                       <span className="inline-block w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></span>
                       Waiting for payment… the sale completes automatically.
                     </p>
+                    {upiCheckError && (
+                      <p className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
+                        Can't confirm the payment: {upiCheckError}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={checkUpiPaymentNow}
+                      disabled={upiChecking}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-60"
+                    >
+                      {upiChecking ? "Checking…" : "Customer paid? Check payment now"}
+                    </button>
                     <p className="text-[11px] font-semibold text-slate-600">
                       🔒 Cart, discount and customer are locked until the QR is paid or cancelled.
                     </p>
