@@ -9,7 +9,8 @@ import { removeAuthToken } from "../../../services/api/config";
 import { uploadDocument } from "../../../services/api/uploadService";
 import { validateDocumentFile, compressImage } from "../../../utils/imageUpload";
 import OTPInput from "../../../components/OTPInput";
-import TypeableDateInput from "../../../components/TypeableDateInput";
+import DateOfBirthSelect from "../../../components/DateOfBirthSelect";
+import GoogleMapsAutocomplete from "../../../components/GoogleMapsAutocomplete";
 import deliveryLogo from "@assets/delivery_logo.jpg";
 
 export default function DeliverySignUp() {
@@ -61,6 +62,11 @@ export default function DeliverySignUp() {
         ...prev,
         [name]: value.replace(/\D/g, "").slice(0, 10),
       }));
+    } else if (name === "pincode") {
+      setFormData((prev) => ({
+        ...prev,
+        pincode: value.replace(/\D/g, "").slice(0, 6),
+      }));
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -69,12 +75,31 @@ export default function DeliverySignUp() {
     }
   };
 
-  const fetchCityFromLocation = () => {
+  // Fills address, city and pincode from a map search selection (all stay editable)
+  const handleAddressSelected = (
+    address: string,
+    lat: number,
+    _lng: number,
+    _placeName: string,
+    components?: { city?: string; pincode?: string }
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      address,
+      // Only overwrite city/pincode when a real place was picked (lat != 0)
+      city: lat && components?.city ? components.city : prev.city,
+      pincode: lat && components?.pincode ? components.pincode : prev.pincode,
+    }));
+  };
+
+  // Uses GPS + reverse geocoding to fill address, city and pincode
+  const fetchCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setError("Geolocation is not supported by your browser");
+      setError("Location is not supported on this device. Please enter your address manually.");
       return;
     }
 
+    setError("");
     setIsCityLoading(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -86,39 +111,53 @@ export default function DeliverySignUp() {
               `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`
             );
             const data = await response.json();
-            if (data.status === "OK") {
-              const addressComponents = data.results[0].address_components;
-              const cityComponent = addressComponents.find((c: any) =>
-                c.types.includes("locality") || c.types.includes("administrative_area_level_2")
-              );
-              if (cityComponent) {
-                setFormData((prev) => ({ ...prev, city: cityComponent.long_name }));
-                return;
-              }
+            if (data.status === "OK" && data.results?.length) {
+              const result = data.results[0];
+              const comps: any[] = result.address_components || [];
+              const find = (...types: string[]) =>
+                comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name || "";
+              const city =
+                find("locality") || find("administrative_area_level_3") || find("administrative_area_level_2");
+              const pincode = find("postal_code");
+              // Strip Google Plus Codes like "7JWV+3C," from the start
+              const address = String(result.formatted_address || "")
+                .replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3},?\s*/i, "")
+                .trim();
+              setFormData((prev) => ({
+                ...prev,
+                address: address || prev.address,
+                city: city || prev.city,
+                pincode: pincode || prev.pincode,
+              }));
+              return;
             }
           }
 
           // OpenStreetMap Nominatim fallback
           const osmRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1&accept-language=en`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=en`
           );
           if (osmRes.ok) {
             const osmData = await osmRes.json();
-            const city = osmData.address?.city || osmData.address?.town || osmData.address?.state_district || osmData.address?.county || '';
-            if (city) {
-              setFormData((prev) => ({ ...prev, city }));
-              return;
-            }
+            const a = osmData.address || {};
+            const city = a.city || a.town || a.village || a.state_district || a.county || "";
+            setFormData((prev) => ({
+              ...prev,
+              address: osmData.display_name || prev.address,
+              city: city || prev.city,
+              pincode: a.postcode ? String(a.postcode).replace(/\D/g, "").slice(0, 6) : prev.pincode,
+            }));
+            if (osmData.display_name) return;
           }
-          setError("Could not fetch city automatically. Please enter your city manually.");
+          setError("Could not fetch your address automatically. Please enter it manually.");
         } catch (err) {
-          setError("Please enter your city manually.");
+          setError("Could not fetch your address automatically. Please enter it manually.");
         } finally {
           setIsCityLoading(false);
         }
       },
-      (err) => {
-        setError("Location access denied. Please type your city manually.");
+      () => {
+        setError("Location access denied. Please allow location or enter your address manually.");
         setIsCityLoading(false);
       },
       {
@@ -165,6 +204,11 @@ export default function DeliverySignUp() {
 
     if (formData.mobile.length !== 10) {
       setError("Please enter a valid 10-digit mobile number");
+      return;
+    }
+
+    if (formData.pincode && formData.pincode.length !== 6) {
+      setError("Please enter a valid 6-digit pincode");
       return;
     }
 
@@ -384,79 +428,82 @@ export default function DeliverySignUp() {
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Date of Birth
                   </label>
-                  <TypeableDateInput
-                    name="dateOfBirth"
+                  <DateOfBirthSelect
                     value={formData.dateOfBirth}
                     onChange={(iso) => setFormData((prev) => ({ ...prev, dateOfBirth: iso }))}
-                    max={new Date().toISOString().slice(0, 10)}
-                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                     disabled={loading}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Address <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="address"
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-neutral-700">
+                      Address <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={fetchCurrentLocation}
+                      disabled={isCityLoading || loading}
+                      className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 disabled:text-neutral-400"
+                    >
+                      {isCityLoading ? (
+                        <div className="w-3.5 h-3.5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                          <circle cx="12" cy="12" r="8" />
+                        </svg>
+                      )}
+                      {isCityLoading ? "Fetching location..." : "Use current location"}
+                    </button>
+                  </div>
+                  <GoogleMapsAutocomplete
                     value={formData.address}
-                    onChange={handleInputChange}
-                    placeholder="Enter your address"
+                    onChange={handleAddressSelected}
+                    placeholder="Search your area or type full address"
+                    className="!px-3 !py-2.5 text-sm focus:!border-teal-500 focus:ring-2 focus:ring-teal-200"
+                    disabled={loading || isCityLoading}
                     required
-                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                    disabled={loading}
                   />
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Pick from suggestions or use current location to auto-fill city &amp; pincode. You can also type manually.
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    City <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      City <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       name="city"
                       value={formData.city}
                       onChange={handleInputChange}
-                      placeholder="Enter your city"
+                      placeholder="City"
                       required
                       className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                       disabled={loading || isCityLoading}
                     />
-                    <button
-                      type="button"
-                      onClick={fetchCityFromLocation}
-                      disabled={isCityLoading || loading}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-teal-600 hover:bg-teal-50 rounded-md transition-colors disabled:text-neutral-400"
-                      title="Fetch current location"
-                    >
-                      {isCityLoading ? (
-                        <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                          <circle cx="12" cy="10" r="3" />
-                        </svg>
-                      )}
-                    </button>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Pincode
-                  </label>
-                  <input
-                    type="text"
-                    name="pincode"
-                    value={formData.pincode}
-                    onChange={handleInputChange}
-                    placeholder="Enter pincode"
-                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                    disabled={loading}
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleInputChange}
+                      placeholder="6-digit pincode"
+                      maxLength={6}
+                      className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+                      disabled={loading || isCityLoading}
+                    />
+                  </div>
                 </div>
               </div>
 

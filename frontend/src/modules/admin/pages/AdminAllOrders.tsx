@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import {
   getAllOrders,
   type Order,
+  type GetOrdersParams,
+  type OrderListStats,
 } from "../../../services/api/admin/adminOrderService";
+import { getSellers, type Seller } from "../../../services/api/admin/adminProductService";
 import { useAuth } from "../../../context/AuthContext";
 
 type SortField =
@@ -20,8 +23,16 @@ type SortDirection = "asc" | "desc";
 export default function AdminAllOrders() {
   const { isAuthenticated, token } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [dateRange, setDateRange] = useState("");
-  const [seller, setSeller] = useState("All Sellers");
+  const [dateFrom, setDateFrom] = useState(""); // YYYY-MM-DD
+  const [dateTo, setDateTo] = useState(""); // YYYY-MM-DD
+  const [datePreset, setDatePreset] = useState("all");
+  const [seller, setSeller] = useState("all");
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [channel, setChannel] = useState<"all" | "online" | "offline">("all");
+  const [serverStats, setServerStats] = useState<OrderListStats | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [status, setStatus] = useState("All Status");
   const [entriesPerPage, setEntriesPerPage] = useState("10");
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,7 +43,73 @@ export default function AdminAllOrders() {
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Fetch orders on component mount
+  // Load seller list for the seller filter
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    getSellers()
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) setSellers(res.data);
+      })
+      .catch((err) => console.error("Error fetching sellers:", err));
+  }, [isAuthenticated, token]);
+
+  // Filters shared by the table and the CSV export
+  const buildFilterParams = (): GetOrdersParams => {
+    const params: GetOrdersParams = {};
+    if (status !== "All Status") params.status = status;
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (seller !== "all") params.seller = seller;
+    if (channel !== "all") params.channel = channel;
+    // Send full local-day boundaries so the selected end date is included (IST safe)
+    if (dateFrom) params.dateFrom = new Date(`${dateFrom}T00:00:00`).toISOString();
+    if (dateTo) params.dateTo = new Date(`${dateTo}T23:59:59.999`).toISOString();
+    return params;
+  };
+
+  const applyDatePreset = (preset: string) => {
+    setDatePreset(preset);
+    setCurrentPage(1);
+    const now = new Date();
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    switch (preset) {
+      case "today":
+        setDateFrom(fmt(now));
+        setDateTo(fmt(now));
+        break;
+      case "last7": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 6);
+        setDateFrom(fmt(from));
+        setDateTo(fmt(now));
+        break;
+      }
+      case "thisMonth":
+        setDateFrom(fmt(new Date(now.getFullYear(), now.getMonth(), 1)));
+        setDateTo(fmt(now));
+        break;
+      case "lastMonth":
+        setDateFrom(fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+        setDateTo(fmt(new Date(now.getFullYear(), now.getMonth(), 0)));
+        break;
+      case "last30": {
+        const from = new Date(now);
+        from.setDate(now.getDate() - 29);
+        setDateFrom(fmt(from));
+        setDateTo(fmt(now));
+        break;
+      }
+      case "all":
+        setDateFrom("");
+        setDateTo("");
+        break;
+      default:
+        // "custom" keeps the dates the user picked
+        break;
+    }
+  };
+
+  // Fetch orders whenever filters / page change
   useEffect(() => {
     if (!isAuthenticated || !token) {
       setLoading(false);
@@ -44,37 +121,19 @@ export default function AdminAllOrders() {
         setLoading(true);
         setError(null);
 
-        const params: any = {
+        const response = await getAllOrders({
+          ...buildFilterParams(),
           page: currentPage,
           limit: parseInt(entriesPerPage),
-        };
-
-        if (status !== "All Status" && status !== "Payment Pending") {
-          params.status = status;
-        }
-
-        if (searchQuery) {
-          params.search = searchQuery;
-        }
-
-        // Parse date range if provided
-        if (dateRange && dateRange.includes(" - ")) {
-          const [dateFrom, dateTo] = dateRange.split(" - ").map((d) => {
-            const parts = d.trim().split("/");
-            if (parts.length === 3) {
-              return `${parts[2]}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
-            }
-            return d.trim();
-          });
-          params.dateFrom = dateFrom;
-          params.dateTo = dateTo;
-        }
-
-        const response = await getAllOrders(params);
+        });
         if (response.success && Array.isArray(response.data)) {
           setOrders(response.data);
+          setTotalCount(response.pagination?.total ?? response.data.length);
+          setServerStats(response.stats ?? null);
         } else {
           setOrders([]);
+          setTotalCount(0);
+          setServerStats(null);
         }
       } catch (err: any) {
         console.error("Error fetching orders:", err);
@@ -95,11 +154,28 @@ export default function AdminAllOrders() {
     entriesPerPage,
     status,
     searchQuery,
-    dateRange,
+    dateFrom,
+    dateTo,
+    seller,
+    channel,
+    refreshKey,
   ]);
 
   const handleClearDate = () => {
-    setDateRange("");
+    applyDatePreset("all");
+  };
+
+  const hasActiveFilters =
+    !!searchQuery || !!dateFrom || !!dateTo || status !== "All Status" || seller !== "all" || channel !== "all";
+
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setDatePreset("all");
+    setStatus("All Status");
+    setSeller("all");
+    setChannel("all");
     setCurrentPage(1);
   };
 
@@ -120,45 +196,91 @@ export default function AdminAllOrders() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleExport = () => {
-    const headers = [
-      "Order ID",
-      "Customer Name",
-      "Phone",
-      "Address",
-      "Order Date",
-      "Status",
-      "Delivery Status",
-      "Total Amount",
-    ];
-    const csvContent = [
-      headers.join(","),
-      ...filteredAndSortedOrders.map((order) =>
-        [
-          `"${order.orderNumber || ""}"`,
-          `"${order.customerName || (typeof order.customer === 'object' ? order.customer?.name : '') || ""}"`,
-          `"${order.customerPhone || (typeof order.customer === 'object' ? order.customer?.phone : '') || ""}"`,
-          `"${(order.deliveryAddress?.address || '').replace(/"/g, '""')}"`,
-          `"${order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-IN') : ''}"`,
-          `"${order.status || ""}"`,
-          `"${((order as any).isPosOrder || String(order.orderNumber || '').startsWith('POS-')) ? 'In-Store (POS)' : order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || "Not Assigned")}"`,
-          `"${order.total?.toFixed(2) || "0.00"}"`,
-        ].join(",")
-      ),
-    ].join("\n");
+  const isPosOrder = (order: Order) =>
+    Boolean((order as any).isPosOrder) || String(order.orderNumber || "").startsWith("POS-");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `all_orders_${new Date().toISOString().split("T")[0]}.csv`
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Exports ALL orders matching the current filters (not just the visible page)
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const response = await getAllOrders({ ...buildFilterParams(), page: 1, limit: 10000 });
+      const exportRows: Order[] = response.success && Array.isArray(response.data) ? response.data : [];
+
+      if (exportRows.length === 0) {
+        alert("No orders found for the selected filters.");
+        return;
+      }
+
+      const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const headers = [
+        "Order ID",
+        "Channel",
+        "Customer Name",
+        "Phone",
+        "Address",
+        "Order Date",
+        "Payment Method",
+        "Payment Status",
+        "Order Status",
+        "Delivery Status",
+        "Sellers",
+        "Total Amount",
+      ];
+
+      const rows = exportRows.map((order) => {
+        const pos = isPosOrder(order);
+        const sellerNames = Array.from(
+          new Set(
+            ((order.items as any[]) || [])
+              .map((it) => (typeof it?.seller === "object" ? it.seller?.storeName || it.seller?.sellerName : ""))
+              .filter(Boolean)
+          )
+        ).join(" | ");
+        return [
+          order.orderNumber,
+          pos ? "Offline (POS)" : "Online",
+          order.customerName || (typeof order.customer === "object" ? order.customer?.name : ""),
+          order.customerPhone || (typeof order.customer === "object" ? order.customer?.phone : ""),
+          order.deliveryAddress?.address,
+          order.orderDate ? new Date(order.orderDate).toLocaleDateString("en-IN") : "",
+          order.paymentMethod || "COD",
+          order.paymentStatus || "Pending",
+          order.status,
+          pos ? "In-Store (POS)" : order.deliveryPreference === "Self" ? "Self Assigned" : order.deliveryBoyStatus || "Not Assigned",
+          sellerNames,
+          order.total?.toFixed(2) || "0.00",
+        ]
+          .map(esc)
+          .join(",");
+      });
+
+      const grandTotal = exportRows.reduce((sum, o) => sum + (o.total || 0), 0);
+      rows.push(["", "", "", "", "", "", "", "", "", "", "TOTAL", grandTotal.toFixed(2)].map(esc).join(","));
+
+      // BOM so Excel shows ₹ / Hindi text correctly
+      const csvContent = "﻿" + [headers.join(","), ...rows].join("\n");
+
+      const nameParts = ["orders"];
+      if (channel !== "all") nameParts.push(channel);
+      if (dateFrom || dateTo) nameParts.push(`${dateFrom || "start"}_to_${dateTo || "today"}`);
+      else nameParts.push(new Date().toISOString().split("T")[0]);
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${nameParts.join("_")}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Export failed:", err);
+      alert(err.response?.data?.message || "Failed to export orders. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const filteredAndSortedOrders = useMemo(() => {
@@ -221,18 +343,22 @@ export default function AdminAllOrders() {
   }, [orders, sortField, sortDirection]);
 
   // Statistics calculation
+  // Stats come from the server and cover ALL orders matching the filters
   const stats = useMemo(() => {
-    const totalCount = orders.length;
-    const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-    const deliveredCount = orders.filter(o => o.status === 'Delivered').length;
-    const inProgressCount = orders.filter(o => ['Received', 'Processed', 'Shipped', 'Out for Delivery', 'Pending'].includes(o.status)).length;
-    return { totalCount, totalRevenue, deliveredCount, inProgressCount };
-  }, [orders]);
+    if (serverStats) return serverStats;
+    return {
+      totalCount,
+      totalRevenue: orders.reduce((sum, o) => sum + (o.total || 0), 0),
+      deliveredCount: orders.filter(o => o.status === 'Delivered').length,
+      inProgressCount: orders.filter(o => ['Received', 'Processed', 'Shipped', 'Out for Delivery', 'Pending'].includes(o.status)).length,
+    };
+  }, [serverStats, orders, totalCount]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredAndSortedOrders.length / parseInt(entriesPerPage)));
+  // Pagination is done by the server; the current page is already in `orders`
+  const totalPages = Math.max(1, Math.ceil(totalCount / parseInt(entriesPerPage)));
   const startIndex = (currentPage - 1) * parseInt(entriesPerPage);
-  const endIndex = startIndex + parseInt(entriesPerPage);
-  const paginatedOrders = filteredAndSortedOrders.slice(startIndex, endIndex);
+  const endIndex = startIndex + filteredAndSortedOrders.length;
+  const paginatedOrders = filteredAndSortedOrders;
 
   const handlePreviousPage = () => {
     setCurrentPage((prev) => Math.max(1, prev - 1));
@@ -301,13 +427,7 @@ export default function AdminAllOrders() {
           </Link>
 
           <button
-            onClick={() => {
-              setCurrentPage(1);
-              setLoading(true);
-              getAllOrders({ page: 1, limit: parseInt(entriesPerPage) })
-                .then(res => { if (res.success) setOrders(res.data); })
-                .finally(() => setLoading(false));
-            }}
+            onClick={() => setRefreshKey((k) => k + 1)}
             className="px-3.5 py-2 text-xs font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200/80 rounded-xl transition-all flex items-center gap-1.5"
             title="Refresh list"
           >
@@ -319,12 +439,14 @@ export default function AdminAllOrders() {
 
           <button
             onClick={handleExport}
-            className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2"
+            disabled={exporting}
+            title="Exports all orders matching the current filters"
+            className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export CSV
+            {exporting ? "Exporting..." : "Export CSV"}
           </button>
         </div>
       </div>
@@ -403,22 +525,49 @@ export default function AdminAllOrders() {
 
           {/* Filter Group */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Date Range Input */}
-            <div className="flex items-center gap-2 bg-white border border-neutral-300/80 rounded-xl px-3 py-1.5 text-xs">
-              <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+            {/* Date Preset */}
+            <select
+              value={datePreset}
+              onChange={(e) => applyDatePreset(e.target.value)}
+              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer font-medium"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="last7">Last 7 Days</option>
+              <option value="last30">Last 30 Days</option>
+              <option value="thisMonth">This Month</option>
+              <option value="lastMonth">Last Month</option>
+              <option value="custom">Custom Range</option>
+            </select>
+
+            {/* Date Range Pickers */}
+            <div className="flex items-center gap-1.5 bg-white border border-neutral-300/80 rounded-xl px-3 py-1.5 text-xs">
               <input
-                type="text"
-                value={dateRange}
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
                 onChange={(e) => {
-                  setDateRange(e.target.value);
+                  setDateFrom(e.target.value);
+                  setDatePreset("custom");
                   setCurrentPage(1);
                 }}
-                className="w-40 text-neutral-700 bg-transparent focus:outline-none placeholder:text-neutral-400"
-                placeholder="MM/DD/YYYY - MM/DD/YYYY"
+                className="text-neutral-700 bg-transparent focus:outline-none"
+                title="From date"
               />
-              {dateRange && (
+              <span className="text-neutral-400">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setDatePreset("custom");
+                  setCurrentPage(1);
+                }}
+                className="text-neutral-700 bg-transparent focus:outline-none"
+                title="To date"
+              />
+              {(dateFrom || dateTo) && (
                 <button
                   onClick={handleClearDate}
                   className="text-xs text-red-600 hover:underline font-medium"
@@ -428,6 +577,20 @@ export default function AdminAllOrders() {
               )}
             </div>
 
+            {/* Channel Filter: Online vs Offline (POS) */}
+            <select
+              value={channel}
+              onChange={(e) => {
+                setChannel(e.target.value as "all" | "online" | "offline");
+                setCurrentPage(1);
+              }}
+              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer font-medium"
+            >
+              <option value="all">Online + Offline</option>
+              <option value="online">Online Orders</option>
+              <option value="offline">Offline (POS) Orders</option>
+            </select>
+
             {/* Seller Filter */}
             <select
               value={seller}
@@ -435,9 +598,14 @@ export default function AdminAllOrders() {
                 setSeller(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+              className="px-3 py-2 text-xs bg-white border border-neutral-300/80 rounded-xl text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer max-w-[180px]"
             >
-              <option value="All Sellers">All Sellers</option>
+              <option value="all">All Sellers</option>
+              {sellers.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.storeName || s.sellerName}
+                </option>
+              ))}
             </select>
 
             {/* Status Filter */}
@@ -585,9 +753,9 @@ export default function AdminAllOrders() {
                       <span className="text-4xl">📦</span>
                       <p className="text-base font-semibold text-neutral-700">No Orders Found</p>
                       <p className="text-xs text-neutral-500">No orders match your active filter parameters.</p>
-                      {(searchQuery || dateRange || status !== 'All Status') && (
+                      {hasActiveFilters && (
                         <button
-                          onClick={() => { setSearchQuery(''); setDateRange(''); setStatus('All Status'); }}
+                          onClick={clearAllFilters}
                           className="mt-2 text-xs font-semibold text-emerald-600 hover:underline"
                         >
                           Clear Filters
@@ -602,7 +770,7 @@ export default function AdminAllOrders() {
                   const custPhone = order.customerPhone || (typeof order.customer === 'object' ? order.customer?.phone : '');
                   const fullAddress = order.deliveryAddress?.address || 'No address provided';
                   const statusInfo = getStatusBadge(order.status);
-                  const isPosSale = Boolean((order as any).isPosOrder) || String(order.orderNumber || '').startsWith('POS-');
+                  const isPosSale = isPosOrder(order);
                   const deliveryStatus = isPosSale ? 'In-Store' : order.deliveryPreference === 'Self' ? 'Self Assigned' : (order.deliveryBoyStatus || 'Not Assigned');
 
                   return (
@@ -720,7 +888,7 @@ export default function AdminAllOrders() {
         {/* Pagination Footer */}
         <div className="px-4 py-3.5 bg-neutral-50/80 border-t border-neutral-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-600">
           <div>
-            Showing <span className="font-semibold text-neutral-900">{filteredAndSortedOrders.length === 0 ? 0 : startIndex + 1}</span> to <span className="font-semibold text-neutral-900">{Math.min(endIndex, filteredAndSortedOrders.length)}</span> of <span className="font-semibold text-neutral-900">{filteredAndSortedOrders.length}</span> entries
+            Showing <span className="font-semibold text-neutral-900">{filteredAndSortedOrders.length === 0 ? 0 : startIndex + 1}</span> to <span className="font-semibold text-neutral-900">{endIndex}</span> of <span className="font-semibold text-neutral-900">{totalCount}</span> entries
           </div>
 
           <div className="flex items-center gap-1.5">

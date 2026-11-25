@@ -95,6 +95,15 @@ export interface GetOrdersParams {
   dateFrom?: string;
   dateTo?: string;
   search?: string;
+  /** "online" = app/web orders, "offline" = POS / in-store sales */
+  channel?: "online" | "offline";
+}
+
+export interface OrderListStats {
+  totalCount: number;
+  totalRevenue: number;
+  deliveredCount: number;
+  inProgressCount: number;
 }
 
 export interface UpdateOrderStatusData {
@@ -143,8 +152,8 @@ export interface ExportOrdersParams {
  */
 export const getAllOrders = async (
   params?: GetOrdersParams,
-): Promise<ApiResponse<Order[]>> => {
-  const response = await api.get<ApiResponse<Order[]>>("/admin/orders", {
+): Promise<ApiResponse<Order[]> & { stats?: OrderListStats }> => {
+  const response = await api.get<ApiResponse<Order[]> & { stats?: OrderListStats }>("/admin/orders", {
     params,
   });
   return response.data;

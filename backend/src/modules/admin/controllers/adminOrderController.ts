@@ -39,9 +39,11 @@ export const getAllOrders = asyncHandler(
       dateFrom,
       dateTo,
       search,
+      channel,
     } = req.query;
 
     const query: any = { status: { $ne: "Pending" } };
+    const andConditions: any[] = [];
 
     if (status) {
       if (status === "Tracking") {
@@ -57,26 +59,54 @@ export const getAllOrders = asyncHandler(
     if (dateFrom || dateTo) {
       query.orderDate = {};
       if (dateFrom) query.orderDate.$gte = new Date(dateFrom as string);
-      if (dateTo) query.orderDate.$lte = new Date(dateTo as string);
+      if (dateTo) {
+        // Date-only values (YYYY-MM-DD) must include the whole end day
+        const to = new Date(dateTo as string);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateTo))) {
+          to.setHours(23, 59, 59, 999);
+        }
+        query.orderDate.$lte = to;
+      }
     }
     if (search) {
-      query.$or = [
-        { orderNumber: { $regex: search as string, $options: "i" } },
-        { customerName: { $regex: search as string, $options: "i" } },
-        { customerEmail: { $regex: search as string, $options: "i" } },
-        { customerPhone: { $regex: search as string, $options: "i" } },
-      ];
+      const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      andConditions.push({
+        $or: [
+          { orderNumber: { $regex: escaped, $options: "i" } },
+          { customerName: { $regex: escaped, $options: "i" } },
+          { customerEmail: { $regex: escaped, $options: "i" } },
+          { customerPhone: { $regex: escaped, $options: "i" } },
+          { "deliveryAddress.address": { $regex: escaped, $options: "i" } },
+        ],
+      });
     }
 
+    // Channel filter: offline = POS / in-store counter sales, online = app/web orders
+    if (channel === "offline") {
+      andConditions.push({
+        $or: [{ isPosOrder: true }, { orderNumber: { $regex: "^POS-" } }],
+      });
+    } else if (channel === "online") {
+      andConditions.push({ isPosOrder: { $ne: true } });
+      andConditions.push({ orderNumber: { $not: /^POS-/ } });
+    }
+
+    if (andConditions.length) query.$and = andConditions;
+
     // If seller filter, need to check order items
-    if (seller) {
+    if (seller && seller !== "all") {
+      if (!mongoose.Types.ObjectId.isValid(seller as string)) {
+        return res.status(400).json({ success: false, message: "Invalid seller id" });
+      }
       const orderItems = await OrderItem.find({ seller }).distinct("order");
       query._id = { $in: orderItems };
     }
 
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const limitNum = Math.min(Math.max(parseInt(limit as string) || 10, 1), 10000);
+    const pageNum = Math.max(parseInt(page as string) || 1, 1);
+    const skip = (pageNum - 1) * limitNum;
 
-    const [orders, total] = await Promise.all([
+    const [orders, total, statsAgg] = await Promise.all([
       Order.find(query)
         .populate("customer", "name email phone")
         .populate("deliveryBoy", "name mobile")
@@ -89,19 +119,53 @@ export const getAllOrders = asyncHandler(
         })
         .sort({ orderDate: -1 })
         .skip(skip)
-        .limit(parseInt(limit as string)),
+        .limit(limitNum),
       Order.countDocuments(query),
+      Order.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: { $ifNull: ["$total", 0] } },
+            deliveredCount: {
+              $sum: { $cond: [{ $eq: ["$status", "Delivered"] }, 1, 0] },
+            },
+            inProgressCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $in: [
+                      "$status",
+                      ["Received", "Processed", "Shipped", "Out for Delivery", "Pending"],
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
     ]);
+
+    const s = statsAgg[0] || {};
 
     return res.status(200).json({
       success: true,
       message: "Orders fetched successfully",
       data: orders,
+      stats: {
+        totalCount: total,
+        totalRevenue: s.totalRevenue || 0,
+        deliveredCount: s.deliveredCount || 0,
+        inProgressCount: s.inProgressCount || 0,
+      },
       pagination: {
-        page: parseInt(page as string),
-        limit: parseInt(limit as string),
+        page: pageNum,
+        limit: limitNum,
         total,
-        pages: Math.ceil(total / parseInt(limit as string)),
+        pages: Math.ceil(total / limitNum),
       },
     });
   },
