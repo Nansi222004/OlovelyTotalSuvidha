@@ -731,9 +731,28 @@ export const getHomeContent = async (req: Request, res: Response) => {
           subcategoryImages = [category.image];
         }
 
+        // Real best discount among this category's live products (no badge when nothing is discounted)
+        const discountProducts = await Product.find({
+          status: "Active",
+          publish: true,
+          $or: [{ category: category._id }, { subcategory: category._id }],
+        })
+          .select("price discPrice compareAtPrice variations.price variations.discPrice")
+          .lean();
+        const bestDiscount = discountProducts.reduce((best: number, prod: any) => {
+          const pct = (mrp: number, sale: number) => (mrp > 0 && sale > 0 && sale < mrp ? ((mrp - sale) / mrp) * 100 : 0);
+          let top = Math.max(
+            pct(Number(prod.price), Number(prod.discPrice)),
+            pct(Number(prod.compareAtPrice), Number(prod.discPrice) > 0 ? Number(prod.discPrice) : Number(prod.price)),
+          );
+          for (const v of prod.variations || []) top = Math.max(top, pct(Number(v.price), Number(v.discPrice)));
+          return Math.max(best, top);
+        }, 0);
+        const realBadge = bestDiscount >= 1 ? `Up to ${Math.floor(bestDiscount)}% OFF` : "";
+
         return {
           id: category._id ? category._id.toString() : "",
-          badge: "Up to 55% OFF",
+          badge: realBadge,
           title: category.name || "",
           categoryId: category._id ? category._id.toString() : "",
           slug: category.slug || (category._id ? category._id.toString() : ""),
@@ -744,44 +763,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
       })
     );
 
-    // Fallback to hardcoded cards if no categories with headerCategoryId exist
-    const finalPromoCards =
-      promoCards.length > 0
-        ? promoCards
-        : [
-          {
-            id: "self-care",
-            badge: "Up to 55% OFF",
-            title: "Self Care & Wellness",
-            categoryId: "personal-care",
-            bgColor: "bg-yellow-50",
-            subcategoryImages: [],
-          },
-          {
-            id: "hot-meals",
-            badge: "Up to 55% OFF",
-            title: "Hot Meals & Drinks",
-            categoryId: "breakfast-instant",
-            bgColor: "bg-yellow-50",
-            subcategoryImages: [],
-          },
-          {
-            id: "kitchen-essentials",
-            badge: "Up to 55% OFF",
-            title: "Kitchen Essentials",
-            categoryId: "atta-rice",
-            bgColor: "bg-yellow-50",
-            subcategoryImages: [],
-          },
-          {
-            id: "cleaning-home",
-            badge: "Up to 75% OFF",
-            title: "Cleaning & Home Needs",
-            categoryId: "household",
-            bgColor: "bg-yellow-50",
-            subcategoryImages: [],
-          },
-        ];
+    // No made-up cards: when there are no categories, the strip simply shows none.
+    const finalPromoCards = promoCards;
 
     // 9. Dynamic Home Sections - Fetch from database
     let homeSectionQuery: any = { isActive: true };
@@ -931,20 +914,8 @@ export const getHomeContent = async (req: Request, res: Response) => {
         // Dynamic sections created by admin
         homeSections: dynamicSections,
         shops: visibleShops,
-        promoBanners: [
-          {
-            id: 1,
-            image:
-              "https://img.freepik.com/free-vector/horizontal-banner-template-grocery-sales_23-2149432421.jpg",
-            link: "/category/grocery",
-          },
-          {
-            id: 2,
-            image:
-              "https://img.freepik.com/free-vector/flat-supermarket-social-media-cover-template_23-2149363385.jpg",
-            link: "/category/snacks",
-          },
-        ],
+        // Banners come from Admin → Promotion → Banners (no stock placeholder images)
+        promoBanners: [],
         trending,
         cookingIdeas,
         promoCards: finalPromoCards, // Return dynamic or fallback cards

@@ -8,6 +8,33 @@ import { apiCache } from "../../../utils/apiCache";
 import { useLocation } from "../../../hooks/useLocation";
 import { calculateProductPrice } from "../../../utils/priceUtils";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { getProducts as getCustomerProducts } from "../../../services/api/customerProductService";
+
+/** Real selling price / MRP of an uploaded product (first variant when it has variants). */
+const toDealProduct = (product: any) => {
+  const v = Array.isArray(product?.variations) && product.variations.length > 0 ? product.variations[0] : null;
+  const listPrice = Number(v?.price ?? product?.price) || 0;
+  const disc = Number(v?.discPrice ?? product?.discPrice) || 0;
+  const sale = disc > 0 && disc < listPrice ? disc : listPrice;
+  const mrpCandidates = [listPrice, Number(product?.compareAtPrice) || 0, Number(product?.mrp) || 0];
+  const mrp = Math.max(...mrpCandidates);
+  const imageUrl =
+    product?.mainImage || product?.mainImageUrl || product?.image || product?.imageUrl ||
+    (product?.galleryImageUrls && product.galleryImageUrls[0]) || (product?.galleryImages && product.galleryImages[0]) || null;
+  const name = product?.productName || product?.name || "";
+  return {
+    id: product?._id || product?.id,
+    _id: product?._id || product?.id,
+    name,
+    productName: name,
+    translations: product?.translations,
+    price: sale,
+    mrp: mrp > sale ? mrp : 0,
+    originalPrice: mrp > sale ? mrp : sale,
+    discountedPrice: sale,
+    imageUrl,
+  };
+};
 
 interface PromoCard {
   id: string;
@@ -269,7 +296,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                   const category = typeof card.categoryId === 'object' ? card.categoryId : null;
                   return {
                     id: card._id || card.categoryId?._id || card.categoryId,
-                    badge: card.badge || `Up to ${card.discountPercentage || 0}% OFF`,
+                    badge: card.badge || (Number(card.discountPercentage) > 0 ? `Up to ${card.discountPercentage}% OFF` : ""),
                     title: card.title || category?.name || "",
                     categoryId: category?._id || card.categoryId, // Use _id for fetching subcategories
                     slug: category?.slug || card.categoryId, // Use slug for navigation
@@ -281,38 +308,10 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
 
             // Map featured products from PromoStrip
             if (promoStrip.featuredProducts && promoStrip.featuredProducts.length > 0) {
-              fetchedProducts = promoStrip.featuredProducts.map((p: any) => {
-                const product = typeof p === 'object' ? p : null;
-                const price = Number(product?.price) || 0;
-                const mrp = Number(product?.mrp) || Number(product?.compareAtPrice) || 0;
-                const originalPrice = mrp > 0 ? mrp : (price > 0 ? Math.round(price * 1.2) : 999);
-                const discountedPrice = price > 0 ? price : 499;
-
-                // Try multiple image field names and fallbacks
-                const imageUrl =
-                  product?.mainImage ||
-                  product?.mainImageUrl ||
-                  product?.image ||
-                  product?.imageUrl ||
-                  (product?.galleryImageUrls && product.galleryImageUrls.length > 0 ? product.galleryImageUrls[0] : null) ||
-                  (product?.galleryImages && product.galleryImages.length > 0 ? product.galleryImages[0] : null) ||
-                  null;
-
-                // Always prioritize productName to avoid showing category names
-                const productName = product?.productName || product?.name || "Product";
-
-                return {
-                  id: product?._id || p,
-                  _id: product?._id || p,
-                  name: productName,
-                  productName: productName, // Always use productName, never category name
-                  price: price,
-                  mrp: mrp,
-                  originalPrice: isNaN(originalPrice) ? 999 : originalPrice,
-                  discountedPrice: isNaN(discountedPrice) ? 499 : discountedPrice,
-                  imageUrl: imageUrl,
-                };
-              });
+              fetchedProducts = promoStrip.featuredProducts
+                .filter((p: any) => p && typeof p === 'object')
+                .map((p: any) => toDealProduct(p))
+                .filter((p: any) => p.id && p.price > 0);
             }
           }
           // 2. Fallback to promoCards if no PromoStrip
@@ -328,7 +327,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               .slice(0, 4)
               .map((c: any) => ({
                 id: c._id || c.id,
-                badge: "Up to 50% OFF",
+                badge: "",
                 title: c.name,
                 categoryId: c.slug || c._id,
                 bgColor: c.color || "bg-yellow-50",
@@ -336,6 +335,25 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
           }
 
 
+        }
+
+        // No featured products chosen in Admin → Promo Strip: show real uploaded products
+        // (discounted ones first) instead of a made-up "Special Offers ₹999 → ₹499" card.
+        if (fetchedProducts.length === 0) {
+          try {
+            const res: any = await getCustomerProducts({
+              limit: 8,
+              latitude: location?.latitude,
+              longitude: location?.longitude,
+            } as any);
+            const list: any[] = Array.isArray(res?.data) ? res.data : res?.data?.products || [];
+            fetchedProducts = list
+              .map(toDealProduct)
+              .filter((p) => p.id && p.price > 0)
+              .sort((a, b) => (b.originalPrice - b.price) / (b.originalPrice || 1) - (a.originalPrice - a.price) / (a.originalPrice || 1));
+          } catch {
+            /* no products: the deal card is simply hidden */
+          }
         }
 
         setCategoryCards(fetchedCards);
@@ -583,25 +601,12 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
     );
   }
 
-  // If no featured products but we have category cards, use a fallback product
-  const displayProduct = currentProduct || {
-    id: 'fallback',
-    name: 'Special Offers',
-    originalPrice: 999,
-    discountedPrice: 499,
-    imageUrl: undefined,
-  };
-
-  // Calculate prices from actual product data using utility
+  // Only real products are shown in the deal card; with none, the card is hidden.
+  const displayProduct: any = currentProduct || { id: "none", name: "", originalPrice: 0, discountedPrice: 0, imageUrl: undefined };
   const { displayPrice, mrp } = calculateProductPrice(displayProduct);
-
-  // Fallback prices if product data is incomplete
-  const finalDiscountedPrice = displayPrice > 0 ? displayPrice : (Number.isFinite(displayProduct.discountedPrice) ? displayProduct.discountedPrice : 499);
-  const finalOriginalPrice = mrp > 0 ? mrp : (Number.isFinite(displayProduct.originalPrice) ? displayProduct.originalPrice : 999);
-
-  // Ensure prices are valid numbers
-  const safeOriginalPrice = Number.isFinite(finalOriginalPrice) ? Math.round(finalOriginalPrice) : 999;
-  const safeDiscountedPrice = Number.isFinite(finalDiscountedPrice) ? Math.round(finalDiscountedPrice) : 499;
+  const safeDiscountedPrice = Math.round(displayPrice > 0 ? displayPrice : Number(displayProduct.discountedPrice) || 0);
+  const safeOriginalPrice = Math.round(mrp > 0 ? mrp : Number(displayProduct.originalPrice) || 0);
+  const hasStrikePrice = safeOriginalPrice > safeDiscountedPrice;
 
   // Helper function to handle product navigation
   const handleProductClick = (e: React.MouseEvent) => {
@@ -611,10 +616,10 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
     // Get product ID - handle both string and ObjectId formats
     const productId = displayProduct?.id || displayProduct?._id;
 
-    if (productId && productId !== 'fallback') {
+    if (productId && productId !== 'none') {
       // Convert to string if it's an object
       const idString = typeof productId === 'string' ? productId : String(productId);
-      if (idString && idString !== 'fallback' && idString.length > 0) {
+      if (idString && idString !== 'none' && idString.length > 0) {
         navigate(`/product/${idString}`);
       }
     }
@@ -797,6 +802,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
       <div className="px-4 md:px-6 lg:px-8 mt-2 max-w-full overflow-x-hidden">
         <div ref={containerRef} className="flex gap-2 max-w-full">
           {/* Crazy Deals Section - Left */}
+          {currentProduct && (
           <div className="flex-shrink-0 w-[105px] sm:w-[120px] promo-card">
             <div
               className="h-full rounded-lg p-1.5 flex flex-col items-center justify-between relative overflow-hidden"
@@ -826,6 +832,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                 ref={priceContainerRef}
                 className="flex flex-col items-center mb-0.5 relative">
                 {/* Original Price - Darker Gray, Smaller Banner */}
+                {hasStrikePrice && (
                 <div
                   className="bg-neutral-600 rounded px-1.5 inline-block relative z-10"
                   style={{
@@ -838,6 +845,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                     ₹{safeOriginalPrice}
                   </span>
                 </div>
+                )}
                 {/* Discounted Price - Bright Green Banner */}
                 <div
                   className="bg-green-500 rounded px-2 inline-block relative -mt-0.5 z-20"
@@ -914,6 +922,7 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
               </div>
             </div>
           </div>
+          )}
 
           {/* Category Cards Grid - Right */}
           <div className={`flex-1 min-w-0 grid grid-cols-2 ${categoryCards.length >= 4 ? 'md:grid-cols-4' : categoryCards.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-2`}>
@@ -936,9 +945,11 @@ export default function PromoStrip({ activeTab = "all" }: PromoStripProps) {
                     <div
                       className="w-full flex justify-center"
                       style={{ paddingTop: "0", paddingBottom: "2px" }}>
-                      <div className="bg-green-600 text-white text-[11px] sm:text-xs font-black px-2 py-0.5 rounded tracking-tight text-center inline-block">
-                        {card.badge}
-                      </div>
+                      {card.badge ? (
+                        <div className="bg-green-600 text-white text-[11px] sm:text-xs font-black px-2 py-0.5 rounded tracking-tight text-center inline-block">
+                          {card.badge}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div

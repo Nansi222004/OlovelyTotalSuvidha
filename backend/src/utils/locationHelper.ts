@@ -86,6 +86,38 @@ export async function findSellersWithinRange(
       }
     }
 
+    // Platform (admin) stock ships from the platform Quick Commerce warehouse, not from the
+    // admin seller account (which has no location). Count the platform seller as "nearby"
+    // when the user is inside the warehouse's service radius.
+    try {
+      const AppSettings = (await import("../models/AppSettings")).default as any;
+      const settings: any = await AppSettings.findOne().select("platformQuickCommerceFulfillment").lean();
+      const wh = settings?.platformQuickCommerceFulfillment;
+      const whLat = Number(wh?.latitude);
+      const whLng = Number(wh?.longitude);
+      const whRadius = Number(wh?.serviceRadiusKm) || 10;
+      if (Number.isFinite(whLat) && Number.isFinite(whLng) && (whLat !== 0 || whLng !== 0)) {
+        if (calculateDistance(userLat, userLng, whLat, whLng) <= whRadius) {
+          const platformSellers = await Seller.find({
+            $or: [
+              { isPlatform: true },
+              { category: "Admin" },
+              { email: "admin-store@olovely.com" },
+              { sellerName: "Olovely Admin" },
+              { storeName: "Olovely Admin Store" },
+            ],
+          }).select("_id").lean();
+          for (const ps of platformSellers as any[]) {
+            if (!nearbySellerIds.some((id) => id.toString() === String(ps._id))) {
+              nearbySellerIds.push(ps._id as mongoose.Types.ObjectId);
+            }
+          }
+        }
+      }
+    } catch (platformError) {
+      console.error("Error adding platform warehouse to nearby sellers:", platformError);
+    }
+
     return nearbySellerIds;
   } catch (error) {
     console.error("Error finding nearby sellers:", error);
