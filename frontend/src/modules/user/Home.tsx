@@ -407,14 +407,15 @@ export default function Home() {
                   return null;
                 }
 
-                // Strict column mapping as requested - applies to ALL screen sizes including mobile
+                // Phone/app: the admin's column count. Wider screens: at least 4 / 5 / 6 columns so
+                // product cards don't become huge (a 3-column section filled the whole desktop width).
                 const gridClass = {
-                  2: "grid-cols-2",
-                  3: "grid-cols-3",
-                  4: "grid-cols-4",
+                  2: "grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
+                  3: "grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
+                  4: "grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
                   6: "grid-cols-6",
                   8: "grid-cols-8"
-                }[columnCount] || "grid-cols-4";
+                }[columnCount] || "grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
 
                 // Use compact mode for 4 or more columns to fit content on mobile
                 const isCompact = columnCount >= 4;

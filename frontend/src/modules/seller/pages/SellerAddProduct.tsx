@@ -737,8 +737,9 @@ export default function SellerAddProduct() {
           barcode: v.barcode ? v.barcode.trim() : undefined,
         })),
         variationType: formData.variationType || undefined,
-        isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
-        shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : undefined,
+        // Always in the normal catalogue (Shop-by-Store-only option removed from the form)
+        isShopByStoreOnly: false,
+        shopId: null as any,
         productType: formData.productType,
         sku: formData.sku || undefined,
         weightKg: formData.weightKg ? parseFloat(formData.weightKg) : undefined,
@@ -2005,59 +2006,7 @@ export default function SellerAddProduct() {
             </div>
           </div>
 
-          {/* Shop by Store Section */}
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
-            <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
-              <h2 className="text-lg font-semibold">Shop by Store</h2>
-            </div>
-            <div className="p-4 sm:p-6 space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> If you select "Show in Shop by Store only", this product will only be visible in the Shop by Store section and will not appear on category pages, home page, or any other pages.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Show in Shop by Store only?
-                  </label>
-                  <select
-                    name="isShopByStoreOnly"
-                    value={formData.isShopByStoreOnly}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                </div>
-                {formData.isShopByStoreOnly === "Yes" && (
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-2">
-                      Select Store <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      name="shopId"
-                      value={formData.shopId}
-                      onChange={handleChange}
-                      required={formData.isShopByStoreOnly === "Yes"}
-                      className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white">
-                      <option value="">Select Store</option>
-                      {shops.map((shop) => (
-                        <option key={shop._id} value={shop._id}>
-                          {shop.name}
-                        </option>
-                      ))}
-                    </select>
-                    {shops.length === 0 && (
-                      <p className="text-xs text-neutral-500 mt-1">
-                        No active stores available. Please contact admin to create stores.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          {/* Shop by Store option removed: a product marked "store only" disappears from every normal page. */}
 
           {/* Submit Button */}
           <div className="pb-6">

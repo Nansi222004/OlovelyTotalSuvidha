@@ -861,8 +861,9 @@ export default function AdminProductEdit() {
           barcode: v.barcode ? v.barcode.trim() : undefined,
         })),
         variationType: formData.variationType || undefined,
-        isShopByStoreOnly: formData.isShopByStoreOnly === "Yes",
-        shopId: formData.isShopByStoreOnly === "Yes" && formData.shopId ? formData.shopId : null,
+        // Always in the normal catalogue (Shop-by-Store-only option removed from the form)
+        isShopByStoreOnly: false,
+        shopId: null,
         sellerId: formData.sellerId === "admin" || !formData.sellerId ? "admin" : formData.sellerId,
         productType: formData.productType,
       };
@@ -1893,50 +1894,7 @@ export default function AdminProductEdit() {
           </div>
         </div>
 
-        {/* Shop By Store Only */}
-        <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
-          <div className="bg-teal-600 text-white px-4 sm:px-6 py-3">
-            <h2 className="text-base sm:text-lg font-semibold">Shop by Store Configuration</h2>
-          </div>
-          <div className="p-4 sm:p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Show in "Shop by Store" Only?
-                </label>
-                <select
-                  name="isShopByStoreOnly"
-                  value={formData.isShopByStoreOnly}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
-                  <option value="No">No (Show in normal catalogue)</option>
-                  <option value="Yes">Yes (Exclusive to Store page)</option>
-                </select>
-              </div>
-
-              {formData.isShopByStoreOnly === "Yes" && (
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Select Target Store <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="shopId"
-                    value={formData.shopId}
-                    onChange={handleChange}
-                    required={formData.isShopByStoreOnly === "Yes"}
-                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
-                    <option value="">Select Store</option>
-                    {shops.map((shop) => (
-                      <option key={shop._id} value={shop._id}>
-                        {shop.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Shop by Store option removed: a product marked "store only" disappears from every normal page. */}
 
         {/* SEO Metadata — temporarily hidden (not yet used on storefront) */}
         <div className="hidden bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">

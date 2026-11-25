@@ -327,14 +327,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {/* Top Navigation Bar - Desktop Only */}
           {showFooter && (
             <nav
-              className="hidden md:flex items-center justify-between px-6 lg:px-8 py-2.5 shadow-sm transition-colors duration-300"
+              className="hidden md:flex items-center px-6 lg:px-8 py-2.5 shadow-sm transition-colors duration-300"
               style={{
                 background: `linear-gradient(to right, ${currentTheme.primary[0]}, ${currentTheme.primary[1]})`,
                 borderBottom: `1px solid ${currentTheme.primary[0]}`
               }}
             >
               {/* Brand Logo & Name */}
-              <Link to="/" className="flex items-center gap-2.5 hover:opacity-95 transition-opacity">
+              <Link to="/" className="flex items-center gap-2.5 hover:opacity-95 transition-opacity flex-shrink-0">
                 <img
                   src={userLogo}
                   alt={appSettings?.appName || 'Olovely'}
@@ -344,7 +344,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   }}
                 />
                 <span
-                  className="font-bold text-base tracking-tight hidden lg:inline"
+                  className="font-bold text-base tracking-tight hidden xl:inline whitespace-nowrap"
                   style={{ color: currentTheme.headerTextColor || '#ffffff' }}
                 >
                   {appSettings?.appName || 'Olovely Total Suvidha'}
@@ -355,7 +355,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent('openLocationChangeModal'))}
-                className="ml-3 mr-auto flex items-center gap-2 max-w-[340px] bg-white/95 hover:bg-white rounded-full pl-3 pr-2.5 py-1.5 shadow-sm border border-white transition-colors"
+                className="ml-4 mr-6 lg:mr-10 flex items-center gap-2 max-w-[300px] xl:max-w-[360px] min-w-0 flex-shrink bg-white/95 hover:bg-white rounded-full pl-3 pr-2.5 py-1.5 shadow-sm border border-white transition-colors"
                 title="Change delivery location"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={currentTheme.accentColor || '#e11d48'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
@@ -366,7 +366,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   <span className="text-[10px] font-bold text-emerald-700">
                     ⚡ {appSettings?.estimatedDeliveryTime || '12-15 mins'}
                   </span>
-                  <span className="text-xs font-semibold text-neutral-800 truncate max-w-[260px]">
+                  <span className="text-xs font-semibold text-neutral-800 truncate max-w-[220px] xl:max-w-[290px]">
                     {userLocation?.address || [userLocation?.city, userLocation?.state].filter(Boolean).join(', ') || t('customer.selectLocation', 'Select location')}
                   </span>
                 </span>
@@ -376,11 +376,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
               </button>
 
               {/* Navigation Links */}
-              <div className="flex items-center gap-4 lg:gap-6">
+              <div className="ml-auto flex items-center gap-1 lg:gap-3 flex-shrink-0">
                 {/* Home */}
                 <Link
                   to="/"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/')
+                  className={`flex items-center gap-2 px-3 lg:px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${isActive('/')
                     ? 'bg-white shadow-md font-semibold'
                     : 'hover:bg-white/20'
                     }`}
@@ -401,13 +401,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">{t("common.home", "Home")}</span>
+                <span className="font-medium text-sm whitespace-nowrap">{t("common.home", "Home")}</span>
               </Link>
 
               {/* Order Again */}
               <Link
                 to="/order-again"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/order-again')
+                className={`flex items-center gap-2 px-3 lg:px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${isActive('/order-again')
                   ? 'bg-white shadow-md font-semibold'
                   : 'hover:bg-white/20'
                   }`}
@@ -422,13 +422,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     <path d="M5 8V6C5 4.34315 6.34315 3 8 3H16C17.6569 3 19 4.34315 19 6V8H21C21.5523 8 22 8.44772 22 9V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V9C2 8.44772 2.44772 8 3 8H5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
                   )}
                 </svg>
-                <span className="font-medium text-sm">{t("common.orderAgain", "Order Again")}</span>
+                <span className="font-medium text-sm whitespace-nowrap">{t("common.orderAgain", "Order Again")}</span>
               </Link>
 
               {/* Categories */}
               <Link
                 to="/categories"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${(isActive('/categories') || location.pathname.startsWith('/category/'))
+                className={`flex items-center gap-2 px-3 lg:px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${(isActive('/categories') || location.pathname.startsWith('/category/'))
                   ? 'bg-white shadow-md font-semibold'
                   : 'hover:bg-white/20'
                   }`}
@@ -453,7 +453,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">{t("common.categories", "Categories")}</span>
+                <span className="font-medium text-sm whitespace-nowrap">{t("common.categories", "Categories")}</span>
               </Link>
 
                 {/* Language Selector */}
@@ -464,7 +464,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 {/* Profile */}
                 <Link
                   to="/account"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isActive('/account')
+                  className={`flex items-center gap-2 px-3 lg:px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${isActive('/account')
                     ? 'bg-white shadow-md font-semibold'
                     : 'hover:bg-white/20'
                     }`}
@@ -485,7 +485,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </>
                   )}
                 </svg>
-                <span className="font-medium text-sm">{t("common.profile", "Profile")}</span>
+                <span className="font-medium text-sm whitespace-nowrap">{t("common.profile", "Profile")}</span>
               </Link>
             </div>
           </nav>
@@ -494,7 +494,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {/* Sticky Header - Show on search page and other non-hero pages */}
           {showHeader && (
             <header
-              className="sticky top-0 z-50 shadow-sm md:shadow-md md:top-[60px] transition-colors duration-300"
+              // md:top-[60px] leaves room for the desktop top menu; pages without that menu
+              // (product detail) must stick at 0, otherwise a blank 60px band appears above.
+              className={`sticky top-0 z-50 shadow-sm md:shadow-md ${showFooter ? 'md:top-[60px]' : 'md:top-0'} transition-colors duration-300`}
               style={{
                 background: `linear-gradient(to right, ${currentTheme.primary[0]}, ${currentTheme.primary[1]})`,
                 borderBottom: `1px solid ${currentTheme.primary[0]}`

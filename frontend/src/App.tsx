@@ -288,9 +288,6 @@ const AdminPosTerminal = lazyWithRetry(
 const AdminLowestPrices = lazyWithRetry(
   () => import("./modules/admin/pages/AdminLowestPrices"), "AdminLowestPrices"
 );
-const AdminShopByStore = lazyWithRetry(
-  () => import("./modules/admin/pages/AdminShopByStore"), "AdminShopByStore"
-);
 const AdminAllOrders = lazyWithRetry(
   () => import("./modules/admin/pages/AdminAllOrders"), "AdminAllOrders"
 );
@@ -964,10 +961,6 @@ function App() {
                                       <Route
                                         path="lowest-prices"
                                         element={<AdminLowestPrices />}
-                                      />
-                                      <Route
-                                        path="shop-by-store"
-                                        element={<AdminShopByStore />}
                                       />
                                       <Route
                                         path="delivery-tracking"

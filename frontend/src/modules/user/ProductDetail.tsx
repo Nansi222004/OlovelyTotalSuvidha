@@ -465,9 +465,10 @@ export default function ProductDetail() {
 
   return (
     <div className="min-h-screen bg-white pb-24">
-      {/* Header with back button and action icons */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-transparent">
-        <div className="flex items-center justify-between px-4 md:px-6 lg:px-8 py-3 md:py-4">
+      {/* Back button + wishlist: a slim bar under the delivery/location header (it used to be
+          fixed at the very top and overlapped that header). */}
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-neutral-100">
+        <div className="flex items-center justify-between px-4 md:px-6 lg:px-8 py-1.5 lg:max-w-6xl lg:mx-auto">
           {/* Back button - top left */}
           <button
             onClick={() => navigate(-1)}
@@ -480,7 +481,7 @@ export default function ProductDetail() {
               fill="none"
               xmlns="http://www.w3.org/2000/svg">
               <path
-                d="M6 9l6 6 6-6"
+                d="M15 18l-6-6 6-6"
                 stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"
@@ -504,7 +505,7 @@ export default function ProductDetail() {
       </div>
 
       {/* Scrollable content */}
-      <div className="pt-16 lg:max-w-6xl lg:mx-auto">
+      <div className="lg:max-w-6xl lg:mx-auto">
         {/* Desktop (lg+): gallery and details side by side; mobile keeps the stacked layout. */}
         <div className="lg:grid lg:grid-cols-2 lg:gap-10 lg:items-start lg:px-8 lg:pt-4">
         {/* Product Image Gallery */}
