@@ -17,6 +17,16 @@ const toLatLng = (lat: unknown, lng: unknown): LatLng | null => {
   return Number.isFinite(a) && Number.isFinite(b) && (a !== 0 || b !== 0) ? { lat: a, lng: b } : null;
 };
 
+const kmBetween = (a: LatLng, b: LatLng) => {
+  const R = 6371;
+  const r = (d: number) => (d * Math.PI) / 180;
+  const x = r(b.lat - a.lat);
+  const y = r(b.lng - a.lng);
+  const h = Math.sin(x / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(y / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`);
+
 const minutesAgo = (iso?: string) => {
   if (!iso) return "";
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -110,12 +120,30 @@ export default function AdminRiderTrackingModal({ orderId, onClose }: Props) {
                     customerLocation={customer}
                     deliveryLocation={riderPos || undefined}
                     isTracking={Boolean(riderPos)}
+                    heightClass="h-full"
                   />
                 </div>
               ) : (
                 <p className="text-sm text-neutral-600">
                   The map needs both the pickup (warehouse) location and the customer's address pin.
                 </p>
+              )}
+
+              {riderPos && (store || customer) && (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {store && (
+                    <div className="rounded-lg bg-neutral-50 px-3 py-2">
+                      <p className="text-[11px] text-neutral-500">Rider ↔ pickup</p>
+                      <p className="font-semibold">{fmtKm(kmBetween(riderPos, store))}</p>
+                    </div>
+                  )}
+                  {customer && (
+                    <div className="rounded-lg bg-neutral-50 px-3 py-2">
+                      <p className="text-[11px] text-neutral-500">Rider ↔ customer</p>
+                      <p className="font-semibold">{fmtKm(kmBetween(riderPos, customer))}</p>
+                    </div>
+                  )}
+                </div>
               )}
 
               {riderPos && (

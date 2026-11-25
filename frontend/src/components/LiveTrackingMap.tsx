@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 // @ts-ignore - react-leaflet types may not be available
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 // @ts-ignore - leaflet types may not be available
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -48,13 +48,34 @@ interface LiveTrackingMapProps {
     customerLocation: Location
     deliveryLocation?: Location
     isTracking: boolean
+    /** Tailwind height class for the map box (default h-64). */
+    heightClass?: string
+}
+
+/** Zoom/pan so every marker (store, customer, rider) is visible; re-fits when they move. */
+function FitAllMarkers({ points }: { points: Array<[number, number]> }) {
+    const map = useMap()
+    const key = points.map((p) => p.join(',')).join('|')
+    useEffect(() => {
+        if (points.length === 0) return
+        // the map may be mounted inside a modal that is still sizing itself
+        map.invalidateSize()
+        if (points.length === 1) {
+            map.setView(points[0], 15)
+        } else {
+            map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 })
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [map, key])
+    return null
 }
 
 export default function LiveTrackingMap({
     storeLocation,
     customerLocation,
     deliveryLocation,
-    isTracking = false
+    isTracking = false,
+    heightClass = 'h-64'
 }: LiveTrackingMapProps) {
     const [isFullscreen, setIsFullscreen] = useState(false)
     const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -91,13 +112,14 @@ export default function LiveTrackingMap({
     }, [])
 
     return (
-        <div ref={mapContainerRef} className="relative h-64 overflow-hidden rounded-lg">
+        <div ref={mapContainerRef} className={`relative ${heightClass} overflow-hidden rounded-lg`}>
             <MapContainer
                 center={[defaultCenter.lat, defaultCenter.lng]}
                 zoom={13}
                 style={{ height: '100%', width: '100%' }}
                 className="z-0"
             >
+                <FitAllMarkers points={routePoints} />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
