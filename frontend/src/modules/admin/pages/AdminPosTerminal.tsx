@@ -671,6 +671,13 @@ export default function AdminPosTerminal() {
           sounds.success();
           setUpiPaid({ paymentId: status.paymentId, amountPaid: status.amountPaid });
         } else if (status.qrStatus === "closed") {
+          // Razorpay closes the QR the moment it is paid, a few seconds before the payment shows
+          // as captured. Keep waiting in that case; only a QR closed with no payment has expired.
+          const paymentComing = status.closeReason === "paid" || Boolean(status.paymentsReceived);
+          if (paymentComing) {
+            setUpiCheckError("");
+            return;
+          }
           resetUpi();
           showAlert("The UPI QR expired before payment. Show a new QR.", "info");
         }

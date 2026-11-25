@@ -107,6 +107,10 @@ export async function getPosUpiQrStatus(qrCodeId: string) {
       paymentId: payment ? String(payment.id) : undefined,
       amountPaid: payment ? Number(payment.amount) / 100 : 0,
       capturedPayments: captured.length,
+      // Razorpay closes a single-use QR the moment it is paid ("paid"), often a few seconds before
+      // the payment shows as captured. The POS must keep waiting then, not treat the QR as expired.
+      closeReason: String(qr?.close_reason || ""),
+      paymentsReceived: Number(qr?.payments_count_received || 0) + (paymentList?.items?.length || 0) > 0,
     };
   } catch (error: any) {
     if (error instanceof PosUpiQrError) throw error;

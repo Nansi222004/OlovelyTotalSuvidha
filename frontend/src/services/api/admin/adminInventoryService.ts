@@ -265,6 +265,10 @@ export interface PosUpiQrStatus {
   isPos?: boolean;
   fixedAmount?: number;
   capturedPayments?: number;
+  /** Razorpay close reason: "paid" means a payment came in (it may not be captured yet). */
+  closeReason?: string;
+  /** True once any payment reached this QR (captured or still processing). */
+  paymentsReceived?: boolean;
 }
 
 /** Creates a single-use Razorpay UPI QR for exactly `amount` rupees. */
