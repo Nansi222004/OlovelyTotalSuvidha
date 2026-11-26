@@ -137,7 +137,14 @@ export type CourierShipmentStage =
   | "not_booked"
   | "delivered"
   | "rto"
-  | "cancelled";
+  | "cancelled"
+  | "test";
+
+export type CourierNotBookedReason =
+  | "awaiting_payment"
+  | "awaiting_seller"
+  | "booking_failed"
+  | "accepted_not_booked";
 
 export interface CourierShipmentRow {
   orderId: string;
@@ -164,6 +171,9 @@ export interface CourierShipmentRow {
   lastError?: string;
   codAmount?: number;
   booked: boolean;
+  isTest: boolean;
+  providerId?: string;
+  notBookedReason: CourierNotBookedReason | null;
   stage: CourierShipmentStage;
   orderClosedButShipmentLive: boolean;
   courierCancelFailed: boolean;

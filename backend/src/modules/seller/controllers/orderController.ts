@@ -858,6 +858,11 @@ export const updateOrderStatus = asyncHandler(
                 await createEcommerceShipment(order._id.toString(), fg.groupId);
               } catch (shipErr) {
                 console.warn(`Shipment creation on seller accept (${fg.groupId}):`, (shipErr as any)?.message);
+                // Keep the reason on the group so admin's Courier Shipments page shows why it is not booked.
+                fg.thirdPartyOrderDetails = {
+                  ...((fg.thirdPartyOrderDetails as any)?.toObject?.() || fg.thirdPartyOrderDetails || {}),
+                  lastError: `Courier booking failed: ${String((shipErr as any)?.message || shipErr).slice(0, 400)}`,
+                };
               }
             }
           }

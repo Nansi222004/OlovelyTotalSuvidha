@@ -16,9 +16,18 @@ export type CourierShipmentStage =
   | "not_booked"
   | "delivered"
   | "rto"
-  | "cancelled";
+  | "cancelled"
+  | "test";
 
-const STAGES: CourierShipmentStage[] = ["awaiting_pickup", "in_transit", "not_booked", "delivered", "rto", "cancelled"];
+const STAGES: CourierShipmentStage[] = [
+  "awaiting_pickup",
+  "in_transit",
+  "not_booked",
+  "delivered",
+  "rto",
+  "cancelled",
+  "test",
+];
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -81,6 +90,7 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
         carrierStatus: "$fulfillmentGroups.thirdPartyOrderDetails.status",
         lastError: "$fulfillmentGroups.thirdPartyOrderDetails.lastError",
         codAmount: "$fulfillmentGroups.thirdPartyOrderDetails.codAmount",
+        providerId: "$fulfillmentGroups.thirdPartyOrderDetails.providerId",
         cancelRequestFailedAt: "$fulfillmentGroups.thirdPartyOrderDetails.cancelRequestFailedAt",
         cancelRequestError: "$fulfillmentGroups.thirdPartyOrderDetails.cancelRequestError",
       },
@@ -88,6 +98,14 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
     {
       $addFields: {
         booked: { $gt: [{ $strLenCP: { $ifNull: ["$externalOrderId", ""] } }, 0] },
+        // Bookings made with the built-in mock provider (test mode): no real courier exists.
+        isTest: {
+          $or: [
+            { $eq: ["$providerId", "mock_provider"] },
+            { $eq: [{ $indexOfCP: [{ $ifNull: ["$awbNumber", ""] }, "AWB-MOCK"] }, 0] },
+            { $eq: [{ $indexOfCP: [{ $ifNull: ["$externalOrderId", ""] }, "MOCK_"] }, 0] },
+          ],
+        },
       },
     },
     {
@@ -95,6 +113,7 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
         stage: {
           $switch: {
             branches: [
+              { case: "$isTest", then: "test" },
               {
                 case: {
                   $or: [
@@ -140,6 +159,39 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
             { $ne: ["$carrierStatus", "Cancelled"] },
             { $ne: ["$carrierStatus", "Delivered"] },
             { $ne: ["$carrierStatus", "Returned"] },
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        // Mock/test bookings never reach a real courier, so they never need a Shiprocket cancel.
+        orderClosedButShipmentLive: { $and: [{ $not: ["$isTest"] }, "$orderClosedButShipmentLive"] },
+        courierCancelFailed: { $and: [{ $not: ["$isTest"] }, "$courierCancelFailed"] },
+        // Why a group has no courier booking yet. The booking is only attempted when the seller
+        // accepts the order, and only once it is paid (Online) or COD.
+        notBookedReason: {
+          $cond: [
+            { $ne: ["$stage", "not_booked"] },
+            null,
+            {
+              $switch: {
+                branches: [
+                  { case: { $gt: [{ $strLenCP: { $ifNull: ["$lastError", ""] } }, 0] }, then: "booking_failed" },
+                  {
+                    case: {
+                      $and: [
+                        { $ne: [{ $toUpper: { $ifNull: ["$paymentMethod", ""] } }, "COD"] },
+                        { $ne: ["$paymentStatus", "Paid"] },
+                      ],
+                    },
+                    then: "awaiting_payment",
+                  },
+                  { case: { $in: ["$orderStatus", ["Pending", "Received"]] }, then: "awaiting_seller" },
+                ],
+                default: "accepted_not_booked",
+              },
+            },
           ],
         },
       },

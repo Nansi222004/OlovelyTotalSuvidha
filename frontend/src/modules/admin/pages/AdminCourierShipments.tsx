@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../../../context/ToastContext";
 import {
   getCourierShipments,
+  type CourierNotBookedReason,
   type CourierShipmentRow,
   type CourierShipmentStage,
 } from "../../../services/api/admin/adminOrderService";
@@ -12,10 +13,19 @@ type Tab = CourierShipmentStage | "all";
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: "awaiting_pickup", label: "Awaiting pickup", hint: "Booked with the courier; the courier will come to the pickup address." },
   { key: "in_transit", label: "In transit", hint: "Picked up by the courier and on the way (includes NDR / action required)." },
-  { key: "not_booked", label: "Booking failed", hint: "The app tried to book a courier but got no Shiprocket order back. No courier will come." },
+  {
+    key: "not_booked",
+    label: "Not booked yet",
+    hint: "No courier booked yet, so no courier will come. The app books the courier when the seller accepts the order (and once an online order is paid). Each row shows why.",
+  },
   { key: "delivered", label: "Delivered", hint: "Delivered by the courier." },
   { key: "rto", label: "RTO", hint: "Returned to origin by the courier." },
   { key: "cancelled", label: "Cancelled", hint: "Booking cancelled; no pickup." },
+  {
+    key: "test",
+    label: "Test (mock)",
+    hint: "Made with the built-in test shipping provider (MockCourier / AWB-MOCK). Not real — no courier will ever come.",
+  },
   { key: "all", label: "All", hint: "Every courier booking." },
 ];
 
@@ -26,15 +36,27 @@ const STAGE_BADGE: Record<CourierShipmentStage, string> = {
   delivered: "bg-emerald-50 text-emerald-800 border-emerald-200",
   rto: "bg-purple-50 text-purple-800 border-purple-200",
   cancelled: "bg-red-50 text-red-700 border-red-200",
+  test: "bg-neutral-50 text-neutral-500 border-dashed border-neutral-300",
 };
 
 const STAGE_LABEL: Record<CourierShipmentStage, string> = {
   awaiting_pickup: "Awaiting pickup",
   in_transit: "In transit",
-  not_booked: "Booking failed",
+  not_booked: "Not booked yet",
   delivered: "Delivered",
   rto: "RTO",
   cancelled: "Cancelled",
+  test: "Test (mock)",
+};
+
+const NOT_BOOKED_REASON: Record<CourierNotBookedReason, { text: string; className: string }> = {
+  awaiting_payment: { text: "Waiting for online payment", className: "text-neutral-500" },
+  awaiting_seller: { text: "Waiting for the seller to accept", className: "text-neutral-500" },
+  booking_failed: { text: "⚠️ Booking failed", className: "text-red-700 font-semibold" },
+  accepted_not_booked: {
+    text: "⚠️ Order accepted but no courier booked — check the order",
+    className: "text-amber-700 font-semibold",
+  },
 };
 
 const inr = (n?: number) =>
@@ -213,8 +235,14 @@ export default function AdminCourierShipments() {
                     <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded border ${STAGE_BADGE[r.stage]}`}>
                       {STAGE_LABEL[r.stage]}
                     </span>
-                    {r.carrierStatus && (
-                      <div className="text-[11px] text-neutral-500 mt-1">Courier status: {r.carrierStatus}</div>
+                    {r.notBookedReason ? (
+                      <div className={`text-[11px] mt-1 ${NOT_BOOKED_REASON[r.notBookedReason].className}`}>
+                        {NOT_BOOKED_REASON[r.notBookedReason].text}
+                      </div>
+                    ) : (
+                      r.carrierStatus && (
+                        <div className="text-[11px] text-neutral-500 mt-1">Courier status: {r.carrierStatus}</div>
+                      )
                     )}
                     {r.orderClosedButShipmentLive && (
                       <div className="text-[11px] font-semibold text-red-700 mt-1">

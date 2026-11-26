@@ -600,8 +600,18 @@ export default function AdminOrderDetail() {
                       const pickupPin = seller?.shippingConfig?.pickupPincode || seller?.pickupPincode;
                       const booked = !!tp.externalOrderId;
                       const carrierStatus = tp.status;
-                      const stage = !booked
-                        ? (g.status === 'Cancelled' ? 'Cancelled' : 'Booking failed — no courier will come')
+                      const isTest =
+                        tp.providerId === 'mock_provider' ||
+                        (sd.awbNumber || '').startsWith('AWB-MOCK') ||
+                        (tp.externalOrderId || '').startsWith('MOCK_');
+                      const stage = isTest
+                        ? 'Test (mock) booking — no real courier'
+                        : !booked
+                        ? (g.status === 'Cancelled' || ['Cancelled', 'Rejected'].includes(order.status)
+                            ? 'Cancelled'
+                            : tp.lastError
+                              ? 'Booking failed — no courier booked'
+                              : 'Not booked yet — booked when the seller accepts')
                         : g.status === 'Cancelled' || carrierStatus === 'Cancelled'
                           ? 'Cancelled'
                           : carrierStatus === 'Returned'
@@ -648,13 +658,13 @@ export default function AdminOrderDetail() {
                               {(pickupCity || pickupPin) && ` (${[pickupCity, pickupPin].filter(Boolean).join(' - ')})`}
                             </div>
                           </div>
-                          {booked && orderClosed && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
+                          {booked && !isTest && orderClosed && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
                             <p className="text-red-700 font-semibold">
                               ⚠️ This order is {order.status.toLowerCase()} but the courier booking is still live — cancel it in the Shiprocket dashboard.
                             </p>
                           )}
                           {tp.cancelRequestFailedAt &&
-                            booked && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
+                            booked && !isTest && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
                             <p className="text-red-700 font-semibold">
                               ⚠️ The app could not cancel this booking at Shiprocket
                               {tp.cancelRequestError ? ` (${tp.cancelRequestError})` : ''} — cancel it in the Shiprocket dashboard.
