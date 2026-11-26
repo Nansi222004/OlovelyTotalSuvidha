@@ -113,8 +113,8 @@ export default function AdminCourierShipments() {
 
       {warnings > 0 && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-sm">
-          ⚠️ <strong>{warnings}</strong> shipment(s) belong to orders that are cancelled in the app but are still live at
-          Shiprocket — a courier may still come. Cancel them in the Shiprocket dashboard (rows marked “Order cancelled”).
+          ⚠️ <strong>{warnings}</strong> shipment(s) are cancelled/rejected in the app but still live at Shiprocket — a
+          courier may still come. Cancel them in the Shiprocket dashboard (rows marked ⚠️ below).
         </div>
       )}
 
@@ -219,6 +219,15 @@ export default function AdminCourierShipments() {
                     {r.orderClosedButShipmentLive && (
                       <div className="text-[11px] font-semibold text-red-700 mt-1">
                         ⚠️ Order {r.orderStatus.toLowerCase()} — cancel in Shiprocket
+                      </div>
+                    )}
+                    {r.courierCancelFailed && (
+                      <div className="text-[11px] font-semibold text-red-700 mt-1 max-w-xs">
+                        ⚠️ App could not cancel this at Shiprocket ({fmtDateTime(r.cancelRequestFailedAt)}) — cancel it in
+                        Shiprocket
+                        {r.cancelRequestError && (
+                          <span className="block font-normal text-red-600">{r.cancelRequestError}</span>
+                        )}
                       </div>
                     )}
                     {r.lastError && <div className="text-[11px] text-red-600 mt-1 max-w-xs">{r.lastError}</div>}

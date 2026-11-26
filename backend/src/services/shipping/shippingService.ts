@@ -425,6 +425,14 @@ export async function cancelCourierShipmentsForOrder(
             'fulfillmentGroups.$.status': 'Cancelled',
             ...(group.thirdPartyOrderDetails ? { 'fulfillmentGroups.$.thirdPartyOrderDetails.status': 'Cancelled' } : {}),
           },
+          ...(group.thirdPartyOrderDetails
+            ? {
+                $unset: {
+                  'fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestFailedAt': 1,
+                  'fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestError': 1,
+                },
+              }
+            : {}),
         }
       );
     } else {
@@ -432,6 +440,17 @@ export async function cancelCourierShipmentsForOrder(
         `[Shipping] Courier cancellation FAILED for order ${(order as any).orderNumber || orderId} group ${group.groupId}: ${result.message}. ` +
         'Cancel it manually in the Shiprocket dashboard to avoid a pickup and freight charge.'
       );
+      // Some callers (seller reject, all-sellers-rejected) cannot abort, so the order may close while
+      // the pickup is still live. Record it on the group so admin's Courier Shipments page flags it.
+      await Order.updateOne(
+        { _id: orderId, 'fulfillmentGroups.groupId': group.groupId },
+        {
+          $set: {
+            'fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestFailedAt': new Date(),
+            'fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestError': String(result.message || 'Carrier cancellation failed').slice(0, 500),
+          },
+        }
+      ).catch((e) => console.error('[Shipping] Could not record failed courier cancellation:', e));
     }
     results.push(result);
   }

@@ -211,6 +211,9 @@ export interface IFulfillmentGroup {
     lastError?: string;
     idempotencyKey?: string;
     codAmount?: number;
+    /** Set when the app asked the carrier to cancel this booking and the carrier refused / failed. */
+    cancelRequestFailedAt?: Date;
+    cancelRequestError?: string;
   };
   subtotal: number;
   shippingFee: number;
@@ -674,6 +677,9 @@ const OrderSchema = new Schema<IOrder>(
           idempotencyKey: { type: String, trim: true },
           // COD cash the carrier was told to collect for this shipment (fixed at booking).
           codAmount: { type: Number },
+          // The app asked the carrier to cancel this booking and it failed: the pickup may still be live.
+          cancelRequestFailedAt: { type: Date },
+          cancelRequestError: { type: String, trim: true },
         },
         subtotal: { type: Number, default: 0 },
         shippingFee: { type: Number, default: 0 },

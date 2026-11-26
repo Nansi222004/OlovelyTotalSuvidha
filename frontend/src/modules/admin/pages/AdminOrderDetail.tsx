@@ -653,6 +653,13 @@ export default function AdminOrderDetail() {
                               ⚠️ This order is {order.status.toLowerCase()} but the courier booking is still live — cancel it in the Shiprocket dashboard.
                             </p>
                           )}
+                          {tp.cancelRequestFailedAt &&
+                            booked && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
+                            <p className="text-red-700 font-semibold">
+                              ⚠️ The app could not cancel this booking at Shiprocket
+                              {tp.cancelRequestError ? ` (${tp.cancelRequestError})` : ''} — cancel it in the Shiprocket dashboard.
+                            </p>
+                          )}
                           {tp.lastError && <p className="text-red-600">{tp.lastError}</p>}
                         </div>
                       );

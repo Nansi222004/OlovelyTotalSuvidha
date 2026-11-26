@@ -211,16 +211,34 @@ test('whole-order cancellation cancels every active courier group and skips canc
   assert.deepEqual(updates.map((u) => u['fulfillmentGroups.groupId']), ['FG_A', 'FG_C']);
 });
 
-test('carrier refusal leaves the group untouched and is returned as a failure (never throws)', async () => {
+test('carrier refusal keeps the group status, records the failure, and is returned as a failure (never throws)', async () => {
   mockShiprocket(() => new Error('Shiprocket API Error [400]: Order already picked up'));
   const updates: any[] = [];
   (Order as any).findById = () => chain({ _id: 'order-3', fulfillmentGroups: [courierGroup()] });
-  (Order as any).updateOne = async (filter: any) => { updates.push(filter); return { modifiedCount: 1 }; };
+  (Order as any).updateOne = async (filter: any, update: any) => { updates.push({ filter, update }); return { modifiedCount: 1 }; };
 
   const results = await cancelCourierShipmentsForOrder('order-3');
   assert.equal(results.length, 1);
   assert.equal(results[0].success, false);
-  assert.equal(updates.length, 0);
+  // Exactly one write: the failure marker. The group is NOT marked Cancelled (pickup may still be live).
+  assert.equal(updates.length, 1);
+  const set = updates[0].update.$set;
+  assert.ok(set['fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestFailedAt'] instanceof Date);
+  assert.match(set['fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestError'], /Order already picked up/);
+  assert.equal(set['fulfillmentGroups.$.status'], undefined);
+  assert.equal(set['fulfillmentGroups.$.thirdPartyOrderDetails.status'], undefined);
+});
+
+test('successful cancellation clears an earlier failure marker', async () => {
+  mockShiprocket();
+  const updates: any[] = [];
+  (Order as any).findById = () => chain({ _id: 'order-4', fulfillmentGroups: [courierGroup()] });
+  (Order as any).updateOne = async (filter: any, update: any) => { updates.push({ filter, update }); return { modifiedCount: 1 }; };
+
+  const results = await cancelCourierShipmentsForOrder('order-4');
+  assert.equal(results[0].success, true);
+  assert.equal(updates[0].update.$set['fulfillmentGroups.$.status'], 'Cancelled');
+  assert.equal(updates[0].update.$unset['fulfillmentGroups.$.thirdPartyOrderDetails.cancelRequestFailedAt'], 1);
 });
 
 test('missing order returns no results', async () => {

@@ -124,6 +124,8 @@ export interface OrderFulfillmentGroup {
     lastError?: string;
     idempotencyKey?: string;
     codAmount?: number;
+    cancelRequestFailedAt?: string;
+    cancelRequestError?: string;
   };
   subtotal?: number;
   shippingFee?: number;
@@ -164,6 +166,10 @@ export interface CourierShipmentRow {
   booked: boolean;
   stage: CourierShipmentStage;
   orderClosedButShipmentLive: boolean;
+  courierCancelFailed: boolean;
+  needsCourierCancel: boolean;
+  cancelRequestFailedAt?: string;
+  cancelRequestError?: string;
   seller: CourierSellerInfo | null;
 }
 

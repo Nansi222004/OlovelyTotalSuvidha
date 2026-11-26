@@ -81,6 +81,8 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
         carrierStatus: "$fulfillmentGroups.thirdPartyOrderDetails.status",
         lastError: "$fulfillmentGroups.thirdPartyOrderDetails.lastError",
         codAmount: "$fulfillmentGroups.thirdPartyOrderDetails.codAmount",
+        cancelRequestFailedAt: "$fulfillmentGroups.thirdPartyOrderDetails.cancelRequestFailedAt",
+        cancelRequestError: "$fulfillmentGroups.thirdPartyOrderDetails.cancelRequestError",
       },
     },
     {
@@ -128,6 +130,23 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
             { $ne: ["$carrierStatus", "Returned"] },
           ],
         },
+        // The app asked Shiprocket to cancel this booking (seller reject / all sellers rejected /
+        // order cancel) and Shiprocket refused or errored; the booking is still live.
+        courierCancelFailed: {
+          $and: [
+            "$booked",
+            { $ne: [{ $ifNull: ["$cancelRequestFailedAt", null] }, null] },
+            { $ne: ["$groupStatus", "Cancelled"] },
+            { $ne: ["$carrierStatus", "Cancelled"] },
+            { $ne: ["$carrierStatus", "Delivered"] },
+            { $ne: ["$carrierStatus", "Returned"] },
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        needsCourierCancel: { $or: ["$orderClosedButShipmentLive", "$courierCancelFailed"] },
       },
     },
   ];
@@ -144,7 +163,7 @@ export const getCourierShipments = asyncHandler(async (req: Request, res: Respon
   pipeline.push({
     $facet: {
       counts: [{ $group: { _id: "$stage", count: { $sum: 1 } } }],
-      warnings: [{ $match: { orderClosedButShipmentLive: true } }, { $count: "count" }],
+      warnings: [{ $match: { needsCourierCancel: true } }, { $count: "count" }],
       total: [{ $match: listMatch }, { $count: "count" }],
       rows: [
         { $match: listMatch },
