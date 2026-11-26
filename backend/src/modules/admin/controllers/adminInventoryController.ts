@@ -22,7 +22,7 @@ import Order from '../../../models/Order';
 import OrderItem from '../../../models/OrderItem';
 import Customer from '../../../models/Customer';
 import Seller from '../../../models/Seller';
-import Tax from '../../../models/Tax';
+import { resolveProductTaxRate } from '../../../services/productTaxService';
 import mongoose from 'mongoose';
 import {
   resolveInventoryOwner,
@@ -387,21 +387,7 @@ export const lookupProductByBarcode = asyncHandler(
 
         // Authoritative product tax rate resolution
         const settings = await AppSettings.getSettings();
-        let taxRate = 0;
-        const rawTax = (productDoc as any).tax;
-        if (rawTax && typeof rawTax === 'object' && Number.isFinite(Number(rawTax.percentage))) {
-          taxRate = Number(rawTax.percentage);
-        } else if (rawTax && mongoose.Types.ObjectId.isValid(String(rawTax))) {
-          const taxDoc: any = await Tax.findById(rawTax).select('percentage status').lean();
-          if (taxDoc?.status === 'Active') taxRate = Number(taxDoc.percentage) || 0;
-        } else if (typeof rawTax === 'string') {
-          const match = rawTax.match(/(?:^|\D)(\d+(?:\.\d+)?)\s*%?$/);
-          if (match) taxRate = Number(match[1]) || 0;
-        }
-        if (taxRate <= 0 && settings?.gstEnabled) {
-          taxRate = Number(settings.gstRate) || 0;
-        }
-        (result.product as any).taxRate = taxRate;
+        (result.product as any).taxRate = await resolveProductTaxRate((productDoc as any).tax, settings);
       }
     }
 
@@ -413,21 +399,7 @@ function escapeSearchRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function resolveProductTaxRate(product: any, settings: any): Promise<number> {
-  const rawTax = product.tax;
-  if (rawTax && typeof rawTax === 'object' && Number.isFinite(Number(rawTax.percentage))) {
-    return Number(rawTax.percentage);
-  }
-  if (rawTax && mongoose.Types.ObjectId.isValid(String(rawTax))) {
-    const taxDoc: any = await Tax.findById(rawTax).select('percentage status').lean();
-    if (taxDoc?.status === 'Active') return Number(taxDoc.percentage) || 0;
-  }
-  if (typeof rawTax === 'string') {
-    const match = rawTax.match(/(?:^|\D)(\d+(?:\.\d+)?)\s*%?$/);
-    if (match) return Number(match[1]) || 0;
-  }
-  return settings?.gstEnabled ? Number(settings.gstRate) || 0 : 0;
-}
+// Product GST rate: see services/productTaxService (shared with customer checkout).
 
 // ---------------------------------------------------------------------------
 // GET /admin/inventory/pos-search?q=...&limit=12
@@ -469,7 +441,7 @@ export const searchPosProducts = asyncHandler(async (req: Request, res: Response
   const settings = await AppSettings.getSettings();
   const results: any[] = [];
   for (const product of products as any[]) {
-    const taxRate = await resolveProductTaxRate(product, settings);
+    const taxRate = await resolveProductTaxRate(product?.tax, settings);
     const base = {
       _id: product._id.toString(),
       productId: product._id.toString(),
@@ -1072,23 +1044,10 @@ export const posCheckout = asyncHandler(async (req: Request, res: Response) => {
           );
         }
 
-        let taxRate = 0;
-        if (settings.gstEnabled) {
-          const rawTax = (product as any).tax;
-          if (rawTax && typeof rawTax === 'object' && Number.isFinite(Number(rawTax.percentage))) {
-            taxRate = Number(rawTax.percentage);
-          } else if (rawTax && mongoose.Types.ObjectId.isValid(String(rawTax))) {
-            const taxDoc: any = await Tax.findById(rawTax)
-              .select('percentage status')
-              .session(session)
-              .lean();
-            if (taxDoc?.status === 'Active') taxRate = Number(taxDoc.percentage) || 0;
-          } else if (typeof rawTax === 'string') {
-            const match = rawTax.match(/(?:^|\D)(\d+(?:\.\d+)?)\s*%?$/);
-            if (match) taxRate = Number(match[1]) || 0;
-          }
-          if (taxRate <= 0) taxRate = Number(settings.gstRate) || 0;
-        }
+        // POS bills GST only when the business is GST-registered (settings.gstEnabled).
+        const taxRate = settings.gstEnabled
+          ? await resolveProductTaxRate((product as any).tax, settings, session)
+          : 0;
 
         const lineTotal = Number((unitPrice * quantity).toFixed(2));
         const taxAmount = taxRate > 0

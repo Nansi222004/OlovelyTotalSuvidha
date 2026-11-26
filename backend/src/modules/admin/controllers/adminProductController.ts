@@ -904,10 +904,25 @@ export const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
 /**
  * Create a new product
  */
+/**
+ * The admin product form sends the selected tax as `taxId`, but the Product schema stores it in
+ * `tax`. Without this mapping Mongoose silently drops `taxId` on create, the product ends up with
+ * no tax, and checkout falls back to the default GST rate (AppSettings.gstRate) instead of the
+ * selected tax. Mirrors the mapping already done in updateProduct and the seller controller.
+ */
+function mapTaxIdToTax(productData: any): void {
+  if (productData.taxId !== undefined) {
+    if (productData.taxId) productData.tax = String(productData.taxId);
+    delete productData.taxId;
+  }
+  if (productData.tax !== undefined && !productData.tax) delete productData.tax;
+}
+
 export const createProduct = asyncHandler(
   async (req: Request, res: Response) => {
     try {
       const productData = req.body;
+      mapTaxIdToTax(productData);
 
       // If seller is not provided, assign canonical Admin Seller and mark as PLATFORM
       const rawSeller = productData.seller || productData.sellerId;
@@ -1813,6 +1828,7 @@ export const bulkImportProducts = asyncHandler(
       productData.status = "Active";
       productData.publish = true;
       productData.requiresApproval = false;
+      mapTaxIdToTax(productData);
 
       const product = await Product.create(productData);
       await Inventory.create({

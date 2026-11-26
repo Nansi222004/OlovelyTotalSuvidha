@@ -38,7 +38,7 @@ import {
   releaseFirstOrderFreeShippingClaim,
 } from "../../../services/shipping/shippingPromotionService";
 import { getCommerceChannels } from "../../../services/commerceChannelService";
-import Tax from "../../../models/Tax";
+import { resolveProductTaxRate } from "../../../services/productTaxService";
 import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
 import {
   evaluatePlatformQuickCommerce,
@@ -662,22 +662,9 @@ export const createOrder = async (req: Request, res: Response) => {
         }
       }
 
-      // Product tax is authoritative when configured. AppSettings GST is the
-      // existing fallback for products without a product-specific tax record.
-      let taxRate = 0;
-      const rawTax = (product as any).tax;
-      if (rawTax && typeof rawTax === "object" && Number.isFinite(Number(rawTax.percentage))) {
-        taxRate = Number(rawTax.percentage);
-      } else if (rawTax && mongoose.Types.ObjectId.isValid(String(rawTax))) {
-        const taxDoc: any = await Tax.findById(rawTax).select("percentage status").lean();
-        if (taxDoc?.status === "Active") taxRate = Number(taxDoc.percentage) || 0;
-      } else if (typeof rawTax === "string") {
-        const match = rawTax.match(/(?:^|\D)(\d+(?:\.\d+)?)\s*%?$/);
-        if (match) taxRate = Number(match[1]) || 0;
-      }
-      if (taxRate <= 0 && settings?.gstEnabled) {
-        taxRate = Number(settings.gstRate) || 0;
-      }
+      // Product tax is authoritative when configured (including 0% for exempt products).
+      // AppSettings GST is the fallback only for products without an active tax.
+      const taxRate = await resolveProductTaxRate((product as any).tax, settings);
 
       validatedItems.push({
         item,
