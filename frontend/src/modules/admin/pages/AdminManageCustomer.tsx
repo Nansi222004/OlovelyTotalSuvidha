@@ -183,7 +183,6 @@ export default function AdminManageCustomer() {
       "Phone",
       "Registration Date",
       "Status",
-      "Ref Code",
       "Wallet Amount",
       "Total Orders",
       "Total Spent",
@@ -200,7 +199,7 @@ export default function AdminManageCustomer() {
             ? new Date(customer.registrationDate).toLocaleString()
             : "",
           customer.status,
-          customer.refCode,
+          (Number(customer.walletAmount) || 0).toFixed(2),
           customer.totalOrders,
           customer.totalSpent.toFixed(2),
         ].join(",")
@@ -329,7 +328,7 @@ export default function AdminManageCustomer() {
                   setCurrentPage(1);
                 }}
                 className="w-full pl-14 pr-3 py-2 bg-neutral-100 border-none rounded text-sm focus:ring-1 focus:ring-teal-500"
-                placeholder="Search by name, email, phone, or ref code..."
+                placeholder="Search by name, email, or phone..."
               />
             </div>
           </div>
@@ -381,7 +380,6 @@ export default function AdminManageCustomer() {
                       Status <SortIcon field="status" />
                     </div>
                   </th>
-                  <th className="p-4 border border-neutral-200">Ref Code</th>
                   <th
                     className="p-4 border border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
                     onClick={() => handleSort("totalOrders")}>
@@ -403,7 +401,7 @@ export default function AdminManageCustomer() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={10}
                       className="p-8 text-center text-neutral-400 border border-neutral-200">
                       Loading customers...
                     </td>
@@ -411,7 +409,7 @@ export default function AdminManageCustomer() {
                 ) : error ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={10}
                       className="p-8 text-center text-red-600 border border-neutral-200">
                       {error}
                     </td>
@@ -419,7 +417,7 @@ export default function AdminManageCustomer() {
                 ) : displayedCustomers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={10}
                       className="p-8 text-center text-neutral-400 border border-neutral-200">
                       No customers found.
                     </td>
@@ -454,9 +452,6 @@ export default function AdminManageCustomer() {
                             }`}>
                           {customer.status}
                         </span>
-                      </td>
-                      <td className="p-4 border border-neutral-200">
-                        {customer.refCode}
                       </td>
                       <td className="p-4 border border-neutral-200">
                         {customer.totalOrders}

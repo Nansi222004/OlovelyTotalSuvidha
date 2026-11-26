@@ -254,14 +254,6 @@ export default function AdminUsers() {
                                     </th>
                                     <th
                                         className="p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
-                                        onClick={() => handleSort('refCode')}
-                                    >
-                                        <div className="flex items-center">
-                                            Ref Code <SortIcon column="refCode" />
-                                        </div>
-                                    </th>
-                                    <th
-                                        className="p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
                                         onClick={() => handleSort('walletAmount')}
                                     >
                                         <div className="flex items-center">
@@ -292,7 +284,7 @@ export default function AdminUsers() {
                             <tbody>
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={11} className="p-8 text-center">
+                                        <td colSpan={10} className="p-8 text-center">
                                             <div className="flex items-center justify-center">
                                                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mr-2"></div>
                                                 Loading users...
@@ -301,13 +293,13 @@ export default function AdminUsers() {
                                     </tr>
                                 ) : error ? (
                                     <tr>
-                                        <td colSpan={11} className="p-8 text-center text-red-600">
+                                        <td colSpan={10} className="p-8 text-center text-red-600">
                                             {error}
                                         </td>
                                     </tr>
                                 ) : displayedUsers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={11} className="p-8 text-center text-neutral-400">
+                                        <td colSpan={10} className="p-8 text-center text-neutral-400">
                                             No users found.
                                         </td>
                                     </tr>
@@ -333,7 +325,6 @@ export default function AdminUsers() {
                                                     {user.status}
                                                 </span>
                                             </td>
-                                            <td className="p-4 align-middle">{user.refCode || '-'}</td>
                                             <td className="p-4 align-middle">₹{user.walletAmount.toFixed(2)}</td>
                                             <td className="p-4 align-middle">{user.totalOrders}</td>
                                             <td className="p-4 align-middle">₹{user.totalSpent.toFixed(2)}</td>
