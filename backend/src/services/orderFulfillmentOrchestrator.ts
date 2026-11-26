@@ -165,6 +165,7 @@ export async function recomputeOrderFulfillment(
   order.fulfillableItems = state.fulfillableItemIds;
 
   if (state.allRejected) {
+    const wasAlreadyCancelled = order.status === "Cancelled";
     order.status = "Cancelled";
     order.cancellationReason = order.cancellationReason || "All sellers rejected the order.";
     order.cancelledAt = order.cancelledAt || new Date();
@@ -195,6 +196,21 @@ export async function recomputeOrderFulfillment(
       if (!settlement.success) console.error(`Settlement failed on all_rejected for ${order.orderNumber}: ${settlement.message}`);
     } catch (refundErr) {
       console.error("Error settling cancelled items on all_rejected:", refundErr);
+    }
+
+    // The order is already marked Cancelled above, so the settlement service skips its own
+    // "release on cancel" step. Give the first-order free shipping back here, otherwise a customer
+    // whose very first order was rejected (e.g. admin rejected platform items) loses the benefit.
+    // Only on the transition to Cancelled: a later re-run must not release a benefit the customer
+    // has since used on another order.
+    if (!wasAlreadyCancelled && (order as any).firstOrderFreeShippingApplied && order.customer) {
+      try {
+        const { releaseFirstOrderFreeShippingClaim } = await import("./shipping/shippingPromotionService");
+        const customerId = (order.customer as any)._id || order.customer;
+        await releaseFirstOrderFreeShippingClaim(customerId);
+      } catch (releaseErr) {
+        console.error(`First-order free shipping release failed on all_rejected for ${order.orderNumber}:`, releaseErr);
+      }
     }
 
     if (io) {
