@@ -15,6 +15,7 @@ import { uploadImage } from '../../../services/api/uploadService';
 import { ConfirmationModal } from '../../../components/ConfirmationModal';
 import LanguageSelector from '../../../components/LanguageSelector';
 import { useSellerChannel } from '../../../context/SellerChannelContext';
+import { getCurrentLocationAddress } from '../../../utils/currentLocationAddress';
 
 interface SellerProfileData {
   _id?: string;
@@ -60,6 +61,37 @@ export default function SellerProfile() {
   });
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  // Map pin picked with "Use current location" in this edit session (null = keep the saved pin).
+  const [pickedCoords, setPickedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  const openEditModal = () => {
+    setPickedCoords(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUseCurrentLocation = async () => {
+    setLocating(true);
+    try {
+      const loc = await getCurrentLocationAddress();
+      setPickedCoords({ latitude: loc.latitude, longitude: loc.longitude });
+      setEditFormData((prev) => ({
+        ...prev,
+        address: loc.address || prev.address,
+        city: loc.city || prev.city,
+      }));
+      showToast(
+        loc.address
+          ? 'Store location set to where you are now. Save to apply.'
+          : 'Pin set to where you are now, but the address was not found. Please type it, then save.',
+        loc.address ? 'success' : 'error'
+      );
+    } catch (err: any) {
+      showToast(err?.message || 'Could not get your current location', 'error');
+    } finally {
+      setLocating(false);
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Password Modal State
@@ -208,6 +240,13 @@ export default function SellerProfile() {
         city: editFormData.city,
         serviceRadiusKm: radius,
         logo: editFormData.logo,
+        ...(pickedCoords
+          ? {
+              latitude: pickedCoords.latitude.toString(),
+              longitude: pickedCoords.longitude.toString(),
+              searchLocation: editFormData.address,
+            }
+          : {}),
       });
 
       if (res.success && res.data) {
@@ -530,7 +569,7 @@ export default function SellerProfile() {
           </div>
 
           <button
-            onClick={() => setIsEditModalOpen(true)}
+            onClick={openEditModal}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -894,6 +933,20 @@ export default function SellerProfile() {
                     className="w-full px-3.5 py-2 rounded-xl border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     placeholder="Enter business address"
                   />
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locating}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    <span aria-hidden="true">📍</span>
+                    {locating ? 'Finding Address...' : 'Use Current Location'}
+                  </button>
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {pickedCoords
+                      ? `Map pin will be updated to ${pickedCoords.latitude}, ${pickedCoords.longitude} when you save.`
+                      : 'Use only while you are at your store — it also sets your pickup map pin.'}
+                  </p>
                 </div>
 
                 {/* City & Radius */}

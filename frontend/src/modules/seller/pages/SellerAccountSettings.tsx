@@ -15,6 +15,7 @@ import {
     hasValidStoreCoordinates,
     reverseGeocodeStoreCoordinates,
 } from '../../../utils/sellerLocation';
+import { getCurrentLocationAddress } from '../../../utils/currentLocationAddress';
 import { filterCategoriesForVendorType } from '../../../utils/sellerCategoryCompatibility';
 
 const SellerAccountSettings = () => {
@@ -28,6 +29,27 @@ const SellerAccountSettings = () => {
     const [error, setError] = useState<string | null>(null);
     const [headerCategories, setHeaderCategories] = useState<HeaderCategory[]>([]);
     const [saveLoading, setSaveLoading] = useState(false);
+    const [locating, setLocating] = useState(false);
+
+    // Sets the store address AND the map pin to where this device is now (seller must be at the store).
+    const handleUseCurrentLocation = async () => {
+        setLocating(true);
+        setError(null);
+        try {
+            const loc = await getCurrentLocationAddress();
+            const fields = buildSellerLocationFields(loc.address, loc.latitude, loc.longitude, loc);
+            setSellerData(prev => ({
+                ...prev,
+                ...fields,
+                city: fields.city || prev.city,
+            }));
+            if (!loc.address) setError('Pin placed at your current location, but the address could not be found. Please check the address before saving.');
+        } catch (locError: any) {
+            setError(locError?.message || 'Could not get your current location.');
+        } finally {
+            setLocating(false);
+        }
+    };
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -569,9 +591,28 @@ const SellerAccountSettings = () => {
                                                     ) : (
                                                         <>
                                                             <div className="md:col-span-2 space-y-1.5">
-                                                                <label className="text-sm font-semibold text-gray-700 ml-1">
-                                                                    Store Location <span className="text-red-500">*</span>
-                                                                </label>
+                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                    <label className="text-sm font-semibold text-gray-700 ml-1">
+                                                                        Store Location <span className="text-red-500">*</span>
+                                                                    </label>
+                                                                    {isEditing && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleUseCurrentLocation}
+                                                                            disabled={locating}
+                                                                            title="Use only while you are at your store — this sets your pickup pin"
+                                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-wait disabled:opacity-60"
+                                                                        >
+                                                                            <span aria-hidden="true">📍</span>
+                                                                            {locating ? 'Finding Address...' : 'Use Current Location'}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                {isEditing && (
+                                                                    <p className="text-[11px] text-amber-700 ml-1">
+                                                                        Use current location only while you are standing at your store — delivery partners are sent to this pin for pickup.
+                                                                    </p>
+                                                                )}
                                                                 {isEditing ? (
                                                                     <>
                                                                         <GoogleMapsAutocomplete

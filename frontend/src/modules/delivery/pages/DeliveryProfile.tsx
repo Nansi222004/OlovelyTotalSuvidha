@@ -6,12 +6,14 @@ import { useDeliveryUser } from '../context/DeliveryUserContext';
 import { getDeliveryProfile, updateProfile } from '../../../services/api/delivery/deliveryService';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { getCurrentLocationAddress } from '../../../utils/currentLocationAddress';
 
 export default function DeliveryProfile() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
+  const [locating, setLocating] = useState(false);
   const { userName, setUserName } = useDeliveryUser();
 
   const [profileData, setProfileData] = useState({
@@ -92,6 +94,22 @@ export default function DeliveryProfile() {
     }
   };
 
+
+  const handleUseCurrentLocation = async () => {
+    setLocating(true);
+    try {
+      const loc = await getCurrentLocationAddress();
+      if (!loc.address) {
+        showToast("Got your location but couldn't find the address. Please type it.", "error");
+        return;
+      }
+      setProfileData((prev) => ({ ...prev, address: loc.address }));
+    } catch (error: any) {
+      showToast(error?.message || "Could not get your current location", "error");
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setProfileData((prev) => ({
@@ -185,12 +203,23 @@ export default function DeliveryProfile() {
             <div className="p-4">
               <p className="text-neutral-500 text-xs mb-1">{t("delivery.address", "Address")}</p>
               {isEditing ? (
-                <textarea
-                  value={profileData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
-                  rows={2}
-                  className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                />
+                <>
+                  <textarea
+                    value={profileData.address}
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    rows={2}
+                    className="w-full text-neutral-900 text-sm px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locating}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    <span aria-hidden="true">📍</span>
+                    {locating ? t("delivery.fetchingLocation", "Fetching location...") : t("delivery.useCurrentLocation", "Use current location")}
+                  </button>
+                </>
               ) : (
                 <p className="text-neutral-900 text-sm">{profileData.address}</p>
               )}
