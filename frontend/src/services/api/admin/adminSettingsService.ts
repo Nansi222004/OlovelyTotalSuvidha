@@ -99,6 +99,10 @@ export interface AppSettings {
     baseCharge: number;
     baseDistance: number;
     kmRate: number;
+    /** Partner pay for the first `deliveryBoyBaseDistance` km */
+    deliveryBoyBaseCharge?: number;
+    deliveryBoyBaseDistance?: number;
+    /** Partner pay per km after `deliveryBoyBaseDistance` */
     deliveryBoyKmRate?: number;
   };
   gstEnabled: boolean;

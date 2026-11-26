@@ -1,4 +1,5 @@
 import AppSettings from "../models/AppSettings";
+import { computeDistanceRiderPay } from "./riderPayService";
 
 /**
  * Calculate estimated delivery boy earning for a new order.
@@ -8,15 +9,8 @@ export async function calculateEstimatedDeliveryBoyEarning(order: any): Promise<
     // @ts-ignore - getSettings is a static method
     const settings = await AppSettings.getSettings();
 
-    if (
-      settings?.deliveryConfig?.isDistanceBased === true &&
-      settings.deliveryConfig?.deliveryBoyKmRate &&
-      order.deliveryDistanceKm &&
-      order.deliveryDistanceKm > 0
-    ) {
-      const earning = order.deliveryDistanceKm * settings.deliveryConfig.deliveryBoyKmRate;
-      return Math.round(earning * 100) / 100;
-    }
+    const distancePay = computeDistanceRiderPay(settings?.deliveryConfig, order.deliveryDistanceKm);
+    if (distancePay !== null) return distancePay;
 
     const defaultCommissionRate = 5;
     const earning = (order.subtotal * defaultCommissionRate) / 100;

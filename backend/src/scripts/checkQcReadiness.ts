@@ -100,7 +100,8 @@ const phoneArg = String(process.argv[2] || "").replace(/\D/g, "").slice(-10);
   console.log("\n5) DELIVERY PRICING");
   console.log(
     dc.isDistanceBased
-      ? `   Distance Based (Instant only): ₹${dc.baseCharge} for ${dc.baseDistance} km + ₹${dc.kmRate}/km; partner ₹${dc.deliveryBoyKmRate}/km`
+      ? `   Distance Based (Instant only): customer ₹${dc.baseCharge} for ${dc.baseDistance} km + ₹${dc.kmRate}/km; ` +
+        `partner ₹${dc.deliveryBoyBaseCharge || 0} for ${dc.deliveryBoyBaseDistance || 0} km + ₹${dc.deliveryBoyKmRate || 0}/km`
       : `   Fixed Price: ₹${settings?.deliveryCharges ?? 0}; partner gets commission % of order value`
   );
   console.log(`   Free delivery above ₹${settings?.freeDeliveryThreshold || 0}`);

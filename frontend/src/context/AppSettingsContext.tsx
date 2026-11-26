@@ -26,6 +26,8 @@ export interface AppSettingsData {
     baseCharge?: number;
     baseDistance?: number;
     kmRate?: number;
+    deliveryBoyBaseCharge?: number;
+    deliveryBoyBaseDistance?: number;
     deliveryBoyKmRate?: number;
     googleMapsKey?: string;
   };

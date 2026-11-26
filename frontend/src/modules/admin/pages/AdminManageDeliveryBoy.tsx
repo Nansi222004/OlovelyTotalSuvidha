@@ -13,14 +13,28 @@ import { getAppSettings } from '../../../services/api/admin/adminSettingsService
 
 /**
  * Rider pay actually used by the backend (commissionService.computeRiderCommission):
- * distance-based → km × deliveryBoyKmRate; otherwise rider's commissionRate % (default 5%) of order subtotal.
+ * distance-based → base pay for the first km + ₹/km after that (riderPayService);
+ * otherwise rider's commissionRate % (default 5%) of order subtotal.
  */
+type RiderPayConfig = {
+    isDistanceBased?: boolean;
+    deliveryBoyBaseCharge?: number;
+    deliveryBoyBaseDistance?: number;
+    deliveryBoyKmRate?: number;
+};
+
 function riderPayLabel(
-    deliveryConfig: { isDistanceBased?: boolean; deliveryBoyKmRate?: number } | null,
+    deliveryConfig: RiderPayConfig | null,
     deliveryBoy: DeliveryBoy
 ): { main: string; sub: string } {
-    if (deliveryConfig?.isDistanceBased && Number(deliveryConfig.deliveryBoyKmRate) > 0) {
-        return { main: `₹${deliveryConfig.deliveryBoyKmRate}/km`, sub: 'Distance based' };
+    const basePay = Number(deliveryConfig?.deliveryBoyBaseCharge) || 0;
+    const baseKm = Number(deliveryConfig?.deliveryBoyBaseDistance) || 0;
+    const kmRate = Number(deliveryConfig?.deliveryBoyKmRate) || 0;
+    if (deliveryConfig?.isDistanceBased && (basePay > 0 || kmRate > 0)) {
+        const main = basePay > 0
+            ? `₹${basePay} for ${baseKm} km + ₹${kmRate}/km`
+            : `₹${kmRate}/km`;
+        return { main, sub: 'Distance based' };
     }
     const pct = deliveryBoy.commissionRate ?? 5;
     return { main: `${pct}% of order`, sub: 'Percentage' };
@@ -28,7 +42,7 @@ function riderPayLabel(
 
 export default function AdminManageDeliveryBoy() {
     const { isAuthenticated, token } = useAuth();
-    const [deliveryConfig, setDeliveryConfig] = useState<{ isDistanceBased?: boolean; deliveryBoyKmRate?: number } | null>(null);
+    const [deliveryConfig, setDeliveryConfig] = useState<RiderPayConfig | null>(null);
 
     useEffect(() => {
         if (!isAuthenticated || !token) return;

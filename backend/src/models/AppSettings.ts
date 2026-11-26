@@ -82,6 +82,10 @@ export interface IAppSettings extends Document {
     baseCharge: number;
     baseDistance: number;
     kmRate: number;
+    /** Partner pay: fixed amount for the first `deliveryBoyBaseDistance` km. */
+    deliveryBoyBaseCharge?: number;
+    deliveryBoyBaseDistance?: number;
+    /** Partner pay per km AFTER `deliveryBoyBaseDistance` (per km for the whole ride when base is 0). */
     deliveryBoyKmRate?: number;
   };
 
@@ -394,6 +398,8 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       baseCharge: { type: Number, default: 0 },
       baseDistance: { type: Number, default: 0 },
       kmRate: { type: Number, default: 0 },
+      deliveryBoyBaseCharge: { type: Number, default: 0, min: 0 },
+      deliveryBoyBaseDistance: { type: Number, default: 0, min: 0 },
       deliveryBoyKmRate: { type: Number, default: 0 },
     },
     // Tax & Business Billing Settings

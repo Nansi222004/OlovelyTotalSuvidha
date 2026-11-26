@@ -10,6 +10,7 @@ import Category from "../models/Category";
 import Product from "../models/Product";
 import WalletTransaction from "../models/WalletTransaction";
 import { itemSellerCommission } from "./financeMath";
+import { computeDistanceRiderPay, effectiveRiderKmRate } from "./riderPayService";
 import { ensureSellerCommissions, settleSellerCommissions, creditOrderTip, resolveQcRiderId, isQcItem, hasOpenReturn } from "./sellerSettlementService";
 
 /**
@@ -134,7 +135,8 @@ export const resolveItemCommissionRate = async (item: any): Promise<number> => {
 
 /**
  * Rider earning for the quick-commerce part of an order:
- * distance mode → distanceKm × deliveryBoyKmRate; otherwise rate% × QC-scoped subtotal.
+ * distance mode → base pay + km beyond the partner's base distance × deliveryBoyKmRate
+ * (see riderPayService); otherwise rate% × QC-scoped subtotal.
  */
 export const computeRiderCommission = async (
   order: any,
@@ -144,14 +146,14 @@ export const computeRiderCommission = async (
   try {
     // @ts-ignore
     const settings = await AppSettings.getSettings();
-    if (
-      settings?.deliveryConfig?.isDistanceBased === true &&
-      settings.deliveryConfig?.deliveryBoyKmRate &&
-      order.deliveryDistanceKm &&
-      order.deliveryDistanceKm > 0
-    ) {
-      const rate = settings.deliveryConfig.deliveryBoyKmRate;
-      return { amount: round2(order.deliveryDistanceKm * rate), rate, base: order.deliveryDistanceKm, usedDistance: true };
+    const distancePay = computeDistanceRiderPay(settings?.deliveryConfig, order.deliveryDistanceKm);
+    if (distancePay !== null) {
+      return {
+        amount: distancePay,
+        rate: effectiveRiderKmRate(distancePay, order.deliveryDistanceKm),
+        base: order.deliveryDistanceKm,
+        usedDistance: true,
+      };
     }
   } catch (err) {
     console.error("Error reading delivery settings for rider commission:", err);
@@ -726,17 +728,10 @@ export const calculateCODOrderBreakdown = async (
     } else if (order.deliveryBoy) {
       const settings = await AppSettings.getSettings();
 
-      // Check if distance-based delivery is enabled
-      if (
-        settings?.deliveryConfig?.isDistanceBased &&
-        settings.deliveryConfig.deliveryBoyKmRate &&
-        order.deliveryDistanceKm &&
-        order.deliveryDistanceKm > 0
-      ) {
-        // Distance-based calculation
-        const deliveryBoyKmRate = settings.deliveryConfig.deliveryBoyKmRate;
-        breakdown.deliveryBoyCommission = round2(
-          order.deliveryDistanceKm * deliveryBoyKmRate);
+      // Distance-based partner pay: base pay for the first km + extra per km after that
+      const distancePay = computeDistanceRiderPay(settings?.deliveryConfig, order.deliveryDistanceKm);
+      if (distancePay !== null) {
+        breakdown.deliveryBoyCommission = distancePay;
 
         // Admin gets the rest of the delivery charge (possibly negative if they pay extra)
         breakdown.adminDeliveryCommission =
@@ -871,14 +866,9 @@ export const getOrderEarningBreakdown = async (
     breakdown.adminDeliveryCommission = round2(breakdown.totalDeliveryCharge);
   } else if (order.deliveryBoy) {
     const settings = await AppSettings.getSettings();
-    if (
-      settings?.deliveryConfig?.isDistanceBased &&
-      settings.deliveryConfig.deliveryBoyKmRate &&
-      order.deliveryDistanceKm &&
-      order.deliveryDistanceKm > 0
-    ) {
-      const rate = settings.deliveryConfig.deliveryBoyKmRate;
-      breakdown.deliveryBoyCommission = order.deliveryDistanceKm * rate;
+    const distancePay = computeDistanceRiderPay(settings?.deliveryConfig, order.deliveryDistanceKm);
+    if (distancePay !== null) {
+      breakdown.deliveryBoyCommission = distancePay;
       breakdown.adminDeliveryCommission =
         breakdown.totalDeliveryCharge - breakdown.deliveryBoyCommission;
     } else {

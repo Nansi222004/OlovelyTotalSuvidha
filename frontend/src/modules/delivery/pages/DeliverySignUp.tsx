@@ -29,7 +29,6 @@ export default function DeliverySignUp() {
     bankName: "",
     accountNumber: "",
     ifscCode: "",
-    bonusType: "",
   });
 
   // File state for UI
@@ -45,13 +44,6 @@ export default function DeliverySignUp() {
   const [error, setError] = useState("");
   const [isCityLoading, setIsCityLoading] = useState(false);
 
-  const bonusTypes = [
-    "Select Bonus Type",
-    "Fixed or Salaried",
-    "Fixed",
-    "Salaried",
-    "Commission Based",
-  ];
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -262,7 +254,6 @@ export default function DeliverySignUp() {
         bankName: formData.bankName || undefined,
         accountNumber: formData.accountNumber || undefined,
         ifscCode: formData.ifscCode || undefined,
-        bonusType: formData.bonusType || undefined,
       });
 
       if (response.success) {
@@ -571,26 +562,6 @@ export default function DeliverySignUp() {
                     className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
                     disabled={loading}
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Bonus Type
-                  </label>
-                  <select
-                    name="bonusType"
-                    value={formData.bonusType}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                    disabled={loading}>
-                    {bonusTypes.map((type) => (
-                      <option
-                        key={type}
-                        value={type === "Select Bonus Type" ? "" : type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 

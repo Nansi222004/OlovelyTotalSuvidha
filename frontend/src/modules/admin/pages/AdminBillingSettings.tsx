@@ -21,7 +21,11 @@ export default function AdminBillingSettings() {
     const [baseCharge, setBaseCharge] = useState<number>(0);
     const [baseDistance, setBaseDistance] = useState<number>(0);
     const [kmRate, setKmRate] = useState<number>(0);
+    // Delivery partner pay (own base distance, independent of the customer's)
+    const [deliveryBoyBaseCharge, setDeliveryBoyBaseCharge] = useState<number>(0);
+    const [deliveryBoyBaseDistance, setDeliveryBoyBaseDistance] = useState<number>(0);
     const [deliveryBoyKmRate, setDeliveryBoyKmRate] = useState<number>(0);
+    const [previewKm, setPreviewKm] = useState<number>(5);
     const [googleMapsKey, setGoogleMapsKey] = useState<string>('');
 
     // Feature Flags
@@ -51,6 +55,8 @@ export default function AdminBillingSettings() {
                     setBaseCharge(data.deliveryConfig.baseCharge || 0);
                     setBaseDistance(data.deliveryConfig.baseDistance || 0);
                     setKmRate(data.deliveryConfig.kmRate || 0);
+                    setDeliveryBoyBaseCharge(data.deliveryConfig.deliveryBoyBaseCharge || 0);
+                    setDeliveryBoyBaseDistance(data.deliveryConfig.deliveryBoyBaseDistance || 0);
                     setDeliveryBoyKmRate(data.deliveryConfig.deliveryBoyKmRate || 0);
                     setGoogleMapsKey(data.deliveryConfig.googleMapsKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '');
                 } else {
@@ -85,6 +91,8 @@ export default function AdminBillingSettings() {
                     baseCharge,
                     baseDistance,
                     kmRate,
+                    deliveryBoyBaseCharge,
+                    deliveryBoyBaseDistance,
                     deliveryBoyKmRate,
                     googleMapsKey
                 },
@@ -313,6 +321,11 @@ export default function AdminBillingSettings() {
                             animate={{ opacity: 1 }}
                             className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6"
                         >
+                            <div className="md:col-span-2 -mb-2">
+                                <h3 className="text-sm font-semibold text-gray-900">Customer delivery charge</h3>
+                                <p className="text-xs text-gray-500">What the customer pays for Instant delivery.</p>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Base Charge (₹)
@@ -368,9 +381,53 @@ export default function AdminBillingSettings() {
                                 <p className="mt-1 text-xs text-gray-500">Charged for every km after base distance.</p>
                             </div>
 
+                            <div className="md:col-span-2 border-t pt-5 -mb-2">
+                                <h3 className="text-sm font-semibold text-gray-900">Delivery partner pay</h3>
+                                <p className="text-xs text-gray-500">
+                                    What the delivery partner earns per delivery, paid by the platform. Has its own base distance.
+                                </p>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Delivery Boy Commission (₹/km)
+                                    Delivery Boy Base Pay (₹)
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={deliveryBoyBaseCharge === 0 ? '' : deliveryBoyBaseCharge}
+                                        onChange={(e) => setDeliveryBoyBaseCharge(e.target.value === '' ? 0 : Number(e.target.value))}
+                                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                                        placeholder="0"
+                                    />
+                                </div>
+                                <p className="mt-1 text-xs text-gray-500">Fixed pay for the partner's first X km.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Delivery Boy Base Distance (km)
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={deliveryBoyBaseDistance === 0 ? '' : deliveryBoyBaseDistance}
+                                        onChange={(e) => setDeliveryBoyBaseDistance(e.target.value === '' ? 0 : Number(e.target.value))}
+                                        className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">km</span>
+                                </div>
+                                <p className="mt-1 text-xs text-gray-500">Distance covered by the base pay.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Delivery Boy Extra per km (₹)
                                 </label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
@@ -383,8 +440,68 @@ export default function AdminBillingSettings() {
                                         placeholder="0"
                                     />
                                 </div>
-                                <p className="mt-1 text-xs text-gray-500">Amount paid to delivery partner per km.</p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Paid for every km after the partner's base distance
+                                    {deliveryBoyBaseCharge === 0 && deliveryBoyBaseDistance === 0 ? ' (with no base set: per km for the whole ride)' : ''}.
+                                </p>
                             </div>
+
+                            {/* Live example: what each side pays/earns for a ride of N km */}
+                            {(() => {
+                                const km = Math.max(0, previewKm || 0);
+                                const customerFee = Math.ceil(baseCharge + Math.max(0, km - baseDistance) * kmRate);
+                                const partnerConfigured = deliveryBoyBaseCharge > 0 || deliveryBoyKmRate > 0;
+                                const partnerPay = Math.round(
+                                    (deliveryBoyBaseCharge + Math.max(0, km - deliveryBoyBaseDistance) * deliveryBoyKmRate) * 100
+                                ) / 100;
+                                const platform = Math.round((customerFee - partnerPay) * 100) / 100;
+                                return (
+                                    <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm">
+                                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                                            <span className="font-medium text-gray-800">Example for a ride of</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                value={previewKm}
+                                                onChange={(e) => setPreviewKm(e.target.value === '' ? 0 : Number(e.target.value))}
+                                                className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                            />
+                                            <span className="font-medium text-gray-800">km (road distance)</span>
+                                        </div>
+                                        {partnerConfigured ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Customer pays</p>
+                                                    <p className="font-semibold text-gray-900">₹{customerFee}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Partner earns</p>
+                                                    <p className="font-semibold text-gray-900">₹{partnerPay}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Platform keeps</p>
+                                                    <p className={`font-semibold ${platform < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                                                        {platform < 0 ? '−' : ''}₹{Math.abs(platform)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-600">
+                                                No partner pay set: partners get their % commission of the order value instead.
+                                            </p>
+                                        )}
+                                        {partnerConfigured && platform < 0 && (
+                                            <p className="mt-2 text-xs text-red-600">
+                                                The platform pays more to the partner than the customer pays for this distance.
+                                            </p>
+                                        )}
+                                        <p className="mt-2 text-[11px] text-gray-500">
+                                            On free-delivery orders the customer pays ₹0 and the platform pays the full partner amount.
+                                        </p>
+                                    </div>
+                                );
+                            })()}
                         </motion.div>
                     )}
                 </div>
