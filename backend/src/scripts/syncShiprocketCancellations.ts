@@ -128,14 +128,18 @@ async function fetchShiprocketOrder(group: any): Promise<{ id: string; status: s
         (i: any) => !i.cancellationSettledAt && !["Delivered", "Returned"].includes(String(i.status))
       );
       console.log(
-        `     Items: ${items.length} (${unsettled.length} not yet settled) → ` +
-        (unsettled.length
-          ? "will restore stock, cancel items/commissions, adjust COD/refund"
-          : "already settled")
+        `     Items: ${items.length} (${unsettled.length} without settlement marker) → ` +
+        (!orderOutOfSync
+          ? `order already ${order.status}: its cancellation already handled stock/money — only the group status is synced`
+          : unsettled.length
+            ? "will restore stock, cancel items/commissions, adjust COD/refund"
+            : "already settled")
       );
 
       if (!APPLY) {
-        console.log("     (dry run) would mark group Cancelled and settle the items\n");
+        console.log(
+          `     (dry run) would mark group Cancelled${orderOutOfSync ? " and settle the items" : ""}\n`
+        );
         continue;
       }
 
