@@ -84,7 +84,108 @@ export interface Order {
   cancelledBy?: string | { firstName: string; lastName: string };
   createdAt?: string;
   updatedAt?: string;
+  fulfillmentGroups?: OrderFulfillmentGroup[];
 }
+
+export interface CourierSellerInfo {
+  _id: string;
+  storeName?: string;
+  sellerName?: string;
+  isPlatform?: boolean;
+  pickupCity?: string;
+  pickupPincode?: string;
+  pickupLocationName?: string;
+  shippingConfig?: {
+    pickupCity?: string;
+    pickupPincode?: string;
+    shiprocketPickupLocationName?: string;
+  };
+}
+
+export interface OrderFulfillmentGroup {
+  groupId: string;
+  fulfillmentType: "LOCAL_DELIVERY" | "COURIER_SHIPPING" | "THIRD_PARTY_API";
+  status: string;
+  seller?: string | CourierSellerInfo;
+  items?: string[];
+  shippingDetails?: {
+    carrier?: string;
+    awbNumber?: string;
+    trackingNumber?: string;
+    trackingUrl?: string;
+    shippedAt?: string;
+    estimatedDelivery?: string;
+  };
+  thirdPartyOrderDetails?: {
+    providerId?: string;
+    externalOrderId?: string;
+    shipmentId?: string;
+    status?: string;
+    lastError?: string;
+    idempotencyKey?: string;
+    codAmount?: number;
+  };
+  subtotal?: number;
+  shippingFee?: number;
+}
+
+export type CourierShipmentStage =
+  | "awaiting_pickup"
+  | "in_transit"
+  | "not_booked"
+  | "delivered"
+  | "rto"
+  | "cancelled";
+
+export interface CourierShipmentRow {
+  orderId: string;
+  orderNumber: string;
+  orderStatus: string;
+  orderType?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  total?: number;
+  customerName?: string;
+  customerPhone?: string;
+  createdAt: string;
+  groupId: string;
+  groupStatus: string;
+  groupTotal?: number;
+  carrier?: string;
+  awbNumber?: string;
+  trackingUrl?: string;
+  shippedAt?: string;
+  estimatedDelivery?: string;
+  externalOrderId?: string;
+  shipmentId?: string;
+  carrierStatus?: string;
+  lastError?: string;
+  codAmount?: number;
+  booked: boolean;
+  stage: CourierShipmentStage;
+  orderClosedButShipmentLive: boolean;
+  seller: CourierSellerInfo | null;
+}
+
+export interface CourierShipmentsResponse {
+  rows: CourierShipmentRow[];
+  counts: Record<CourierShipmentStage, number>;
+  warnings: number;
+  pagination: { page: number; limit: number; total: number; pages: number };
+}
+
+/**
+ * Courier (Shiprocket) bookings — one row per courier shipment, filtered by stage.
+ */
+export const getCourierShipments = async (params: {
+  stage?: CourierShipmentStage | "all";
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<ApiResponse<CourierShipmentsResponse>> => {
+  const response = await api.get<ApiResponse<CourierShipmentsResponse>>("/admin/courier-shipments", { params });
+  return response.data;
+};
 
 export interface GetOrdersParams {
   page?: number;

@@ -40,6 +40,7 @@ import * as taxController from "../modules/admin/controllers/adminTaxController"
 // Cash Collection Controllers
 import * as cashCollectionController from "../modules/admin/controllers/adminCashCollectionController";
 import * as courierCodController from "../modules/admin/controllers/adminCourierCodController";
+import * as courierShipmentController from "../modules/admin/controllers/adminCourierShipmentController";
 
 // FAQ Controllers
 import * as faqController from "../modules/admin/controllers/adminFAQController";
@@ -270,6 +271,9 @@ router.get("/courier-cod/settlements", courierCodController.getSettlements);
 router.post("/courier-cod/settlements/:orderId/cancel", courierCodController.cancelSettlement);
 router.get("/courier-cod/remittances", courierCodController.getRemittances);
 router.post("/courier-cod/remittances", courierCodController.createRemittance);
+
+// ==================== Courier (Shiprocket) Shipments ====================
+router.get("/courier-shipments", courierShipmentController.getCourierShipments);
 
 // ==================== Cash Collection Routes ====================
 router.get("/cash-collections", cashCollectionController.getCashCollections);

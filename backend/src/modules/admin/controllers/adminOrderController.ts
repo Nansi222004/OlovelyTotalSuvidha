@@ -338,7 +338,11 @@ export const getOrderById = asyncHandler(
           },
         ],
       })
-      .populate("cancelledBy", "firstName lastName");
+      .populate("cancelledBy", "firstName lastName")
+      .populate(
+        "fulfillmentGroups.seller",
+        "storeName sellerName isPlatform shippingConfig.pickupCity shippingConfig.pickupPincode shippingConfig.shiprocketPickupLocationName",
+      );
 
     if (!order) {
       return res.status(404).json({

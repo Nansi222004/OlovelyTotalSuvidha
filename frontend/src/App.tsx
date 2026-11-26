@@ -251,6 +251,9 @@ const AdminCashCollection = lazyWithRetry(
 const AdminCourierCod = lazyWithRetry(
   () => import("./modules/admin/pages/AdminCourierCod"), "AdminCourierCod"
 );
+const AdminCourierShipments = lazyWithRetry(
+  () => import("./modules/admin/pages/AdminCourierShipments"), "AdminCourierShipments"
+);
 const AdminReturnRequest = lazyWithRetry(
   () => import("./modules/admin/pages/AdminReturnRequest"), "AdminReturnRequest"
 );
@@ -1001,6 +1004,10 @@ function App() {
                                       <Route
                                         path="orders/cancelled"
                                         element={<AdminCancelledOrders />}
+                                      />
+                                      <Route
+                                        path="orders/courier-shipments"
+                                        element={<AdminCourierShipments />}
                                       />
                                       <Route
                                         path="orders/:id"

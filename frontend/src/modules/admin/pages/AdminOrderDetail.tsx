@@ -206,6 +206,11 @@ export default function AdminOrderDetail() {
   const customer = typeof order.customer === 'object' ? order.customer : null;
   const deliveryBoy = typeof order.deliveryBoy === 'object' ? order.deliveryBoy : null;
   const items: any[] = Array.isArray(order.items) ? order.items : [];
+  const courierGroups = (order.fulfillmentGroups || []).filter(
+    (g) =>
+      (g.fulfillmentType === 'COURIER_SHIPPING' || g.fulfillmentType === 'THIRD_PARTY_API') &&
+      !!(g.thirdPartyOrderDetails?.externalOrderId || g.shippingDetails?.awbNumber || g.thirdPartyOrderDetails?.idempotencyKey),
+  );
   const orderTipAmount = getOrderTipAmount(order);
   const orderGiftFee = getOrderGiftPackagingFee(order);
 
@@ -565,7 +570,8 @@ export default function AdminOrderDetail() {
               </div>
             )}
 
-            {items.some((it) => it.productType === 'ECOMMERCE' || it.fulfillmentType === 'COURIER_SHIPPING') && (
+            {(courierGroups.length > 0 ||
+              items.some((it) => it.productType === 'ECOMMERCE' || it.fulfillmentType === 'COURIER_SHIPPING')) && (
               <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 shadow-2xs">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-blue-200">
                   <div className="flex items-center gap-2">
@@ -579,15 +585,80 @@ export default function AdminOrderDetail() {
                       </span>
                     </div>
                   </div>
-                  {order.trackingNumber && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-100 text-blue-800">
-                      AWB: {order.trackingNumber}
-                    </span>
-                  )}
                 </div>
-                <p className="text-xs text-neutral-600">
-                  Fulfilled via seller courier dispatch. Quick Commerce local riders do not deliver these parcels.
-                </p>
+                {courierGroups.length === 0 ? (
+                  <p className="text-xs text-neutral-600">
+                    Not booked with a courier yet. Quick Commerce local riders do not deliver these parcels.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {courierGroups.map((g) => {
+                      const tp = g.thirdPartyOrderDetails || {};
+                      const sd = g.shippingDetails || {};
+                      const seller = typeof g.seller === 'object' ? g.seller : undefined;
+                      const pickupCity = seller?.shippingConfig?.pickupCity || seller?.pickupCity;
+                      const pickupPin = seller?.shippingConfig?.pickupPincode || seller?.pickupPincode;
+                      const booked = !!tp.externalOrderId;
+                      const carrierStatus = tp.status;
+                      const stage = !booked
+                        ? (g.status === 'Cancelled' ? 'Cancelled' : 'Booking failed — no courier will come')
+                        : g.status === 'Cancelled' || carrierStatus === 'Cancelled'
+                          ? 'Cancelled'
+                          : carrierStatus === 'Returned'
+                            ? 'RTO'
+                            : g.status === 'Delivered' || carrierStatus === 'Delivered'
+                              ? 'Delivered'
+                              : ['Picked Up', 'In Transit', 'Out for Delivery', 'Action Required'].includes(carrierStatus || '')
+                                ? 'In transit'
+                                : 'Awaiting pickup';
+                      const stageClass =
+                        stage === 'Awaiting pickup'
+                          ? 'bg-amber-100 text-amber-800'
+                          : stage === 'In transit'
+                            ? 'bg-blue-100 text-blue-800'
+                            : stage === 'Delivered'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : stage === 'Cancelled'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-neutral-200 text-neutral-700';
+                      const orderClosed = ['Cancelled', 'Rejected', 'Returned'].includes(order.status);
+                      return (
+                        <div key={g.groupId} className="bg-white/70 border border-blue-100 rounded-lg p-3 text-xs space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`px-2 py-0.5 rounded font-bold ${stageClass}`}>{stage}</span>
+                            {sd.awbNumber && (
+                              <a
+                                href={sd.trackingUrl || `https://shiprocket.co/tracking/${sd.awbNumber}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono font-bold text-blue-800 hover:underline"
+                              >
+                                AWB: {sd.awbNumber}
+                              </a>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-neutral-700">
+                            <div><span className="text-neutral-500">Courier:</span> {sd.carrier || '—'}</div>
+                            <div><span className="text-neutral-500">Courier status:</span> {carrierStatus || '—'}</div>
+                            <div><span className="text-neutral-500">Shiprocket order:</span> {tp.externalOrderId || '—'}</div>
+                            <div><span className="text-neutral-500">Shipment ID:</span> {tp.shipmentId || '—'}</div>
+                            <div className="sm:col-span-2">
+                              <span className="text-neutral-500">Pickup from:</span>{' '}
+                              {seller?.storeName || seller?.sellerName || '—'}
+                              {(pickupCity || pickupPin) && ` (${[pickupCity, pickupPin].filter(Boolean).join(' - ')})`}
+                            </div>
+                          </div>
+                          {booked && orderClosed && stage !== 'Cancelled' && stage !== 'Delivered' && stage !== 'RTO' && (
+                            <p className="text-red-700 font-semibold">
+                              ⚠️ This order is {order.status.toLowerCase()} but the courier booking is still live — cancel it in the Shiprocket dashboard.
+                            </p>
+                          )}
+                          {tp.lastError && <p className="text-red-600">{tp.lastError}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
