@@ -4,6 +4,7 @@
  *   pay = deliveryBoyBaseCharge + max(0, distanceKm − deliveryBoyBaseDistance) × deliveryBoyKmRate
  *
  * With base pay and base distance left at 0 this is exactly the old `distanceKm × deliveryBoyKmRate`.
+ * A measured distance of 0 km (customer at the pickup point) still earns the base pay.
  * Returns null when distance pay does not apply (not distance mode, no distance recorded, or no
  * partner pay configured), so callers keep their existing % commission fallback.
  */
@@ -21,8 +22,10 @@ export function computeDistanceRiderPay(
   config: RiderDistancePayConfig | null | undefined,
   distanceKm: number | null | undefined,
 ): number | null {
+  // null/undefined = distance never measured; 0 is a real measurement and gets the base pay.
+  if (distanceKm === null || distanceKm === undefined || (distanceKm as unknown) === "") return null;
   const distance = Number(distanceKm);
-  if (!config?.isDistanceBased || !Number.isFinite(distance) || distance <= 0) return null;
+  if (!config?.isDistanceBased || !Number.isFinite(distance) || distance < 0) return null;
 
   const basePay = nonNegative(config.deliveryBoyBaseCharge);
   const baseDistance = nonNegative(config.deliveryBoyBaseDistance);

@@ -875,7 +875,9 @@ export const createOrder = async (req: Request, res: Response) => {
       ? Number(settings.platformFee)
       : (Number(fees?.platformFee) || 0);
     let deliveryFee = Number(fees?.deliveryFee) || 0;
-    let deliveryDistanceKm = 0;
+    // Stays undefined unless a road distance is actually measured, so a real 0 km
+    // (customer at the pickup point) is not confused with "not measured" when paying the rider.
+    let deliveryDistanceKm: number | undefined;
 
     // Pickup points for the Quick Commerce items: each seller's shop, or the platform warehouse
     // for platform (admin) products. Previously this read an empty `sellerIds` set, so no
@@ -1254,7 +1256,9 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
     newOrder.normalShippingAmount = Number(firstOrderPromo.normalShippingAmount.toFixed(2));
     newOrder.shippingDiscount = Number(firstOrderPromo.shippingDiscount.toFixed(2));
     newOrder.platformFee = Number(platformFee.toFixed(2)); // Platform fee charged once
-    newOrder.deliveryDistanceKm = deliveryDistanceKm;
+    if (deliveryDistanceKm !== undefined && Number.isFinite(deliveryDistanceKm)) {
+      newOrder.deliveryDistanceKm = deliveryDistanceKm;
+    }
 
     if (session) {
       await newOrder.save({ session });

@@ -20,8 +20,12 @@ const cases: [string, unknown, number | null | undefined, number | null][] = [
   // Fallback to % commission (null)
   ["no partner pay configured → null (use %)", cfg({}), 5, null],
   ["Fixed Price mode → null", { isDistanceBased: false, deliveryBoyKmRate: 10 }, 5, null],
-  ["no distance recorded → null", cfg({ deliveryBoyKmRate: 10 }), 0, null],
+  // A measured 0 km (customer at the pickup point) still earns the base pay
+  ["0 km measured, ₹11 for 1 km + ₹6/km → base ₹11", cfg({ deliveryBoyBaseCharge: 11, deliveryBoyBaseDistance: 1, deliveryBoyKmRate: 6 }), 0, 11],
+  ["0 km measured, old per-km-only config → ₹0", cfg({ deliveryBoyKmRate: 10 }), 0, 0],
   ["missing distance → null", cfg({ deliveryBoyKmRate: 10 }), undefined, null],
+  ["null distance → null", cfg({ deliveryBoyBaseCharge: 11, deliveryBoyKmRate: 6 }), null, null],
+  ["negative distance → null", cfg({ deliveryBoyBaseCharge: 11, deliveryBoyKmRate: 6 }), -1, null],
   ["negative inputs ignored", cfg({ deliveryBoyBaseCharge: -5, deliveryBoyBaseDistance: -2, deliveryBoyKmRate: 6 }), 4, 24],
 ];
 
