@@ -379,6 +379,21 @@ export const getOrderDetails = asyncHandler(
       type: "DELIVERY_BOY",
     });
 
+    // Order-level charges, so the rider app can label exactly what the cash amount includes.
+    // Handling / gift / coupon / wallet belong to this rider only when they carry the whole order
+    // (on mixed orders they sit with the courier part); the tip is always the rider's.
+    const orderAny = order as any;
+    const coversWholeOrder =
+      qcCtx.assignedQcItems.length === (Array.isArray(order.items) ? order.items.length : 0);
+    const money = (v: unknown) => Math.max(0, Number(v) || 0);
+    const chargeBreakdown = {
+      handlingFee: coversWholeOrder ? money(order.platformFee) : 0,
+      tipAmount: money(orderAny.tipAmount),
+      giftPackagingFee: coversWholeOrder ? money(orderAny.giftPackagingFee) : 0,
+      couponDiscount: coversWholeOrder ? money(order.discount) : 0,
+      walletUsed: coversWholeOrder ? money(orderAny.walletAmountUsed) : 0,
+    };
+
     const formattedOrder = {
       id: order._id,
       orderId: order.orderNumber,
@@ -386,6 +401,7 @@ export const getOrderDetails = asyncHandler(
       customerPhone: order.customerPhone,
       address: formatDeliveryAddress(order.deliveryAddress).formatted,
       deliveryAddress: order.deliveryAddress,
+      ...chargeBreakdown,
       status: qcCtx.displayStatus,
       deliveryBoy: order.deliveryBoy,
       deliveryBoyStatus: order.deliveryBoyStatus,

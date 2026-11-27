@@ -498,6 +498,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const mappedItems = mapApiItemsToState(response.data.items);
           setItems(mappedItems);
           setEstimatedFee(response.data.estimatedDeliveryFee);
+          // Keep the per-channel fees in sync too, or the checkout's Instant Delivery card
+          // shows a stale amount (e.g. ₹0) while the bill shows the real fee.
+          setQcDeliveryFee(response.data.qcDeliveryFee);
+          setEcomShippingFee(response.data.ecomShippingFee);
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
@@ -573,9 +577,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
             setItems([]);
           }
           setEstimatedFee(response.data.estimatedDeliveryFee);
+          setQcDeliveryFee(response.data.qcDeliveryFee);
+          setEcomShippingFee(response.data.ecomShippingFee);
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
+          setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
+          setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
+          setShippingDiscount(response.data.shippingDiscount);
           setCartGroups(response.data.groups || undefined);
         }
       } catch (error: any) {

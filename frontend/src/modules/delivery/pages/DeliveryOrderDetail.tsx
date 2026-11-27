@@ -225,6 +225,18 @@ export default function DeliveryOrderDetail() {
     const displayedTotal = typeof order?.assignedTotal === 'number'
         ? order.assignedTotal
         : displayedSubtotal + displayedShipping;
+    // Order-level charges the customer also pays (sent by the API only when part of this rider's share)
+    const handlingFee = Number(order?.handlingFee) || 0;
+    const tipAmount = Number(order?.tipAmount) || 0;
+    const giftPackagingFee = Number(order?.giftPackagingFee) || 0;
+    const couponDiscount = Number(order?.couponDiscount) || 0;
+    const walletUsed = Number(order?.walletUsed) || 0;
+    const customerTotal = Math.max(0, displayedTotal + handlingFee + tipAmount + giftPackagingFee - couponDiscount);
+    const cashToCollect = order?.codAmountToCollect != null
+        ? Number(order.codAmountToCollect)
+        : Math.max(0, customerTotal - walletUsed);
+    // Anything in the cash amount not explained by the lines above (older API / unusual split orders)
+    const unexplainedCash = cashToCollect - (customerTotal - walletUsed);
 
     const isAssignedToMe = Boolean(
         order &&
@@ -1097,9 +1109,33 @@ export default function DeliveryOrderDetail() {
                             <span className="font-medium text-neutral-600">QC delivery / shipping</span>
                             <span className="font-semibold text-neutral-900">₹{displayedShipping.toFixed(2)}</span>
                         </div>
+                        {handlingFee > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-neutral-600">Handling fee</span>
+                                <span className="font-semibold text-neutral-900">₹{handlingFee.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {giftPackagingFee > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-neutral-600">Gift packaging</span>
+                                <span className="font-semibold text-neutral-900">₹{giftPackagingFee.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {tipAmount > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-green-700">Tip for you 💚</span>
+                                <span className="font-semibold text-green-700">₹{tipAmount.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {couponDiscount > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-neutral-600">Coupon discount</span>
+                                <span className="font-semibold text-neutral-900">−₹{couponDiscount.toFixed(2)}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
-                            <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Assigned QC total")}</span>
-                            <span className="text-xl font-bold text-neutral-900">₹{displayedTotal.toFixed(2)}</span>
+                            <span className="font-semibold text-neutral-700">{t("delivery.totalAmount", "Total Amount")}</span>
+                            <span className="text-xl font-bold text-neutral-900">₹{customerTotal.toFixed(2)}</span>
                         </div>
                     </div>
 
@@ -1119,14 +1155,24 @@ export default function DeliveryOrderDetail() {
                             <div>
                                 <p className="text-xs text-amber-800 font-bold uppercase tracking-wider">Collect Cash from Customer</p>
                                 <p className="text-[11px] text-amber-600">QC assigned delivery responsibility</p>
-                                {order.codAmountToCollect != null && order.codAmountToCollect - displayedTotal > 0.005 && (
+                                {walletUsed > 0 && (
                                     <p className="text-[11px] text-amber-700 font-semibold">
-                                        Includes tip / fees ₹{(order.codAmountToCollect - displayedTotal).toFixed(2)}
+                                        ₹{walletUsed.toFixed(2)} already paid from customer wallet
+                                    </p>
+                                )}
+                                {tipAmount > 0 && (
+                                    <p className="text-[11px] text-green-700 font-semibold">
+                                        Includes your tip ₹{tipAmount.toFixed(2)}
+                                    </p>
+                                )}
+                                {Math.abs(unexplainedCash) > 0.005 && (
+                                    <p className="text-[11px] text-amber-700 font-semibold">
+                                        {unexplainedCash > 0 ? 'Includes other charges' : 'After adjustments'} ₹{Math.abs(unexplainedCash).toFixed(2)}
                                     </p>
                                 )}
                             </div>
                             <span className="text-xl font-extrabold text-amber-900">
-                                ₹{(order.codAmountToCollect != null ? order.codAmountToCollect : displayedTotal).toFixed(2)}
+                                ₹{cashToCollect.toFixed(2)}
                             </span>
                         </div>
                     ) : (

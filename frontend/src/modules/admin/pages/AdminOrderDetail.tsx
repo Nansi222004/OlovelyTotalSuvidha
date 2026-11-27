@@ -213,6 +213,10 @@ export default function AdminOrderDetail() {
   );
   const orderTipAmount = getOrderTipAmount(order);
   const orderGiftFee = getOrderGiftPackagingFee(order);
+  // Olovely's own products: the "seller share" is platform revenue too, so add it to the admin total.
+  const platformOwnSales = (earningBreakdown?.sellerEarningsList || [])
+    .filter((s) => s.isPlatform)
+    .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
 
   const isTerminal = ['Delivered', 'Cancelled', 'Rejected', 'Returned'].includes(order.status);
   const rawAllowed = ALLOWED_ORDER_TRANSITIONS[order.status] || [];
@@ -940,11 +944,59 @@ export default function AdminOrderDetail() {
                   <span>Delivery Charge:</span>
                   <span className="font-semibold">₹{(earningBreakdown.totalDeliveryCharge || 0).toFixed(2)}</span>
                 </div>
+                {orderGiftFee > 0 && (
+                  <div className="flex justify-between text-neutral-700">
+                    <span>Gift Packaging:</span>
+                    <span className="font-semibold">₹{orderGiftFee.toFixed(2)}</span>
+                  </div>
+                )}
+                {orderTipAmount > 0 && (
+                  <div className="flex justify-between text-neutral-700">
+                    <span>Tip (100% to delivery partner):</span>
+                    <span className="font-semibold">₹{orderTipAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                {Number((order as any).discount) > 0 && (
+                  <div className="flex justify-between text-neutral-700">
+                    <span>Coupon Discount:</span>
+                    <span className="font-semibold">−₹{Number((order as any).discount).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="border-t border-neutral-300 pt-1 flex justify-between font-bold text-neutral-900">
                   <span>Total Paid:</span>
                   <span>₹{(order.total || earningBreakdown.totalOrderAmount || 0).toFixed(2)}</span>
                 </div>
               </div>
+
+              {/* Who gets paid out of the order */}
+              {(earningBreakdown.deliveryBoyId || (earningBreakdown.sellerEarningsList || []).some((s) => !s.isPlatform)) && (
+                <div className="bg-sky-50 p-3 rounded-lg border border-sky-200 text-xs space-y-1.5">
+                  <p className="font-bold text-sky-900 uppercase tracking-wider mb-1">Payouts</p>
+                  {earningBreakdown.deliveryBoyId && !earningBreakdown.isSelfAssign && (
+                    <div className="flex justify-between text-sky-900">
+                      <span>
+                        Delivery Partner Pay
+                        {typeof earningBreakdown.deliveryDistanceKm === 'number' && (
+                          <span className="text-sky-700"> ({earningBreakdown.deliveryDistanceKm.toFixed(2)} km)</span>
+                        )}:
+                      </span>
+                      <span className="font-semibold">₹{(earningBreakdown.deliveryBoyCommission || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {orderTipAmount > 0 && earningBreakdown.deliveryBoyId && (
+                    <div className="flex justify-between text-sky-900">
+                      <span>Delivery Partner Tip:</span>
+                      <span className="font-semibold">₹{orderTipAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {(earningBreakdown.sellerEarningsList || []).filter((s) => !s.isPlatform).map((s) => (
+                    <div key={s.sellerId} className="flex justify-between text-sky-900">
+                      <span>Seller Payout ({s.sellerName || 'Seller'}):</span>
+                      <span className="font-semibold">₹{(Number(s.amount) || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Admin Net Earnings */}
               <div className="bg-emerald-50 p-3.5 rounded-lg border border-emerald-200 text-xs space-y-1.5">
@@ -957,13 +1009,19 @@ export default function AdminOrderDetail() {
                   <span>Platform Fee:</span>
                   <span className="font-semibold">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
                 </div>
+                {platformOwnSales > 0 && (
+                  <div className="flex justify-between text-emerald-800">
+                    <span>Own Product Sales (Olovely stock, after commission):</span>
+                    <span className="font-semibold">₹{platformOwnSales.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-emerald-800">
-                  <span>Retained Delivery Share:</span>
+                  <span>{(earningBreakdown.adminDeliveryCommission || 0) < 0 ? 'Extra Paid to Partner (delivery):' : 'Retained Delivery Share:'}</span>
                   <span className="font-semibold">₹{(earningBreakdown.adminDeliveryCommission || 0).toFixed(2)}</span>
                 </div>
                 <div className="border-t border-emerald-300 pt-1.5 flex justify-between font-black text-sm text-emerald-900">
                   <span>Total Admin Earning:</span>
-                  <span>₹{(earningBreakdown.totalAdminEarning || 0).toFixed(2)}</span>
+                  <span>₹{((earningBreakdown.totalAdminEarning || 0) + platformOwnSales).toFixed(2)}</span>
                 </div>
               </div>
             </div>

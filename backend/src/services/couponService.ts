@@ -74,11 +74,17 @@ export const hasReachedPerUserCouponLimit = async (
   return used >= coupon.usageLimitPerUser;
 };
 
-/** Client-supplied tip must be a finite, non-negative amount (a negative tip reduced the total). */
+/** Highest tip a customer can add to one order (checkout UI enforces the same limit). */
+export const MAX_TIP_AMOUNT = 500;
+
+/**
+ * Client-supplied tip must be a finite, non-negative amount (a negative tip reduced the total),
+ * capped at MAX_TIP_AMOUNT so a typo like ₹99,999 can never become a huge COD order.
+ */
 export const sanitizeTipAmount = (raw: any): number => {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return round2(n);
+  return round2(Math.min(n, MAX_TIP_AMOUNT));
 };
 
 export interface ICommitCouponResult {

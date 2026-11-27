@@ -40,6 +40,9 @@ import { calculateProductPrice } from "../../utils/priceUtils";
 import RazorpayCheckout from "../../components/RazorpayCheckout";
 import { getCustomerWalletBalance } from "../../services/api/customerWalletService";
 
+/** Highest tip per order; must match MAX_TIP_AMOUNT in backend couponService. */
+const MAX_TIP_AMOUNT = 500;
+
 // const STORAGE_KEY = 'saved_address'; // Removed
 
 // Similar products helper removed - using API
@@ -2802,7 +2805,9 @@ export default function Checkout() {
             </span>
           </div>
         </div>
-      ) : deliveryCharge > 0 && (
+      ) : deliveryCharge > 0 && freeDeliveryThreshold > 0 && amountNeededForFreeDelivery > 0 && (
+        // Only when a free-delivery threshold is configured (threshold 0 = feature off,
+        // which used to show "Add products worth ₹0 more for FREE delivery").
         <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
           <div className="flex items-center gap-2 mb-1.5">
             <svg
@@ -3396,42 +3401,32 @@ export default function Checkout() {
         </p>
 
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1.5">
-          <button
-            onClick={() => {
-              setTipAmount(20);
-              setShowCustomTipInput(false);
-            }}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg border-2 font-medium text-xs ${
-              tipAmount === 20 && !showCustomTipInput
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-300 bg-white text-neutral-700"
-            }`}>
-            😊 ₹20
-          </button>
-          <button
-            onClick={() => {
-              setTipAmount(30);
-              setShowCustomTipInput(false);
-            }}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg border-2 font-medium text-xs ${
-              tipAmount === 30 && !showCustomTipInput
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-300 bg-white text-neutral-700"
-            }`}>
-            🤩 ₹30
-          </button>
-          <button
-            onClick={() => {
-              setTipAmount(50);
-              setShowCustomTipInput(false);
-            }}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg border-2 font-medium text-xs ${
-              tipAmount === 50 && !showCustomTipInput
-                ? "border-green-600 bg-green-50 text-green-700"
-                : "border-neutral-300 bg-white text-neutral-700"
-            }`}>
-            😍 ₹50
-          </button>
+          {([
+            [20, "😊"],
+            [30, "🤩"],
+            [50, "😍"],
+          ] as const).map(([amount, emoji]) => {
+            const selected = tipAmount === amount && !showCustomTipInput;
+            return (
+              <button
+                key={amount}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  // Tapping the selected tip again removes it (no tip).
+                  setTipAmount(selected ? null : amount);
+                  setShowCustomTipInput(false);
+                  setCustomTipAmount(0);
+                }}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg border-2 font-medium text-xs ${
+                  selected
+                    ? "border-green-600 bg-green-50 text-green-700"
+                    : "border-neutral-300 bg-white text-neutral-700"
+                }`}>
+                {emoji} ₹{amount}{selected ? " ✕" : ""}
+              </button>
+            );
+          })}
           <button
             onClick={() => {
               setShowCustomTipInput(true);
@@ -3455,7 +3450,8 @@ export default function Checkout() {
               onChange={(e) => {
                 const val = Number(e.target.value);
                 if (val >= 0) {
-                  setCustomTipAmount(val);
+                  // Same cap as the server (MAX_TIP_AMOUNT), so the total shown is what is charged.
+                  setCustomTipAmount(Math.min(val, MAX_TIP_AMOUNT));
                 }
               }}
               onBlur={(e) => {
@@ -3464,9 +3460,10 @@ export default function Checkout() {
                   setCustomTipAmount(0);
                 }
               }}
-              placeholder="Enter custom tip amount"
+              placeholder={`Enter tip amount (max ₹${MAX_TIP_AMOUNT})`}
               className="flex-1 px-3 py-1.5 bg-white border-2 border-green-600 rounded-lg text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-green-500"
               min="0"
+              max={MAX_TIP_AMOUNT}
               step="1"
             />
             <button

@@ -294,9 +294,10 @@ export const getOrderEarningBreakdown = asyncHandler(
     const sellerEarningsList = await Promise.all(
       Array.from(breakdown.sellerEarnings.entries()).map(
         async ([sellerId, amount]) => {
-          const seller = await Seller.findById(sellerId).select("sellerName storeName").lean();
+          const seller = await Seller.findById(sellerId).select("sellerName storeName isPlatform").lean();
           const name = seller?.storeName || seller?.sellerName || sellerId;
-          return { sellerId, amount, sellerName: name };
+          // isPlatform: Olovely's own stock — this "seller share" is platform revenue, not a payout.
+          return { sellerId, amount, sellerName: name, isPlatform: Boolean((seller as any)?.isPlatform) };
         },
       ),
     );

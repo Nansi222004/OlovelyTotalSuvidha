@@ -411,6 +411,8 @@ async function run() {
       expectEq("negative tip", cs.sanitizeTipAmount(-500), 0);
       expectEq("NaN tip", cs.sanitizeTipAmount("abc"), 0);
       expectEq("tip 20.555", cs.sanitizeTipAmount(20.555), 20.56);
+      expectEq("tip at cap", cs.sanitizeTipAmount(500), 500);
+      expectEq("tip 99999 capped", cs.sanitizeTipAmount(99999), 500);
       const pA = new mongoose.Types.ObjectId().toString(); const pB = new mongoose.Types.ObjectId().toString();
       const lines = [{ productId: pA, total: 400 }, { productId: pB, total: 600 }];
       expectEq("product-scoped 10%", cs.computeCouponDiscount({ discountType: "Percentage", discountValue: 10, applicableTo: "Product", applicableIds: [pA] }, lines).discount, 40);

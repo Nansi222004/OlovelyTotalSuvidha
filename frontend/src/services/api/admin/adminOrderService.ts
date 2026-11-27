@@ -333,7 +333,7 @@ export interface EarningBreakdown {
   orderNumber: string;
   productCost: number;
   adminProductCommission: number;
-  sellerEarningsList: { sellerId: string; amount: number; sellerName?: string }[];
+  sellerEarningsList: { sellerId: string; amount: number; sellerName?: string; isPlatform?: boolean }[];
   platformFee: number;
   totalDeliveryCharge: number;
   deliveryBoyCommission: number;

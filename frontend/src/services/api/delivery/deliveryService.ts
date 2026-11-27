@@ -70,6 +70,12 @@ export interface DeliveryOrderDetails {
   paymentStatus: string;
   codAmountToCollect?: number;
   isCod?: boolean;
+  /** Order-level charges included in what the customer pays (0 when not part of this rider's share). */
+  handlingFee?: number;
+  tipAmount?: number;
+  giftPackagingFee?: number;
+  couponDiscount?: number;
+  walletUsed?: number;
   customerName?: string;
   customerPhone?: string;
   address?: string;
