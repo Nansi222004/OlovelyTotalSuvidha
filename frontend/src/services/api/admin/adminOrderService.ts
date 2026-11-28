@@ -335,6 +335,7 @@ export interface EarningBreakdown {
   adminProductCommission: number;
   sellerEarningsList: { sellerId: string; amount: number; sellerName?: string; isPlatform?: boolean }[];
   platformFee: number;
+  smallCartFee?: number;
   totalDeliveryCharge: number;
   deliveryBoyCommission: number;
   adminDeliveryCommission: number;

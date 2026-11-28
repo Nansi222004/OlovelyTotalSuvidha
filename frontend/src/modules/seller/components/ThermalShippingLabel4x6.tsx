@@ -97,7 +97,7 @@ export const ThermalShippingLabel4x6 = React.forwardRef<HTMLDivElement, ThermalS
         style={{
           width: '4in',
           minHeight: '6in',
-          padding: '4mm',
+          padding: '3mm 7mm', // safe margin: thermal printers clip the outer edge of a 4in label
           margin: '0 auto',
           fontSize: '9pt',
           lineHeight: '1.25',

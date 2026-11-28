@@ -36,6 +36,8 @@ export interface IOrder extends Document {
   normalShippingAmount?: number;
   shippingDiscount?: number;
   platformFee: number;
+  /** Small cart fee charged because the Quick Commerce items were below the admin threshold (platform income). */
+  smallCartFee?: number;
   discount: number;
   couponCode?: string;
   couponUsageCommitted?: boolean;
@@ -340,6 +342,11 @@ const OrderSchema = new Schema<IOrder>(
       type: Number,
       default: 0,
       min: [0, "Platform fee cannot be negative"],
+    },
+    smallCartFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Small cart fee cannot be negative"],
     },
     discount: {
       type: Number,

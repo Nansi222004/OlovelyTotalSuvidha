@@ -73,6 +73,7 @@ export interface DeliveryOrderDetails {
   /** Order-level charges included in what the customer pays (0 when not part of this rider's share). */
   handlingFee?: number;
   tipAmount?: number;
+  smallCartFee?: number;
   giftPackagingFee?: number;
   couponDiscount?: number;
   walletUsed?: number;

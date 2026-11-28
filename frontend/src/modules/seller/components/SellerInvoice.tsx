@@ -100,6 +100,7 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
     // Tip and gift packaging are part of order.total (order-level, not seller-scoped)
     const tipAmount = orderDetail.invoiceChannel || isMultiSeller ? 0 : Math.max(0, Number(orderDetail.tipAmount) || 0);
     const giftPackagingFee = orderDetail.invoiceChannel || isMultiSeller ? 0 : Math.max(0, Number(orderDetail.giftPackagingFee) || 0);
+    const smallCartFee = orderDetail.invoiceChannel || isMultiSeller ? 0 : Math.max(0, Number((orderDetail as any).smallCartFee) || 0);
 
     // Authoritative grand total: strictly seller-scoped for multi-seller, order-snapshot for single-seller.
     // GST is inclusive in item prices, so it is never added.
@@ -108,7 +109,7 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
       : isMultiSeller
       ? itemsSubtotal + shippingCharge
       : (orderDetail.orderGrandTotal || orderDetail.grandTotal || (
-          itemsSubtotal + shippingCharge + platformFee + tipAmount + giftPackagingFee - discount
+          itemsSubtotal + shippingCharge + platformFee + smallCartFee + tipAmount + giftPackagingFee - discount
         ));
 
     const renderItemRows = (items: OrderItem[], startIndex: number) => {
@@ -416,6 +417,14 @@ export const SellerInvoice = React.forwardRef<HTMLDivElement, SellerInvoiceProps
               <div className="flex justify-between text-neutral-700">
                 <span>Platform / Handling Fee:</span>
                 <span className="font-semibold text-neutral-900">{formatCurrency(platformFee)}</span>
+              </div>
+            )}
+
+            {/* Small cart fee (order-level, platform income) */}
+            {smallCartFee > 0 && (
+              <div className="flex justify-between text-neutral-700">
+                <span>Small Cart Fee:</span>
+                <span className="font-semibold text-neutral-900">{formatCurrency(smallCartFee)}</span>
               </div>
             )}
 

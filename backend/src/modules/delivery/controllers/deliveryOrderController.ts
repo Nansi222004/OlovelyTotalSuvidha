@@ -389,6 +389,8 @@ export const getOrderDetails = asyncHandler(
     const chargeBreakdown = {
       handlingFee: coversWholeOrder ? money(order.platformFee) : 0,
       tipAmount: money(orderAny.tipAmount),
+      // Quick Commerce charge: always part of what the rider collects (like the tip)
+      smallCartFee: money(orderAny.smallCartFee),
       giftPackagingFee: coversWholeOrder ? money(orderAny.giftPackagingFee) : 0,
       couponDiscount: coversWholeOrder ? money(order.discount) : 0,
       walletUsed: coversWholeOrder ? money(orderAny.walletAmountUsed) : 0,

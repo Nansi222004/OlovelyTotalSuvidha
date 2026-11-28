@@ -15,6 +15,11 @@ export default function AdminBillingSettings() {
     const [minimumOrderValue, setMinimumOrderValue] = useState<number>(0);
     const [deliveryCharges, setDeliveryCharges] = useState<number>(0);
     const [firstOrderFreeShippingEnabled, setFirstOrderFreeShippingEnabled] = useState<boolean>(false);
+    // Small cart fee (Quick Commerce) and courier (Shiprocket) shipping
+    const [smallCartFeeEnabled, setSmallCartFeeEnabled] = useState<boolean>(false);
+    const [smallCartFee, setSmallCartFee] = useState<number>(0);
+    const [ecommerceShippingFee, setEcommerceShippingFee] = useState<number>(40);
+    const [ecommerceFreeShippingThreshold, setEcommerceFreeShippingThreshold] = useState<number>(0);
 
     // Distance Based Config
     const [isDistanceBased, setIsDistanceBased] = useState(false);
@@ -49,6 +54,10 @@ export default function AdminBillingSettings() {
                 setMinimumOrderValue(data.minimumOrderValue || 0);
                 setDeliveryCharges(data.deliveryCharges || 0);
                 setFirstOrderFreeShippingEnabled(data.firstOrderFreeShippingEnabled ?? false);
+                setSmallCartFeeEnabled(data.smallCartFeeEnabled ?? false);
+                setSmallCartFee(data.smallCartFee || 0);
+                setEcommerceShippingFee(data.ecommerceShippingFee ?? 40);
+                setEcommerceFreeShippingThreshold(data.ecommerceFreeShippingThreshold || 0);
 
                 if (data.deliveryConfig) {
                     setIsDistanceBased(data.deliveryConfig.isDistanceBased || false);
@@ -86,6 +95,10 @@ export default function AdminBillingSettings() {
                 minimumOrderValue,
                 deliveryCharges,
                 firstOrderFreeShippingEnabled,
+                smallCartFeeEnabled,
+                smallCartFee,
+                ecommerceShippingFee,
+                ecommerceFreeShippingThreshold,
                 deliveryConfig: {
                     isDistanceBased,
                     baseCharge,
@@ -219,7 +232,7 @@ export default function AdminBillingSettings() {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Minimum Order Value (₹)
+                                {smallCartFeeEnabled ? 'Small Cart Threshold (₹)' : 'Minimum Order Value (₹)'}
                             </label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
@@ -233,7 +246,82 @@ export default function AdminBillingSettings() {
                                 />
                             </div>
                             <p className="mt-1 text-xs text-gray-500">
-                                Cart subtotal must reach this amount before an order can be placed. Set 0 to disable.
+                                {smallCartFeeEnabled
+                                    ? 'Quick Commerce items below this amount pay the small cart fee. Orders are never blocked. Set 0 to disable.'
+                                    : 'Cart subtotal must reach this amount before an order can be placed. Set 0 to disable.'}
+                            </p>
+                        </div>
+
+                        {/* Small cart fee: allow small orders but charge a fee instead of blocking them */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Small Cart Fee (₹)</label>
+                            <label className="flex items-center gap-2 mb-2 text-sm text-gray-700 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={smallCartFeeEnabled}
+                                    onChange={(e) => setSmallCartFeeEnabled(e.target.checked)}
+                                    className="w-4 h-4 accent-green-600"
+                                />
+                                Allow small orders with a fee (instead of blocking them)
+                            </label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    disabled={!smallCartFeeEnabled}
+                                    value={smallCartFee === 0 ? '' : smallCartFee}
+                                    onChange={(e) => setSmallCartFee(e.target.value === '' ? 0 : Number(e.target.value))}
+                                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-400"
+                                    placeholder="e.g. 40"
+                                />
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                                {smallCartFeeEnabled && smallCartFee > 0 && minimumOrderValue > 0
+                                    ? `Example: Quick Commerce cart of ₹20 → customer pays ₹${smallCartFee} small cart fee. ₹${minimumOrderValue} or more → no fee. Courier-only orders never pay it.`
+                                    : 'Applies only to Quick Commerce items. Courier (Shiprocket) orders never pay it.'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Courier (Shiprocket) shipping */}
+                <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Courier (Shiprocket) Shipping</h2>
+                    <p className="text-sm text-gray-500 mb-4 pb-2 border-b">Charged to customers for courier (E-Commerce) items, once per order.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Courier Shipping Fee (₹)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={ecommerceShippingFee}
+                                    onChange={(e) => setEcommerceShippingFee(e.target.value === '' ? 0 : Number(e.target.value))}
+                                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                                    placeholder="e.g. 40"
+                                />
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">Flat amount the customer pays for courier delivery.</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Courier Free Shipping Above (₹)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={ecommerceFreeShippingThreshold === 0 ? '' : ecommerceFreeShippingThreshold}
+                                    onChange={(e) => setEcommerceFreeShippingThreshold(e.target.value === '' ? 0 : Number(e.target.value))}
+                                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+                                    placeholder="e.g. 499"
+                                />
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                                {ecommerceFreeShippingThreshold > 0
+                                    ? `Courier shipping is free when courier items total ₹${ecommerceFreeShippingThreshold} or more.`
+                                    : 'Empty / 0 = uses the Free Delivery Threshold above (whole cart).'}
                             </p>
                         </div>
                     </div>

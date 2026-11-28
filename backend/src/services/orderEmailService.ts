@@ -329,6 +329,11 @@ function renderTotalsHtml(order: IOrder): string {
           <td style="padding: 3px 0;">Platform Fee:</td>
           <td style="padding: 3px 0; text-align: right; color: #111827; font-weight: 500;">${formatCurrency(order.platformFee)}</td>
         </tr>` : ""}
+        ${Number((order as any).smallCartFee) > 0 ? `
+        <tr>
+          <td style="padding: 3px 0;">Small Cart Fee:</td>
+          <td style="padding: 3px 0; text-align: right; color: #111827; font-weight: 500;">${formatCurrency(Number((order as any).smallCartFee))}</td>
+        </tr>` : ""}
         <tr style="border-top: 1px solid #e5e7eb;">
           <td style="padding: 8px 0 0 0; font-weight: 700; font-size: 15px; color: #111827;">Total Paid / Payable:</td>
           <td style="padding: 8px 0 0 0; text-align: right; font-weight: 700; font-size: 16px; color: #16a34a;">${formatCurrency(order.total)}</td>

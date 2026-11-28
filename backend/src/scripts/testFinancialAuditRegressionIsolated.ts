@@ -95,7 +95,7 @@ type Line = {
 async function mkOrder(cust: any, lines: Line[], opts: {
   paymentMethod?: string; shipping?: number; platformFee?: number; walletAmountUsed?: number;
   deliveryBoy?: any; deliveryPreference?: string; status?: string; paymentStatus?: string; deliveredDaysAgo?: number;
-  discount?: number; tipAmount?: number; orderType?: string; groups?: boolean;
+  discount?: number; tipAmount?: number; orderType?: string; groups?: boolean; smallCartFee?: number;
 } = {}) {
   const shipping = opts.shipping ?? 40;
   const platformFee = opts.platformFee ?? 2;
@@ -105,7 +105,7 @@ async function mkOrder(cust: any, lines: Line[], opts: {
     subtotal: 0, tax: 0, shipping, platformFee, discount: 0, total: 0,
     paymentMethod: opts.paymentMethod ?? "Online", paymentStatus: opts.paymentStatus ?? "Pending",
     status: opts.status ?? "Received", items: [], deliveryBoy: opts.deliveryBoy?._id,
-    deliveryPreference: opts.deliveryPreference, tipAmount: opts.tipAmount ?? 0,
+    deliveryPreference: opts.deliveryPreference, tipAmount: opts.tipAmount ?? 0, smallCartFee: opts.smallCartFee ?? 0,
     orderType: opts.orderType ?? "QUICK_COMMERCE",
   });
   await order.save();
@@ -136,7 +136,7 @@ async function mkOrder(cust: any, lines: Line[], opts: {
   }
   order.subtotal = subtotal;
   order.discount = opts.discount ?? 0;
-  order.total = subtotal - (opts.discount ?? 0) + shipping + platformFee + (opts.tipAmount ?? 0);
+  order.total = subtotal - (opts.discount ?? 0) + shipping + platformFee + (opts.tipAmount ?? 0) + (opts.smallCartFee ?? 0);
   const wallet = opts.walletAmountUsed || 0;
   order.walletAmountUsed = wallet;
   if (order.paymentMethod === "COD") { order.codAmountPending = order.total - wallet; order.onlineAmountPaid = 0; }
@@ -733,6 +733,57 @@ async function run() {
       if (!drift || Math.abs(drift.diff - 123) > 0.01) throw new Error("planted seller drift not reported");
       if (out.duplicateCommissions.seller.length) throw new Error("unexpected duplicate commissions");
       return `${Object.keys(out).length} queries ran; drift ₹${drift.diff} found`;
+    });
+
+    // G18 — Small cart fee is platform income and part of the rider's COD cash
+    await check("G18", "Small cart fee: COD ₹20 + ₹40 fee → rider owes full cash, fee in admin earning", async () => {
+      const s = await mkSeller(); const c = await mkCustomer(); const r = await mkRider(); const p = await mkProduct(s, 20);
+      const o = await mkOrder(c, [{ prod: p, seller: s, qty: 1, price: 20 }],
+        { paymentMethod: "COD", shipping: 27, platformFee: 3, deliveryBoy: r, status: "Delivered", smallCartFee: 40 });
+      expectEq("order total 20+27+3+40", o.total, 90);
+      const b: any = await commissionService.getOrderEarningBreakdown(o._id.toString());
+      expectEq("breakdown small cart fee", b.smallCartFee, 40);
+      // admin = commission 2 + handling 3 + fee 40 + delivery 27 − rider pay (5% of 20 = 1)
+      expectEq("admin earning includes the fee", b.totalAdminEarning, 2 + 3 + 40 + 27 - 1);
+      await commissionService.processCODOrderDelivery(o._id.toString(), undefined, r._id.toString());
+      const rider: any = await Delivery.findById(r._id).lean();
+      expectEq("rider owes full COD incl. fee", rider.pendingAdminPayout, 90);
+      return `admin ₹${b.totalAdminEarning}, rider owes ₹${rider.pendingAdminPayout}`;
+    });
+
+    // G19 — Mixed COD: the small cart fee is collected by the rider, not the courier
+    await check("G19", "Small cart fee on MIXED COD → rider share QC 20 + 27 + 40, courier share 800", async () => {
+      const s = await mkSeller(); const c = await mkCustomer(); const r = await mkRider();
+      const pq = await mkProduct(s, 20); const pe = await mkProduct(s, 800);
+      const o = await mkOrder(c, [
+        { prod: pq, seller: s, qty: 1, price: 20, productType: "QUICK_COMMERCE", fulfillmentType: "LOCAL_DELIVERY" },
+        { prod: pe, seller: s, qty: 1, price: 800, productType: "ECOMMERCE", fulfillmentType: "COURIER_SHIPPING" },
+      ], { paymentMethod: "COD", shipping: 27, platformFee: 0, deliveryBoy: r, status: "Processed", orderType: "MIXED", groups: true, smallCartFee: 40 });
+      const full: any = await Order.findById(o._id).populate("items");
+      const courierShare = await courierCod.computeCourierCodAmount(full);
+      expectEq("courier collects only the courier item", courierShare, 800);
+      expectEq("rider collects the rest", full.total - courierShare, 20 + 27 + 40);
+      return `rider ₹${full.total - courierShare}, courier ₹${courierShare}`;
+    });
+
+    // G20 — Cancelling the whole Quick Commerce part returns the small cart fee
+    await check("G20", "Small cart fee refunded when the QC part is cancelled (COD drops by 20 + 27 + 40)", async () => {
+      const s = await mkSeller(); const c = await mkCustomer(); const r = await mkRider();
+      const pq = await mkProduct(s, 20); const pe = await mkProduct(s, 800);
+      const lines: any[] = [
+        { prod: pq, seller: s, qty: 1, price: 20, productType: "QUICK_COMMERCE", fulfillmentType: "LOCAL_DELIVERY" },
+        { prod: pe, seller: s, qty: 1, price: 800, productType: "ECOMMERCE", fulfillmentType: "COURIER_SHIPPING" },
+      ];
+      const o: any = await mkOrder(c, lines, { paymentMethod: "COD", shipping: 27, platformFee: 0, deliveryBoy: r, status: "Processed", orderType: "MIXED", groups: true, smallCartFee: 40 });
+      for (const g of o.fulfillmentGroups) g.status = "Processing";
+      await o.save();
+      const before = o.codAmountPending;
+      const { settleCancelledOrderItems } = await import("../services/orderPartCancellationService");
+      const res: any = await settleCancelledOrderItems(o._id.toString(), [String(lines[0]._itemId)], { reason: "test: QC part cancelled" });
+      if (!res.success) throw new Error(res.message);
+      const after: any = await Order.findById(o._id).lean();
+      expectEq("COD reduced by QC item + QC delivery + small cart fee", before - after.codAmountPending, 20 + 27 + 40);
+      return `COD ₹${before} → ₹${after.codAmountPending}`;
     });
   } finally {
     await mongoose.disconnect();

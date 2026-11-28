@@ -15,6 +15,19 @@ import { calculateProductPrice } from '../utils/priceUtils';
 
 const CART_STORAGE_KEY = 'saved_cart';
 
+/** Extra server-computed cart charges (small cart fee, courier free-shipping progress). */
+type CartCharges = Pick<
+  Cart,
+  'smallCartFee' | 'amountToAvoidSmallCartFee' | 'configuredSmallCartFee' | 'ecomFreeShippingThreshold' | 'amountToFreeCourierShipping'
+>;
+const pickCartCharges = (data: any): CartCharges => ({
+  smallCartFee: Number(data?.smallCartFee) || 0,
+  amountToAvoidSmallCartFee: Number(data?.amountToAvoidSmallCartFee) || 0,
+  configuredSmallCartFee: Number(data?.configuredSmallCartFee) || 0,
+  ecomFreeShippingThreshold: Number(data?.ecomFreeShippingThreshold) || 0,
+  amountToFreeCourierShipping: Number(data?.amountToFreeCourierShipping) || 0,
+});
+
 interface AddToCartEvent {
   product: Product;
   sourcePosition?: { x: number; y: number };
@@ -196,6 +209,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setPlatformFee(response.data.platformFee);
         setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
         setMinimumOrderValue(response.data.minimumOrderValue);
+        setCartCharges(pickCartCharges(response.data));
         setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
         setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
         setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
@@ -212,6 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
         setMinimumOrderValue(undefined);
+        setCartCharges(undefined);
       } else {
         setCartGroups(undefined);
         setEstimatedFee(undefined);
@@ -220,6 +235,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setPlatformFee(undefined);
         setFreeDeliveryThreshold(undefined);
         setMinimumOrderValue(undefined);
+        setCartCharges(undefined);
       }
     } catch (error) {
       console.error("Failed to fetch cart:", error);
@@ -236,6 +252,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setEstimatedFee(undefined);
       setQcDeliveryFee(undefined);
       setEcomShippingFee(undefined);
+      setCartCharges(undefined);
       localStorage.removeItem(CART_STORAGE_KEY);
     };
 
@@ -317,6 +334,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [normalEstimatedDeliveryFee, setNormalEstimatedDeliveryFee] = useState<number | undefined>(undefined);
   const [shippingDiscount, setShippingDiscount] = useState<number | undefined>(undefined);
   const [cartGroups, setCartGroups] = useState<any>(undefined);
+  const [cartCharges, setCartCharges] = useState<CartCharges | undefined>(undefined);
 
   const cart: Cart = useMemo(() => {
     // Filter out any items with null products before computing totals
@@ -353,8 +371,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       debug_config: (items as any).debug_config,
       backendTotal: (items as any).backendTotal,
       groups: cartGroups,
+      ...(cartCharges || {}),
     };
-  }, [items, estimatedFee, qcDeliveryFee, ecomShippingFee, platformFee, freeDeliveryThreshold, minimumOrderValue, firstOrderFreeShippingEligible, firstOrderFreeShippingApplied, normalEstimatedDeliveryFee, shippingDiscount, cartGroups]);
+  }, [items, estimatedFee, qcDeliveryFee, ecomShippingFee, platformFee, freeDeliveryThreshold, minimumOrderValue, firstOrderFreeShippingEligible, firstOrderFreeShippingApplied, normalEstimatedDeliveryFee, shippingDiscount, cartGroups, cartCharges]);
 
   const addToCart = async (
     product: Product,
@@ -505,6 +524,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setCartCharges(pickCartCharges(response.data));
           setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
           setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
           setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
@@ -582,6 +602,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setCartCharges(pickCartCharges(response.data));
           setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
           setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
           setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
@@ -696,6 +717,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setPlatformFee(response.data.platformFee);
           setFreeDeliveryThreshold(response.data.freeDeliveryThreshold);
           setMinimumOrderValue(response.data.minimumOrderValue);
+          setCartCharges(pickCartCharges(response.data));
           setFirstOrderFreeShippingEligible(response.data.firstOrderFreeShippingEligible);
           setFirstOrderFreeShippingApplied(response.data.firstOrderFreeShippingApplied);
           setNormalEstimatedDeliveryFee(response.data.normalEstimatedDeliveryFee);
@@ -723,6 +745,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setEstimatedFee(undefined);
     setQcDeliveryFee(undefined);
     setEcomShippingFee(undefined);
+    setCartCharges(undefined);
     try {
       await apiClearCart();
     } catch (error) {

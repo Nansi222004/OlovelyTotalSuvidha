@@ -613,11 +613,12 @@ export const getOrderById = asyncHandler(
       discount: requestedChannel ? 0 : (order.discount || 0),
       // Order-level components of order.total, shown so the invoice adds up
       tipAmount: requestedChannel ? 0 : Math.max(0, Number((order as any).tipAmount) || 0),
+      smallCartFee: requestedChannel ? 0 : Math.max(0, Number((order as any).smallCartFee) || 0),
       giftPackagingFee: requestedChannel ? 0 : (
         Number((order as any).giftPackagingFee) > 0
           ? Number((order as any).giftPackagingFee)
           : (order as any).giftPackaging
-            ? Math.max(0, Math.round(((order.total || 0) - ((order.subtotal || 0) - (order.discount || 0) + (order.platformFee || 0) + (order.shipping || 0) + (Number((order as any).tipAmount) || 0))) * 100) / 100)
+            ? Math.max(0, Math.round(((order.total || 0) - ((order.subtotal || 0) - (order.discount || 0) + (order.platformFee || 0) + (order.shipping || 0) + (Number((order as any).tipAmount) || 0) + (Number((order as any).smallCartFee) || 0))) * 100) / 100)
             : 0
       ),
       couponCode: requestedChannel ? "" : (order.couponCode || ""),

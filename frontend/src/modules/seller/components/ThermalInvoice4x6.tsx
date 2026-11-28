@@ -116,13 +116,16 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
         style={{
           width: '4in',
           minHeight: '6in',
-          padding: '4mm',
+          // Thermal printers (e.g. XP-460B) cannot print the outer few mm of a 4in label and the
+          // label often sits slightly off-centre, so keep a wide safe margin on the left/right.
+          padding: '3mm 7mm',
           margin: '0 auto',
-          fontSize: '10pt',
+          fontSize: '9.5pt',
           lineHeight: '1.25',
           color: '#000000',
           backgroundColor: '#ffffff',
           boxSizing: 'border-box',
+          overflowWrap: 'anywhere',
         }}
       >
         {/* Header: Brand & Document Heading */}
@@ -139,23 +142,22 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
         </div>
 
         {/* Metadata Grid: Invoice & Order */}
-        <div className="border border-black p-1.5 mb-2 text-[9.5pt]">
-          <div className="flex flex-wrap gap-x-2 justify-between items-center border-b border-gray-400 pb-1 mb-1">
-            <span>
-              <strong className="uppercase">Doc #:</strong>{' '}
-              <span className="font-mono font-bold">{invoiceNum}</span>
-            </span>
+        {/* One fact per line: long IDs next to the date pushed the date off the label edge */}
+        <div className="border border-black p-1.5 mb-2 text-[9pt] space-y-0.5">
+          <div style={{ wordBreak: 'break-all' }}>
+            <strong className="uppercase">Doc #:</strong>{' '}
+            <span className="font-mono font-bold">{invoiceNum}</span>
+          </div>
+          <div style={{ wordBreak: 'break-all' }}>
+            <strong className="uppercase">Order ID:</strong>{' '}
+            <span className="font-mono">{orderDetail.orderNumber || orderDetail.id}</span>
+          </div>
+          <div className="flex justify-between gap-2 border-t border-gray-400 pt-0.5">
             <span>
               <strong>Date:</strong> {formatDate(orderDetail.orderDate)}
             </span>
-          </div>
-          <div className="flex flex-wrap gap-x-2 justify-between items-center">
-            <span>
-              <strong className="uppercase">Order ID:</strong>{' '}
-              <span className="font-mono">{orderDetail.orderNumber || orderDetail.id}</span>
-            </span>
-            <span>
-              <strong>Pay Mode:</strong>{' '}
+            <span className="text-right">
+              <strong>Pay:</strong>{' '}
               <span className="font-bold uppercase">
                 {orderDetail.paymentMethod || 'Prepaid'}{' '}
                 ({orderDetail.paymentStatus === 'Paid' ? 'PAID' : 'COD'})
@@ -198,14 +200,22 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
 
         {/* Itemized Products Table */}
         <div className="border border-black mb-2">
-          <table className="w-full text-left text-[9pt] border-collapse">
+          {/* Fixed layout + explicit column widths so the price columns can never push past the edge */}
+          <table className="w-full text-left text-[8.5pt] border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '6%' }} />
+              <col />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
             <thead>
-              <tr className="border-b border-black bg-gray-100 font-bold uppercase text-[8.5pt]">
-                <th className="py-1 px-1 text-center w-5">#</th>
-                <th className="py-1 px-1">Item Description</th>
-                <th className="py-1 px-1 text-center w-7">Qty</th>
-                <th className="py-1 px-1 text-right w-12">Price</th>
-                <th className="py-1 px-1 text-right w-12">Total</th>
+              <tr className="border-b border-black bg-gray-100 font-bold uppercase text-[7.5pt]">
+                <th className="py-1 px-0.5 text-center">#</th>
+                <th className="py-1 px-0.5">Item</th>
+                <th className="py-1 px-0.5 text-center">Qty</th>
+                <th className="py-1 px-0.5 text-right">Price</th>
+                <th className="py-1 px-0.5 text-right">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -221,10 +231,10 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
                     className="border-b border-gray-300 last:border-b-0"
                     style={{ pageBreakInside: 'avoid' }}
                   >
-                    <td className="py-1 px-1 text-center font-mono text-[8.5pt] align-top">
+                    <td className="py-1 px-0.5 text-center font-mono text-[8.5pt] align-top">
                       {idx + 1}
                     </td>
-                    <td className="py-1 px-1 align-top">
+                    <td className="py-1 px-0.5 align-top">
                       <div className="font-semibold leading-tight">{item.product}</div>
                       <div className="text-[8.5pt] text-gray-700 flex flex-wrap gap-1">
                         {item.unit && item.unit !== 'N/A' && <span>Var: {item.unit}</span>}
@@ -233,13 +243,13 @@ export const ThermalInvoice4x6 = React.forwardRef<HTMLDivElement, ThermalInvoice
                         )}
                       </div>
                     </td>
-                    <td className="py-1 px-1 text-center font-bold align-top">
+                    <td className="py-1 px-0.5 text-center font-bold align-top">
                       {qty}
                     </td>
-                    <td className="py-1 px-1 text-right font-mono align-top">
+                    <td className="py-1 px-0.5 text-right font-mono align-top">
                       {formatCurrency(price)}
                     </td>
-                    <td className="py-1 px-1 text-right font-mono font-bold align-top">
+                    <td className="py-1 px-0.5 text-right font-mono font-bold align-top">
                       {formatCurrency(total)}
                     </td>
                   </tr>

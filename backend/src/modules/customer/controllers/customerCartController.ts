@@ -13,6 +13,7 @@ import Seller from '../../../models/Seller';
 import { checkWholesaleEligibility, validateWholesalePrice } from '../../../utils/categoryChannelHelper';
 import { resolveAvailableStock } from '../../../utils/stockHelper';
 import { evaluateFirstOrderFreeShipping } from '../../../services/shipping/shippingPromotionService';
+import { evaluateSmallCart, evaluateCourierShipping } from '../../../services/cartChargesService';
 import { getCommerceChannels } from '../../../services/commerceChannelService';
 import { resolveInventoryOwner } from '../../../utils/inventoryHelper';
 import {
@@ -303,14 +304,18 @@ const buildUnifiedCartResponse = async (
         minimumOrderValue = qcFees.minimumOrderValue;
     }
 
-    // Ecommerce shipping fee: governed by the single global freeDeliveryThreshold on combined subtotal!
-    const ecomDefaultFee = Number.isFinite(settings?.ecommerceShippingFee)
-        ? Number(settings?.ecommerceShippingFee)
-        : 40;
-    let ecomShippingFee = 0;
-    if (ecomItems.length > 0) {
-        ecomShippingFee = isEligibleForFreeDelivery ? 0 : ecomDefaultFee;
-    }
+    // Courier shipping and small cart fee: same rules as order placement (cartChargesService).
+    const courier = evaluateCourierShipping(settings, {
+        ecomSubtotal: ecomItems.length > 0 ? ecomSubtotal : 0,
+        cartSubtotal: totalProductSubtotal,
+    });
+    let ecomShippingFee = ecomItems.length > 0 ? courier.fee : 0;
+    const smallCart = evaluateSmallCart(settings, {
+        qcSubtotal: qcItems.length > 0 ? qcSubtotal : 0,
+        cartSubtotal: totalProductSubtotal,
+    });
+    // In fee mode nothing is blocked, so the app must not enforce a minimum.
+    if (smallCart.feeModeEnabled) minimumOrderValue = 0;
 
     const combinedDeliveryFee = qcDeliveryFee + ecomShippingFee;
     const normalQcDeliveryFee = qcDeliveryFee;
@@ -382,6 +387,12 @@ const buildUnifiedCartResponse = async (
         platformFee,
         freeDeliveryThreshold,
         minimumOrderValue,
+        smallCartFee: smallCart.fee,
+        smallCartThreshold: smallCart.feeModeEnabled ? smallCart.threshold : 0,
+        amountToAvoidSmallCartFee: smallCart.fee > 0 ? smallCart.amountToAvoid : 0,
+        configuredSmallCartFee: smallCart.feeModeEnabled ? Number(settings?.smallCartFee) || 0 : 0,
+        ecomFreeShippingThreshold: courier.freeThreshold,
+        amountToFreeCourierShipping: ecomShippingFee > 0 ? courier.amountToFree : 0,
     };
 };
 

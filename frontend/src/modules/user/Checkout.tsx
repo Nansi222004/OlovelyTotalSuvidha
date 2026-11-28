@@ -669,12 +669,16 @@ export default function Checkout() {
   // Calculate tip amount (use custom tip if custom tip input is shown, otherwise use selected tip)
   // B-1: tips go 100% to the Olovely rider; courier-only orders have no rider, so no tip.
   const finalTipAmount = qcItems.length > 0 ? (showCustomTipInput ? customTipAmount : tipAmount || 0) : 0;
+  // Small cart fee: server-computed on the Quick Commerce items (before coupon); never discounted.
+  const smallCartFee = qcItems.length > 0 ? Number(cart.smallCartFee) || 0 : 0;
+  const amountToAvoidSmallCartFee = smallCartFee > 0 ? Number(cart.amountToAvoidSmallCartFee) || 0 : 0;
   const grandTotal = Math.max(
     0,
     discountedTotal -
       currentCouponDiscount +
       handlingCharge +
       deliveryCharge +
+      smallCartFee +
       finalTipAmount,
   );
   const walletDeduction = useWallet ? Math.min(walletBalance, grandTotal) : 0;
@@ -2862,6 +2866,21 @@ export default function Checkout() {
         </div>
       )}
 
+      {/* Small cart fee nudge: shown only while the fee applies */}
+      {smallCartFee > 0 && amountToAvoidSmallCartFee > 0 && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+          <span className="text-base flex-shrink-0" aria-hidden="true">🛒</span>
+          <div className="flex-1">
+            <span className="text-xs font-bold text-amber-900">
+              Small cart fee ₹{smallCartFee} added
+            </span>
+            <p className="text-[10px] text-amber-800 mt-0.5">
+              Add quick delivery items worth ₹{Math.ceil(amountToAvoidSmallCartFee)} more to remove it.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Coupon Section */}
       {selectedCoupon ? (
         <div className="px-4 py-1.5 border-b border-neutral-200">
@@ -3297,6 +3316,19 @@ export default function Checkout() {
               ₹{handlingCharge.toLocaleString("en-IN")}
             </span>
           </div>
+
+          {/* Small cart fee (Quick Commerce items below the admin threshold) */}
+          {smallCartFee > 0 && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs" aria-hidden="true">🛒</span>
+                <span className="text-xs text-neutral-700">Small cart fee</span>
+              </div>
+              <span className="text-xs font-semibold text-neutral-900">
+                ₹{smallCartFee.toLocaleString("en-IN")}
+              </span>
+            </div>
+          )}
 
           {/* Discount / Savings */}
           {selectedCoupon && currentCouponDiscount > 0 && (

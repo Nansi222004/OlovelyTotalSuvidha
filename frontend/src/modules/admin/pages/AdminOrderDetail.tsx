@@ -944,6 +944,12 @@ export default function AdminOrderDetail() {
                   <span>Delivery Charge:</span>
                   <span className="font-semibold">₹{(earningBreakdown.totalDeliveryCharge || 0).toFixed(2)}</span>
                 </div>
+                {Number(earningBreakdown.smallCartFee) > 0 && (
+                  <div className="flex justify-between text-neutral-700">
+                    <span>Small Cart Fee:</span>
+                    <span className="font-semibold">₹{Number(earningBreakdown.smallCartFee).toFixed(2)}</span>
+                  </div>
+                )}
                 {orderGiftFee > 0 && (
                   <div className="flex justify-between text-neutral-700">
                     <span>Gift Packaging:</span>
@@ -1009,6 +1015,12 @@ export default function AdminOrderDetail() {
                   <span>Platform Fee:</span>
                   <span className="font-semibold">₹{(earningBreakdown.platformFee || 0).toFixed(2)}</span>
                 </div>
+                {Number(earningBreakdown.smallCartFee) > 0 && (
+                  <div className="flex justify-between text-emerald-800">
+                    <span>Small Cart Fee:</span>
+                    <span className="font-semibold">₹{Number(earningBreakdown.smallCartFee).toFixed(2)}</span>
+                  </div>
+                )}
                 {platformOwnSales > 0 && (
                   <div className="flex justify-between text-emerald-800">
                     <span>Own Product Sales (Olovely stock, after commission):</span>

@@ -1367,6 +1367,7 @@ export default function OrderDetail() {
           const subtotal = Number(order.subtotal || 0);
           const delivery = Number(order.shipping ?? order.deliveryFee ?? 0);
           const platformFee = Number(order.platformFee || 0);
+          const smallCartFee = Number(order.smallCartFee ?? order.fees?.smallCartFee ?? 0);
           const tip = Number(order.tipAmount || 0);
           const discount = Number(order.discount || 0);
           const total = Number(order.total ?? order.totalAmount ?? 0);
@@ -1378,6 +1379,7 @@ export default function OrderDetail() {
             ["Item total", money(subtotal)],
             ["Delivery", delivery > 0 ? money(delivery) : "Free"],
             ...(platformFee > 0 ? [["Handling", money(platformFee)] as [string, string]] : []),
+            ...(smallCartFee > 0 ? [["Small cart fee", money(smallCartFee)] as [string, string]] : []),
             ...(tip > 0 ? [["Delivery partner tip", money(tip)] as [string, string]] : []),
             ...(discount > 0 ? [["Coupon discount", `−${money(discount)}`, "text-green-700"] as [string, string, string]] : []),
           ];

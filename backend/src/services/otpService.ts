@@ -373,8 +373,20 @@ async function sendSmsViaApi(mobile: string, message: string): Promise<void> {
     raw: data,
   });
 
+  // An HTML page (404 / 403 / maintenance) means the provider endpoint is down or has moved.
+  if (typeof data === "string" && /^\s*<(!doctype|html)/i.test(data)) {
+    throw new Error(
+      `SMS India HUB endpoint returned an HTML page (HTTP ${response.status}) instead of an API response — ` +
+        `the provider is down or SMS_INDIA_HUB_URL has changed (${apiUrl}).`,
+    );
+  }
+
   handleSmsResponse(data);
 }
+
+/** Shown to customers / sellers / riders when the SMS provider fails. Never expose provider details. */
+export const OTP_SMS_UNAVAILABLE_MESSAGE =
+  "We couldn't send the OTP right now. Our SMS service is temporarily unavailable — please try again in a few minutes.";
 
 async function deliverOtp(mobile: string, otp: string): Promise<void> {
   const primaryMessage = buildOtpMessage(otp);
@@ -383,7 +395,16 @@ async function deliverOtp(mobile: string, otp: string): Promise<void> {
     msgPreview: primaryMessage.slice(0, 80),
   });
 
-  await sendSmsViaApi(mobile, primaryMessage);
+  try {
+    await sendSmsViaApi(mobile, primaryMessage);
+  } catch (err: any) {
+    // Full provider detail (HTML pages, config hints, env var names) goes to the server log only.
+    console.error("[OTP] SMS provider failed:", err?.message || err);
+    const friendly: any = new Error(OTP_SMS_UNAVAILABLE_MESSAGE);
+    friendly.code = "OTP_SMS_UNAVAILABLE";
+    friendly.cause = err;
+    throw friendly;
+  }
 }
 
 /**

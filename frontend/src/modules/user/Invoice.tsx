@@ -257,13 +257,14 @@ export default function Invoice() {
   const subtotal = order.subtotal || 0;
   const deliveryFee = order.shipping ?? order.fees?.deliveryFee ?? 0;
   const platformFee = order.platformFee ?? order.fees?.platformFee ?? 0;
+  const smallCartFee = Number(order.smallCartFee ?? order.fees?.smallCartFee ?? 0);
   const discount = order.discount || 0;
   const tax = order.tax || 0;
   const tipAmount = getOrderTipAmount(order);
   // GST is inclusive in item prices, so it is never added to the total.
-  const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee + tipAmount - discount);
+  const totalAmount = order.totalAmount ?? order.total ?? Math.max(0, subtotal + deliveryFee + platformFee + smallCartFee + tipAmount - discount);
   // Snapshot when present; for older orders derived from the stored total.
-  const giftPackagingFee = getOrderGiftPackagingFee({ ...order, total: totalAmount, shipping: deliveryFee, platformFee });
+  const giftPackagingFee = getOrderGiftPackagingFee({ ...order, total: totalAmount, shipping: deliveryFee, platformFee, smallCartFee });
   const customerName = typeof order.customerName === "string" && order.customerName.trim()
     ? order.customerName.trim()
     : (typeof addr.name === "string" && addr.name.trim() ? addr.name.trim() : "Valued Customer");
@@ -709,6 +710,14 @@ export default function Invoice() {
                 <div className="flex justify-between text-gray-600">
                   <span>Platform / Handling Fee</span>
                   <span className="font-semibold text-gray-900">{formatCurrency(platformFee)}</span>
+                </div>
+              )}
+
+              {/* Small cart fee */}
+              {smallCartFee > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Small Cart Fee</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(smallCartFee)}</span>
                 </div>
               )}
 

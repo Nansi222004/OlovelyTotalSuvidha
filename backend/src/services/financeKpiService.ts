@@ -96,6 +96,8 @@ export interface FinanceKpis {
   netSales: number;
   netSalesExGst: number;
   platformFees: number;
+  /** Small cart fees charged (platform income). */
+  smallCartFees: number;
   deliveryFees: number;
   sellerCommissions: number;
   riderEarnings: number;
@@ -120,6 +122,7 @@ export const getFinanceKpis = async (range: { from?: Date; to?: Date } = {}): Pr
         orders: { $sum: 1 },
         discount: { $sum: { $ifNull: ["$discount", 0] } },
         platformFees: { $sum: { $ifNull: ["$platformFee", 0] } },
+        smallCartFees: { $sum: { $ifNull: ["$smallCartFee", 0] } },
         deliveryFees: { $sum: { $ifNull: ["$shipping", 0] } },
         tips: { $sum: { $ifNull: ["$tipAmount", 0] } },
         tipsCredited: { $sum: { $cond: [{ $ifNull: ["$tipCreditedAt", false] }, { $ifNull: ["$tipAmount", 0] }, 0] } },
@@ -249,10 +252,11 @@ export const getFinanceKpis = async (range: { from?: Date; to?: Date } = {}): Pr
   const sellerCommissions = round2(sum("SELLER", "commission"));
   const riderEarnings = round2(sum("DELIVERY_BOY", "commission"));
   const platformFees = round2(orderAgg?.platformFees || 0);
+  const smallCartFees = round2(orderAgg?.smallCartFees || 0);
   const deliveryFees = round2(orderAgg?.deliveryFees || 0);
   const courierCharges = round2(remitAgg?.charges || 0);
   const couponCostNet = round2(couponDiscount - returnedCouponShare);
-  const platformEarningsGross = round2(sellerCommissions + platformFees + deliveryFees - riderEarnings - courierCharges);
+  const platformEarningsGross = round2(sellerCommissions + platformFees + smallCartFees + deliveryFees - riderEarnings - courierCharges);
 
   const gateway = round2(payAgg?.refunded || 0);
   const wallet = round2(walletRefundAgg?.total || 0);
@@ -275,6 +279,7 @@ export const getFinanceKpis = async (range: { from?: Date; to?: Date } = {}): Pr
     netSales,
     netSalesExGst,
     platformFees,
+    smallCartFees,
     deliveryFees,
     sellerCommissions,
     riderEarnings,

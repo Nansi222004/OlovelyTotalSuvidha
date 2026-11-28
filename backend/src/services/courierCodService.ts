@@ -52,7 +52,8 @@ const riderCodShare = async (order: any): Promise<number> => {
   if (qcGroups.length > 0) {
     const qcTotal = qcGroups.reduce((s, g) => s + Number(g.subtotal || 0) + Number(g.shippingFee || 0), 0);
     const tip = Math.max(0, Number(order.tipAmount) || 0);
-    return round2(Math.min(qcTotal + tip, fullPending));
+    const smallCartFee = Math.max(0, Number(order.smallCartFee) || 0); // QC charge, collected by the rider
+    return round2(Math.min(qcTotal + tip + smallCartFee, fullPending));
   }
   return 0;
 };

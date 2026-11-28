@@ -228,10 +228,11 @@ export default function DeliveryOrderDetail() {
     // Order-level charges the customer also pays (sent by the API only when part of this rider's share)
     const handlingFee = Number(order?.handlingFee) || 0;
     const tipAmount = Number(order?.tipAmount) || 0;
+    const smallCartFee = Number(order?.smallCartFee) || 0;
     const giftPackagingFee = Number(order?.giftPackagingFee) || 0;
     const couponDiscount = Number(order?.couponDiscount) || 0;
     const walletUsed = Number(order?.walletUsed) || 0;
-    const customerTotal = Math.max(0, displayedTotal + handlingFee + tipAmount + giftPackagingFee - couponDiscount);
+    const customerTotal = Math.max(0, displayedTotal + handlingFee + smallCartFee + tipAmount + giftPackagingFee - couponDiscount);
     const cashToCollect = order?.codAmountToCollect != null
         ? Number(order.codAmountToCollect)
         : Math.max(0, customerTotal - walletUsed);
@@ -1113,6 +1114,12 @@ export default function DeliveryOrderDetail() {
                             <div className="flex justify-between items-center text-sm">
                                 <span className="font-medium text-neutral-600">Handling fee</span>
                                 <span className="font-semibold text-neutral-900">₹{handlingFee.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {smallCartFee > 0 && (
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-neutral-600">Small cart fee</span>
+                                <span className="font-semibold text-neutral-900">₹{smallCartFee.toFixed(2)}</span>
                             </div>
                         )}
                         {giftPackagingFee > 0 && (

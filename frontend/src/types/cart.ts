@@ -27,6 +27,15 @@ export interface Cart {
   platformFee?: number;
   freeDeliveryThreshold?: number;
   minimumOrderValue?: number;
+  /** Small cart fee charged on this cart (0 = none). Server-computed. */
+  smallCartFee?: number;
+  /** Quick Commerce value still needed to avoid the small cart fee. */
+  amountToAvoidSmallCartFee?: number;
+  /** Fee the admin configured (shown in the "add more" hint). */
+  configuredSmallCartFee?: number;
+  /** Courier free-shipping threshold (0 = follows freeDeliveryThreshold). */
+  ecomFreeShippingThreshold?: number;
+  amountToFreeCourierShipping?: number;
   firstOrderFreeShippingEligible?: boolean;
   firstOrderFreeShippingApplied?: boolean;
   normalEstimatedDeliveryFee?: number;

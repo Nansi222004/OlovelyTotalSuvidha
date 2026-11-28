@@ -13,7 +13,7 @@
  *   5. settles the money for the cancelled part:
  *        value = items − their coupon share
  *              + delivery fee of every group that this call leaves with nothing to deliver
- *              + tip, when no quick-commerce part is left to deliver it
+ *              + tip and small cart fee, when no quick-commerce part is left to deliver it
  *      (the platform fee is only returned when the WHOLE order is cancelled)
  *        COD    → the cash still to collect drops by the value; any excess over it (wallet
  *                 already used) is refunded
@@ -170,7 +170,10 @@ export async function settleCancelledOrderItems(
 
       const tip = Math.max(0, Number(order.tipAmount) || 0);
       const tipValue = tip > 0 && !order.tipCreditedAt && qcActiveBefore && !qcActiveAfter ? tip : 0;
-      const partValue = round2(itemsValue + shippingValue + tipValue);
+      // Small cart fee is charged for the Quick Commerce part: returned when that part is gone.
+      const smallCartFee = Math.max(0, Number((order as any).smallCartFee) || 0);
+      const smallCartValue = smallCartFee > 0 && qcActiveBefore && !qcActiveAfter ? smallCartFee : 0;
+      const partValue = round2(itemsValue + shippingValue + tipValue + smallCartValue);
 
       // ── Money ────────────────────────────────────────────────────────────────────────
       const isCod = String(order.paymentMethod || "").toUpperCase() === "COD";

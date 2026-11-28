@@ -592,6 +592,8 @@ export interface ICODOrderBreakdown {
 
   // Fees
   platformFee: number;
+  /** Small cart fee (Quick Commerce below the admin threshold) — 100% platform income. */
+  smallCartFee: number;
 
   // Delivery breakdown
   totalDeliveryCharge: number;
@@ -683,6 +685,7 @@ export const calculateCODOrderBreakdown = async (
       adminProductCommission: 0,
       sellerEarnings: new Map<string, number>(),
       platformFee: order.platformFee || 0,
+      smallCartFee: Math.max(0, Number((order as any).smallCartFee) || 0),
       totalDeliveryCharge: deliveryScopedShipping,
       deliveryBoyCommission: 0,
       adminDeliveryCommission: 0,
@@ -766,7 +769,7 @@ export const calculateCODOrderBreakdown = async (
     const deliveryPartnerShare = (isSelfAssign || !order.deliveryBoy) ? 0 : breakdown.deliveryBoyCommission;
     const customerShipping = round2(breakdown.totalDeliveryCharge);
     breakdown.totalAdminEarning = Math.round(
-      (breakdown.adminProductCommission + breakdown.platformFee + customerShipping - deliveryPartnerShare) * 100
+      (breakdown.adminProductCommission + breakdown.platformFee + breakdown.smallCartFee + customerShipping - deliveryPartnerShare) * 100
     ) / 100;
 
     // 4. Amount Delivery Boy Owes Admin (only when delivery boy assigned)
@@ -828,6 +831,7 @@ export const getOrderEarningBreakdown = async (
     adminProductCommission: 0,
     sellerEarnings: new Map<string, number>(),
     platformFee: order.platformFee || 0,
+    smallCartFee: Math.max(0, Number((order as any).smallCartFee) || 0),
     totalDeliveryCharge: deliveryScopedShipping,
     deliveryBoyCommission: 0,
     adminDeliveryCommission: 0,
@@ -885,7 +889,7 @@ export const getOrderEarningBreakdown = async (
   const deliveryPartnerShare = (isSelfAssign || !order.deliveryBoy) ? 0 : breakdown.deliveryBoyCommission;
   const customerShipping = round2(breakdown.totalDeliveryCharge);
   breakdown.totalAdminEarning = Math.round(
-    (breakdown.adminProductCommission + breakdown.platformFee + customerShipping - deliveryPartnerShare) * 100
+    (breakdown.adminProductCommission + breakdown.platformFee + breakdown.smallCartFee + customerShipping - deliveryPartnerShare) * 100
   ) / 100;
 
   return breakdown;

@@ -88,6 +88,10 @@ export interface AppSettings {
   platformFee?: number;
   freeDeliveryThreshold?: number;
   minimumOrderValue?: number;
+  smallCartFeeEnabled?: boolean;
+  smallCartFee?: number;
+  ecommerceShippingFee?: number;
+  ecommerceFreeShippingThreshold?: number;
   firstOrderFreeShippingEnabled?: boolean;
   commerceChannels?: {
     quickCommerceEnabled?: boolean;

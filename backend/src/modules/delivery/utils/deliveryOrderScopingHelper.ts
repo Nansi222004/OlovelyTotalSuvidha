@@ -230,7 +230,12 @@ export function getDeliveryPartnerQcContext(
         // Legacy orders without QC groups: this rider is the only collector. Otherwise only the
         // rider of the first non-cancelled QC group collects it (none if every QC part is cancelled).
         const collectsTip = qcGroups.length === 0 || (!!tipOwnerGroup && assignedQcGroups.includes(tipOwnerGroup));
-        assignedQcCodAmount = Math.min(assignedQcTotal + (collectsTip ? tipAmount : 0), fullCodPending);
+        // The small cart fee belongs to the Quick Commerce part too: collected with the tip.
+        const smallCartFee = Math.max(0, Number(orderObj.smallCartFee) || 0);
+        assignedQcCodAmount = Math.min(
+          assignedQcTotal + (collectsTip ? tipAmount + smallCartFee : 0),
+          fullCodPending,
+        );
       }
       // Safety cap: cannot exceed full COD pending or assigned gross
       assignedQcCodAmount = Math.min(assignedQcCodAmount, fullCodPending);

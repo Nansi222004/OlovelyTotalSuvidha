@@ -27,6 +27,7 @@ export const getOrderGiftPackagingFee = (order: any): number => {
     (Number(order?.discount) || 0) +
     (Number(order?.platformFee ?? order?.fees?.platformFee) || 0) +
     (Number(order?.shipping ?? order?.fees?.deliveryFee) || 0) +
+    (Number(order?.smallCartFee ?? order?.fees?.smallCartFee) || 0) +
     getOrderTipAmount(order);
   return Math.max(0, round2(total - known));
 };

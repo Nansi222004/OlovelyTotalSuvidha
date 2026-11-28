@@ -40,6 +40,7 @@ import {
 import { getCommerceChannels } from "../../../services/commerceChannelService";
 import { resolveProductTaxRate } from "../../../services/productTaxService";
 import { resolveInventoryOwner } from "../../../utils/inventoryHelper";
+import { evaluateSmallCart, evaluateCourierShipping } from "../../../services/cartChargesService";
 import {
   evaluatePlatformQuickCommerce,
   evaluateSellerQuickCommerce,
@@ -851,12 +852,17 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // Enforce minimum order value (cart subtotal of products)
-    const minimumOrderValue = Number(settings?.minimumOrderValue) || 0;
-    if (minimumOrderValue > 0 && calculatedSubtotal < minimumOrderValue) {
+    // Minimum order value: blocks the order (fee mode OFF) or adds the small cart fee to the
+    // Quick Commerce part (fee mode ON). Same rule as the cart preview (cartChargesService).
+    const smallCart = evaluateSmallCart(settings, {
+      qcSubtotal,
+      cartSubtotal: calculatedSubtotal,
+    });
+    if (smallCart.blocked) {
       if (session) await session.abortTransaction();
       await compensateDeductedStock();
-      const shortfall = Number((minimumOrderValue - calculatedSubtotal).toFixed(2));
+      const minimumOrderValue = smallCart.threshold;
+      const shortfall = smallCart.amountToAvoid;
       return res.status(400).json({
         success: false,
         message: `Minimum order value is ₹${minimumOrderValue}. Please add ₹${shortfall} more to place your order.`,
@@ -867,6 +873,7 @@ export const createOrder = async (req: Request, res: Response) => {
         },
       });
     }
+    const smallCartFee = smallCart.fee;
 
     // Channel serviceability was validated per item before inventory mutation.
 
@@ -982,13 +989,14 @@ export const createOrder = async (req: Request, res: Response) => {
       deliveryFee = 0;
     }
 
-    // Ecommerce Shipping Fee: Governed by the single global freeDeliveryThreshold on combined subtotal!
+    // Courier (Shiprocket) shipping: admin flat fee, free above the courier threshold
+    // (or the global free-delivery threshold when no courier threshold is set).
     let ecomShippingFee = 0;
     if (ecomItemIds.length > 0) {
-      const defaultShippingFee = Number.isFinite(settings?.ecommerceShippingFee)
-        ? Number(settings.ecommerceShippingFee)
-        : 40;
-      ecomShippingFee = isEligibleForFreeDelivery ? 0 : defaultShippingFee;
+      ecomShippingFee = evaluateCourierShipping(settings, {
+        ecomSubtotal,
+        cartSubtotal: calculatedSubtotal,
+      }).fee;
     }
 
     // Capture calculated normal shipping fees prior to promotional evaluation
@@ -1079,6 +1087,7 @@ export const createOrder = async (req: Request, res: Response) => {
                     discountAmount +
                     platformFee +
                     combinedShippingFee +
+                    smallCartFee +
                     finalTipAmount
                 );
 
@@ -1122,6 +1131,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
         discountAmount +
         platformFee +
         combinedShippingFee +
+        smallCartFee +
         finalTipAmount
     );
 
@@ -1256,6 +1266,7 @@ Final Total: ₹${computedFinalTotal.toFixed(2)}`);
     newOrder.normalShippingAmount = Number(firstOrderPromo.normalShippingAmount.toFixed(2));
     newOrder.shippingDiscount = Number(firstOrderPromo.shippingDiscount.toFixed(2));
     newOrder.platformFee = Number(platformFee.toFixed(2)); // Platform fee charged once
+    newOrder.smallCartFee = Number(smallCartFee.toFixed(2)); // Small cart fee (QC below threshold), platform income
     if (deliveryDistanceKm !== undefined && Number.isFinite(deliveryDistanceKm)) {
       newOrder.deliveryDistanceKm = deliveryDistanceKm;
     }
@@ -1485,6 +1496,7 @@ export const getMyOrders = async (req: Request, res: Response) => {
         fees: {
           platformFee: orderObj.platformFee || 0,
           deliveryFee: orderObj.shipping || 0,
+          smallCartFee: Number(orderObj.smallCartFee) || 0,
         },
         firstOrderFreeShippingApplied: Boolean(orderObj.firstOrderFreeShippingApplied),
         normalShippingAmount: orderObj.normalShippingAmount ?? (orderObj.shipping || 0),
@@ -1631,6 +1643,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       fees: {
         platformFee: orderObj.platformFee || 0,
         deliveryFee: orderObj.shipping || 0,
+        smallCartFee: Number(orderObj.smallCartFee) || 0,
       },
       firstOrderFreeShippingApplied: Boolean(orderObj.firstOrderFreeShippingApplied),
       normalShippingAmount: orderObj.normalShippingAmount ?? (orderObj.shipping || 0),

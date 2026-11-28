@@ -72,6 +72,12 @@ export interface IAppSettings extends Document {
   freeDeliveryThreshold?: number;
   /** Cart subtotal must be at least this amount to place an order. 0 = no minimum. */
   minimumOrderValue?: number;
+  /**
+   * Small cart fee mode. When ON, a Quick Commerce cart below `minimumOrderValue` is NOT blocked;
+   * it pays `smallCartFee` instead. When OFF, `minimumOrderValue` blocks the order (old behaviour).
+   */
+  smallCartFeeEnabled?: boolean;
+  smallCartFee?: number;
   ecommerceShippingFee?: number;
   ecommerceFreeShippingThreshold?: number;
   /** Admin promotional setting: give new customers free shipping on their first eligible order */
@@ -377,6 +383,15 @@ const AppSettingsSchema = new Schema<IAppSettings>(
       type: Number,
       default: 0,
       min: [0, "Minimum order value cannot be negative"],
+    },
+    smallCartFeeEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    smallCartFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Small cart fee cannot be negative"],
     },
     ecommerceShippingFee: {
       type: Number,
