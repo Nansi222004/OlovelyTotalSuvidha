@@ -8,6 +8,7 @@ import SubCategory from "../../../models/SubCategory";
 import Shop from "../../../models/Shop";
 import { asyncHandler } from "../../../utils/asyncHandler";
 import { resolveAuthorizedSellerChannel } from "../../../utils/sellerChannelHelper";
+import { applyFoodType, normalizeFoodType } from "../../../utils/foodType";
 import {
   isProductTypeAllowedForCategory,
   validateProductChannelCompatibility,
@@ -293,6 +294,9 @@ export const createProduct = asyncHandler(
     if (productData.maxReturnDays !== undefined) {
       newProductData.maxReturnDays = Number(productData.maxReturnDays) || 0;
     }
+    // Veg / non-veg mark for food items (unset = not a food item)
+    const foodType = normalizeFoodType(productData.foodType);
+    if (foodType !== undefined) newProductData.foodType = foodType;
 
     if (!newProductData.popular) newProductData.popular = false;
     if (!newProductData.dealOfDay) newProductData.dealOfDay = false;
@@ -550,6 +554,7 @@ export const updateProduct = asyncHandler(
     const sellerId = (req as any).user.userId;
     const { id } = req.params;
     const updateData = req.body;
+    applyFoodType(updateData);
 
     if (process.env.NODE_ENV !== "production") {
       console.log("DEBUG updateProduct: sellerId from token:", sellerId, "productId:", id);

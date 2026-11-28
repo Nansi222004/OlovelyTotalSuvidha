@@ -746,7 +746,7 @@ export const getProductById = async (req: Request, res: Response) => {
     const similarProducts = await Product.find(similarProductsQuery)
       .limit(6)
       .select(
-        "productName price discPrice compareAtPrice mrp variations mainImage pack discount _id rating reviewsCount wholesaleEnabled wholesalePrice wholesaleMinimumQuantity productType"
+        "productName price discPrice compareAtPrice mrp variations mainImage pack discount _id rating reviewsCount wholesaleEnabled wholesalePrice wholesaleMinimumQuantity productType foodType"
       );
 
     let showSellerDetails = settings?.features?.showSellerDetails !== false;

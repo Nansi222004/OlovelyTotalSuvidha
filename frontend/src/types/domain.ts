@@ -45,6 +45,8 @@ export interface Product {
   manufacturer?: string;
   fssaiLicNo?: string;
   isReturnable?: boolean;
+  /** FSSAI veg / non-veg mark (egg = NON_VEG). null/undefined = not a food item. */
+  foodType?: 'VEG' | 'NON_VEG' | null;
   maxReturnDays?: number;
   barcode?: string;
   wholesaleEnabled?: boolean;

@@ -1,3 +1,4 @@
+import FoodTypeMark from '../../../components/FoodTypeMark';
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { uploadImage, uploadImages } from "../../../services/api/uploadService";
@@ -92,6 +93,7 @@ export default function AdminProductEdit() {
     isReturnable: "No",
     maxReturnDays: "",
     fssaiLicNo: "",
+    foodType: "",
     totalAllowedQuantity: "10",
     mainImageUrl: "",
     galleryImageUrls: [] as string[],
@@ -302,6 +304,7 @@ export default function AdminProductEdit() {
             isReturnable: product.isReturnable ? "Yes" : "No",
             maxReturnDays: product.maxReturnDays?.toString() || "",
             fssaiLicNo: product.fssaiLicNo || "",
+            foodType: (product as any).foodType || "",
             totalAllowedQuantity: product.totalAllowedQuantity?.toString() || "10",
             mainImageUrl: product.mainImage || product.mainImageUrl || "",
             galleryImageUrls: product.galleryImages || product.galleryImageUrls || [],
@@ -842,6 +845,8 @@ export default function AdminProductEdit() {
         maxReturnDays: formData.maxReturnDays ? parseInt(formData.maxReturnDays, 10) : undefined,
         totalAllowedQuantity: parseInt(formData.totalAllowedQuantity || "10", 10),
         fssaiLicNo: formData.fssaiLicNo || "",
+        // "" = not a food item → no veg/non-veg mark
+        foodType: formData.foodType || null,
         mainImage: mainImageUrl || undefined,
         mainImageUrl: mainImageUrl || undefined,
         galleryImages: galleryImageUrls,
@@ -1863,6 +1868,25 @@ export default function AdminProductEdit() {
                   placeholder="e.g. 7"
                   className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Food Type (Veg / Non-Veg)
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    name="foodType"
+                    value={formData.foodType}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                    <option value="">Not a food item (no mark)</option>
+                    <option value="VEG">Veg (green mark)</option>
+                    <option value="NON_VEG">Non-Veg / contains egg (red mark)</option>
+                  </select>
+                  <FoodTypeMark foodType={formData.foodType} size={18} />
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">Shown on the product for customers. Egg counts as Non-Veg (FSSAI).</p>
               </div>
 
               <div>

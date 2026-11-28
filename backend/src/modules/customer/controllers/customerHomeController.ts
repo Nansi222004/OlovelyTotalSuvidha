@@ -236,7 +236,7 @@ async function fetchSectionData(
       const products = await Product.find(query)
         .sort({ createdAt: -1 }) // Show newest items first
         .limit(limit || 8)
-        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity")
+        .select("productName mainImage price discPrice compareAtPrice mrp discount rating reviewsCount pack seller variations shopId translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType")
         .populate("seller", "storeName sellerName viewCustomerDetails")
         .populate("shopId", "name")
         .lean();
@@ -833,7 +833,7 @@ export const getHomeContent = async (req: Request, res: Response) => {
         .populate("categoryCards.categoryId", "name slug image translations")
         .populate({
           path: "featuredProducts",
-          select: "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller category subcategory variations translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity status publish isShopByStoreOnly stock",
+          select: "productName mainImage mainImageUrl galleryImageUrls galleryImages price discPrice mrp compareAtPrice discount rating reviewsCount seller category subcategory variations translations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType status publish isShopByStoreOnly stock",
           populate: { path: "seller", select: "storeName sellerName vendorType wholesaleEnabled viewCustomerDetails" },
         })
         .sort({ order: 1 })

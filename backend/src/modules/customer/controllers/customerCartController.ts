@@ -417,7 +417,7 @@ export const getCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType'
             }
         });
 
@@ -821,7 +821,7 @@ export const addToCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType'
             }
         });
 
@@ -1053,7 +1053,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType'
             }
         });
 
@@ -1112,7 +1112,7 @@ export const removeFromCart = async (req: Request, res: Response) => {
             path: 'items',
             populate: {
                 path: 'product',
-                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity'
+                select: 'productName price mainImage stock pack mrp category seller ownerType status publish discPrice variations productType packageDetails wholesaleEnabled wholesalePrice wholesaleMinimumQuantity foodType'
             }
         });
 

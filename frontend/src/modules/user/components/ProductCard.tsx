@@ -1,3 +1,4 @@
+import FoodTypeMark from '../../../components/FoodTypeMark';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useRef, useMemo, useCallback } from 'react';
@@ -324,6 +325,13 @@ export default function ProductCard({
             <span className="text-[10px] font-bold text-neutral-700 bg-white/95 backdrop-blur-xs px-1.5 py-0.5 rounded border border-neutral-200 shadow-2xs">
               {product.variations?.length} Options
             </span>
+          </div>
+        )}
+
+        {/* Veg / non-veg mark (food items only) - bottom right, clear of the Options badge */}
+        {product.foodType && (
+          <div className="absolute bottom-1.5 right-2 z-10 pointer-events-none">
+            <FoodTypeMark foodType={product.foodType} size={compact ? 12 : 14} />
           </div>
         )}
 

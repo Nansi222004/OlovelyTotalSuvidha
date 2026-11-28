@@ -9,6 +9,7 @@ import Seller from "../../../models/Seller";
 import HeaderCategory from "../../../models/HeaderCategory";
 import { cache } from "../../../utils/cache";
 import AppSettings from "../../../models/AppSettings";
+import { applyFoodType } from "../../../utils/foodType";
 import {
   generateUniqueBarcode,
   validateBarcodeFormat,
@@ -923,6 +924,7 @@ export const createProduct = asyncHandler(
     try {
       const productData = req.body;
       mapTaxIdToTax(productData);
+      applyFoodType(productData);
 
       // If seller is not provided, assign canonical Admin Seller and mark as PLATFORM
       const rawSeller = productData.seller || productData.sellerId;
@@ -1257,6 +1259,7 @@ export const updateProduct = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const updateData = req.body;
+    applyFoodType(updateData);
 
     // Map frontend field names to model field names and sanitize empty strings to null
     if (updateData.headerCategoryId !== undefined) {

@@ -65,6 +65,9 @@ export interface IProduct extends Document {
   fssaiLicNo?: string;
   totalAllowedQuantity?: number;
 
+  /** FSSAI food mark: VEG (green) / NON_VEG (incl. egg). null = not a food item, no mark shown. */
+  foodType?: "VEG" | "NON_VEG" | null;
+
   // Return Policy
   isReturnable: boolean;
   maxReturnDays?: number;
@@ -317,6 +320,13 @@ const ProductSchema = new Schema<IProduct>(
     totalAllowedQuantity: {
       type: Number,
       min: [0, "Total allowed quantity cannot be negative"],
+    },
+
+    // FSSAI veg / non-veg mark (egg counts as NON_VEG). Unset/null = not a food item.
+    foodType: {
+      type: String,
+      enum: ["VEG", "NON_VEG", null],
+      default: null,
     },
 
     // Return Policy

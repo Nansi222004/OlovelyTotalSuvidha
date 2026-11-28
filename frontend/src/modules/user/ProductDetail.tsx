@@ -1,3 +1,4 @@
+import FoodTypeMark from '../../components/FoodTypeMark';
 import {
   useParams,
   useNavigate,
@@ -739,8 +740,11 @@ export default function ProductDetail() {
           ) : null}
 
           {/* Product name */}
-          <h2 className="text-lg md:text-2xl font-bold text-neutral-900 mb-0 leading-tight">
-            {getTranslatedField(product, "name")}
+          <h2 className="text-lg md:text-2xl font-bold text-neutral-900 mb-0 leading-tight flex items-start gap-2">
+            {product.foodType && (
+              <FoodTypeMark foodType={product.foodType} size={16} className="mt-1 md:mt-2" />
+            )}
+            <span>{getTranslatedField(product, "name")}</span>
           </h2>
 
           {/* Aggregate rating */}
